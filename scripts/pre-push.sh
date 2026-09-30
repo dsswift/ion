@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Pre-push gate. Runs the subset of CI checks that are (a) likely to fail
-# from local edits and (b) fast enough to wait on. Anything network- or
-# build-heavy (engine race tests, govulncheck, docker, xcodebuild) stays in
-# CI — running it locally on every push would dominate flow time.
+# Pre-push gate: the one gate in front of main. Code lands on main by direct
+# push, so this is what stands between an edit and a release build. It runs
+# only what is static or a compile, scoped to the components the branch
+# touched, so a push waits about a minute: lint, typecheck, build, cross-
+# build, and the cheap drift checks. No test suite runs here. Tests run in
+# CI's test lane on main (quality.yml) beside the release build, never ahead
+# of it; a failure there is filed as an issue, not a blocked push.
 #
 # Bypass: `git push --no-verify` (use sparingly).
 #
@@ -119,10 +122,16 @@ if touched "^relay/"; then
     "cd relay && golangci-lint run --new-from-merge-base=origin/main"
 fi
 
-# Desktop: typecheck + unit tests. Both fast.
+# Desktop: typecheck. The unit suites run in CI's test lane.
 if touched "^desktop/"; then
   run "desktop typecheck" bash -c "cd desktop && npm run typecheck"
-  run "desktop tests"     bash -c "cd desktop && npm test --silent"
+fi
+
+# Server and the shared package: typecheck and lint. The renderer bundle
+# below is what catches a Node-only import; these catch the rest.
+if touched "^server/|^packages/shared/"; then
+  run "server typecheck" bash -c "npm -w server run typecheck"
+  run "server lint"      bash -c "npm -w server run lint"
 fi
 
 # The renderer bundles the server's session store and packages/shared, so a
@@ -132,12 +141,16 @@ if touched "^desktop/|^server/|^packages/shared/"; then
   run "desktop build"     bash -c "cd desktop && npm run build"
 fi
 
-# iOS: compile against the device SDK and run the complete local simulator suite.
-# CI repeats only the inexpensive device build; nightly/manual CI provides a
-# second full-suite platform check without making every hosted PR wait on boot.
-if touched "^ios/|^scripts/run-ios-tests\.sh$|^Makefile$|^\.github/workflows/quality\.yml$"; then
-  run "iOS device build" make ios-pr-check
-  run "iOS full simulator suite" make ios-test
+# iOS: lint only. The device build runs in CI on every iOS change (ios-build)
+# and the full simulator suite runs nightly (ios-full-test); an xcodebuild
+# here is minutes, and the point of this gate is to be seconds.
+if touched "^ios/"; then
+  if command -v swiftlint >/dev/null 2>&1; then
+    run "iOS silent-failure lint" swiftlint lint --quiet --config ios/.swiftlint.yml ios/IonRemote
+  else
+    echo
+    echo "▶ iOS silent-failure lint (skipped — install with: brew install swiftlint)"
+  fi
 fi
 
 # Workflow YAML changes: actionlint mirrors CI.

@@ -1,9 +1,18 @@
 name: Build
 
+# Every release named in the report arrives here as a draft (release.yml
+# holds it). Each component's publish-* job at the bottom flips its draft
+# public once every one of that component's assets is attached, so a build
+# failure leaves a draft with a rerun button and never a published release
+# with files missing. Tests do not run here: the Quality workflow is the test
+# lane and it never blocks a build. The one runtime check in this file, the
+# Windows install smoke, records its failure as an issue and the installer
+# still ships.
+#
 # A dry run builds and verifies everything a release would (signing, the
 # Windows smoke test, bundle checks) from any ref, and publishes nothing: no
-# release upload, no image push, no checksums. It is how a release-only
-# failure gets reproduced from a branch before merge. The versions in the
+# release upload, no image push, no checksums, no publish. It is how a
+# release-only failure gets reproduced from a branch. The versions in the
 # release report must name releases that already exist (a server bundle
 # downloads its engine from one).
 on:
@@ -40,6 +49,7 @@ on:
 permissions:
   contents: write
   packages: write
+  issues: write
 
 jobs:
   build-engine:
@@ -95,11 +105,6 @@ jobs:
         run: |
           VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="engine") | .new_version')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Run tests
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        working-directory: engine
-        run: go test ./...
 
       - name: Build binary
         working-directory: engine
@@ -647,10 +652,11 @@ jobs:
     strategy:
       # x64 is the supported target. arm64 is a best-effort cross-build that
       # is neither verified nor supported, so its failure must not sink the
-      # x64 row.
+      # x64 row, and must not hold the desktop release as a draft either.
       fail-fast: false
       matrix:
         arch: [x64, arm64]
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -823,8 +829,14 @@ jobs:
             -OutputPath "desktop/release/Ion-Artifacts-$v-x64.json" `
             -Version $v -Arch x64 -BuildType '${{ steps.signing.outputs.buildType }}'
 
+      # A smoke failure is a product bug found after the installer was built:
+      # the installer ships and the bug is filed (see the step after the
+      # uploads). A dry run exists to surface exactly this, so there the
+      # failure is the job's result.
       - name: Intune-shaped smoke test
+        id: smoke
         if: matrix.arch == 'x64'
+        continue-on-error: ${{ !inputs.dry_run }}
         shell: pwsh
         run: |
           pwsh -File scripts/ci/windows-smoke.ps1 `
@@ -861,6 +873,22 @@ jobs:
                    release/Ion-Artifacts-*.json release/Ion-Artifacts-*.sha256; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber -R "${{ github.repository }}"
           done
+
+      - name: File the smoke failure as an issue
+        if: matrix.arch == 'x64' && steps.smoke.outcome == 'failure' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          cat > "$RUNNER_TEMP/smoke-issue.md" <<EOF
+          The Windows install smoke test failed while building desktop v${V}. The installer was uploaded and the release published; the failure is a product bug to fix forward.
+
+          - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Commit: ${{ github.sha }}
+          - Script: \`scripts/ci/windows-smoke.ps1\`
+          EOF
+          bash .github/scripts/open-ci-issue.sh ci-failure "Windows install smoke failed on main" "$RUNNER_TEMP/smoke-issue.md"
 
   # Ion Studio Server (manifest child 11). Mirrors build-relay's structure
   # exactly: repo-root context (the Dockerfile needs packages/ and server/ as
@@ -917,3 +945,71 @@ jobs:
             ghcr.io/${{ github.repository }}/studio-server:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}/studio-server:sha-${{ steps.sha.outputs.short }}
             ghcr.io/${{ github.repository }}/studio-server:latest
+
+  # ---------------------------------------------------------------------------
+  # Publish. Each component's draft goes public only when every job that
+  # attaches one of its assets has succeeded. `always()` is what lets a
+  # publish job evaluate at all when a sibling component's job failed or was
+  # skipped; the per-job result checks are the real gate. A failed publish
+  # condition leaves the draft in place: rerun the failed jobs and the
+  # publish job runs again.
+  publish-engine:
+    if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'engine') && needs.build-engine.result == 'success' && needs.engine-checksums.result == 'success' && needs.build-engine-image.result == 'success'
+    needs: [build-engine, engine-checksums, build-engine-image]
+    runs-on: ubuntu-latest
+    steps:
+      # README install commands point at /releases/latest/download/ion-...,
+      # so the engine is the one release marked latest.
+      - name: Publish the engine release as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="engine") | .tag_name')
+          gh release edit "$TAG" --draft=false --latest -R "${{ github.repository }}"
+          echo "published $TAG (latest)"
+
+  publish-server:
+    if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'server') && needs.build-studio-server.result == 'success' && needs.studio-server-checksums.result == 'success' && needs.build-server.result == 'success'
+    needs: [build-studio-server, studio-server-checksums, build-server]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the server release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="server") | .tag_name')
+          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
+          echo "published $TAG"
+
+  publish-desktop:
+    if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'desktop') && needs.build-desktop.result == 'success' && needs.build-desktop-windows.result == 'success'
+    needs: [build-desktop, build-desktop-windows]
+    runs-on: ubuntu-latest
+    steps:
+      # Publishing is what makes latest-mac.yml and latest.yml visible to the
+      # auto-updater, so no desktop ever sees a feed whose installer is not
+      # yet attached.
+      - name: Publish the desktop release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="desktop") | .tag_name')
+          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
+          echo "published $TAG"
+
+  publish-relay:
+    if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'relay') && needs.build-relay.result == 'success'
+    needs: build-relay
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the relay release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="relay") | .tag_name')
+          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
+          echo "published $TAG"

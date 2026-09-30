@@ -36,6 +36,15 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
+  issues: write
+
+# Two pushes in quick succession must not race: the second run's version
+# computation has to see the first run's version-bump commit, or both bump
+# the same component to the same version. Runs queue; none are cancelled,
+# so every push still gets its release.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -92,33 +101,19 @@ jobs:
             git push
           fi
 
-      - name: Pin engine release as latest
+      # release-damnit publishes each release the moment it creates it, before
+      # a single binary exists. Held as a draft here, a release is invisible
+      # to the desktop's update feed, the README install link, and `latest`
+      # until its own build.yml publish job has attached every asset. A build
+      # that fails leaves a draft with a rerun button, never a published
+      # release with files missing. Components with no build job (ios, sdk)
+      # have nothing to wait for and publish now.
+      - name: Hold built releases as drafts, publish the rest
         if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_REPORT: ${{ steps.release.outputs.release_report }}
-        run: |
-          # README install commands point at /releases/latest/download/ion-...
-          # so engine must be the release marked "latest". Mark every non-engine
-          # release in this run as non-latest, then mark engine as latest.
-          # The tag comes from the release report, not from string assembly.
-          # tag-separator is per-package config — sdk/go releases as
-          # "sdk/go/vX.Y.Z" because the Go module proxy resolves a nested
-          # module only against that exact form — so a rebuilt
-          # "${component}-v${version}" would be wrong for it.
-          ENGINE_TAG=""
-          while IFS=$'\t' read -r component tag; do
-            [ -z "$tag" ] && continue
-            if [ "$component" = "engine" ]; then
-              ENGINE_TAG="$tag"
-            else
-              gh release edit "$tag" --latest=false
-            fi
-          done < <(echo "$RELEASE_REPORT" | jq -r '.releases[] | "\(.component)\t\(.tag_name)"')
-
-          if [ -n "$ENGINE_TAG" ]; then
-            gh release edit "$ENGINE_TAG" --latest
-          fi
+        run: bash .github/scripts/hold-built-releases.sh
 
   build:
     needs: release
@@ -128,6 +123,9 @@ jobs:
       release_report: ${{ needs.release.outputs.release_report }}
     secrets: inherit
 
+  # The summary names every release in the report, so it goes out only once
+  # every publish job has succeeded; a partial build is rerun first (its
+  # draft is waiting), and the summary follows that rerun.
   notify:
     needs: [release, build]
     if: needs.release.outputs.releases_created == 'true' && needs.build.result == 'success'

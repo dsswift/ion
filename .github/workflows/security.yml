@@ -1,0 +1,63 @@
+name: Security
+
+# Dependency advisories and vulnerability scans read a feed that changes every
+# day, so their result is not a property of the commit. They run here, off
+# the ship path: nightly and on demand, never on a push to main, never in
+# front of a release. A finding is filed as an issue (label: security) for
+# the operator to fix in its own change.
+on:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  engine-vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: engine/go.mod
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: govulncheck (engine)
+        run: govulncheck ./...
+        working-directory: engine
+      - name: govulncheck (relay)
+        if: always()
+        run: govulncheck ./...
+        working-directory: relay
+      - name: govulncheck (sdk)
+        if: always()
+        run: govulncheck ./...
+        working-directory: sdk/go
+
+  desktop-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Lockfile integrity
+        run: bash scripts/check-lockfile-integrity.test.sh && node scripts/check-lockfile-integrity.mjs package-lock.json
+      - name: npm audit (high+ only, prod deps)
+        working-directory: desktop
+        run: npm audit --audit-level=high --omit=dev
+
+  report:
+    needs: [engine-vuln, desktop-audit]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: File findings as issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/report-run-failures.sh security "Security scan failed" '${{ toJSON(needs) }}'

@@ -1,69 +1,62 @@
 name: Quality
 
+# The test lane. It runs beside the release build on every push to main and
+# never in front of it: a failure here is filed as an issue by the `report`
+# job at the bottom, and the release for that push ships regardless. Every
+# product job is scoped to the paths the push touched, on pull requests and
+# on main alike, so an iOS-only push runs no Windows job. Scheduled and
+# manual runs validate every scope.
 on:
   pull_request:
   push:
     branches: [main]
   schedule:
     # Full simulator suite: catches broad behavioral regressions without making
-    # every pull request wait for a cold macOS simulator.
+    # every push wait for a cold macOS simulator.
     - cron: '17 4 * * *'
   workflow_dispatch:
+
+# A newer push to the same branch supersedes an unfinished run; its report
+# covers the newer commit. Scheduled and manual runs are never cancelled.
+concurrency:
+  group: quality-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
   pull-requests: read
-  checks: write
+  issues: write
 
 jobs:
-  # Always present on pull requests so required Quality contexts remain visible.
-  # On pull_request, dorny/paths-filter reads the PR file list through the API.
-  # Non-PR runs validate every product scope by design, so blank filter outputs
-  # are deliberately ignored by each job condition below.
+  # dorny/paths-filter reads the pull request's file list through the API and,
+  # on a push, diffs against the push's `before` commit. A scheduled or manual
+  # run has no diff and validates every scope.
   changes:
     runs-on: ubuntu-latest
     outputs:
-      engine: ${{ steps.filter.outputs.engine }}
-      sdk: ${{ steps.filter.outputs.sdk }}
-      relay: ${{ steps.filter.outputs.relay }}
-      desktop: ${{ steps.filter.outputs.desktop }}
-      desktop_deps: ${{ steps.filter.outputs.desktop_deps }}
-      shared: ${{ steps.filter.outputs.shared }}
-      server: ${{ steps.filter.outputs.server }}
-      ios: ${{ steps.filter.outputs.ios }}
-      logging: ${{ steps.filter.outputs.logging }}
-      dashboards: ${{ steps.filter.outputs.dashboards }}
-      workflows: ${{ steps.filter.outputs.workflows }}
+      engine: ${{ steps.filter.outputs.engine == 'true' || steps.all.outputs.all == 'true' }}
+      sdk: ${{ steps.filter.outputs.sdk == 'true' || steps.all.outputs.all == 'true' }}
+      relay: ${{ steps.filter.outputs.relay == 'true' || steps.all.outputs.all == 'true' }}
+      desktop: ${{ steps.filter.outputs.desktop == 'true' || steps.all.outputs.all == 'true' }}
+      shared: ${{ steps.filter.outputs.shared == 'true' || steps.all.outputs.all == 'true' }}
+      server: ${{ steps.filter.outputs.server == 'true' || steps.all.outputs.all == 'true' }}
+      ios: ${{ steps.filter.outputs.ios == 'true' || steps.all.outputs.all == 'true' }}
+      logging: ${{ steps.filter.outputs.logging == 'true' || steps.all.outputs.all == 'true' }}
+      dashboards: ${{ steps.filter.outputs.dashboards == 'true' || steps.all.outputs.all == 'true' }}
+      workflows: ${{ steps.filter.outputs.workflows == 'true' || steps.all.outputs.all == 'true' }}
     steps:
       - uses: actions/checkout@v7
+      - id: all
+        run: echo "all=${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
       - id: filter
-        if: github.event_name == 'pull_request'
+        if: steps.all.outputs.all != 'true'
         uses: dorny/paths-filter@v4.0.3
         with:
           filters: .github/quality-paths.yml
-      - name: Report skipped engine matrix checks
-        if: github.event_name == 'pull_request' && steps.filter.outputs.engine != 'true'
-        uses: actions/github-script@v9.0.0
-        with:
-          script: |
-            for (const name of ['engine-test (macos-14)', 'engine-test (ubuntu-latest)', 'engine-test (windows-latest)']) {
-              await github.rest.checks.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name,
-                head_sha: context.payload.pull_request.head.sha,
-                status: 'completed',
-                conclusion: 'success',
-                output: {
-                  title: 'Engine unchanged',
-                  summary: 'Engine test matrix skipped because this pull request does not modify engine/**.',
-                },
-              })
-            }
 
   actionlint:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.workflows == 'true'
+    if: needs.changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -71,6 +64,11 @@ jobs:
         uses: raven-actions/actionlint@v2
       - name: Test release summary context
         run: bash .github/scripts/build-release-summary-context.test.sh
+      - name: Test the pipeline's issue and release scripts
+        run: |
+          bash .github/scripts/open-ci-issue.test.sh
+          bash .github/scripts/report-run-failures.test.sh
+          bash .github/scripts/hold-built-releases.test.sh
 
   go-toolchains:
     runs-on: ubuntu-latest
@@ -166,7 +164,7 @@ jobs:
 
   status-writers:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.ios == 'true'
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.ios == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -181,7 +179,7 @@ jobs:
 
   server-parity:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -195,7 +193,7 @@ jobs:
 
   studio-wire:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.desktop == 'true'
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -216,7 +214,7 @@ jobs:
 
   check-logging:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.logging == 'true'
+    if: needs.changes.outputs.logging == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -232,7 +230,7 @@ jobs:
 
   check-swiftlint:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
+    if: needs.changes.outputs.ios == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -258,7 +256,7 @@ jobs:
 
   dashboards:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.dashboards == 'true'
+    if: needs.changes.outputs.dashboards == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -284,7 +282,7 @@ jobs:
 
   engine-crossbuild:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+    if: needs.changes.outputs.engine == 'true'
     # Compile gate for every platform the release matrix ships
     # (.github/workflows/build.yml). No other job sets GOOS: engine-test runs
     # on ubuntu-latest and macos-14, and engine-lint runs host-native, so a
@@ -330,7 +328,7 @@ jobs:
 
   engine-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+    if: needs.changes.outputs.engine == 'true'
     strategy:
       # Windows is a supported target, so its unit and integration suites gate
       # every engine PR alongside Linux and macOS. windows-latest bills at 2x
@@ -355,6 +353,28 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: engine/go.mod
+          cache: false
+      # Go caches a passing test result with its inputs, so a package this
+      # push did not touch is reported from cache in milliseconds. setup-go's
+      # own cache saves only when go.sum changes, which would freeze the test
+      # results at that moment; keying on the run id saves every run's
+      # results, and the restore prefix picks up the newest.
+      - name: Go cache paths
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go build and test cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-test-${{ runner.os }}-${{ hashFiles('engine/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('engine/go.sum') }}-
+            go-test-${{ runner.os }}-
       - name: Unit tests with race detector
         working-directory: engine
         run: go test -race ./...
@@ -370,9 +390,7 @@ jobs:
 
   engine-lint:
     needs: changes
-    if: >-
-      github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true' ||
-      needs.changes.outputs.relay == 'true' || needs.changes.outputs.sdk == 'true'
+    if: needs.changes.outputs.engine == 'true' || needs.changes.outputs.relay == 'true' || needs.changes.outputs.sdk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -381,7 +399,7 @@ jobs:
         with:
           go-version-file: engine/go.mod
 
-      # Full lint on every event (PR and push). We previously ran
+      # Full lint on every event. We previously ran
       # --new-from-merge-base=origin/main on PRs and full on push, but:
       #
       #  1. Differential mode does not speed up CI — golangci-lint still
@@ -401,54 +419,27 @@ jobs:
       # cleanup commit, not hiding the findings. The module is small
       # enough that a full lint sweep is cheap.
       - name: golangci-lint engine
-        if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+        if: needs.changes.outputs.engine == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: engine
       - name: golangci-lint relay
-        if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
+        if: needs.changes.outputs.relay == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: relay
       - name: golangci-lint sdk
-        if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
+        if: needs.changes.outputs.sdk == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.3
           working-directory: sdk/go
 
-  engine-vuln:
-    needs: changes
-    if: >-
-      github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true' ||
-      needs.changes.outputs.relay == 'true' || needs.changes.outputs.sdk == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: engine/go.mod
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: govulncheck (engine)
-        if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
-        run: govulncheck ./...
-        working-directory: engine
-      - name: govulncheck (relay)
-        if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
-        run: govulncheck ./...
-        working-directory: relay
-      - name: govulncheck (sdk)
-        if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
-        run: govulncheck ./...
-        working-directory: sdk/go
-
   sdk-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.sdk == 'true'
+    if: needs.changes.outputs.sdk == 'true'
     # The Go SDK's parity tests read two generated goldens — the engine's SDK
     # contract manifest and the SDK's own surface manifest — so they run from a
     # full checkout rather than from the module in isolation. This is the job
@@ -471,7 +462,7 @@ jobs:
 
   relay-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.relay == 'true'
+    if: needs.changes.outputs.relay == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -485,7 +476,7 @@ jobs:
 
   desktop-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -513,7 +504,7 @@ jobs:
   # gated on desktop changes so it does not run on every PR.
   desktop-test-windows:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -546,7 +537,7 @@ jobs:
 
   desktop-lint:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -574,7 +565,7 @@ jobs:
   # desktop one.
   desktop-build:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -594,28 +585,12 @@ jobs:
         working-directory: desktop
         run: npm run build:web
 
-  desktop-audit:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop_deps == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-      - name: Lockfile integrity
-        run: bash scripts/check-lockfile-integrity.test.sh && node scripts/check-lockfile-integrity.mjs package-lock.json
-      - name: npm audit (high+ only, prod deps)
-        working-directory: desktop
-        run: npm audit --audit-level=high --omit=dev
-
   # @ion/shared's only consumers are desktop and server, all three workspace
   # members, so its gate installs once at the workspace root and runs its
   # typecheck and test scripts by workspace name.
   shared-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.shared == 'true'
+    if: needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -634,7 +609,7 @@ jobs:
 
   server-typecheck:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
+    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -651,7 +626,7 @@ jobs:
 
   server-lint:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -668,7 +643,7 @@ jobs:
 
   server-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
+    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -693,7 +668,7 @@ jobs:
 
   docker-build:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
+    if: needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -718,7 +693,7 @@ jobs:
   # on either side alone).
   server-compose-smoke:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.engine == 'true'
+    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -765,7 +740,7 @@ jobs:
 
   ios-build:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
+    if: needs.changes.outputs.ios == 'true'
     # Required PR gate. Device-target compilation catches Swift, link, and
     # packaging errors without hosted simulator startup. The full XCTest suite
     # runs locally before push, plus nightly/manual in ios-full-test.
@@ -786,3 +761,48 @@ jobs:
         env:
           IOS_TEST_BUILD_SETTINGS: CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
         run: bash scripts/run-ios-tests.sh
+
+  # The lane's outcome, as issues. Every product job feeds this so a failure
+  # anywhere above is filed; the run's own colour is not what the operator
+  # watches. Pull requests get their checks inline and file nothing.
+  report:
+    needs:
+      - actionlint
+      - go-toolchains
+      - file-size
+      - admx
+      - windows-scripts
+      - windows-scripts-ps51
+      - vocabulary
+      - status-writers
+      - server-parity
+      - studio-wire
+      - check-logging
+      - check-swiftlint
+      - dashboards
+      - engine-crossbuild
+      - engine-test
+      - engine-lint
+      - sdk-test
+      - relay-test
+      - desktop-test
+      - desktop-test-windows
+      - desktop-lint
+      - desktop-build
+      - shared-test
+      - server-typecheck
+      - server-lint
+      - server-test
+      - doc-links
+      - docker-build
+      - server-compose-smoke
+      - ios-build
+      - ios-full-test
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: File failures and flakes as issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Tests failed on main" '${{ toJSON(needs) }}'
