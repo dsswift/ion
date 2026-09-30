@@ -61,3 +61,11 @@ type SecretReference struct {
 	// (default) or "applicationConfig".
 	SecretSource string `json:"secretSource,omitempty"`
 }
+
+// McpSecretHeader is one MCP request header whose value the engine resolves
+// from a secret reference at request time.
+type McpSecretHeader struct {
+	SecretReference
+	// Prefix is prepended to the secret in the header (e.g. "Bearer ").
+	Prefix string `json:"prefix,omitempty"`
+}

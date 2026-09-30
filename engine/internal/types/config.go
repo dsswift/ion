@@ -897,14 +897,19 @@ type LimitsConfig struct {
 
 // McpServerConfig defines an MCP server connection.
 type McpServerConfig struct {
-	Type           string            `json:"type"`
-	Command        string            `json:"command,omitempty"`
-	Args           []string          `json:"args,omitempty"`
-	URL            string            `json:"url,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	OAuth          *McpOAuthConfig   `json:"oauth,omitempty"`
-	TimeoutSeconds int               `json:"timeoutSeconds,omitempty"`
+	Type    string            `json:"type"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// SecretHeaders names request headers whose value is a secret the
+	// engine resolves on every request, keyed by header name. The value is
+	// never written to config, logged, or shown to an extension; a rotated
+	// secret takes effect on the next request.
+	SecretHeaders  map[string]McpSecretHeader `json:"secretHeaders,omitempty"`
+	OAuth          *McpOAuthConfig            `json:"oauth,omitempty"`
+	TimeoutSeconds int                        `json:"timeoutSeconds,omitempty"`
 	// ForwardIdentityToken makes the engine stamp the configured operator or
 	// machine identity's OAuth bearer token on every outbound request. This is
 	// the identity-neutral replacement for ForwardUserToken. The legacy field

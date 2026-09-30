@@ -74,11 +74,12 @@ func newSDKTransport(name string, config types.McpServerConfig) (mcpgo.Transport
 func ionMCPHTTPClient(serverName string, config types.McpServerConfig) *http.Client {
 	base := *network.GetHTTPClient()
 	base.Transport = &mcpHeaderRoundTripper{
-		base:       network.GetHTTPClient().Transport,
-		serverName: serverName,
-		headers:    cloneHeaders(config.Headers),
-		oauth:      configuredTokenResolver(serverName, config),
-		userToken:  configuredUserToken(config),
+		base:          network.GetHTTPClient().Transport,
+		serverName:    serverName,
+		headers:       cloneHeaders(config.Headers),
+		oauth:         configuredTokenResolver(serverName, config),
+		userToken:     configuredUserToken(config),
+		secretHeaders: config.SecretHeaders,
 	}
 	return &base
 }
@@ -138,11 +139,12 @@ func identityTokenRequest(config types.McpServerConfig) (scope, audience string,
 }
 
 type mcpHeaderRoundTripper struct {
-	base       http.RoundTripper
-	serverName string
-	headers    map[string]string
-	oauth      *tokenResolver
-	userToken  func() (string, error)
+	base          http.RoundTripper
+	serverName    string
+	headers       map[string]string
+	oauth         *tokenResolver
+	userToken     func() (string, error)
+	secretHeaders map[string]types.McpSecretHeader
 }
 
 func (r *mcpHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -163,6 +165,9 @@ func (r *mcpHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 			return nil, fmt.Errorf("resolve operator token for %s: %w", r.serverName, err)
 		}
 		clone.Header.Set("Authorization", "Bearer "+token)
+	}
+	if err := applyMCPSecretHeaders(clone, r.serverName, r.secretHeaders); err != nil {
+		return nil, err
 	}
 	base := r.base
 	if base == nil {
