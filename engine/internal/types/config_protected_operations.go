@@ -44,8 +44,9 @@ const (
 	// SecretSourceCredentialStore reads the engine's encrypted credential
 	// store, the store the store_credential command writes. The default.
 	SecretSourceCredentialStore = "credentialStore"
-	// SecretSourceApplicationConfig reads a key declared in
-	// applicationConfig.secretKeys from the in-memory application config.
+	// SecretSourceApplicationConfig reads a secret from the in-memory
+	// application config: the common section's secrets, overlaid by the
+	// calling extension's own section.
 	SecretSourceApplicationConfig = "applicationConfig"
 )
 
