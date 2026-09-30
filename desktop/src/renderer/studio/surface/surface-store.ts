@@ -180,6 +180,12 @@ export interface SurfaceState {
   closeToRight(id: string): void;
   pinTab(id: PinnableSingletonId): void;
   unpinTab(id: PinnableSingletonId): void;
+  /**
+   * Patch a browser descriptor. `conversationId` names the owner; without it
+   * the visible conversation is assumed. A guest in a background conversation
+   * reports navigation too, and its descriptor must follow or a restore would
+   * reopen the page it left.
+   */
   updateBrowserTab(
     id: string,
     patch: Partial<{
@@ -187,7 +193,10 @@ export interface SurfaceState {
       title: string;
       mode: "preview" | "browse";
       sessionMode: "isolated" | "shared";
+      zoomLevel: number;
+      faviconUrl: string;
     }>,
+    conversationId?: string,
   ): void;
   renameTerminalTab(id: string, title: string): void;
   revealDiffFile(target: { filePath: string; staged: boolean }): void;
@@ -540,6 +549,8 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     set,
     get,
     updateCurrent,
+    updateConversation: (conversationId, update) =>
+      updateConversationById(set, get, conversationId, update),
     schedulePersist,
   }),
 

@@ -15,6 +15,7 @@ import {
   type SurfaceConversationPersisted,
   type SurfaceTab,
 } from "@ion/shared/studio-surface-types";
+import { resolveActiveBrowserInstance } from "@ion/shared/studio-browser-group";
 import {
   composeTabs,
   normalizeTabs,
@@ -29,6 +30,7 @@ export function emptyConversation(): SurfaceConversationPersisted {
     visible: false,
     width: null,
     agentBrowserInstanceId: null,
+    activeBrowserInstanceId: null,
   };
 }
 
@@ -111,16 +113,25 @@ export function normalizeConversation(
     scratchTabs,
     hasQuestions,
   );
+  const activeTabId =
+    conversation.activeTabId &&
+    composed.some((tab) => tab.id === conversation.activeTabId)
+      ? conversation.activeTabId
+      : (composed[0]?.id ?? null);
   return {
     tabs,
     visible: conversation.visible,
     width: conversation.width,
     agentBrowserInstanceId,
-    activeTabId:
-      conversation.activeTabId &&
-      composed.some((tab) => tab.id === conversation.activeTabId)
-        ? conversation.activeTabId
-        : (composed[0]?.id ?? null),
+    activeTabId,
+    // Every write passes through here, so this is the one place the Browser
+    // slot's memory is kept current: activating a browser document records
+    // it, and closing the remembered one falls back to a live document.
+    activeBrowserInstanceId: resolveActiveBrowserInstance(
+      tabs,
+      activeTabId,
+      conversation.activeBrowserInstanceId,
+    ),
   };
 }
 

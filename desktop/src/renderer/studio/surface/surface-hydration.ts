@@ -93,6 +93,7 @@ export function createSurfaceHydrationActions(
                     visible: legacyVisible,
                     width: null,
                     agentBrowserInstanceId: null,
+                    activeBrowserInstanceId: null,
                   },
                 }
               : {};

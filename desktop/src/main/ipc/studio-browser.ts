@@ -6,16 +6,27 @@ import {
   browserViewContents,
   destroyBrowserView,
   ensureBrowserView,
+  findInBrowserView,
   navigateBrowserView,
+  setBrowserChromeSender,
   setBrowserViewBounds,
   setPopoverRects,
+  zoomBrowserView,
   type ViewBounds,
 } from '../studio-browser-views'
 import { setBrowserCommandSender } from '../studio-playwright/renderer-bridge'
+import { answerBrowserPrompt, pendingBrowserPrompts, setBrowserPromptSender } from '../studio-browser-permissions'
 import {
   parseBrowserCommandResult,
+  parseBrowserFindRequest,
+  parseBrowserPromptAnswer,
+  parseBrowserZoomRequest,
   type StudioBrowserCommand,
   type StudioBrowserCommandResult,
+  type StudioBrowserFindResult,
+  type StudioBrowserPrompt,
+  type StudioBrowserShortcutEvent,
+  type StudioBrowserViewState,
 } from '@ion/shared/studio-browser-types'
 
 const TAG = 'studio-browser-ipc'
@@ -24,13 +35,12 @@ let commandSeq = 0
 let resolveStudioWindow: () => BrowserWindow | null = () => null
 
 /**
- * Studio browser IPC: guest registration inbound, browser commands outbound.
+ * Studio browser IPC: view control inbound, browser commands outbound.
  *
- * Registration is the security boundary. A renderer can name any integer, so
- * the guest is resolved in main and checked three ways: it must be a webview,
- * it must be hosted BY the sending window, and the sender must be the Studio
- * window. Trusting the renderer's claim instead would let any window with the
- * preload bridge hand the automation runtime a WebContents it does not own.
+ * Main creates every guest itself, so a renderer never hands main a
+ * WebContents. What it sends are ids, geometry, and verbs, and every handler
+ * first checks that the sender is the Studio window. Any other window with the
+ * preload bridge is refused, so it cannot create, move, or drive a guest.
  *
  * Commands run the other way. Main owns the Playwright runtime but not Surface
  * descriptors, so creating, closing, or re-sizing the agent's tab is a request
@@ -51,7 +61,7 @@ export function registerStudioBrowserIpc(): void {
   // hold on to any more.
   ipcMain.handle(
     IPC.STUDIO_BROWSER_VIEW_ENSURE,
-    (event, conversationId: unknown, instanceId: unknown, url: unknown, partition: unknown) => {
+    (event, conversationId: unknown, instanceId: unknown, url: unknown, partition: unknown, zoomLevel: unknown) => {
       if (!fromStudio(event) || !isId(conversationId) || !isId(instanceId) || typeof partition !== 'string' || !partition) {
         _log(TAG, 'browser view ensure rejected', { sender_id: event.sender.id })
         return false
@@ -61,9 +71,14 @@ export function registerStudioBrowserIpc(): void {
         instanceId,
         partition,
         url: typeof url === 'string' ? url : '',
+        ...(typeof zoomLevel === 'number' && Number.isFinite(zoomLevel) ? { zoomLevel } : {}),
       })
       if (!guest) return false
       watchGuestState(guest, conversationId, instanceId)
+      // A prompt raised while no chrome was mounted for this document (the
+      // Surface column closed, a background conversation) is still waiting;
+      // the chrome that just mounted is the one that can show it.
+      for (const prompt of pendingBrowserPrompts(conversationId, instanceId)) sendBrowserPrompt(prompt)
       return true
     },
   )
@@ -114,6 +129,47 @@ export function registerStudioBrowserIpc(): void {
     setPopoverRects(parsed)
   })
 
+  // Find in page. The request goes to the guest; Chromium's answer comes
+  // back through `found-in-page`, which watchGuestState forwards.
+  ipcMain.handle(
+    IPC.STUDIO_BROWSER_FIND,
+    (event, conversationId: unknown, instanceId: unknown, request: unknown) => {
+      if (!fromStudio(event) || !isId(conversationId) || !isId(instanceId)) return false
+      const parsed = parseBrowserFindRequest(request)
+      if (!parsed) {
+        _warn(TAG, 'browser find rejected, malformed request', { conversation_id: conversationId, instance_id: instanceId })
+        return false
+      }
+      return findInBrowserView(conversationId, instanceId, parsed)
+    },
+  )
+
+  ipcMain.handle(
+    IPC.STUDIO_BROWSER_SET_ZOOM,
+    (event, conversationId: unknown, instanceId: unknown, request: unknown) => {
+      if (!fromStudio(event) || !isId(conversationId) || !isId(instanceId)) return null
+      const parsed = parseBrowserZoomRequest(request)
+      if (!parsed) {
+        _warn(TAG, 'browser zoom rejected, malformed request', { conversation_id: conversationId, instance_id: instanceId })
+        return null
+      }
+      const level = zoomBrowserView(conversationId, instanceId, parsed)
+      const guest = browserViewContents(conversationId, instanceId)
+      if (guest) pushGuestState(guest, conversationId, instanceId)
+      return level
+    },
+  )
+
+  ipcMain.on(IPC.STUDIO_BROWSER_PROMPT_ANSWER, (event, answer: unknown) => {
+    if (!fromStudio(event)) return
+    const parsed = parseBrowserPromptAnswer(answer)
+    if (!parsed) {
+      _warn(TAG, 'browser prompt answer rejected, malformed', { sender_id: event.sender.id })
+      return
+    }
+    answerBrowserPrompt(parsed)
+  })
+
   ipcMain.handle(
     IPC.STUDIO_BROWSER_VIEW_CLOSE,
     (event, conversationId: unknown, instanceId: unknown) => {
@@ -125,6 +181,23 @@ export function registerStudioBrowserIpc(): void {
   // Reply channel for the outbound command below. Validated and matched by
   // callId AND sender, so a non-Studio window cannot settle a pending command.
   setBrowserCommandSender((command, timeoutMs) => sendBrowserCommand(command, timeoutMs))
+
+  // A shortcut pressed inside a guest that only the chrome can act on. Sent
+  // from here, not from the shortcut module, so every Studio-bound send stays
+  // in this file.
+  setBrowserPromptSender(sendBrowserPrompt)
+
+  setBrowserChromeSender((shortcut: StudioBrowserShortcutEvent) => {
+    const studio = resolveStudioWindow()
+    if (!studio || studio.isDestroyed()) {
+      _warn(TAG, 'browser shortcut dropped, no studio window', { conversation_id: shortcut.conversationId, action: shortcut.action })
+      return
+    }
+    // The guest holds keyboard focus; the chrome cannot take it from inside
+    // the renderer, so the window's own contents are focused here first.
+    if (shortcut.action !== 'close-find') studio.webContents.focus()
+    studio.webContents.send(IPC.STUDIO_BROWSER_SHORTCUT, shortcut)
+  })
 }
 
 /**
@@ -159,9 +232,20 @@ function hostOf(raw: string): string {
   }
 }
 
-/** Clear the sender when the Studio window goes away. */
+/** Clear the senders when the Studio window goes away. */
 export function clearStudioBrowserCommandSender(): void {
   setBrowserCommandSender(null)
+  setBrowserChromeSender(null)
+  setBrowserPromptSender(null)
+}
+
+function sendBrowserPrompt(prompt: StudioBrowserPrompt): void {
+  const studio = resolveStudioWindow()
+  if (!studio || studio.isDestroyed()) {
+    _warn(TAG, 'browser prompt not delivered, no studio window', { prompt_id: prompt.promptId, kind: prompt.kind })
+    return
+  }
+  studio.webContents.send(IPC.STUDIO_BROWSER_PROMPT, prompt)
 }
 
 async function sendBrowserCommand(command: StudioBrowserCommand, timeoutMs: number): Promise<StudioBrowserCommandResult> {
@@ -239,23 +323,66 @@ function parseBounds(raw: unknown): ViewBounds | null {
  * page did if main tells it.
  */
 const watched = new WeakSet<WebContents>()
+/** Per-guest chrome facts that no getter exposes: the favicon and load state. */
+const chromeFacts = new WeakMap<WebContents, { faviconUrl: string; loading: boolean }>()
+
+function pushGuestState(guest: WebContents, conversationId: string, instanceId: string): void {
+  const win = resolveStudioWindow()
+  if (!win || win.isDestroyed() || guest.isDestroyed()) return
+  const facts = chromeFacts.get(guest) ?? { faviconUrl: '', loading: false }
+  const state: StudioBrowserViewState = {
+    conversationId,
+    instanceId,
+    url: guest.getURL(),
+    title: guest.getTitle(),
+    canGoBack: guest.navigationHistory.canGoBack(),
+    canGoForward: guest.navigationHistory.canGoForward(),
+    faviconUrl: facts.faviconUrl,
+    loading: facts.loading,
+    zoomLevel: guest.getZoomLevel(),
+  }
+  win.webContents.send(IPC.STUDIO_BROWSER_VIEW_STATE, state)
+}
+
 function watchGuestState(guest: WebContents, conversationId: string, instanceId: string): void {
   if (watched.has(guest)) return
   watched.add(guest)
-  const push = (): void => {
-    const win = resolveStudioWindow()
-    if (!win || win.isDestroyed() || guest.isDestroyed()) return
-    win.webContents.send(IPC.STUDIO_BROWSER_VIEW_STATE, {
-      conversationId,
-      instanceId,
-      url: guest.getURL(),
-      title: guest.getTitle(),
-      canGoBack: guest.navigationHistory.canGoBack(),
-      canGoForward: guest.navigationHistory.canGoForward(),
-    })
-  }
-  guest.on('did-navigate', push)
+  const facts = { faviconUrl: '', loading: false }
+  chromeFacts.set(guest, facts)
+  const push = (): void => pushGuestState(guest, conversationId, instanceId)
+  guest.on('did-navigate', () => {
+    // A new document has no favicon until it reports one; carrying the old
+    // one over would label a page with the previous site's icon.
+    facts.faviconUrl = ''
+    push()
+  })
   guest.on('did-navigate-in-page', push)
   guest.on('page-title-updated', push)
   guest.on('did-finish-load', push)
+  guest.on('did-start-loading', () => { facts.loading = true; push() })
+  guest.on('did-stop-loading', () => { facts.loading = false; push() })
+  guest.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    facts.loading = false
+    // -3 is ABORTED: the operator navigated again before the load finished,
+    // which is not a failure of anything.
+    if (isMainFrame && code !== -3) {
+      _warn(TAG, 'browser page load failed', { conversation_id: conversationId, instance_id: instanceId, code, description, url_host: hostOf(url) })
+    }
+    push()
+  })
+  guest.on('page-favicon-updated', (_event, favicons) => {
+    facts.faviconUrl = favicons.find((candidate) => candidate.startsWith('https:') || candidate.startsWith('http:') || candidate.startsWith('data:')) ?? ''
+    push()
+  })
+  guest.on('found-in-page', (_event, result) => {
+    const win = resolveStudioWindow()
+    if (!win || win.isDestroyed()) return
+    const payload: StudioBrowserFindResult = {
+      conversationId,
+      instanceId,
+      activeMatchOrdinal: result.activeMatchOrdinal,
+      matches: result.matches,
+    }
+    win.webContents.send(IPC.STUDIO_BROWSER_FIND_RESULT, payload)
+  })
 }

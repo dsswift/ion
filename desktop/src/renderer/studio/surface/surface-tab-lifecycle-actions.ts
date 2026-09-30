@@ -41,11 +41,16 @@ export function createSurfaceTabLifecycleActions({
   set,
   get,
   updateCurrent,
+  updateConversation,
   schedulePersist,
 }: {
   set: SetSurface;
   get: GetSurface;
   updateCurrent: UpdateCurrent;
+  updateConversation(
+    conversationId: string,
+    update: (current: SurfaceConversationPersisted) => SurfaceConversationPersisted,
+  ): void;
   schedulePersist(get: GetSurface): void;
 }): Pick<
   SurfaceState,
@@ -301,13 +306,16 @@ export function createSurfaceTabLifecycleActions({
       });
     },
 
-    updateBrowserTab: (id, patch) =>
-      updateCurrent(set, get, (current) => ({
+    updateBrowserTab: (id, patch, conversationId) => {
+      const apply = (current: SurfaceConversationPersisted): SurfaceConversationPersisted => ({
         ...current,
         tabs: current.tabs.map((tab) =>
           tab.id === id && tab.kind === "browser" ? { ...tab, ...patch } : tab,
         ),
-      })),
+      });
+      if (conversationId) updateConversation(conversationId, apply);
+      else updateCurrent(set, get, apply);
+    },
     renameTerminalTab: (id, title) =>
       updateCurrent(set, get, (current) => ({
         ...current,

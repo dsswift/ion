@@ -58,6 +58,13 @@ vi.mock('electron', () => ({
       created.push(this as unknown as FakeView)
     }
   },
+  // The permission handlers install on the guest's session at creation; the
+  // views under test only need that call to exist.
+  session: { fromPartition: () => ({ setPermissionRequestHandler: () => undefined, setPermissionCheckHandler: () => undefined, setUserAgent: () => undefined }) },
+  app: { userAgentFallback: 'Mozilla/5.0 Chrome/134.0.0.0 Safari/537.36 Ion/1.0.0 Electron/35.7.5' },
+  Menu: {},
+  clipboard: {},
+  shell: {},
 }))
 vi.mock('./logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 // A macOS hiddenInset window: content starts 28px below the window top, which

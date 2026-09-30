@@ -326,6 +326,8 @@ describe('a reported capability is only as true as the bridge', () => {
     'onStudioBrowserCommand', 'onStudioBrowserOpenUrl', 'onStudioBrowserViewState',
     'studioBrowserPopoverRects', 'studioBrowserCommandResult', 'studioBrowserViewAction',
     'studioBrowserViewBounds', 'studioBrowserViewClose', 'studioBrowserViewNavigate',
+    'studioBrowserFind', 'onStudioBrowserFindResult', 'studioBrowserSetZoom', 'onStudioBrowserShortcut',
+    'onStudioBrowserPrompt', 'studioBrowserPromptAnswer',
     'studioExportImage', 'studioExportVideo',
     'onUpdateDownloaded', 'onUpdateProgress', 'onUpdateStaged', 'onUpdateError',
     // Device Metrics: this machine's own Electron processes. A browser tab

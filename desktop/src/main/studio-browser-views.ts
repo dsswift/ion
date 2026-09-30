@@ -25,6 +25,12 @@ import { debug as _debug, log as _log, warn as _warn } from './logger'
 import { getStudioBrowserWindow } from './studio-browser-window-resolver'
 import { registerStudioPlaywrightWebview, unregisterStudioPlaywrightWebview } from './studio-playwright/host'
 import { installGuestPolicy, previewPartitionFor } from './webview-policy'
+import { installBrowserShortcuts } from './studio-browser-shortcuts'
+import { installBrowserContextMenu } from './studio-browser-menu'
+import { installBrowserIdentity } from './studio-browser-identity'
+import { installBrowserPermissionHandlers, installGuestSecurityPrompts, refuseBrowserPromptsFor, type GuestContext } from './studio-browser-permissions'
+import { BROWSER_ZOOM_LEVEL_BOUNDS } from '@ion/shared/studio-surface-persistence'
+import type { StudioBrowserChromeShortcut, StudioBrowserFindRequest, StudioBrowserZoomRequest } from '@ion/shared/studio-browser-types'
 
 const TAG = 'studio-browser-views'
 
@@ -44,6 +50,8 @@ interface Entry {
   /** Last bounds applied, so a visibility flip can restore them. */
   bounds: ViewBounds
   visible: boolean
+  /** The open find-in-page query, so a repeat or an Escape knows there is one. */
+  find: { text: string } | null
 }
 
 const entries = new Map<string, Entry>()
@@ -75,11 +83,23 @@ const HIDDEN_BOUNDS: ViewBounds = { x: -30000, y: -30000, width: 1280, height: 9
  * offline. Keeping those names identical means existing sessions, cookies, and
  * the preview network block all continue to work unchanged.
  */
+/**
+ * Deliver a chrome-changing shortcut to the renderer. Injected by the IPC
+ * layer, which owns every Studio-bound send; a guest created before the IPC
+ * layer registered simply logs the shortcut it could not deliver.
+ */
+let chromeSender: ((event: { conversationId: string; instanceId: string; action: StudioBrowserChromeShortcut }) => void) | null = null
+export function setBrowserChromeSender(sender: typeof chromeSender): void {
+  chromeSender = sender
+}
+
 export function ensureBrowserView(params: {
   conversationId: string
   instanceId: string
   partition: string
   url: string
+  /** The zoom the document was left at, re-applied so a restore looks the same. */
+  zoomLevel?: number
 }): WebContents | null {
   const win = getStudioBrowserWindow()
   if (!win || win.isDestroyed()) {
@@ -89,6 +109,10 @@ export function ensureBrowserView(params: {
 
   const existing = entries.get(key(params.conversationId, params.instanceId))
   if (existing && !existing.view.webContents.isDestroyed()) return existing.view.webContents
+
+  // Before the view exists: the identity is on the session, and the first
+  // request the guest makes must already carry it.
+  installBrowserIdentity(params.partition)
 
   const view = new WebContentsView({
     webPreferences: {
@@ -117,17 +141,44 @@ export function ensureBrowserView(params: {
   view.setVisible(false)
   view.setBounds(HIDDEN_BOUNDS)
 
-  entries.set(key(params.conversationId, params.instanceId), {
+  const entry: Entry = {
     view,
     conversationId: params.conversationId,
     instanceId: params.instanceId,
     partition: params.partition,
     bounds: HIDDEN_BOUNDS,
     visible: false,
+    find: null,
+  }
+  entries.set(key(params.conversationId, params.instanceId), entry)
+
+  const context = { conversationId: params.conversationId, instanceId: params.instanceId }
+  // Deny-by-default permissions, HTTP auth, and certificate prompts. Installed
+  // here rather than in the guest policy because a prompt must name its
+  // document, and only this module knows which guest is which.
+  installBrowserPermissionHandlers(params.partition, browserGuestContext)
+  installGuestSecurityPrompts(guest, { ...context, partition: params.partition })
+  installBrowserContextMenu(guest, context)
+  installBrowserShortcuts(guest, context, {
+    findActive: () => entry.find !== null,
+    findAgain: (forward) => { if (entry.find) findInBrowserView(context.conversationId, context.instanceId, { text: entry.find.text, forward, findNext: true }) },
+    zoom: (request) => { zoomBrowserView(context.conversationId, context.instanceId, request) },
+    sendToChrome: (action) => {
+      if (chromeSender) chromeSender({ ...context, action })
+      else _warn(TAG, 'browser shortcut dropped, no chrome sender', { ...context, action })
+    },
   })
+  if (params.zoomLevel !== undefined && params.zoomLevel !== 0) {
+    // Chromium keys zoom by origin, so the level takes effect once the page's
+    // origin is known; applying on every navigation keeps a restored document
+    // at its remembered zoom even when its first load redirects.
+    const level = clampZoom(params.zoomLevel)
+    guest.once('did-navigate', () => { guest.setZoomLevel(level) })
+  }
 
   guest.on('destroyed', () => {
     entries.delete(key(params.conversationId, params.instanceId))
+    refuseBrowserPromptsFor(params.conversationId, params.instanceId)
     unregisterStudioPlaywrightWebview(params.conversationId, params.instanceId)
     _log(TAG, 'browser view destroyed', { conversation_id: params.conversationId, instance_id: params.instanceId })
   })
@@ -194,10 +245,8 @@ export function setBrowserViewBounds(conversationId: string, instanceId: string,
  * every context menu rendered *behind* the browser canvas once the body moved
  * out of the DOM.
  *
- * Hiding the view fixes the layering and blanks the whole page behind a small
- * menu, which is worse. Instead the view is shrunk out from under the popover:
- * the page keeps rendering everywhere the popover is not, and only the covered
- * band is given up.
+ * So the view is hidden while a popover overlaps it; `applyBounds` below
+ * explains why shrinking it was measured and rejected.
  */
 let popoverRects: ViewBounds[] = []
 
@@ -261,7 +310,7 @@ function applyBounds(entry: Entry): void {
   entry.view.setVisible(!covered && bounds.width > 0 && bounds.height > 0)
 }
 
-/** Hide every view for a conversation that is no longer on screen. *//** Hide every view for a conversation that is no longer on screen. */
+/** Hide every view for a conversation that is no longer on screen. */
 export function hideBrowserViewsExcept(conversationId: string | null, instanceId: string | null): void {
   for (const entry of entries.values()) {
     const keep = entry.conversationId === conversationId && entry.instanceId === instanceId
@@ -287,6 +336,7 @@ export function destroyBrowserView(conversationId: string, instanceId: string): 
   const entry = entries.get(key(conversationId, instanceId))
   if (!entry) return false
   entries.delete(key(conversationId, instanceId))
+  refuseBrowserPromptsFor(conversationId, instanceId)
   const win = getStudioBrowserWindow()
   if (win && !win.isDestroyed()) win.contentView.removeChildView(entry.view)
   if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
@@ -331,6 +381,72 @@ export function reapplyBrowserViewBounds(_win: BrowserWindow): void {
     if (!entry.visible || entry.view.webContents.isDestroyed()) continue
     applyBounds(entry)
   }
+}
+
+/** Which document a WebContents is, or null when it is not a browser guest. */
+export function browserGuestContext(contents: WebContents): GuestContext | null {
+  for (const entry of entries.values()) {
+    if (entry.view.webContents === contents) {
+      return { conversationId: entry.conversationId, instanceId: entry.instanceId, partition: entry.partition }
+    }
+  }
+  return null
+}
+
+/** Is this WebContents one of the Studio browser guests? */
+export function isBrowserGuest(contents: WebContents): boolean {
+  return browserGuestContext(contents) !== null
+}
+
+function clampZoom(level: number): number {
+  return Math.min(BROWSER_ZOOM_LEVEL_BOUNDS.max, Math.max(BROWSER_ZOOM_LEVEL_BOUNDS.min, level))
+}
+
+/** One zoom step. Chromium presets are roughly 10% apart, which is half a level. */
+const ZOOM_STEP = 0.5
+
+/**
+ * Apply a zoom request and return the level now in effect, or null when the
+ * document is gone. Chromium keys zoom by origin within a session, exactly as
+ * a browser does: two documents on one origin zoom together.
+ */
+export function zoomBrowserView(conversationId: string, instanceId: string, request: StudioBrowserZoomRequest): number | null {
+  const entry = entries.get(key(conversationId, instanceId))
+  if (!entry || entry.view.webContents.isDestroyed()) return null
+  const guest = entry.view.webContents
+  const current = guest.getZoomLevel()
+  const next = request === 'in' ? current + ZOOM_STEP
+    : request === 'out' ? current - ZOOM_STEP
+    : request === 'reset' ? 0
+    : request.level
+  const level = clampZoom(Number(next.toFixed(2)))
+  guest.setZoomLevel(level)
+  _log(TAG, 'browser zoom applied', { conversation_id: conversationId, instance_id: instanceId, zoom_level: level })
+  return level
+}
+
+/**
+ * Find in page. Chromium answers over `found-in-page`, which the IPC layer
+ * forwards; this only issues the request and remembers that one is open.
+ */
+export function findInBrowserView(conversationId: string, instanceId: string, request: StudioBrowserFindRequest): boolean {
+  const entry = entries.get(key(conversationId, instanceId))
+  if (!entry || entry.view.webContents.isDestroyed()) return false
+  const guest = entry.view.webContents
+  if ('stop' in request) {
+    if (entry.find) {
+      guest.stopFindInPage('clearSelection')
+      // The find bar had the keyboard; the page gets it back.
+      guest.focus()
+    }
+    entry.find = null
+    _debug(TAG, 'browser find stopped', { conversation_id: conversationId, instance_id: instanceId })
+    return true
+  }
+  entry.find = { text: request.text }
+  guest.findInPage(request.text, { forward: request.forward, findNext: request.findNext })
+  _debug(TAG, 'browser find requested', { conversation_id: conversationId, instance_id: instanceId, text_length: request.text.length, forward: request.forward })
+  return true
 }
 
 /** Preview partitions keep their offline block; exported for the IPC layer. */

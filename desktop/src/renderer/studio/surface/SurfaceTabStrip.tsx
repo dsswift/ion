@@ -14,6 +14,7 @@ import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useSurfaceStore } from './surface-store'
 import { Tooltip } from '../../components/git/Tooltip'
 import { isSingleton, type SurfaceTab } from '@ion/shared/studio-surface-types'
+import { browserGroup, isBrowserTabId } from '@ion/shared/studio-browser-group'
 import { SurfaceAddMenu } from './SurfaceAddMenu'
 import { SurfaceTabContextMenu } from './SurfaceTabContextMenu'
 import { canvasTabCommand, CANVAS_TAB_COMMAND_IDS } from './canvas-tab-commands'
@@ -87,6 +88,7 @@ function SurfaceTabPill({
   active,
   dirty,
   agentLinked,
+  documentCount = 1,
   chord,
   onContextMenu,
 }: {
@@ -95,6 +97,12 @@ function SurfaceTabPill({
   dirty: boolean
   /** True for the one browser tab this conversation's agent drives. */
   agentLinked: boolean
+  /**
+   * How many browser documents this pill stands for. A conversation's browser
+   * descriptors share one slot; with more than one, the close affordance moves
+   * into the per-document strip so a click here cannot drop several pages.
+   */
+  documentCount?: number
   /** The tab's live chord, present only while its modifiers are held. */
   chord?: string
   onContextMenu: (e: React.MouseEvent) => void
@@ -162,9 +170,14 @@ function SurfaceTabPill({
         </Tooltip>
       )}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tabLabel(tab)}</span>
+      {documentCount > 1 && (
+        <span aria-label={`${documentCount} browser documents`} style={{ fontSize: 9, padding: '0 4px', borderRadius: 6, background: colors.containerBorder, color: colors.textSecondary, flexShrink: 0 }}>
+          {documentCount}
+        </span>
+      )}
       {chord && <ShortcutHint chord={chord} dimmed={!active} />}
       {dirty && <span style={{ width: 6, height: 6, borderRadius: 3, background: colors.accent, flexShrink: 0 }} />}
-      {tab.kind === 'questions' ? null : confirmingClose ? (
+      {tab.kind === 'questions' || documentCount > 1 ? null : confirmingClose ? (
         <span style={{ display: 'flex', gap: 3, fontSize: 9 }} onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setConfirmingClose(false)}
@@ -205,6 +218,9 @@ export function SurfaceTabStrip(): React.JSX.Element {
   const agentBrowserInstanceId = useSurfaceStore((s) =>
     s.currentConversationId ? (s.conversations[s.currentConversationId]?.agentBrowserInstanceId ?? null) : null,
   )
+  const activeBrowserInstanceId = useSurfaceStore((s) =>
+    s.currentConversationId ? (s.conversations[s.currentConversationId]?.activeBrowserInstanceId ?? null) : null,
+  )
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: SurfaceTab } | null>(null)
   // `fileEditorStates` selects the stable Map reference; the derived Set is
@@ -233,7 +249,14 @@ export function SurfaceTabStrip(): React.JSX.Element {
   const pins = tabs.filter((tab) => pinnedTabs.includes(tab.id as typeof pinnedTabs[number]))
   const notification = tabs.filter((tab) => tab.id === 'notification')
   const localSingletons = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && isSingleton(tab))
-  const dynamics = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && tab.kind !== 'questions' && !isSingleton(tab))
+  const dynamicsWithEveryBrowser = tabs.filter((tab) => !pinnedTabs.includes(tab.id as typeof pinnedTabs[number]) && tab.id !== 'notification' && tab.kind !== 'questions' && !isSingleton(tab))
+  // Every browser document collapses into ONE slot, at the first document's
+  // position; the documents themselves are listed by BrowserTabStrip inside
+  // the body. The slot stands for the shown document so its label, context
+  // menu, and agent-link badge all describe what the operator will see.
+  const browsers = browserGroup(dynamicsWithEveryBrowser, activeTabId, activeBrowserInstanceId, agentBrowserInstanceId)
+  const dynamics = dynamicsWithEveryBrowser.flatMap((tab, index): SurfaceTab[] =>
+    tab.kind !== 'browser' ? [tab] : index === browsers.slotIndex && browsers.shown ? [browsers.shown] : [])
   const groups = [questions, pins, notification, localSingletons, dynamics].filter((group) => group.length > 0)
 
   return (
@@ -258,9 +281,10 @@ export function SurfaceTabStrip(): React.JSX.Element {
             <SurfaceTabPill
               key={t.id}
               tab={t}
-              active={t.id === activeTabId}
+              active={t.kind === 'browser' ? isBrowserTabId(activeTabId) : t.id === activeTabId}
               dirty={t.kind === 'scratch' ? t.dirty : t.kind === 'file' && dirtyPaths.has(t.filePath)}
-              agentLinked={t.kind === 'browser' && t.instanceId === agentBrowserInstanceId}
+              agentLinked={t.kind === 'browser' && browsers.documents.some((document) => document.instanceId === agentBrowserInstanceId)}
+              documentCount={t.kind === 'browser' ? browsers.documents.length : 1}
               chord={command ? revealed.get(command) : undefined}
               onContextMenu={(e) => {
                 e.preventDefault()

@@ -49,6 +49,9 @@ beforeEach(() => {
     studioBrowserViewAction: vi.fn().mockResolvedValue(true),
     studioBrowserViewClose: vi.fn().mockResolvedValue(true),
     onStudioBrowserViewState: vi.fn(() => () => undefined),
+    onStudioBrowserFindResult: vi.fn(() => () => undefined),
+    onStudioBrowserShortcut: vi.fn(() => () => undefined),
+    onStudioBrowserPrompt: vi.fn(() => () => undefined),
     studioBrowserSetNetworkShield: vi.fn().mockResolvedValue(true),
     studioSetSetting: vi.fn().mockResolvedValue(true),
     studioGetSettings: vi.fn().mockResolvedValue({}),
@@ -82,7 +85,7 @@ describe('browser guests with the Surface column closed', () => {
     expect(useSurfaceStore.getState().visible).toBe(false)
 
     mount()
-    expect(ensure).toHaveBeenCalledWith('tab-2', expect.any(String), 'https://background.test', expect.any(String))
+    expect(ensure).toHaveBeenCalledWith('tab-2', expect.any(String), 'https://background.test', expect.any(String), undefined)
   })
 
   it('keeps every guest hidden while the column is closed', () => {

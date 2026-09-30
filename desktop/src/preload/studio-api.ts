@@ -12,7 +12,7 @@ import { IPC } from '@ion/shared/types'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import type { ConnectionPhaseSnapshot } from '../shared/types-connections'
 import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
-import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '@ion/shared/studio-browser-types'
+import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBrowserFindRequest, StudioBrowserFindResult, StudioBrowserPrompt, StudioBrowserPromptAnswer, StudioBrowserShortcutEvent, StudioBrowserViewState, StudioBrowserZoomRequest } from '@ion/shared/studio-browser-types'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
@@ -40,7 +40,7 @@ export interface StudioApi {
    * Playwright cannot attach to a `webview` CDP target. The renderer therefore
    * gets no element back — it measures geometry and calls the bounds channel.
    */
-  studioBrowserViewEnsure(conversationId: string, instanceId: string, url: string, partition: string): Promise<boolean>
+  studioBrowserViewEnsure(conversationId: string, instanceId: string, url: string, partition: string, zoomLevel?: number): Promise<boolean>
   /** Position the view over the area the renderer measured for its body. */
   studioBrowserViewBounds(conversationId: string, instanceId: string, bounds: { x: number; y: number; width: number; height: number }, visible: boolean): void
   studioBrowserViewNavigate(conversationId: string, instanceId: string, url: string): Promise<boolean>
@@ -50,20 +50,23 @@ export interface StudioApi {
    * Where the on-screen popovers are, in window coordinates.
    *
    * Browser guests are main-process views that paint above all page content, so
-   * a DOM popover cannot be stacked over one. Main shrinks the view out from
-   * under these rectangles rather than hiding it, which would blank the whole
-   * page behind a small menu.
+   * a DOM popover cannot be stacked over one. Main hides a view while one of
+   * these rectangles overlaps it, without changing its bounds, so the page does
+   * not reflow and reappears exactly as it was.
    */
   studioBrowserPopoverRects(rects: Array<{ x: number; y: number; width: number; height: number }>): void
-  /** The guest navigated or retitled itself; used to drive the URL bar. */
-  onStudioBrowserViewState(callback: (state: {
-    conversationId: string
-    instanceId: string
-    url: string
-    title: string
-    canGoBack: boolean
-    canGoForward: boolean
-  }) => void): () => void
+  /** The guest navigated, retitled, started or stopped loading, or reported a favicon. */
+  onStudioBrowserViewState(callback: (state: StudioBrowserViewState) => void): () => void
+  /** Find in page; matches arrive on `onStudioBrowserFindResult`. */
+  studioBrowserFind(conversationId: string, instanceId: string, request: StudioBrowserFindRequest): Promise<boolean>
+  onStudioBrowserFindResult(callback: (result: StudioBrowserFindResult) => void): () => void
+  /** Zoom one document. Resolves to the level applied, or null when the document is gone. */
+  studioBrowserSetZoom(conversationId: string, instanceId: string, request: StudioBrowserZoomRequest): Promise<number | null>
+  /** A shortcut pressed inside the guest that the chrome must act on. */
+  onStudioBrowserShortcut(callback: (event: StudioBrowserShortcutEvent) => void): () => void
+  /** A page asked for a permission, a login, or certificate trust. Answer exactly once. */
+  onStudioBrowserPrompt(callback: (prompt: StudioBrowserPrompt) => void): () => void
+  studioBrowserPromptAnswer(answer: StudioBrowserPromptAnswer): void
   /**
    * Receive correlated browser commands from main (ensure/close/reveal/status
    * /emulate). The handler MUST answer exactly once through
@@ -142,8 +145,8 @@ export const studioApi: StudioApi = {
     return () => ipcRenderer.removeListener(IPC.STUDIO_WINDOW_CHROME, handler)
   },
   studioPreviewAllowNetwork: (partition) => ipcRenderer.invoke(IPC.STUDIO_PREVIEW_ALLOW_NETWORK, partition),
-  studioBrowserViewEnsure: (conversationId, instanceId, url, partition) =>
-    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_ENSURE, conversationId, instanceId, url, partition),
+  studioBrowserViewEnsure: (conversationId, instanceId, url, partition, zoomLevel) =>
+    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_ENSURE, conversationId, instanceId, url, partition, zoomLevel),
   studioBrowserViewBounds: (conversationId, instanceId, bounds, visible) =>
     ipcRenderer.send(IPC.STUDIO_BROWSER_VIEW_BOUNDS, conversationId, instanceId, bounds, visible),
   studioBrowserViewNavigate: (conversationId, instanceId, url) =>
@@ -154,10 +157,28 @@ export const studioApi: StudioApi = {
     ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_CLOSE, conversationId, instanceId),
   studioBrowserPopoverRects: (rects) => ipcRenderer.send(IPC.STUDIO_BROWSER_POPOVER_RECTS, rects),
   onStudioBrowserViewState: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, s: Parameters<typeof callback>[0]) => callback(s)
+    const handler = (_e: Electron.IpcRendererEvent, s: StudioBrowserViewState) => callback(s)
     ipcRenderer.on(IPC.STUDIO_BROWSER_VIEW_STATE, handler)
     return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_VIEW_STATE, handler)
   },
+  studioBrowserFind: (conversationId, instanceId, request) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_FIND, conversationId, instanceId, request),
+  onStudioBrowserFindResult: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, result: StudioBrowserFindResult) => callback(result)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_FIND_RESULT, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_FIND_RESULT, handler)
+  },
+  studioBrowserSetZoom: (conversationId, instanceId, request) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_SET_ZOOM, conversationId, instanceId, request),
+  onStudioBrowserShortcut: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, event: StudioBrowserShortcutEvent) => callback(event)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_SHORTCUT, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_SHORTCUT, handler)
+  },
+  onStudioBrowserPrompt: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, prompt: StudioBrowserPrompt) => callback(prompt)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_PROMPT, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_PROMPT, handler)
+  },
+  studioBrowserPromptAnswer: (answer) => ipcRenderer.send(IPC.STUDIO_BROWSER_PROMPT_ANSWER, answer),
   onStudioBrowserCommand: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, envelope: StudioBrowserCommandEnvelope) => callback(envelope)
     ipcRenderer.on(IPC.STUDIO_BROWSER_COMMAND, handler)

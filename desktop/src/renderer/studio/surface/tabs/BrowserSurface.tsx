@@ -13,6 +13,9 @@
  * rect is reported to main, which positions the view over exactly that
  * rectangle. Nothing paints inside it here.
  *
+ * Everything above the hole (toolbar, find bar, prompt bars) is a DOM row, so
+ * opening one shrinks the hole and the view follows on the next measurement.
+ *
  * D6 two modes, one component:
  *   preview — file:// HTML preview on an ephemeral studio-preview-<id>
  *   partition whose session blocks network (file:/data:/blob: only). The
@@ -24,25 +27,16 @@
  * sessions, history, and scroll position survive exactly as they did before.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, ArrowsClockwise, DeviceMobile, ShieldWarning, ShieldCheck } from '@phosphor-icons/react'
-import { Tooltip } from '../../../components/git/Tooltip'
 import { useColors } from '../../../theme'
-import { usePreferencesStore } from '../../../preferences'
 import { useSurfaceStore } from '../surface-store'
 import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
-import type { BrowserEmulationState } from '@ion/shared/studio-browser-types'
+import type { BrowserEmulationState, StudioBrowserPrompt, StudioBrowserPromptAnswer, StudioBrowserZoomRequest } from '@ion/shared/studio-browser-types'
 import { browserPartitionFor } from '@ion/shared/studio-browser-partitions'
-import { rDebug, rInfo, rWarn } from '../../../rendererLogger'
+import { rDebug, rWarn } from '../../../rendererLogger'
 import { host } from '../../../host/host-instance'
-
-function normalizeUrl(input: string): string {
-  const trimmed = input.trim()
-  if (trimmed === '') return ''
-  if (/^(https?|file):\/\//i.test(trimmed)) return trimmed
-  if (trimmed === 'about:blank') return trimmed
-  // Scheme fixup: bare host → https.
-  return `https://${trimmed}`
-}
+import { BrowserChrome } from './BrowserChrome'
+import { BrowserFindBar, type FindMatches } from './BrowserFindBar'
+import { BrowserPromptBar } from './BrowserPromptBar'
 
 /** Re-exported for existing call sites; the rule itself is shared with main. */
 export function browserPartition(_conversationId: string, instanceId: string, mode: 'preview' | 'browse', sessionMode: BrowserSessionMode): string {
@@ -57,6 +51,8 @@ export function BrowserSurface({
   mode,
   sessionMode,
   emulation,
+  zoomLevel: storedZoomLevel,
+  faviconUrl: storedFaviconUrl,
 }: {
   conversationId: string
   tabId: string
@@ -66,19 +62,24 @@ export function BrowserSurface({
   sessionMode: BrowserSessionMode
   /** Device/viewport override for this tab, when the agent or operator set one. */
   emulation?: BrowserEmulationState | null
+  /** The zoom the document was left at; re-applied when the view is created. */
+  zoomLevel?: number
+  faviconUrl?: string
 }): React.JSX.Element {
   const colors = useColors()
-  const previewNetworkShield = usePreferencesStore((s) => s.browserPreviewNetworkShield)
   /** The hole in the layout the main-process view is positioned over. */
   const bodyRef = useRef<HTMLDivElement | null>(null)
-  const [urlInput, setUrlInput] = useState(url)
+  const urlInputRef = useRef<HTMLInputElement | null>(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
-  const [networkUnlocked, setNetworkUnlocked] = useState(false)
-  const [confirmingUnlock, setConfirmingUnlock] = useState(false)
-  const [sessionChangePending, setSessionChangePending] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [zoomLevel, setZoomLevel] = useState(storedZoomLevel ?? 0)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findFocusNonce, setFindFocusNonce] = useState(0)
+  const [findMatches, setFindMatches] = useState<FindMatches | null>(null)
+  /** Page requests waiting on the operator, oldest first; one is shown at a time. */
+  const [prompts, setPrompts] = useState<StudioBrowserPrompt[]>([])
   const updateBrowserTab = useSurfaceStore((s) => s.updateBrowserTab)
-  const setBrowserEmulation = useSurfaceStore((s) => s.setBrowserEmulation)
 
   const partition = browserPartition(conversationId, instanceId, mode, sessionMode)
 
@@ -89,13 +90,13 @@ export function BrowserSurface({
   const frameHostRef = useRef<HTMLDivElement | null>(null)
   const [frameScale, setFrameScale] = useState(1)
   useEffect(() => {
-    const host = frameHostRef.current
-    if (!host || !emulation) {
+    const frameHost = frameHostRef.current
+    if (!frameHost || !emulation) {
       setFrameScale(1)
       return
     }
     const measure = (): void => {
-      const { width, height } = host.getBoundingClientRect()
+      const { width, height } = frameHost.getBoundingClientRect()
       if (width <= 0 || height <= 0) return
       const margin = 16
       const fit = Math.min((width - margin) / emulation.width, (height - margin) / emulation.height, 1)
@@ -103,7 +104,7 @@ export function BrowserSurface({
     }
     measure()
     const observer = new ResizeObserver(measure)
-    observer.observe(host)
+    observer.observe(frameHost)
     return () => observer.disconnect()
   }, [emulation])
 
@@ -120,7 +121,7 @@ export function BrowserSurface({
   useEffect(() => {
     let cancelled = false
     void host.shell
-      .studioBrowserViewEnsure(conversationId, instanceId, url || 'about:blank', partition)
+      .studioBrowserViewEnsure(conversationId, instanceId, url || 'about:blank', partition, storedZoomLevel)
       .then((ok) => {
         if (!ok && !cancelled) {
           rWarn('studio.browser', 'browser view creation refused', {
@@ -135,8 +136,9 @@ export function BrowserSurface({
         error: String(err),
       }))
     return () => { cancelled = true }
-    // `url` is deliberately absent: it seeds the FIRST load only. Re-running on
-    // every navigation would fight the guest's own history.
+    // `url` and `storedZoomLevel` are deliberately absent: they seed the FIRST
+    // load only. Re-running on every navigation would fight the guest's own
+    // history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, instanceId, partition])
 
@@ -181,237 +183,124 @@ export function BrowserSurface({
     }
   }, [conversationId, instanceId, emulation, frameScale])
 
-  // The chrome reads the guest's state from main now: the URL bar and the
-  // back/forward buttons have no element to interrogate.
+  // The chrome reads the guest's state from main: the URL bar, the history
+  // buttons, the favicon, and the loading state have no element to ask. The
+  // descriptor is patched by conversation, not by what is on screen, so a
+  // background document's navigation is remembered for its restore too.
   useEffect(() => {
     return host.shell.onStudioBrowserViewState((next) => {
       if (next.conversationId !== conversationId || next.instanceId !== instanceId) return
-      setUrlInput(next.url)
       setCanGoBack(next.canGoBack)
       setCanGoForward(next.canGoForward)
-      updateBrowserTab(tabId, { url: next.url, ...(next.title ? { title: next.title } : {}) })
-      rDebug('studio.browser', 'navigated', { url: next.url.slice(0, 120) })
+      setLoading(next.loading)
+      setZoomLevel(next.zoomLevel)
+      updateBrowserTab(tabId, {
+        url: next.url,
+        ...(next.title ? { title: next.title } : {}),
+        faviconUrl: next.faviconUrl,
+        zoomLevel: next.zoomLevel,
+      }, conversationId)
+      rDebug('studio.browser', 'navigated', { url: next.url.slice(0, 120), loading: next.loading })
     })
   }, [conversationId, instanceId, tabId, updateBrowserTab])
 
-  const navigate = useCallback(
-    (raw: string) => {
-      const target = normalizeUrl(raw)
-      if (!target) return
-      void host.shell.studioBrowserViewNavigate(conversationId, instanceId, target)
-        .catch((err) => rWarn('studio.browser', 'navigate failed', { error: String(err) }))
-      updateBrowserTab(tabId, { url: target })
-    },
-    [conversationId, instanceId, tabId, updateBrowserTab],
-  )
+  useEffect(() => {
+    return host.shell.onStudioBrowserFindResult((result) => {
+      if (result.conversationId !== conversationId || result.instanceId !== instanceId) return
+      setFindMatches({ activeMatchOrdinal: result.activeMatchOrdinal, matches: result.matches })
+    })
+  }, [conversationId, instanceId])
+
+  // A page asked for something only the operator can grant. Main re-sends
+  // any prompt still open when this chrome mounts, so a request raised while
+  // the document was off screen is not lost.
+  useEffect(() => {
+    return host.shell.onStudioBrowserPrompt((prompt) => {
+      if (prompt.conversationId !== conversationId || prompt.instanceId !== instanceId) return
+      setPrompts((current) => (current.some((p) => p.promptId === prompt.promptId) ? current : [...current, prompt]))
+      rDebug('studio.browser', 'page prompt shown', { instance_id: instanceId, prompt_id: prompt.promptId, kind: prompt.kind })
+    })
+  }, [conversationId, instanceId])
+
+  const answerPrompt = useCallback((answer: StudioBrowserPromptAnswer) => {
+    host.shell.studioBrowserPromptAnswer(answer)
+    setPrompts((current) => current.filter((p) => p.promptId !== answer.promptId))
+  }, [])
+
+  // Shortcuts pressed inside the guest that change the chrome. Main has
+  // already moved keyboard focus to the Studio window before sending one.
+  useEffect(() => {
+    return host.shell.onStudioBrowserShortcut((event) => {
+      if (event.conversationId !== conversationId || event.instanceId !== instanceId) return
+      switch (event.action) {
+        case 'focus-url-bar':
+          urlInputRef.current?.focus()
+          urlInputRef.current?.select()
+          return
+        case 'open-find':
+          setFindOpen(true)
+          setFindFocusNonce((n) => n + 1)
+          return
+        case 'close-find':
+          setFindOpen(false)
+          return
+      }
+    })
+  }, [conversationId, instanceId])
+
+  const navigate = useCallback((target: string) => {
+    void host.shell.studioBrowserViewNavigate(conversationId, instanceId, target)
+      .catch((err) => rWarn('studio.browser', 'navigate failed', { error: String(err) }))
+    updateBrowserTab(tabId, { url: target }, conversationId)
+  }, [conversationId, instanceId, tabId, updateBrowserTab])
 
   const viewAction = useCallback((action: 'back' | 'forward' | 'reload') => {
     void host.shell.studioBrowserViewAction(conversationId, instanceId, action)
       .catch((err) => rWarn('studio.browser', 'browser view action failed', { action, error: String(err) }))
   }, [conversationId, instanceId])
-  const reloadView = useCallback(() => viewAction('reload'), [viewAction])
 
-  const unlockNetwork = useCallback(() => {
-    void host.shell
-      .studioPreviewAllowNetwork(partition)
-      .then((ok) => {
-        if (ok) {
-          setNetworkUnlocked(true)
-          setConfirmingUnlock(false)
-          reloadView()
-        } else {
-          rWarn('studio.browser', 'preview unlock rejected', { partition })
-        }
-      })
-      .catch((err) => rWarn('studio.browser', 'preview unlock failed', { partition, error: String(err) }))
-  }, [partition, reloadView])
+  const zoom = useCallback((request: StudioBrowserZoomRequest) => {
+    void host.shell.studioBrowserSetZoom(conversationId, instanceId, request)
+      .then((level) => { if (level !== null) setZoomLevel(level) })
+      .catch((err) => rWarn('studio.browser', 'browser zoom failed', { error: String(err) }))
+  }, [conversationId, instanceId])
 
-  const changeSessionMode = useCallback((nextMode: BrowserSessionMode) => {
-    if (nextMode === sessionMode || sessionChangePending) return
-    setSessionChangePending(true)
-    void host.shell
-      .studioBrowserSetSessionMode(instanceId, nextMode)
-      .then((ok) => {
-        if (ok) {
-          updateBrowserTab(tabId, { sessionMode: nextMode })
-          rInfo('studio.browser', 'browser session mode changed', { instance_id: instanceId, session_mode: nextMode })
-        } else {
-          rWarn('studio.browser', 'browser session mode rejected', { instance_id: instanceId, session_mode: nextMode })
-        }
-      })
-      .catch((err) => rWarn('studio.browser', 'browser session mode change failed', { instance_id: instanceId, session_mode: nextMode, error: String(err) }))
-      .finally(() => setSessionChangePending(false))
-  }, [instanceId, sessionChangePending, sessionMode, tabId, updateBrowserTab])
-
-  const setNetworkShield = useCallback((enabled: boolean) => {
-    void host.shell
-      .studioBrowserSetNetworkShield(instanceId, enabled)
-      .then((ok) => {
-        if (ok) {
-          setNetworkUnlocked(!enabled)
-          setConfirmingUnlock(false)
-          reloadView()
-        } else {
-          rWarn('studio.browser', 'browser network shield change rejected', { instance_id: instanceId, enabled })
-        }
-      })
-      .catch((err) => rWarn('studio.browser', 'browser network shield change failed', { instance_id: instanceId, enabled, error: String(err) }))
-  }, [instanceId, reloadView])
-
-  useEffect(() => {
-    if (mode !== 'preview') return
-    setNetworkUnlocked(false)
-    void host.shell
-      .studioBrowserSetNetworkShield(instanceId, previewNetworkShield)
-      .then((ok) => {
-        if (ok) setNetworkUnlocked(!previewNetworkShield)
-        else rWarn('studio.browser', 'preview network shield default rejected', { instance_id: instanceId, enabled: previewNetworkShield })
-      })
-      .catch((err) => rWarn('studio.browser', 'preview network shield default failed', { instance_id: instanceId, enabled: previewNetworkShield, error: String(err) }))
-  }, [instanceId, mode, previewNetworkShield])
-
-  const iconButton = (disabled: boolean): React.CSSProperties => ({
-    border: 'none',
-    background: 'transparent',
-    color: disabled ? colors.textMuted : colors.textTertiary,
-    cursor: disabled ? 'default' : 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    padding: 2,
-  })
+  const openFind = useCallback(() => {
+    setFindOpen(true)
+    setFindFocusNonce((n) => n + 1)
+  }, [])
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* Chrome */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 8px',
-          borderBottom: `1px solid ${colors.containerBorder}`,
-          flexShrink: 0,
-        }}
-      >
-        <Tooltip text="Back"><button style={iconButton(!canGoBack)} disabled={!canGoBack} onClick={() => viewAction('back')} aria-label="Back">
-          <ArrowLeft size={13} />
-        </button></Tooltip>
-        <Tooltip text="Forward"><button style={iconButton(!canGoForward)} disabled={!canGoForward} onClick={() => viewAction('forward')} aria-label="Forward">
-          <ArrowRight size={13} />
-        </button></Tooltip>
-        <Tooltip text="Reload"><button style={iconButton(false)} onClick={() => viewAction('reload')} aria-label="Reload">
-          <ArrowsClockwise size={13} />
-        </button></Tooltip>
-        {mode === 'preview' && (
-          <Tooltip text={networkUnlocked ? 'Restore preview network shield' : 'Allow preview network'}>
-            <button
-              onClick={() => (networkUnlocked ? setNetworkShield(true) : setConfirmingUnlock(true))}
-              style={{ ...iconButton(false), color: networkUnlocked ? colors.warningFg : colors.accent }}
-              aria-label={networkUnlocked ? 'Restore preview network shield' : 'Allow preview network'}
-            >
-              {networkUnlocked ? <ShieldWarning size={13} /> : <ShieldCheck size={13} />}
-            </button>
-          </Tooltip>
-        )}
-        {emulation && (
-          <Tooltip text={`Emulating ${emulation.device ?? 'a custom viewport'} at ${emulation.width}x${emulation.height} CSS pixels. Click to restore the responsive view.`}>
-            <button
-              onClick={() => setBrowserEmulation(conversationId, instanceId, null)}
-              style={{
-                border: `1px solid ${colors.containerBorder}`,
-                background: 'transparent',
-                color: colors.accent,
-                cursor: 'pointer',
-                borderRadius: 5,
-                fontSize: 10,
-                padding: '1px 5px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-              aria-label="Reset browser emulation"
-            >
-              <DeviceMobile size={11} />
-              {emulation.device ?? `${emulation.width}x${emulation.height}`}
-            </button>
-          </Tooltip>
-        )}
-        {mode === 'browse' && (
-          <div
-            aria-label="Browser session mode"
-            style={{ display: 'flex', overflow: 'hidden', border: `1px solid ${colors.containerBorder}`, borderRadius: 5 }}
-          >
-            {(['isolated', 'shared'] as const).map((candidate) => (
-              <button
-                key={candidate}
-                disabled={sessionChangePending}
-                onClick={() => changeSessionMode(candidate)}
-                style={{
-                  border: 'none',
-                  borderLeft: candidate === 'shared' ? `1px solid ${colors.containerBorder}` : 'none',
-                  background: sessionMode === candidate ? colors.accent : 'transparent',
-                  color: sessionMode === candidate ? colors.textOnAccent : colors.textSecondary,
-                  cursor: sessionChangePending ? 'default' : 'pointer',
-                  fontSize: 10,
-                  padding: '3px 6px',
-                }}
-              >
-                {candidate === 'isolated' ? 'Private' : 'Shared'}
-              </button>
-            ))}
-          </div>
-        )}
-        <input
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') navigate(urlInput)
-          }}
-          placeholder="Enter URL"
-          spellCheck={false}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            fontSize: 11,
-            fontFamily: 'monospace',
-            padding: '3px 8px',
-            borderRadius: 6,
-            border: `1px solid ${colors.containerBorder}`,
-            background: colors.inputPillBg,
-            color: colors.textPrimary,
-            outline: 'none',
-          }}
+      <BrowserChrome
+        conversationId={conversationId}
+        tabId={tabId}
+        instanceId={instanceId}
+        partition={partition}
+        mode={mode}
+        sessionMode={sessionMode}
+        emulation={emulation ?? null}
+        url={url}
+        faviconUrl={storedFaviconUrl ?? ''}
+        loading={loading}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        zoomLevel={zoomLevel}
+        urlInputRef={urlInputRef}
+        onNavigate={navigate}
+        onAction={viewAction}
+        onZoom={zoom}
+        onOpenFind={openFind}
+      />
+      {prompts[0] && <BrowserPromptBar key={prompts[0].promptId} prompt={prompts[0]} onAnswer={answerPrompt} />}
+      {findOpen && (
+        <BrowserFindBar
+          conversationId={conversationId}
+          instanceId={instanceId}
+          matches={findMatches}
+          focusNonce={findFocusNonce}
+          onClose={() => { setFindOpen(false); setFindMatches(null) }}
         />
-      </div>
-      {confirmingUnlock && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '5px 10px',
-            fontSize: 11,
-            fontFamily: 'system-ui, sans-serif',
-            color: colors.textSecondary,
-            background: colors.surfacePrimary,
-            borderBottom: `1px solid ${colors.containerBorder}`,
-            flexShrink: 0,
-          }}
-        >
-          Allow this preview to load network resources? The shield is on by default to keep local HTML offline.
-          <button
-            onClick={unlockNetwork}
-            style={{ border: `1px solid ${colors.containerBorder}`, borderRadius: 4, background: 'transparent', color: colors.accent, cursor: 'pointer', fontSize: 10, padding: '1px 8px' }}
-          >
-            Allow network
-          </button>
-          <button
-            onClick={() => setConfirmingUnlock(false)}
-            style={{ border: 'none', background: 'transparent', color: colors.textTertiary, cursor: 'pointer', fontSize: 10 }}
-          >
-            Keep offline
-          </button>
-        </div>
       )}
       <div
         ref={frameHostRef}
