@@ -681,6 +681,22 @@ func (r *DispatchRegistry) SetChildConvID(id, convID string) {
 	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setchildconvid", map[string]any{"dispatch_id": id, "conversation_id": convID})
 }
 
+// ChildConvIDForID returns the child conversation ID recorded for a live
+// dispatch, or "" when the dispatch is unknown or its child has not yet
+// initialized a conversation. Safe on a nil registry.
+func (r *DispatchRegistry) ChildConvIDForID(id string) string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.dispatches[id]
+	if !ok {
+		return ""
+	}
+	return d.ChildConvID
+}
+
 // LiveConvIDs returns the child conversation IDs of all currently active
 // dispatches. Dispatches that have not yet recorded a conversation ID return
 // an empty string and are excluded from the result. Used by the aggregate-cost

@@ -1368,6 +1368,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,
 				SessionID:                childSessionID,
+				ChildConversationID:      childSessionID,
 				PlanFilePath:             childPlanFilePath,
 				PlanExited:               childPlanExited,
 				Depth:                    childDepth,
@@ -1631,13 +1632,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							childDepth, currentDispatchId, childToolServer,
 							func(result extension.DispatchAgentResult) {
 								if opts.OnError != nil {
-									opts.OnError(extension.DispatchError{
-										Name:       opts.Name,
-										DispatchID: result.DispatchID,
-										Message:    result.Output,
-										ExitCode:   result.ExitCode,
-										Elapsed:    result.Elapsed,
-									})
+									opts.OnError(terminalDispatchError(result))
 								}
 							},
 						)
@@ -1670,25 +1665,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				if recalled.Load() {
 					invokeDispatchCallback(func() {
 						if opts.OnRecall != nil {
-							opts.OnRecall(extension.RecallInfo{
-								Name:       opts.Name,
-								DispatchID: agentID,
-								Reason:     recallReason,
-								Elapsed:    result.Elapsed,
-								ToolCount:  toolCount,
-							})
+							opts.OnRecall(terminalRecallInfo(*result, recallReason))
 						}
 					}, key, agentID, "recall")
 				} else if childErr != nil || result.ExitCode != 0 {
 					invokeDispatchCallback(func() {
 						if opts.OnError != nil {
-							opts.OnError(extension.DispatchError{
-								Name:       opts.Name,
-								DispatchID: agentID,
-								Message:    result.Output,
-								ExitCode:   result.ExitCode,
-								Elapsed:    result.Elapsed,
-							})
+							opts.OnError(terminalDispatchError(*result))
 						}
 					}, key, agentID, "error")
 				} else {

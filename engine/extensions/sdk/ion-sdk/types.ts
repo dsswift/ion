@@ -470,6 +470,13 @@ export interface DispatchAgentResult {
   dispatchId?: string
   sessionId?: string
   /**
+   * The durable conversation the child wrote. Set on terminal results whose
+   * child initialized a conversation; absent on the asynchronous stub and when
+   * the dispatch ended before one existed. {@link DispatchError} and
+   * {@link RecallInfo} carry the same value for the same dispatch.
+   */
+  childConversationId?: string
+  /**
    * Dispatch depth of this agent in the dispatch tree. The orchestrator runs
    * at depth 0, its direct dispatches at depth 1, their dispatches at depth 2.
    * Set by the engine, never by the caller.
@@ -504,6 +511,8 @@ export interface DispatchError {
   message: string
   exitCode: number
   elapsed: number
+  /** The durable conversation the failed child wrote. Absent when the dispatch failed before its child conversation existed. */
+  childConversationId?: string
 }
 
 /** Describes a recalled (cancelled) asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onRecall}. */
@@ -514,6 +523,8 @@ export interface RecallInfo {
   reason: string
   elapsed: number
   toolCount: number
+  /** The durable conversation the recalled child wrote. Absent when the dispatch was recalled before its child conversation existed. */
+  childConversationId?: string
 }
 
 /**
