@@ -109,7 +109,8 @@ function PortRowView({ row, environmentId }: { row: PortRow; environmentId: stri
   const { forward } = row
   const open = (): void => {
     if (!forward) return
-    const url = row.url ? forwardedUrl(row.url, forward) : `http://localhost:${forward.localPort}`
+    // The application's own URL says which scheme it speaks. With no URL to go by, HTTPS.
+    const url = row.url ? forwardedUrl(row.url, forward) : `https://localhost:${forward.localPort}`
     useSurfaceStore.getState().openBrowserTab(url, 'browse')
     rDebug('studio.ports', 'opened forwarded port in a browser tab', { environment_id: environmentId, remote_port: row.port, local_port: forward.localPort })
   }

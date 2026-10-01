@@ -137,6 +137,15 @@ describe('PortsSurface', () => {
     expect(mocks.stop).toHaveBeenCalledWith('env-remote', 5173)
   })
 
+  it('opens a port with no known URL over HTTPS', async () => {
+    mocks.forwards = [{ environmentId: 'env-remote', remotePort: 7071, localPort: 7071, activeStreams: 0 }]
+    await render()
+
+    await act(async () => { button(row(7071), 'Open').click() })
+
+    expect(mocks.openBrowserTab).toHaveBeenCalledWith('https://localhost:7071', 'browse')
+  })
+
   it('keeps a forwarded port on screen when nothing reports listening there', async () => {
     mocks.action.mockResolvedValue([])
     mocks.forwards = [{ environmentId: 'env-remote', remotePort: 9000, localPort: 9000, activeStreams: 0 }]
