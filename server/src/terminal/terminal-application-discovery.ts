@@ -13,7 +13,8 @@ const CACHE_TTL_MS = 15_000
 const cache = new Map<string, { isWeb: boolean; expiresAt: number }>()
 let inFlight: Promise<Map<string, TerminalWebApplication[]>> | null = null
 
-interface Listener { pid: number; host: string; port: number; processName: string | null }
+export interface LocalListener { pid: number; host: string; port: number; processName: string | null }
+type Listener = LocalListener
 
 type ListenerLister = () => Promise<string>
 type WebProbe = (url: string) => Promise<boolean>
@@ -53,6 +54,15 @@ export function discoverTerminalWebApplications(activities: readonly TerminalAct
   if (inFlight) return inFlight
   inFlight = scan(activities).finally(() => { inFlight = null })
   return inFlight
+}
+
+/**
+ * Every loopback or wildcard TCP listener visible to this process, whoever
+ * owns it. Empty where there is no `lsof` to ask (win32).
+ */
+export async function listLocalListeners(): Promise<LocalListener[]> {
+  if (process.platform === 'win32') return []
+  return parseListeners(await listListeners())
 }
 
 async function scan(activities: readonly TerminalActivity[]): Promise<Map<string, TerminalWebApplication[]>> {

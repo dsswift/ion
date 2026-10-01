@@ -109,6 +109,18 @@ export function tabVisibleTo(tab: StudioSnapshotTab, principal: StudioPrincipalS
   return tab.principalSubject === principal.subject
 }
 
+/**
+ * Whether the principal `subject` may act on, or be told about, the tab
+ * `tabId`. The same rule as {@link tabVisibleTo}, for a caller that holds a
+ * tab id rather than a snapshot row.
+ */
+export function tabOwnedBySubject(tabId: string, subject: string | null): boolean {
+  if (isSharedTenancy()) return true
+  const owner = principalSubjectForTab(tabId)
+  if (!owner) return unownedTabsVisible()
+  return subject !== null && owner === subject
+}
+
 let principalIndexMtimeMs = -1
 let principalIndex = new Map<string, string>()
 let conversationIndex = new Map<string, string>()

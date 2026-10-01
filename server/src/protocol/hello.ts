@@ -15,6 +15,7 @@ import { createHash } from 'crypto'
 import type { EnterprisePolicy } from '@ion/shared/types-enterprise'
 import type { StudioCredential, StudioFrame, StudioPrincipalSummary, StudioSnapshot, StudioView, Scope } from '@ion/shared/studio-wire/types'
 import { SCOPES } from '@ion/shared/studio-wire/types'
+import { PORT_FORWARD_CAPABILITY } from '@ion/shared/port-forward'
 import { isSupportedProtocolVersion, PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import { resolveLocalConnectionPrincipal } from '../identity/local-principal'
 import { registerPrincipal } from '../identity/principal-registry'
@@ -123,7 +124,7 @@ export function connectionOnHost(conn: Pick<Connection, 'transport'>): boolean {
 }
 
 /** Static server-side capability set advertised on every `studio_welcome`. */
-export const SERVER_CAPABILITIES: readonly string[] = ['graph', 'browser', 'terminal']
+export const SERVER_CAPABILITIES: readonly string[] = ['graph', 'browser', 'terminal', PORT_FORWARD_CAPABILITY]
 
 export interface HelloDeps {
   authPolicy: AuthPolicy

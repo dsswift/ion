@@ -225,6 +225,31 @@ export class Connection {
   }
 
   /**
+   * Sends one binary frame and resolves once it has left the socket: `true`
+   * when it was written, `false` when the send failed or the connection is
+   * closed. For a sender that waits on each frame before it produces the next
+   * (a Port Forward stream reads its socket only after the last chunk left).
+   * That wait is what bounds these frames, so they are not counted against
+   * the push cap: a slow link slows the stream, and never costs the client
+   * its connection.
+   */
+  sendBinaryPaced(channel: BinaryChannel, key: string, payload: Uint8Array): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false)
+    const encoded = Buffer.from(encodeBinary(channel, key, payload))
+    return new Promise<boolean>((resolve) => {
+      try {
+        this.ws.send(encoded, (err) => {
+          if (err) warn('paced binary frame send failed', { connection_id: this.id, channel, key, error: String(err) })
+          resolve(!err)
+        })
+      } catch (err) {
+        warn('paced binary frame send threw', { connection_id: this.id, channel, key, error: String(err) })
+        resolve(false)
+      }
+    })
+  }
+
+  /**
    * Runs `answer` once every answer queued before it on this connection has
    * finished. An answer is work the CLIENT asked for (a conversation's
    * history, say), as opposed to the events the server pushes on its own.

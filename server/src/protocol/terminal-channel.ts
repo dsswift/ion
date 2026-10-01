@@ -5,9 +5,11 @@
  * `transfer/inbound-transfer.ts` for `0x03` — an inbound `transfer.import`
  * archive upload, keyed by the `transferId` the action call registered
  * (spec 10). `0x03` had no consumer before spec 10; this is that consumer.
+ * The `PORT_*` channels go to `port-forward/port-streams.ts`.
  */
 import { terminalManager } from '../terminal/terminal-manager-instance'
 import { writeInboundChunk, endInboundTransfer } from '../transfer/inbound-transfer'
+import { handlePortFrame } from '../port-forward/port-streams'
 import { decodeBinary, WireError } from '@ion/shared/studio-wire/codec'
 import { BinaryChannel } from '@ion/shared/studio-wire/channels'
 import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
@@ -64,6 +66,11 @@ export function handleBinaryFrame(conn: Connection, data: Uint8Array): void {
 
   if (!scopeSatisfies(conn.scopes, 'terminal:operate')) {
     warn('binary frame refused: insufficient scope', { connection_id: conn.id, channel: decoded.channel })
+    return
+  }
+
+  if (decoded.channel === BinaryChannel.PORT_DATA || decoded.channel === BinaryChannel.PORT_END || decoded.channel === BinaryChannel.PORT_CREDIT) {
+    handlePortFrame(conn.id, decoded.channel, key, decoded.payload)
     return
   }
 
