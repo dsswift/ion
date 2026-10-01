@@ -37,9 +37,9 @@ var managedMarkerPath = defaultManagedMarkerPath
 func defaultManagedMarkerPath(goos string) string {
 	switch goos {
 	case "darwin":
-		return filepath.Join("/Library/Application Support/Ion", managedMarkerFileName)
+		return "/Library/Application Support/Ion/" + managedMarkerFileName
 	case "linux":
-		return filepath.Join("/etc/ion", managedMarkerFileName)
+		return "/etc/ion/" + managedMarkerFileName
 	case "windows":
 		root := windowsProgramDataRoot()
 		if root == "" {
