@@ -209,6 +209,33 @@ func TestHandleNormalizedEvent_ErrorEvent(t *testing.T) {
 	}
 }
 
+// A provider failure's Provider Subscription snapshot reaches the wire event.
+func TestHandleNormalizedEvent_ErrorEvent_ProviderSubscription(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("err-subscription", defaultConfig())
+	_ = mgr.SendPrompt("err-subscription", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ErrorEvent{
+			ErrorMessage:         "auth: 401",
+			ProviderSubscription: &types.ProviderSubscriptionStatus{State: types.SubscriptionStateNone, Provider: "gateway"},
+		},
+	})
+
+	errEvents := ec.byType("engine_error")
+	if len(errEvents) == 0 {
+		t.Fatal("expected engine_error event")
+	}
+	got := errEvents[0].event.ProviderSubscription
+	if got == nil || got.State != types.SubscriptionStateNone || got.Provider != "gateway" {
+		t.Fatalf("ProviderSubscription = %+v", got)
+	}
+}
+
 // TestHandleNormalizedEvent_ErrorEvent_StderrTail pins that StderrTail on an
 // ErrorEvent is forwarded through translateToEngineEvent to the wire event.
 // This ensures the normalized path produces the same wire shape as the

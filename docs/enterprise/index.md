@@ -83,6 +83,8 @@ Enterprise config can be delivered through platform-native management tools or e
 | Linux | System config files | `ION_ENTERPRISE_CONFIG` env var |
 | All | `ION_ENTERPRISE_CONFIG` env var | -- |
 
+An administrator can mark an installation as managed. A managed installation ignores `ION_ENTERPRISE_CONFIG` and locks instead of running unrestricted when its policy is missing. See [Managed mode](mdm.md#managed-mode).
+
 See [MDM deployment](mdm.md) for platform-specific instructions.
 
 ## How sealing works

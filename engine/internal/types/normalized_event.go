@@ -335,6 +335,11 @@ type ErrorEvent struct {
 	ContextTokens int `json:"contextTokens,omitempty"`
 	ContextLimit  int `json:"contextLimit,omitempty"`
 	ContextWindow int `json:"contextWindow,omitempty"`
+	// ProviderSubscription is the Provider Subscription snapshot taken when
+	// a provider request failed. It is set only when the request went to the
+	// subscription lookup's provider while no looked-up key was applied, so
+	// a consumer can tell that failure from any other. Nil otherwise.
+	ProviderSubscription *ProviderSubscriptionStatus `json:"providerSubscription,omitempty"`
 }
 
 func (ErrorEvent) eventType() string { return EventError }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -6,12 +6,6 @@ import { randomBytes, createHmac } from 'crypto'
 import { verifyPaired } from '../paired'
 import { CredentialsStore } from '../credentials-store'
 import { _resetNonceForTest, _setNonceTtlForTest, currentNonce } from '../nonce'
-
-// The shared-tenancy fold now checks the engine's signed-in Entra identity
-// before falling back to the OS username (`resolveLocalConnectionPrincipal`).
-// These tests exercise the "nobody is signed in" fallback specifically, so
-// the engine round trip is mocked out rather than left to hit a real bridge.
-vi.mock('../../oauth/entra-flow', () => ({ getSignedInIdentityIfEngineConnected: vi.fn().mockResolvedValue(null) }))
 
 let dir: string
 let store: CredentialsStore

@@ -353,9 +353,14 @@ type RunHooks struct {
 type RunConfig struct {
 	Hooks RunHooks
 
-	PermEngine  *permissions.Engine
-	SandboxCfg  *sandbox.Config
-	SecurityCfg *types.SecurityConfig
+	PermEngine *permissions.Engine
+	SandboxCfg *sandbox.Config
+	// CommandPatterns are the configured dangerous-command patterns. A Bash
+	// call whose command matches one is refused before execution, whether or
+	// not SandboxCfg is set (see checkCommandPatterns). Empty means no
+	// configured patterns.
+	CommandPatterns []sandbox.CompiledPattern
+	SecurityCfg     *types.SecurityConfig
 	// WorkspaceChecker enforces the engine's baseline workspace containment
 	// (worktree isolation — see internal/workspaces). Nil
 	// means disabled; the session layer threads it when

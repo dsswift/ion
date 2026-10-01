@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Circle, CircleNotch } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { Tooltip } from './git/Tooltip'
 import type { Message } from '@ion/shared/types'
 
 interface TodoItem {
@@ -69,15 +70,17 @@ export function extractTodos(messages: Message[]): TodoItem[] {
 interface TodoListPanelProps {
   messages: Message[]
   isRunning: boolean
+  /** Show a populated list regardless of the `showTodoList` preference. */
+  alwaysShow?: boolean
 }
 
-export function TodoListPanel({ messages, isRunning: _isRunning }: TodoListPanelProps) {
+export function TodoListPanel({ messages, isRunning: _isRunning, alwaysShow = false }: TodoListPanelProps) {
   const colors = useColors()
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
 
   const todos = useMemo(() => extractTodos(messages), [messages])
 
-  const visible = showTodoList && todos.length > 0
+  const visible = (alwaysShow || showTodoList) && todos.length > 0
 
   return (
     <AnimatePresence>
@@ -133,28 +136,30 @@ function TodoItemRow({ todo, colors }: { todo: TodoItem; colors: any }) {
         : colors.textSecondary
 
   return (
-    <span
-      title={todo.content}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        color: textColor,
-        maxWidth: 260,
-        textDecoration: todo.status === 'completed' ? 'line-through' : 'none',
-        opacity: todo.status === 'completed' ? 0.6 : 1,
-      }}
-    >
-      {icon}
+    <Tooltip text={todo.content}>
       <span
+        data-testid="todo-item"
         style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          color: textColor,
+          maxWidth: 260,
+          textDecoration: todo.status === 'completed' ? 'line-through' : 'none',
+          opacity: todo.status === 'completed' ? 0.6 : 1,
         }}
       >
-        {todo.content}
+        {icon}
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {todo.content}
+        </span>
       </span>
-    </span>
+    </Tooltip>
   )
 }

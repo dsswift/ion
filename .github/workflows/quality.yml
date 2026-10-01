@@ -809,4 +809,7 @@ jobs:
       - name: File failures and flakes as issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash .github/scripts/report-run-failures.sh ci-failure "Tests failed on main" '${{ toJSON(needs) }}'
+          # Never paste this into the command: a commit subject in a job
+          # output can hold a quote, and the shell would read it as code.
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Tests failed on main"

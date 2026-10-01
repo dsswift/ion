@@ -14,7 +14,7 @@ import (
 // pipes from the one-line install: the host runs exactly this checkout's
 // version of it. server.json is written only when the host has none.
 func InstallServer(ctx context.Context, r Runner, h Host, bundle string, installer []byte, o InstallOptions, w io.Writer) (Receipt, error) {
-	log := installLog{w: w, host: h.Name}
+	log := newInstallLog(w, h.Name, o)
 	rec := Receipt{Host: h.Name, RelayApplied: true}
 	if err := o.checkRelay(); err != nil {
 		return rec, err

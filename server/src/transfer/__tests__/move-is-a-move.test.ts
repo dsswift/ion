@@ -133,7 +133,7 @@ describe('transfer: export -> import -> remove', () => {
       ...minimalPersistedTab({ id: 'tab-1', conversationId: 'root-1' }),
       worktree: { worktreePath: '/wt/source', branchName: 'wt/x', sourceBranch: 'main', repoPath: '/repo/source' },
     }])
-    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now() })
+    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now(), carriesWorktree: true })
     const retireWorktree = vi.fn().mockResolvedValue({ ok: false, error: 'uncommitted changes' })
 
     const removal = await removeTransferredSource({ tabId: 'tab-1', targetEnvironmentId: 'env-target', paths: source, retireWorktree: true, retireWorktreeFn: retireWorktree })
@@ -165,6 +165,40 @@ describe('transfer: export -> import -> remove', () => {
     expect(existsSync(join(source.conversationsDir, 'root-1.llm.jsonl'))).toBe(false)
   })
 
+  it('never retires a worktree the export did not carry, even when asked to', async () => {
+    // The bug this guards: a conversation moved on its own, the client still
+    // asked for the checkout to be retired, and the only copy of its branch
+    // was deleted.
+    const source = makeTestPaths('move-worktree-not-shipped')
+    writeConversationFixture(source.conversationsDir, 'root-1')
+    const wt = { worktreePath: '/wt/source', branchName: 'wt/x', sourceBranch: 'main', repoPath: '/repo/source' }
+    writeTabsFile(source.tabsFile, [{ ...minimalPersistedTab({ id: 'tab-1', conversationId: 'root-1' }), worktree: wt }])
+    const exported = await runTransferExport({
+      tab: { id: 'tab-1', status: 'idle', worktree: wt },
+      tabRecord: readTabsState(source.tabsFile).tabs[0],
+      tabContent: null,
+      targetEnvironmentId: 'env-target',
+      sourceEnvironmentId: 'env-source',
+      paths: source,
+      destinationPath: join(source.dataDir, 'export.zip'),
+      isWorktreeDirty: async () => false,
+      buildWorktreeBundle: async () => null,
+      persistSealPending: (sealPending) => persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', sealPending),
+    })
+    expect(exported.ok).toBe(true)
+    expect(readTabsState(source.tabsFile).tabs[0].sealPending?.carriesWorktree).toBe(false)
+    const retireWorktree = vi.fn().mockResolvedValue({ ok: true })
+
+    const removal = await removeTransferredSource({ tabId: 'tab-1', targetEnvironmentId: 'env-target', paths: source, retireWorktree: true, retireWorktreeFn: retireWorktree })
+
+    expect(removal.ok).toBe(true)
+    if (!removal.ok) return
+    expect(retireWorktree).not.toHaveBeenCalled()
+    expect(removal.removedWorktreePath).toBeNull()
+    // The conversation itself still moved.
+    expect(existsSync(join(source.conversationsDir, 'root-1.llm.jsonl'))).toBe(false)
+  })
+
   it('never retires a worktree another conversation still lives in', async () => {
     // The bug this guards: in a worktree move each conversation is removed
     // in turn, and retiring on the first deleted the checkout the next one
@@ -177,7 +211,7 @@ describe('transfer: export -> import -> remove', () => {
       { ...minimalPersistedTab({ id: 'tab-1', conversationId: 'root-1' }), worktree: wt },
       { ...minimalPersistedTab({ id: 'tab-2', conversationId: 'root-2' }), worktree: wt },
     ])
-    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now() })
+    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now(), carriesWorktree: true })
     const retireWorktree = vi.fn().mockResolvedValue({ ok: true })
 
     const removal = await removeTransferredSource({ tabId: 'tab-1', targetEnvironmentId: 'env-target', paths: source, retireWorktree: true, retireWorktreeFn: retireWorktree })
@@ -194,7 +228,7 @@ describe('transfer: export -> import -> remove', () => {
       ...minimalPersistedTab({ id: 'tab-1', conversationId: 'root-1' }),
       worktree: { worktreePath: '/wt/source', branchName: 'wt/x', sourceBranch: 'main', repoPath: '/repo/source' },
     }])
-    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now() })
+    await persistSealPendingOnTabsFile(source.tabsFile, 'tab-1', { targetEnvironmentId: 'env-target', since: Date.now(), carriesWorktree: true })
     const retireWorktree = vi.fn().mockResolvedValue({ ok: true })
 
     const removal = await removeTransferredSource({ tabId: 'tab-1', targetEnvironmentId: 'env-target', paths: source, retireWorktree: true, retireWorktreeFn: retireWorktree })

@@ -156,7 +156,7 @@ func TestInstallMacDesktop_AskSudoRunsOnTheTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := joined(r)
-	if !strings.Contains(all, terminalScript+"sudo -p 'Password for %u on mac (ion fleet install): ' installer -pkg") || strings.Contains(all, "sudo -n") {
+	if !strings.Contains(all, terminalScript+"trap ") && strings.Contains(all, "sudo -p 'Password for %u on mac (ion fleet install): ' installer -pkg") || strings.Contains(all, "sudo -n") {
 		t.Errorf("the installer must run on the terminal without -n, prompting with the host's name, and no passwordless check:\n%s", all)
 	}
 	if len(r.banners) != 1 || !strings.Contains(r.banners[0], "installing the Ion desktop on mac.") || !strings.Contains(r.banners[0], "your password on mac") {

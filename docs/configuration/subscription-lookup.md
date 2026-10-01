@@ -35,6 +35,7 @@ It needs an identity provider (`auth.identityProvider`). Without a `subscription
 | `audience` | string | `""` | Audience of the bearer token, for identity providers that bind tokens to one. Empty uses the provider default. |
 | `timeoutMs` | int | `15000` | Bound on one lookup. |
 | `cacheMaxAgeSeconds` | int | `0` | How long a cached key is reused at launch without a lookup. `0` reuses it until a lookup is requested. A positive value makes a launch past that age look the key up again, which is how a rotated key reaches every machine. |
+| `requireSelection` | bool | `false` | Makes the operator choose even when the lookup returns exactly one subscription, so they see which key is used before it is applied. A choice already made is reused. |
 
 An invalid block (no provider, a non-http endpoint, a negative number) is logged at `ERROR` and skipped. The engine still starts, and manual keys keep working.
 
@@ -52,9 +53,9 @@ A lookup result is handled like this:
 
 | Lookup result | What the engine does | State reported |
 |---------------|----------------------|----------------|
-| One subscription | Applies it and caches it. No prompt. | `applied`, source `lookup` |
-| Several, one of them previously chosen | Applies the chosen one with its current key. | `applied`, source `lookup` |
-| Several, none chosen before | Applies nothing and offers the list. | `selection_required` |
+| One subscription, `requireSelection` off | Applies it and caches it. No prompt. | `applied`, source `lookup` |
+| Several, or one with `requireSelection` on; one of them previously chosen | Applies the chosen one with its current key. | `applied`, source `lookup` |
+| Several, or one with `requireSelection` on; none chosen before | Applies nothing and offers the list. | `selection_required` |
 | None | Removes any applied and cached key. | `none` |
 | Failure (network, status, bad body, no token) | Keeps a cached key if one was applied; otherwise applies nothing. | `applied` with `error`, or `failed` |
 
@@ -119,6 +120,21 @@ Clients drive the lookup through three engine commands, each answered with the c
 Every change is broadcast as `engine_provider_subscription`, a complete snapshot. The snapshot names subscriptions by id and label; a key never leaves the engine. See [Client Commands](../protocol/client-commands.md#provider_subscription_status) and [Server Events](../protocol/server-events.md#engine_provider_subscription).
 
 In Ion Studio, the state and the choice appear under **Settings > Enterprise sign-in > Provider subscription**. The iPhone app shows the same section in a server's settings.
+
+## When a person has to act
+
+Two states leave no looked-up key applied until someone acts: `selection_required` and `none`. Ion Studio and the iPhone app both show a prompt for them without anyone opening Settings.
+
+| State | What the prompt shows | What it offers |
+|-------|-----------------------|----------------|
+| `selection_required` | The offered subscriptions, by label. | Choose one (`provider_subscription_select`), look up again, or dismiss. |
+| `none` | That the signed-in account has no subscription for the provider, by name. | Look up again (`provider_subscription_refresh`), or dismiss. |
+
+The prompt shows once each time the state is entered. A later snapshot of the same state does not bring it back after it is dismissed. The Settings control stays available either way. The iPhone app shows the prompt for the server it is connected to.
+
+A request to the provider that fails in one of these states says so in the conversation, ahead of the provider's own error. The engine marks such a failure by putting the subscription snapshot on the [`engine_error`](../protocol/server-events.md#engine_error) event, so any consumer can tell it from another failure.
+
+Nothing is shown when `subscriptionLookup` is absent or the state is `applied`.
 
 ## Logs
 

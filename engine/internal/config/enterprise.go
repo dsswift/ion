@@ -17,7 +17,8 @@ import (
 // LoadEnterpriseConfig loads enterprise configuration from platform-appropriate sources.
 //
 // Sources checked in order:
-//  1. ION_ENTERPRISE_CONFIG env var (path to JSON file, all platforms; wins outright)
+//  1. ION_ENTERPRISE_CONFIG env var (path to JSON file, all platforms; wins outright
+//     on an unmanaged installation, ignored on a managed one -- see managed.go)
 //  2. macOS: /Library/Managed Preferences/com.ion.engine.plist
 //  3. Linux: /etc/ion/config.json + /etc/ion/config.d/*.json
 //  4. Windows: %ProgramData%\Ion\enterprise-config.json + enterprise-config.d\*.json,
@@ -42,15 +43,35 @@ func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
 // loadMachineEnterpriseConfig resolves the machine-level enterprise config
 // (the sole policy ENFORCER) from the env var override or the
 // platform-appropriate machine source, with no per-user layer applied yet.
+//
+// On an installation carrying the managed-mode marker (managed.go) the env
+// var is ignored, and the result is never nil: it carries a ManagedModeStatus
+// saying whether policy resolved and whether an override was refused.
 func loadMachineEnterpriseConfig(goos string) *types.EnterpriseConfig {
-	// Env var override (all platforms)
-	if envPath := os.Getenv("ION_ENTERPRISE_CONFIG"); envPath != "" {
+	managed, markerPath := readManagedMarker(goos)
+	envPath := os.Getenv("ION_ENTERPRISE_CONFIG")
+
+	if envPath != "" && !managed {
 		if cfg := readJSONFile[types.EnterpriseConfig](envPath); cfg != nil {
 			utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from env var", map[string]any{"path": envPath})
-			return cfg
+			return stampManagedMode(cfg, false, "", markerPath)
 		}
 	}
 
+	refusedOverride := ""
+	if managed {
+		refusedOverride = envPath
+	}
+	return stampManagedMode(platformEnterpriseReader(goos), managed, refusedOverride, markerPath)
+}
+
+// platformEnterpriseReader is readPlatformEnterpriseConfig in production. A
+// var so a test can supply a machine policy on any platform.
+var platformEnterpriseReader = readPlatformEnterpriseConfig
+
+// readPlatformEnterpriseConfig reads this platform's administrator-controlled
+// machine source, or nil when it has none.
+func readPlatformEnterpriseConfig(goos string) *types.EnterpriseConfig {
 	switch goos {
 	case "darwin":
 		return readMacOS()

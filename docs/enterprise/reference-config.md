@@ -45,7 +45,7 @@ on disk may still say anything; it stops being what the engine runs on.
 | Windows registry | `HKLM\SOFTWARE\Policies\IonEngine`, overlaid last and winning |
 | macOS | `/Library/Managed Preferences/com.ion.engine.plist` |
 | Linux | `/etc/ion/config.json` + `/etc/ion/config.d/*.json` |
-| Any platform | `ION_ENTERPRISE_CONFIG=/path/to.json`, wins outright |
+| Any platform | `ION_ENTERPRISE_CONFIG=/path/to.json`, wins outright on an unmanaged installation; ignored on a [managed](mdm.md#managed-mode) one |
 
 On Windows only the machine hive is read. The engine never reads
 `HKEY_CURRENT_USER`, so a user cannot author policy that applies to

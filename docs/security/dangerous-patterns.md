@@ -62,7 +62,7 @@ Patterns are Go regular expressions (RE2 syntax). They are matched against the f
 
 ## Enterprise patterns
 
-Enterprise config can add additional dangerous patterns that apply organization-wide and cannot be removed by lower config layers:
+Enterprise config can add command patterns that apply organization-wide and cannot be removed by lower config layers:
 
 ```json
 {
@@ -71,7 +71,7 @@ Enterprise config can add additional dangerous patterns that apply organization-
       "additionalDangerousPatterns": [
         {
           "pattern": "kubectl\\s+apply.*--namespace=production",
-          "description": "Production Kubernetes deployments require CI/CD"
+          "reason": "Production Kubernetes deployments require CI/CD"
         }
       ]
     }
@@ -79,7 +79,7 @@ Enterprise config can add additional dangerous patterns that apply organization-
 }
 ```
 
-Enterprise patterns are prepended to the pattern list, ensuring they are evaluated first. See [Enterprise compliance](../enterprise/compliance.md) for more on enterprise security controls.
+These are a hard block, separate from the permission-mode behavior above. A Bash command matching one is refused before it runs, in every permission mode, with the sandbox on or off. An `allow` rule does not override it. See [Sandbox](./sandbox.md#dangerous-patterns-do-not-need-the-sandbox) for the details, and [Enterprise compliance](../enterprise/compliance.md) for more on enterprise security controls.
 
 ## Interaction with rules
 

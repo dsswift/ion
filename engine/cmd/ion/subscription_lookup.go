@@ -32,6 +32,7 @@ func startSubscriptionLookup(cfg *types.EngineRuntimeConfig, resolver *auth.Reso
 	manager := subscription.NewManager(lookup, subscription.HTTPFetcher, subscription.NewFileStoreCache(), keys, srv.BroadcastProviderSubscription)
 	manager.SetProviderDisplayName(providerCfg.DisplayName)
 	srv.SetSubscriptionManager(manager)
+	resolver.SetSubscriptionStatusSource(manager.Status)
 	manager.Start()
 	return manager.Stop
 }

@@ -131,6 +131,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
 - [Local Principal](#term-local-principal)
+- [Managed-Mode Marker](#term-managed-mode-marker)
 - [Menu](#term-menu)
 - [Message](#term-message)
 - [Message forwarding](#term-forwarding)
@@ -164,6 +165,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Protected operation](#term-protected-operation)
 - [Provider](#term-provider)
 - [Provider Subscription](#term-provider-subscription)
+- [Provider Subscription Prompt](#term-provider-subscription-prompt)
 - [Push address](#term-push-address)
 - [Questions Wizard](#term-questions-wizard)
 - [Quick Tool](#term-quick-tool)
@@ -544,6 +546,20 @@ One of the parts a conversation event is delivered as when its size exceeds the 
 - **Implementations:**
   - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
   - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
+
+#### Managed-Mode Marker {#term-managed-mode-marker}
+
+An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.
+
+- **ID:** `managed-mode-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func readManagedMarker` in `engine/internal/config/managed.go`
+  - `engine` / `code` / `go`: `type ManagedModeStatus` in `engine/internal/types/config_managed.go`
 
 #### Model Boundary {#term-model-boundary}
 
@@ -2016,6 +2032,21 @@ A small chooser that opens from a control and returns one value, such as a model
   - `desktop` / `ui` / `typescript`: `ModelPickerPopover` in `desktop/src/renderer/components/ModelPickerPopover.tsx`
   - `ios` / `ui` / `swift`: `struct ModelPickerSheet` in `ios/IonRemote/Views/ModelPickerSheet.swift`
 
+#### Provider Subscription Prompt {#term-provider-subscription-prompt}
+
+The prompt a client shows, outside Settings, when a Provider Subscription needs a person: several subscriptions with none chosen, or none at all. It lists the offered subscriptions by label and applies the one picked, or says there is none and offers to look up again. It shows once per transition into either state; dismissing it leaves the Settings control as the way back.
+
+- **ID:** `provider-subscription-prompt`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `nextSubscriptionAttention` in `packages/shared/src/provider-subscription.ts`
+  - `studio` / `ui` / `typescript`: `ProviderSubscriptionPrompt` in `desktop/src/renderer/studio/ProviderSubscriptionPrompt.tsx`
+  - `ios` / `ui` / `swift`: `struct ProviderSubscriptionPromptOverlay` in `ios/IonRemote/Views/ProviderSubscriptionPromptView.swift`
+
 #### Questions Wizard {#term-questions-wizard}
 
 The client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. Studio mounts it in the transient Questions canvas tab.
@@ -3022,6 +3053,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
 | Provider Subscription | `export interface ProviderSubscriptionStatus` | `export interface ProviderSubscriptionStatus`, `ProviderSubscriptionGroup` | `export interface ProviderSubscriptionStatus` | `struct ProviderSubscriptionStatus` | None |
+| Provider Subscription Prompt | `nextSubscriptionAttention` | `nextSubscriptionAttention`, `ProviderSubscriptionPrompt` | `nextSubscriptionAttention` | `struct ProviderSubscriptionPromptOverlay` | None |
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |

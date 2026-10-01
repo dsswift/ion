@@ -18,6 +18,12 @@ import (
 // sessions — the caller must ensure the session does not already have a
 // loaded extension group.
 func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config types.EngineConfig, plans []extension.ResolvedExtensionPlan) {
+	// A locked engine has no extension allowlist to check against, so it
+	// loads none rather than all.
+	if m.managedLocked() {
+		utils.LogWithFields(utils.LevelWarn, "session", "extensions not loaded: managed installation has no enterprise policy", map[string]any{"key": key, "count": len(plans)})
+		plans = nil
+	}
 	extPaths := plans
 	group := extension.NewExtensionGroup()
 	for _, plan := range extPaths {

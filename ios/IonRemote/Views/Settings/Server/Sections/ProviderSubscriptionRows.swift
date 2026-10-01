@@ -74,7 +74,7 @@ struct ProviderSubscriptionRows: View {
         case ProviderSubscriptionStatus.State.applied:
             return "Using \(status.selected?.label ?? "the subscription")."
         case ProviderSubscriptionStatus.State.selectionRequired:
-            return "The account has several subscriptions. Choose the one to use."
+            return "Choose the subscription the account uses."
         case ProviderSubscriptionStatus.State.none:
             return "The account has no subscription. Contact your administrator for access."
         case ProviderSubscriptionStatus.State.failed:

@@ -175,6 +175,31 @@ func TestSingleSubscriptionAppliesAutomatically(t *testing.T) {
 	}
 }
 
+func TestRequireSelectionOffersALoneSubscriptionOnceThenReusesIt(t *testing.T) {
+	cfg := types.SubscriptionLookupConfig{RequireSelection: true}
+	h := newHarness(t, cfg, answer(standard), answer(Subscription{ID: "std", Label: "Standard", Key: "key-std-rotated"}))
+	h.signIn("user-1")
+	status := h.waitFor(t, types.SubscriptionStateSelectionRequired)
+	if len(status.Options) != 1 || status.Options[0].ID != "std" {
+		t.Fatalf("options = %+v", status.Options)
+	}
+	if got := h.keys.get("gateway"); got != "" {
+		t.Fatalf("a key was applied before selection: %q", got)
+	}
+	if _, err := h.m.Select("std"); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if got := h.keys.get("gateway"); got != "key-std" {
+		t.Fatalf("applied key = %q", got)
+	}
+
+	// The choice is made: a later lookup applies it without asking again.
+	refreshed, err := h.m.Refresh()
+	if err != nil || refreshed.State != types.SubscriptionStateApplied || h.keys.get("gateway") != "key-std-rotated" {
+		t.Fatalf("refresh = %+v, %v, key %q", refreshed, err, h.keys.get("gateway"))
+	}
+}
+
 func TestMultipleSubscriptionsRequireSelectionAndPersistChoice(t *testing.T) {
 	h := newHarness(t, types.SubscriptionLookupConfig{}, answer(standard, premium))
 	h.signIn("user-1")

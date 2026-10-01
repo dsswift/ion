@@ -115,6 +115,18 @@ describe('FileExplorer multi-root', () => {
     unmount()
   })
 
+  it('Collapse All folds every root section, not only the folders inside them', () => {
+    useSessionStore.setState({
+      fileExplorerStates: new Map([['/lib/alpha', { expandedPaths: new Set(['/lib/alpha/src']), selectedPath: null }]]),
+    })
+    const { container, unmount } = render()
+    act(() => { (container.querySelector('[aria-label="Collapse All"]') as HTMLElement).click() })
+    const state = useSessionStore.getState()
+    expect([...state.fileExplorerRootCollapsed].sort()).toEqual(['/lib/alpha', '/lib/zeta', '/proj/main'])
+    expect(state.fileExplorerStates.get('/lib/alpha')?.expandedPaths.size).toBe(0)
+    unmount()
+  })
+
   it('no-directory tab renders nothing', () => {
     useSessionStore.setState({ tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '~' }] as never })
     const { container, unmount } = render()

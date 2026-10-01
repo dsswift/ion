@@ -10,6 +10,7 @@ import { createAuthProof } from '@ion/shared/e2e'
 import type { StudioCredential } from '@ion/shared/studio-wire/types'
 import { SealedStudioSocket } from './sealed-studio-socket'
 import { keepSocketAlive } from './socket-keepalive'
+import { guardEarlyError } from './early-error-guard'
 import { log as _log, warn as _warn } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -85,7 +86,7 @@ export function connectTcp(url: string, bearerToken?: string): WebSocket {
   const wsUrl = serverWsUrl(url)
   log('opening TCP Studio connection', { url: wsUrl, has_bearer_header: !!bearerToken })
   const ws = bearerToken ? new WebSocket(wsUrl, { headers: { Authorization: `Bearer ${bearerToken}` } }) : new WebSocket(wsUrl)
-  return keepSocketAlive(ws, wsUrl)
+  return keepSocketAlive(guardEarlyError(ws, wsUrl), wsUrl)
 }
 
 /**

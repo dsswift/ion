@@ -5,6 +5,7 @@
 ; undefined constant fails the build rather than degrading quietly.
 ;
 !include WinMessages.nsh
+!include FileFunc.nsh
 ;
 ; Install log.
 ;
@@ -281,6 +282,41 @@ ionAclDirOk:
     File "${BUILD_RESOURCES_DIR}\..\packaging-windows\Remove-IonEngineTasks.ps1"
     SetOutPath "$INSTDIR"
     !insertmacro ionLog "install: placed Remove-IonEngineTasks.ps1 in $1\Ion"
+
+    ; The managed-mode marker. /managed on the installer command line declares
+    ; this machine managed: the engine then ignores ION_ENTERPRISE_CONFIG and
+    ; refuses to run unrestricted when no enterprise policy resolves. It is
+    ; written here, after the ACL above, so it is administrator-owned from the
+    ; moment it exists, and it is independent of the policy package so that a
+    ; machine whose policy never arrived is still marked.
+    ;
+    ; Without /managed nothing is written and an existing marker is left
+    ; alone: an upgrade that omits the switch must not unmanage a machine.
+    ;
+    ; A marker that cannot be written is FATAL for the same reason an ACL
+    ; failure is: the install would report success on a machine the
+    ; administrator asked to be managed and that is not.
+    ${GetParameters} $2
+    ClearErrors
+    ${GetOptions} $2 "/managed" $3
+    ${If} ${Errors}
+      ClearErrors
+      !insertmacro ionLog "install: /managed not given; managed-mode marker not written"
+    ${Else}
+      ClearErrors
+      FileOpen $4 "$1\Ion\managed.json" w
+      ${If} ${Errors}
+        !insertmacro ionLog "install: FAILED -- could not write the managed-mode marker $1\Ion\managed.json"
+        SetErrorLevel 5
+        MessageBox MB_OK|MB_ICONSTOP "Ion could not be installed.$\r$\n$\r$\nThe managed-mode marker $1\Ion\managed.json could not be written, so this machine would not be treated as managed. Nothing was configured.$\r$\n$\r$\nThe install log is at $TEMP\Ion-Setup.log." /SD IDOK
+        Quit
+      ${EndIf}
+      FileWrite $4 '{"managed": true}'
+      FileClose $4
+      !insertmacro ionLog "install: wrote the managed-mode marker $1\Ion\managed.json"
+    ${EndIf}
+  ${else}
+    !insertmacro ionLog "install: per-user install; managed-mode marker is only written by a per-machine install"
   ${endif}
   !insertmacro ionPhase "Installing Ion ${VERSION}" "Finishing installation..."
 !macroend
@@ -327,8 +363,9 @@ ionAclDirOk:
 ; electron-builder runs this before it removes $INSTDIR, so the folder still
 ; exists here.
 !macro customUnInstall
-  ; Policy files under %ProgramData%\Ion are administrator-owned
-  ; configuration, not application state -- never removed by uninstall.
+  ; Policy files and the managed-mode marker under %ProgramData%\Ion are
+  ; administrator-owned configuration, not application state -- never removed
+  ; by uninstall.
   ExpandEnvStrings $1 "%ProgramData%"
   ${IfNot} ${FileExists} "$1\Ion\Remove-IonEngineTasks.ps1"
     !insertmacro ionLog "uninstall: WARNING -- $1\Ion\Remove-IonEngineTasks.ps1 is missing; scheduled tasks were NOT removed"

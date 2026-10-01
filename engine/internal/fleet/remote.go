@@ -134,6 +134,12 @@ func (ExecRunner) RunTerminal(ctx context.Context, h Host, script, banner string
 	return ExecLocal(ctx, spec)
 }
 
+// terminalSSHArgs are the options a terminal ssh uses. Its keepalives matter
+// most here: a person typing a password leaves the connection idle, and a
+// tunnel or jump host in the path drops an idle connection after a few
+// minutes, which ends the install with ssh's exit 255.
+var terminalSSHArgs = []string{"-t", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"}
+
 // terminalCommand runs script on h with this terminal attached: ssh -t, so
 // the host's sudo can prompt on it.
 func terminalCommand(h Host, script string) ExecSpec {
@@ -141,7 +147,7 @@ func terminalCommand(h Host, script string) ExecSpec {
 		cmd := localCommand(context.Background(), script)
 		return ExecSpec{Name: cmd.Path, Args: cmd.Args[1:], Interactive: true}
 	}
-	return ExecSpec{Name: "ssh", Args: []string{"-t", "-o", "ConnectTimeout=10", h.SSH, script}, Interactive: true}
+	return ExecSpec{Name: "ssh", Args: append(append([]string{}, terminalSSHArgs...), h.SSH, script), Interactive: true}
 }
 
 // quietSSH drops the post-quantum advisory OpenSSH prints on every

@@ -83,7 +83,7 @@ Enterprise config can require sandboxing and prevent users from disabling it:
       "additionalDangerousPatterns": [
         {
           "pattern": "mount\\s+",
-          "description": "Mount operations blocked by policy"
+          "reason": "Mount operations blocked by policy"
         }
       ]
     }
@@ -98,7 +98,16 @@ Enterprise config can require sandboxing and prevent users from disabling it:
 | `required` | `bool` | When `true`, all sessions must run with sandbox enabled. Sessions on platforms without sandbox support will fail to start. |
 | `allowDisable` | `bool` | When `false`, user and project configs cannot set `sandbox.enabled = false`. |
 | `additionalDenyPaths` | `string[]` | Extra paths to deny access to, merged with the default deny list. |
-| `additionalDangerousPatterns` | `DangerousPattern[]` | Extra patterns added to the dangerous command list. Each entry has `pattern` (regex) and `description` (human-readable reason). |
+| `additionalDangerousPatterns` | `DangerousPattern[]` | Command patterns the engine refuses before a Bash command runs. Each entry has `pattern` (Go RE2 regex) and `reason` (the text returned when a command is refused). |
+
+### Dangerous patterns do not need the sandbox
+
+`additionalDangerousPatterns` is enforced on every session under the policy, on every platform, whether or not the sandbox is on. A policy can block specific commands without setting `required`.
+
+- With the sandbox off, a Bash command is checked against the configured patterns only.
+- With the sandbox on, a Bash command is checked against the configured patterns and the built-in sandbox patterns. Configured patterns add to the built-in set and never replace it.
+- A refused command returns `Command blocked by policy: <reason>` as the tool result and fires the `permission_denied` hook.
+- A pattern that does not compile cannot be enforced. The engine logs it at error level when it loads the config (`"msg":"invalid enterprise dangerous command pattern: not enforced"`, with the pattern and the compile error) and enforces the rest.
 
 ## Limitations
 

@@ -90,7 +90,7 @@ export function FileExplorer({
   const colors = useColors()
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const rootCollapsed = useSessionStore((s) => s.fileExplorerRootCollapsed)
-  const { collapseAllExplorer, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
+  const { collapseAllExplorerRoots, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
   const { projectDir, roots, allRoots, folders } = useWorkspaceRoots()
   const { add: addWorkspaceFolder, remove: removeWorkspaceFolder, pick: pickWorkspaceFolder } = folders
   const showHiddenFiles = usePreferencesStore((s) => s.showHiddenFiles)
@@ -208,7 +208,7 @@ export function FileExplorer({
               action: () => setShowHiddenFiles(!showHiddenFiles),
             },
             { Icon: ArrowsClockwise, title: 'Refresh', action: () => setRefreshNonce((n) => n + 1) },
-            { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => allRoots.forEach((r) => collapseAllExplorer(r)) },
+            { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => collapseAllExplorerRoots(allRoots) },
           ].map(({ Icon, title, action }) => (
             <ExplorerHeaderButton key={title} title={title} onClick={action} colors={colors}>
               <Icon size={14} />

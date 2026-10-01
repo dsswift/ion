@@ -70,9 +70,12 @@ type NewConversationDefaultsPolicy struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string `json:"allowedModels,omitempty"`
-	BlockedModels    []string `json:"blockedModels,omitempty"`
-	AllowedProviders []string `json:"allowedProviders,omitempty"`
+	// ManagedMode is stamped by the loader when the managed-mode marker is
+	// present, and nil otherwise. A policy source cannot set it.
+	ManagedMode      *ManagedModeStatus `json:"managedMode,omitempty"`
+	AllowedModels    []string           `json:"allowedModels,omitempty"`
+	BlockedModels    []string           `json:"blockedModels,omitempty"`
+	AllowedProviders []string           `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from
@@ -287,9 +290,12 @@ type PrincipalMatch struct {
 
 // SandboxEnterpriseConfig controls sandbox enforcement at the enterprise level.
 type SandboxEnterpriseConfig struct {
-	Required                    bool               `json:"required"`
-	AllowDisable                bool               `json:"allowDisable"`
-	AdditionalDenyPaths         []string           `json:"additionalDenyPaths,omitempty"`
+	Required            bool     `json:"required"`
+	AllowDisable        bool     `json:"allowDisable"`
+	AdditionalDenyPaths []string `json:"additionalDenyPaths,omitempty"`
+	// AdditionalDangerousPatterns are refused for every Bash command on every
+	// session under this policy, whether or not the sandbox is on. With the
+	// sandbox on they add to its built-in patterns.
 	AdditionalDangerousPatterns []DangerousPattern `json:"additionalDangerousPatterns,omitempty"`
 }
 

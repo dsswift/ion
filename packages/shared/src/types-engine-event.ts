@@ -26,6 +26,7 @@ import type {
   EngineEventModel,
   McpServerStatus,
   ProviderLoginUpdate,
+  ProviderSubscriptionStatus,
 } from "./types-engine-event-model";
 export type {
   McpOAuthStatus,
@@ -197,6 +198,8 @@ export type EngineEvent =
       retryAfterMs?: number;
       httpStatus?: number;
       stderrTail?: string[];
+      /** The Provider Subscription snapshot of a failed provider request; set only when the request went to the lookup's provider with no looked-up key applied. */
+      providerSubscription?: ProviderSubscriptionStatus;
     }
   | {
       type: "engine_permission_request";

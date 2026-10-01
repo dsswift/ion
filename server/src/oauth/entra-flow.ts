@@ -160,10 +160,9 @@ export async function getSignedInIdentity(): Promise<EntraIdentity | null> {
  *
  * `request()` connects lazily: against an engine that isn't there (a boot
  * race, no engine configured, a unit-test sandbox) that doesn't fail fast,
- * it retries with the bridge's own reconnect ladder. `local-principal.ts`'s
- * `resolveLocalConnectionPrincipal` calls this from the `{kind:'local'}`
- * Studio-hello path -- an authentication decision must never itself become
- * a new, unbounded connection attempt. `connected` is a synchronous field
+ * it retries with the bridge's own reconnect ladder. A caller that only
+ * wants to label work with the signed-in person must never itself become a
+ * new, unbounded connection attempt. `connected` is a synchronous field
  * read, never I/O, so this adds no new attempt of its own.
  */
 export async function getSignedInIdentityIfEngineConnected(): Promise<EntraIdentity | null> {

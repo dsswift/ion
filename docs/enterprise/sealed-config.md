@@ -39,7 +39,7 @@ These fields accumulate values from all layers. Enterprise values are always inc
 | `permissions.dangerousPatterns` | Enterprise patterns are added to the pattern list. |
 | `permissions.readOnlyPaths` | Enterprise paths are added to the read-only list. |
 | `sandbox.additionalDenyPaths` | Merged into the sandbox deny list. |
-| `sandbox.additionalDangerousPatterns` | Merged into the dangerous patterns list. |
+| `sandbox.additionalDangerousPatterns` | Enforced on every session, with the sandbox on or off. Added to the built-in sandbox patterns, never replacing them. |
 | `mcpDenylist` | Denied servers are always blocked. Lower layers cannot remove entries. |
 
 ### Override fields (enterprise replaces)

@@ -53,7 +53,7 @@ var pairWait = 30 * (2 * time.Second)
 // what landed. pkgArchs are the package's CPUs when known; a package that
 // would not run on the host is refused before anything is copied.
 func InstallMacDesktop(ctx context.Context, r Runner, h Host, pkg, pkgArchs string, o InstallOptions, w io.Writer) (Receipt, error) {
-	log := installLog{w: w, host: h.Name}
+	log := newInstallLog(w, h.Name, o)
 	rec := Receipt{Host: h.Name, RelayApplied: true}
 	if err := o.checkRelay(); err != nil {
 		return rec, err
@@ -87,10 +87,18 @@ func InstallMacDesktop(ctx context.Context, r Runner, h Host, pkg, pkgArchs stri
 		return rec, err
 	}
 	rec.WasRunning = strings.TrimSpace(string(running)) == "yes"
-	if rec.WasRunning {
-		if !o.QuitIon {
-			return rec, fmt.Errorf("the desktop is running on %s and the package will not replace a live app; quit it there, or pass --quit-ion", h.Name)
-		}
+	if rec.WasRunning && !o.QuitIon {
+		return rec, fmt.Errorf("the desktop is running on %s and the package will not replace a live app; quit it there, or pass --quit-ion", h.Name)
+	}
+	// With a password to type, Ion quits inside the same terminal session,
+	// once sudo has the password: a password that never arrives (a dropped
+	// connection, nobody at the keyboard) must not leave the host's Ion
+	// quit with nothing installed.
+	quitInTerminal := rec.WasRunning && o.AskSudo
+	if quitInTerminal {
+		log.note("Ion is running on %s; it quits once the sudo password is accepted", h.Name)
+	}
+	if rec.WasRunning && !quitInTerminal {
 		log.step("quit Ion on %s", h.Name)
 		if _, err := hostCmd(ctx, r, h, false, macQuitIon, nil, log); err != nil {
 			return rec, fmt.Errorf("the desktop on %s would not quit; quit it there by hand and deploy again: %w", h.Name, err)
@@ -104,20 +112,25 @@ func InstallMacDesktop(ctx context.Context, r Runner, h Host, pkg, pkgArchs stri
 
 	log.step("copy to %s", h.Name)
 	remote := "/tmp/" + incomingName("ion-desktop", ".pkg")
+	copyStart := time.Now()
 	if err := r.CopyTo(ctx, h, pkg, remote); err != nil {
-		return rec, fmt.Errorf("copy to %s failed: %w", h.Name, err)
+		return rec, fmt.Errorf("copy to %s failed after %s: %w", h.Name, formatElapsed(time.Since(copyStart)), err)
 	}
-	log.step("install on %s", h.Name)
+	log.note("copied in %s", formatElapsed(time.Since(copyStart)))
+	installStart := time.Now()
 	if o.AskSudo {
+		log.step("install on %s (waiting for the sudo password)", h.Name)
 		banner := macSudoBanner(h)
 		log.note("%s", banner)
-		err = r.RunTerminal(ctx, h, "sudo -p "+shellQuote(macSudoPrompt(h))+" installer -pkg '"+remote+"' -target /; rc=$?; rm -f '"+remote+"'; exit $rc", banner, w)
+		err = r.RunTerminal(ctx, h, macTerminalInstall(h, remote, quitInTerminal), banner, w)
 	} else {
+		log.step("install on %s", h.Name)
 		_, err = hostCmd(ctx, r, h, false, "sudo -n installer -pkg '"+remote+"' -target / >&2; rc=$?; rm -f '"+remote+"'; exit $rc", nil, log)
 	}
 	if err != nil {
-		return rec, fmt.Errorf("the installer failed on %s: %w", h.Name, err)
+		return rec, fmt.Errorf("the installer failed on %s after %s: %w%s", h.Name, formatElapsed(time.Since(installStart)), err, sshDropHint(err))
 	}
+	log.note("installed in %s", formatElapsed(time.Since(installStart)))
 
 	log.step("verify")
 	version, _ := hostCmd(ctx, r, h, false, "defaults read '"+desktopApp+"/Contents/Info' CFBundleShortVersionString 2>/dev/null", nil, log) //nolint:errcheck // an unreadable version is checked below
@@ -242,6 +255,31 @@ func waitForPairingLink(ctx context.Context, mint func() ([]byte, error)) (strin
 		case <-time.After(2 * time.Second):
 		}
 	}
+}
+
+// macTerminalInstall is the script the host's terminal session runs: sudo
+// asks for the password first and keeps it for the rest of the session, then
+// Ion quits (when it must), then the installer runs. The package is removed
+// however the script ends.
+func macTerminalInstall(h Host, remote string, quit bool) string {
+	prompt := shellQuote(macSudoPrompt(h))
+	var b strings.Builder
+	b.WriteString("trap \"rm -f '" + remote + "'\" EXIT\n")
+	if quit {
+		b.WriteString("sudo -p " + prompt + " -v || exit $?\n")
+		b.WriteString(macQuitIon)
+	}
+	b.WriteString("sudo -p " + prompt + " installer -pkg '" + remote + "' -target /\n")
+	return b.String()
+}
+
+// sshDropHint explains ssh's own exit 255 (the connection itself failed, not
+// the command on the host), which a bare "exit status 255" does not.
+func sshDropHint(err error) string {
+	if !sshUnreachable(err) {
+		return ""
+	}
+	return " (ssh exited 255: the connection to the host dropped; a tunnel or jump host in the path may have closed it while it sat idle. The host's Ion is unchanged unless the log shows it quit. Deploy again)"
 }
 
 // macSudoBanner tells the person at the terminal whose password the Mac

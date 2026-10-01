@@ -14,7 +14,7 @@
 import { existsSync, rmSync } from 'fs'
 import type { SubjectMove } from '../config/tenancy-config'
 import { foldSubjects, type HostIdentityMigrationResult } from './host-identity-migration'
-import { lookupPrincipal } from './principal-registry'
+import { listPrincipals, lookupPrincipal } from './principal-registry'
 import { principalDir } from '../conversation/principal-dir'
 import { listOverlays, overlayFilePath, replaceOverlay } from '../persistence/user-settings-store'
 import { log as _log, error as _error } from '../logger'
@@ -66,6 +66,52 @@ export function applySubjectMoves(dir: string, moves: SubjectMove[]): SubjectMov
       results.push(result)
     } catch (err) {
       error('subject move failed; left in place', { from, to, error: String(err) })
+    }
+  }
+  return results
+}
+
+/**
+ * Carries what the host's own local connection stored under a sign-in
+ * subject back to the host subject.
+ *
+ * A local connection is the OS account. It once took the signed-in person's
+ * subject instead whenever the engine was reachable at connect time, so one
+ * person's settings, tabs and git keys ended up split across two subjects,
+ * and which half applied depended on startup timing.
+ *
+ * Only on a server with no `oidc`: there the bearer and browser-session
+ * doors are closed, so an `operator` principal can only be that local
+ * connection. With `oidc`, an `operator` may be another person and nothing
+ * is folded.
+ */
+export function foldLocalConnectionSubjects(dir: string, hostSubject: string, oidcConfigured: boolean): SubjectMoveResult[] {
+  if (oidcConfigured) {
+    log('local connection fold skipped: oidc is configured, an operator may be another person')
+    return []
+  }
+  const strays = listPrincipals().filter((p) => p.kind === 'operator' && p.subject !== hostSubject).map((p) => p.subject)
+  if (strays.length === 0) {
+    log('local connection fold: nothing stored under a sign-in subject', { subject: hostSubject })
+    return []
+  }
+  const results: SubjectMoveResult[] = []
+  for (const from of strays) {
+    try {
+      const moved = foldSubjects(dir, {
+        matches: (subject) => subject === from,
+        movesDir: (name) => name === principalDir(from),
+        principal: lookupPrincipal(hostSubject) ?? { subject: hostSubject, displayName: hostSubject.replace(/^local:/, '') },
+        backupSuffix: '.pre-local-connection-fold.bak',
+      })
+      const settings = moveSettingsOverlay(from, hostSubject)
+      log('local connection subject folded into the host identity', {
+        from, to: hostSubject, pairings: moved.pairings.length, git_hosts: moved.gitHosts, principals: moved.principals,
+        principal_dirs: moved.principalDirs, tabs: moved.tabs, terminals: moved.terminals, settings,
+      })
+      results.push({ from, to: hostSubject, settings, ...moved })
+    } catch (err) {
+      error('local connection fold failed; left in place', { from, to: hostSubject, error: String(err) })
     }
   }
   return results

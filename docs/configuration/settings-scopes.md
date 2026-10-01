@@ -32,7 +32,7 @@ This Environment setting decides whether the agent may change the server's own I
 
 An organization can seal this setting in the server's enterprise config, under `customFields['ion-server'].agentSettingsEdits.allowed`. A sealed value is the value in force: the server refuses every save of the setting, admin or not, the control is read-only in Studio and on the phone, and the guard reads the seal instead of the saved value.
 
-The enterprise config sources (`ION_ENTERPRISE_CONFIG`, the managed plist, `/etc/ion`, `%ProgramData%\\Ion`) are sealed. The agent can never change them, with the setting on or off, and no approval opens them.
+The enterprise config sources (`ION_ENTERPRISE_CONFIG`, the managed plist, `/etc/ion`, `%ProgramData%\\Ion`) and the managed-mode marker are sealed. The agent can never change them, with the setting on or off, and no approval opens them.
 
 A shell command that names a settings file is refused whatever it does, because what a command does to a file cannot be read from its text. The agent uses `Read` to look at the file.
 

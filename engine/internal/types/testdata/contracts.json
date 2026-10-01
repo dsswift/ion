@@ -91,6 +91,7 @@
       "httpStatus",
       "isError",
       "message",
+      "providerSubscription",
       "retryAfterMs",
       "retryable",
       "sessionId",

@@ -28,3 +28,7 @@ func windowsPolicySources() []string {
 func readUserSourceWindowsRegistry() (map[string]any, bool) {
 	return nil, false
 }
+
+// windowsProgramDataRoot is the non-windows stub. A func var so a test can
+// substitute a temp directory and exercise the windows marker path anywhere.
+var windowsProgramDataRoot = func() string { return "" }

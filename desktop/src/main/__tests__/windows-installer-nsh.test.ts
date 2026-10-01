@@ -55,6 +55,26 @@ describe('securing the enterprise policy directory', () => {
     expect(createBranch).toContain('Quit')
   })
 
+  it('writes the managed-mode marker only on /managed, after the ACL', () => {
+    const marker = install.indexOf('managed.json" w')
+    expect(marker).toBeGreaterThan(install.indexOf('icacls'))
+    expect(install).toContain('${GetOptions} $2 "/managed" $3')
+    expect(install).toContain(`FileWrite $4 '{"managed": true}'`)
+    // No switch, no write: the marker is opt-in.
+    expect(install).toContain('/managed not given; managed-mode marker not written')
+  })
+
+  it('fails the install when the managed-mode marker cannot be written', () => {
+    const branch = install.slice(install.indexOf('managed.json" w'), install.indexOf("FileWrite $4"))
+    expect(branch).toContain('Quit')
+    expect(branch).toMatch(/SetErrorLevel \d+/)
+    expect(branch).toMatch(/MessageBox[^\n]*ICONSTOP/)
+  })
+
+  it('never deletes the managed-mode marker', () => {
+    expect(nsh).not.toMatch(/Delete[^\n]*managed\.json/)
+  })
+
   // Uninstall runs after $INSTDIR has been removed, so the cleanup tool has to
   // live somewhere else by then.
   it('places the cleanup tool where uninstall can still reach it', () => {

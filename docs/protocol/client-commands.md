@@ -721,7 +721,7 @@ Read the enterprise `NewConversationDefaults` policy so clients can decide wheth
 | Field                     | Type         | Description                                                                                                   |
 |---------------------------|--------------|---------------------------------------------------------------------------------------------------------------|
 | `newConversationDefaults` | object\|null | The enterprise `NewConversationDefaults` policy object, or `null` when no enterprise config is loaded or no `NewConversationDefaults` section is present. |
-| `policy`                  | object\|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. |
+| `policy`                  | object\|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. On a managed installation it is never `null` and carries `managedMode` (`managed`, `policyAbsent`, `overrideRefused`); see [Managed mode](../enterprise/mdm.md#managed-mode). |
 | `policyHash`              | string       | SHA-256 hex digest of `policy`'s canonical JSON. Stable across two calls with an unchanged policy; changes whenever the policy does. Lets a consumer detect a policy change without deep-comparing the whole blob. |
 
 ```json

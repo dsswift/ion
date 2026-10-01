@@ -148,3 +148,34 @@ describe('pruneExplorerExpanded', () => {
     expect(expandedOf('/repo-two')).toEqual(['/repo-two/src'])
   })
 })
+
+describe('collapseAllExplorerRoots', () => {
+  const OTHER = '/lib'
+
+  function seed(): void {
+    useSessionStore.setState({
+      fileExplorerStates: new Map([
+        [ROOT, { expandedPaths: new Set(['/repo/src', '/repo/src/deep']), selectedPath: '/repo/src/a.ts' }],
+        [OTHER, { expandedPaths: new Set(['/lib/pkg']), selectedPath: null }],
+      ]),
+      fileExplorerRootCollapsed: new Set<string>(),
+    })
+  }
+
+  it('folds every folder and every root section when several roots are shown', () => {
+    seed()
+    useSessionStore.getState().collapseAllExplorerRoots([ROOT, OTHER])
+    expect(expandedOf(ROOT)).toEqual([])
+    expect(expandedOf(OTHER)).toEqual([])
+    expect([...useSessionStore.getState().fileExplorerRootCollapsed].sort()).toEqual([OTHER, ROOT].sort())
+    expect(useSessionStore.getState().fileExplorerStates.get(ROOT)?.selectedPath).toBe('/repo/src/a.ts')
+  })
+
+  it('folds the folders of a lone root but leaves its section open', () => {
+    seed()
+    useSessionStore.getState().collapseAllExplorerRoots([ROOT])
+    expect(expandedOf(ROOT)).toEqual([])
+    expect(expandedOf(OTHER)).toEqual(['/lib/pkg'])
+    expect(useSessionStore.getState().fileExplorerRootCollapsed.size).toBe(0)
+  })
+})

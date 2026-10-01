@@ -198,11 +198,12 @@ func (b *ApiBackend) checkAndWrapSandbox(
 	return false
 }
 
-// checkContainmentBoundaries runs the three deterministic, extension-independent
+// checkContainmentBoundaries runs the deterministic, extension-independent
 // tool-loop boundaries in sequence -- workspace containment, FR-03's
-// principal execution boundary, then FR-04's git-identity-required gate --
-// so runloop_tools.go's already-oversized executeTools needs only one call
-// site for all three. Returns true (caller stops) as soon as any refuses.
+// principal execution boundary, FR-04's git-identity-required gate, then the
+// configured dangerous-command patterns -- so runloop_tools.go's
+// already-oversized executeTools needs only one call site for all of them.
+// Returns true (caller stops) as soon as any refuses.
 func (b *ApiBackend) checkContainmentBoundaries(
 	gCtx context.Context,
 	run *activeRun,
@@ -222,7 +223,10 @@ func (b *ApiBackend) checkContainmentBoundaries(
 	if b.checkPrincipalBoundary(gCtx, run, principalChecker, block, cwd, permDenyFn, telem, results, i) {
 		return true
 	}
-	return b.checkGitIdentityRequired(gCtx, run, gitIdentityRequired, block, cwd, permDenyFn, telem, results, i)
+	if b.checkGitIdentityRequired(gCtx, run, gitIdentityRequired, block, cwd, permDenyFn, telem, results, i) {
+		return true
+	}
+	return b.checkCommandPatterns(gCtx, run, block, cwd, permDenyFn, telem, results, i)
 }
 
 // checkPrincipalBoundary evaluates one tool call against FR-03's

@@ -1,6 +1,7 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { pruneExpandedChildren } from '@ion/shared/explorer-state'
 import { relativeTreeDirectory } from '@ion/shared/fs-tree-watch'
+import { rDebug } from '../rendererLogger'
 
 export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -46,6 +47,32 @@ export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<
         const current = states.get(dir)
         if (current) states.set(dir, { ...current, expandedPaths: new Set() })
         return { fileExplorerStates: states }
+      })
+    },
+
+    /**
+     * The explorer-wide Collapse All. Every folder inside each root is folded,
+     * and when the explorer shows more than one root the root sections fold
+     * too, leaving only their headers. A lone root stays open: folding it
+     * would leave an explorer with nothing in it.
+     */
+    collapseAllExplorerRoots: (roots) => {
+      set((s) => {
+        const states = new Map(s.fileExplorerStates)
+        let folders = 0
+        for (const root of roots) {
+          const current = states.get(root)
+          if (!current || current.expandedPaths.size === 0) continue
+          folders += current.expandedPaths.size
+          states.set(root, { ...current, expandedPaths: new Set() })
+        }
+        const foldRoots = roots.length > 1
+        rDebug('file-explorer', 'collapse all', { roots: roots.length, folders_folded: folders, roots_folded: foldRoots })
+        if (!foldRoots) return { fileExplorerStates: states }
+        return {
+          fileExplorerStates: states,
+          fileExplorerRootCollapsed: new Set([...s.fileExplorerRootCollapsed, ...roots]),
+        }
       })
     },
 

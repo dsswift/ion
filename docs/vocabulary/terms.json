@@ -2544,6 +2544,31 @@
       ]
     },
     {
+      "id": "managed-mode-marker",
+      "term": "Managed-Mode Marker",
+      "definition": "An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func readManagedMarker",
+          "path": "engine/internal/config/managed.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ManagedModeStatus",
+          "path": "engine/internal/types/config_managed.go"
+        }
+      ]
+    },
+    {
       "id": "menu",
       "term": "Menu",
       "definition": "A short list of actions that opens from a control or from a long press. It closes when the user picks an action.",
@@ -3489,6 +3514,38 @@
           "language": "swift",
           "symbol": "struct ProviderSubscriptionStatus",
           "path": "ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift"
+        }
+      ]
+    },
+    {
+      "id": "provider-subscription-prompt",
+      "term": "Provider Subscription Prompt",
+      "definition": "The prompt a client shows, outside Settings, when a Provider Subscription needs a person: several subscriptions with none chosen, or none at all. It lists the offered subscriptions by label and applies the one picked, or says there is none and offers to look up again. It shows once per transition into either state; dismissing it leaves the Settings control as the way back.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "nextSubscriptionAttention",
+          "path": "packages/shared/src/provider-subscription.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ProviderSubscriptionPrompt",
+          "path": "desktop/src/renderer/studio/ProviderSubscriptionPrompt.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ProviderSubscriptionPromptOverlay",
+          "path": "ios/IonRemote/Views/ProviderSubscriptionPromptView.swift"
         }
       ]
     },

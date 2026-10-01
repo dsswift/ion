@@ -437,8 +437,11 @@ export interface PersistedTab {
    * A move that finishes does not clear it: `transfer.remove` deletes this
    * whole record, because the conversation now lives on the destination and
    * nowhere else.
+   *
+   * `carriesWorktree` is true when the archive packaged the tab's worktree.
+   * `transfer.remove` retires the source checkout only then.
    */
-  sealPending?: { targetEnvironmentId: string; since: number };
+  sealPending?: { targetEnvironmentId: string; since: number; carriesWorktree?: boolean };
 }
 
 export interface PersistedEditorFile {

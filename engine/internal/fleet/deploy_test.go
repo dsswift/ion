@@ -208,7 +208,7 @@ func TestDeploy_SudoHostsRunLastOnTheTerminal(t *testing.T) {
 	}
 	// Only the sudo host's installer runs on the terminal, and without -n so
 	// sudo can ask.
-	if len(f.terminal) != 1 || f.terminal[0].Args[len(f.terminal[0].Args)-2] != "m1" || !strings.HasPrefix(f.terminal[0].Args[len(f.terminal[0].Args)-1], "sudo -p 'Password for %u on m1 (ion fleet install): ' installer -pkg") || !strings.Contains(f.terminal[0].Banner, "on m1") {
+	if len(f.terminal) != 1 || f.terminal[0].Args[len(f.terminal[0].Args)-2] != "m1" || !strings.Contains(f.terminal[0].Args[len(f.terminal[0].Args)-1], "sudo -p 'Password for %u on m1 (ion fleet install): ' installer -pkg") || !strings.Contains(f.terminal[0].Banner, "on m1") {
 		t.Errorf("terminal runs = %+v", f.terminal)
 	}
 	if strings.Contains(strings.Join(f.scriptsFor("m1"), "\n"), "sudo -n true") {

@@ -14,11 +14,8 @@ vi.mock('../../state', () => ({
   state: { remoteTransport: null },
 }))
 
-// A local connection now checks the engine's signed-in Entra identity before
-// falling back to the OS username (resolveLocalConnectionPrincipal). Default
-// to "nobody signed in" so the existing OS-username-fallback tests keep
-// their original behavior; the precedence test below overrides this
-// per-call with mockResolvedValueOnce.
+// "Nobody signed in" by default; one test below signs someone in to pin that
+// a local connection's subject does not follow the sign-in.
 vi.mock('../../oauth/entra-flow', () => ({ getSignedInIdentityIfEngineConnected: vi.fn().mockResolvedValue(null) }))
 
 import { startHarness, connectTcp, connectLocal, waitOpen, sendFrame, nextFrame, helloFrame, closeSocket, resetConnectionRegistryForTest, type Harness } from './harness'
@@ -108,8 +105,8 @@ describe('studio_hello: local credential transport binding', () => {
     await closeSocket(ws)
   })
 
-  it('prefers the engine\'s signed-in Entra identity over the OS username on {kind:"local"}', async () => {
-    vi.mocked(getSignedInIdentityIfEngineConnected).mockResolvedValueOnce({
+  it('keeps the OS account as the subject on {kind:"local"} while the engine is signed in', async () => {
+    vi.mocked(getSignedInIdentityIfEngineConnected).mockResolvedValue({
       user: 'JDoe@example.com',
       username: 'JDoe@example.com',
       displayName: '',
@@ -122,13 +119,8 @@ describe('studio_hello: local credential transport binding', () => {
     const frame = await nextFrame(ws)
     expect(frame.type).toBe('studio_welcome')
     if (frame.type === 'studio_welcome') {
-      expect(frame.principal).toMatchObject({
-        subject: 'entra-oid-123',
-        displayName: 'JDoe@example.com',
-        provider: 'entra',
-        kind: 'operator',
-        username: 'JDoe@example.com',
-      })
+      expect(frame.principal.subject).toMatch(/^local:/)
+      expect(frame.principal).toMatchObject({ provider: 'os', kind: 'local' })
     }
     await closeSocket(ws)
   })

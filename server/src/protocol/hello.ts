@@ -17,7 +17,7 @@ import type { StudioCredential, StudioFrame, StudioPrincipalSummary, StudioSnaps
 import { SCOPES } from '@ion/shared/studio-wire/types'
 import { PORT_FORWARD_CAPABILITY } from '@ion/shared/port-forward'
 import { isSupportedProtocolVersion, PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
-import { resolveLocalConnectionPrincipal } from '../identity/local-principal'
+import { localPrincipal } from '../identity/local-principal'
 import { registerPrincipal } from '../identity/principal-registry'
 import { registerPresence } from './presence'
 import { computeSettingsHiddenGroups } from './settings-visibility'
@@ -83,10 +83,10 @@ export class LocalOnlyAuthPolicy implements AuthPolicy {
         warn('local credential presented on a non-local transport; refusing', { transport })
         return { ok: false }
       }
-      // Signed-in Entra identity takes precedence over the OS username, so
-      // this connection agrees with the relay/bearer door on who this
-      // person is -- see `resolveLocalConnectionPrincipal`'s doc comment.
-      const principal = await resolveLocalConnectionPrincipal()
+      // Always the OS account, signed in to an identity provider or not.
+      // Everything this person stores on the server is keyed by this
+      // subject, so it must be the same on every connect.
+      const principal = localPrincipal()
       log('local credential accepted on local transport', { subject: principal.subject, provider: principal.provider, kind: principal.kind })
       return {
         ok: true,

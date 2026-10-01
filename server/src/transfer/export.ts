@@ -69,12 +69,12 @@ export interface RunTransferExportArgs {
   /** How the worktree bundle is cut, from the destination's `transfer.preflight` answer. Absent: thin bundle. */
   bundleOptions?: BundleOptions
   /** Writes `sealPending` to `tabsFile` and returns once durable. Called BEFORE any conversation file is read. */
-  persistSealPending: (sealPending: { targetEnvironmentId: string; since: number }) => Promise<void> | void
+  persistSealPending: (sealPending: { targetEnvironmentId: string; since: number; carriesWorktree: boolean }) => Promise<void> | void
   /**
    * Clears the mark `persistSealPending` set, when the export fails after
    * setting it: no archive exists, so nothing can reach the destination.
    */
-  releaseSealPending?: (sealPending: { targetEnvironmentId: string; since: number }) => Promise<void> | void
+  releaseSealPending?: (sealPending: { targetEnvironmentId: string; since: number; carriesWorktree: boolean }) => Promise<void> | void
   /**
    * The read and deleted marks among the given resource identities. The
    * marks live in the server's resource state; injected so this function
@@ -136,9 +136,11 @@ export async function runTransferExport(args: RunTransferExportArgs): Promise<Ru
   }
 
   const now = args.now?.() ?? Date.now()
-  const sealPending = { targetEnvironmentId: args.targetEnvironmentId, since: now }
+  // The mark records whether the worktree is in the archive: the removal
+  // that ends this move retires the checkout only when it was shipped.
+  const sealPending = { targetEnvironmentId: args.targetEnvironmentId, since: now, carriesWorktree: !!carried }
   await args.persistSealPending(sealPending)
-  log('sealPending persisted', { ...logFields, step: 'seal_pending', outcome: 'ok' })
+  log('sealPending persisted', { ...logFields, step: 'seal_pending', outcome: 'ok', carries_worktree: sealPending.carriesWorktree })
 
   let built = false
   try {
@@ -156,7 +158,7 @@ export async function runTransferExport(args: RunTransferExportArgs): Promise<Ru
 /** Everything after the mark is set; any failure here releases it. */
 async function exportSealed(
   args: RunTransferExportArgs,
-  sealPending: { targetEnvironmentId: string; since: number },
+  sealPending: { targetEnvironmentId: string; since: number; carriesWorktree: boolean },
   now: number,
   logFields: Record<string, string>,
 ): Promise<RunTransferExportResult> {

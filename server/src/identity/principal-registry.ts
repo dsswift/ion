@@ -83,6 +83,12 @@ export function lookupPrincipal(subject: string): StudioPrincipalSummary | undef
   return bySubject.get(subject)?.principal
 }
 
+/** Every registered principal. */
+export function listPrincipals(): StudioPrincipalSummary[] {
+  ensureLoaded()
+  return [...bySubject.values()].map((e) => e.principal)
+}
+
 /** In-memory-only claims for `subject` (empty across a restart until the subject reconnects). */
 export function lookupClaims(subject: string): Record<string, unknown> | undefined {
   ensureLoaded()

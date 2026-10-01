@@ -1,9 +1,10 @@
 /**
  * AgentDetailBody — the dispatch-preview body: breadcrumb drill-down,
  * sub-conversation loading, pinned header (pager + meta bar), and the
- * Transcript. Extracted from AgentDetailPanel so two hosts render ONE
- * implementation: the overlay's FloatingPanel popup (AgentDetailPanel) and
- * the Studio center's inline DispatchSplitPane.
+ * Transcript, and the displayed dispatch's task list. Extracted from
+ * AgentDetailPanel so every host renders ONE implementation: the
+ * FloatingPanel popup (AgentDetailPanel), the Studio center's inline
+ * DispatchSplitPane, and the Studio DispatchSurface tab.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +12,7 @@ import { CaretRight } from "@phosphor-icons/react";
 import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
 import { Transcript } from "./conversation/Transcript";
+import { TodoListPanel } from "./TodoListPanel";
 import { DispatchPager } from "./DispatchPager";
 import { DispatchMetaBar } from "./DispatchMetaBar";
 import {
@@ -26,7 +28,10 @@ import type { DispatchInfo, BreadcrumbFrame } from "./agent-panel-helpers";
 import type { AgentStateUpdate } from "@ion/shared/types";
 import type { Message } from "@ion/shared/types";
 import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
-import { rError } from "../rendererLogger";
+import { rDebug, rError } from "../rendererLogger";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import { mergeDispatchTranscript } from "@ion/server/components/agent-dispatch-activity";
+import { useDispatchReconcile } from "../hooks/useDispatchReconcile";
 import { host } from '../host/host-instance'
 
 export interface AgentDetailBodyProps {
@@ -102,6 +107,30 @@ export function AgentDetailBody({
   );
   const [subLoading, setSubLoading] = useState<Map<string, boolean>>(new Map());
 
+  // Fetch a sub-conversation snapshot and replace the cached copy. Silent: it
+  // never raises the loading placeholder, so a refetch does not blank the view.
+  const refetchConversation = useCallback(async (convId: string) => {
+    if (!convId) return;
+    try {
+      rDebug("agent-detail-panel", "fetching sub-conversation", {
+        conversation_id: convId,
+      });
+      const data = await host.shell.getConversation(convId, 0, 200);
+      const msgs: Message[] = mapConversationMessages(data.messages || []);
+      setSubMessages((prev) => {
+        const next = new Map(prev);
+        next.set(convId, msgs);
+        return next;
+      });
+    } catch (err) {
+      rError("agent-detail-panel", "loadConversation error", {
+        conversation_id: convId,
+        error: String(err),
+      });
+    }
+  }, []);
+
+  // First load of a frame's conversation: cached, with the loading placeholder.
   const loadConversation = useCallback(
     async (convId: string) => {
       if (!convId || subMessages.has(convId)) return;
@@ -110,39 +139,32 @@ export function AgentDetailBody({
         next.set(convId, true);
         return next;
       });
-      try {
-        const data = await host.shell.getConversation(convId, 0, 200);
-        const msgs: Message[] = mapConversationMessages(data.messages || []);
-        setSubMessages((prev) => {
-          const next = new Map(prev);
-          next.set(convId, msgs);
-          return next;
-        });
-      } catch (err) {
-        rError("agent-detail-panel", "loadConversation error", {
-          error: String(err),
-        });
-      } finally {
-        setSubLoading((prev) => {
-          const next = new Map(prev);
-          next.set(convId, false);
-          return next;
-        });
-      }
+      await refetchConversation(convId);
+      setSubLoading((prev) => {
+        const next = new Map(prev);
+        next.set(convId, false);
+        return next;
+      });
     },
-    [subMessages],
+    [subMessages, refetchConversation],
   );
 
-  // Load conversation whenever the top frame changes.
-  useEffect(() => {
-    if (top.conversationId) void loadConversation(top.conversationId);
-  }, [top.conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Resolve messages for the current top frame.
+  // Load the conversation whenever a drilled-in frame becomes the top. The
+  // root frame's messages are supplied as loadedMessages.
   const isRoot = stack.length === 1;
+  useEffect(() => {
+    if (!isRoot && top.conversationId) void loadConversation(top.conversationId);
+  }, [isRoot, top.conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve messages for the current top frame. The root frame's messages
+  // arrive already merged with its live push stream; a drilled-in frame merges
+  // its own snapshot with its own dispatch's push entries here.
+  const topPush = useSessionStore((s) =>
+    isRoot || !top.dispatchId ? undefined : s.dispatchActivity?.[top.dispatchId],
+  );
   const topMessages = isRoot
     ? loadedMessages
-    : subMessages.get(top.conversationId);
+    : mergeDispatchTranscript(subMessages.get(top.conversationId), topPush);
   const topLoading = isRoot
     ? loading
     : (subLoading.get(top.conversationId) ?? false);
@@ -245,6 +267,14 @@ export function AgentDetailBody({
       (topTelemetryEntry
         ? telemetryToDispatchInfo(topTelemetryEntry)
         : undefined));
+
+  // Backstop reconcile for a drilled-in frame. The root frame's snapshot is
+  // reconciled by the host that supplies loadedMessages.
+  useDispatchReconcile(
+    isRoot ? "" : top.conversationId,
+    topDispatch?.status === "running",
+    refetchConversation,
+  );
 
   // For the DispatchPager: at root level show all root dispatches with the
   // selectedDispatch index. When drilled into a child, the child has no
@@ -395,6 +425,16 @@ export function AgentDetailBody({
           </div>
         )}
       </div>
+
+      {/* The displayed dispatch's own task list. Always shown when it has
+          items: the showTodoList preference governs the main conversation. */}
+      {!topLoading && topMessages && (
+        <TodoListPanel
+          messages={topMessages}
+          isRunning={topStatus === "running"}
+          alwaysShow
+        />
+      )}
     </div>
   );
 }

@@ -18,6 +18,10 @@ func enforcementEventName(kind config.EnforcementActionKind) string {
 		return telemetry.EnforcementProviderPinned
 	case config.EnforcementMcpPruned:
 		return telemetry.EnforcementMcpPruned
+	case config.EnforcementManagedPolicyAbsent:
+		return telemetry.EnforcementManagedPolicyAbsent
+	case config.EnforcementManagedOverrideRefused:
+		return telemetry.EnforcementManagedOverrideRefused
 	default:
 		return "enforcement." + string(kind)
 	}

@@ -39,7 +39,7 @@ export function BehaviorPage(): React.JSX.Element {
         >
           <Segmented<StudioSurfaceSwitchMode> label="Studio surface on conversation switch" value={studioSurfaceSwitchMode} options={SURFACE_MODES} onChange={setStudioSurfaceSwitchMode} />
         </FormRow>
-        <ToggleRow anchor="task-list" label="Show task list" description="Show the agent's task checklist at the bottom of the conversation while it works." checked={showTodoList} onChange={setShowTodoList} />
+        <ToggleRow anchor="task-list" label="Show task list" description="Show the agent's task checklist at the bottom of the conversation while it works. Dispatch previews always show their task list." checked={showTodoList} onChange={setShowTodoList} />
         <ToggleRow anchor="agent-panel" label="Agent panel open by default" description="Expand the agent panel when agents are dispatched. Off keeps it collapsed." checked={agentPanelDefaultOpen} onChange={setAgentPanelDefaultOpen} />
         <ToggleRow
           anchor="implement-clear"

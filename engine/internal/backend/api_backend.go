@@ -679,6 +679,13 @@ func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID
 }
 
 func (b *ApiBackend) emitError(run *activeRun, err error) {
+	b.emitErrorWith(run, err, nil)
+}
+
+// emitErrorWith emits err as an ErrorEvent carrying subscription, the
+// Provider Subscription snapshot of a failed provider request (nil for any
+// other error).
+func (b *ApiBackend) emitErrorWith(run *activeRun, err error, subscription *types.ProviderSubscriptionStatus) {
 	runID := ""
 	if run != nil {
 		runID = run.requestID
@@ -688,8 +695,9 @@ func (b *ApiBackend) emitError(run *activeRun, err error) {
 	// Emit structured error through the normalized event pipeline so it
 	// reaches all clients and extension hooks with full classification.
 	errEvent := &types.ErrorEvent{
-		ErrorMessage: err.Error(),
-		IsError:      true,
+		ErrorMessage:         err.Error(),
+		IsError:              true,
+		ProviderSubscription: subscription,
 	}
 	if pe, ok := err.(*providers.ProviderError); ok {
 		errEvent.ErrorCode = pe.Code

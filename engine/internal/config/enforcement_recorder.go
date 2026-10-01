@@ -33,6 +33,12 @@ const (
 	// sanction it (or blocks Bash in plan mode outright).
 	EnforcementPlanModeBashPruned EnforcementActionKind = "plan_mode_bash_pruned"
 	EnforcementPlanModeMcpPruned  EnforcementActionKind = "plan_mode_mcp_pruned"
+	// EnforcementManagedPolicyAbsent: the installation is marked managed and
+	// no machine policy resolved, so the engine is locked.
+	EnforcementManagedPolicyAbsent EnforcementActionKind = "managed_policy_absent"
+	// EnforcementManagedOverrideRefused: ION_ENTERPRISE_CONFIG was ignored
+	// because the installation is marked managed.
+	EnforcementManagedOverrideRefused EnforcementActionKind = "managed_override_refused"
 )
 
 // EnforcementAction is one recorded enforcement action. Subject names the
@@ -55,8 +61,8 @@ var (
 	enforcementActions []EnforcementAction
 )
 
-// recordEnforcement appends an enforcement action. Called only from
-// EnforceEnterprise (same package); safe for concurrent use. When the recorder
+// recordEnforcement appends an enforcement action. Called only from this
+// package; safe for concurrent use. When the recorder
 // is at its cap, the oldest action is dropped (FIFO) so the most recent
 // enforcement state is always retained.
 func recordEnforcement(kind EnforcementActionKind, subject, source string, fields map[string]any) {

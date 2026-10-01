@@ -63,6 +63,8 @@ Place an `engine.json` file at `.ion/engine.json` relative to your project root.
 | Windows | `HKLM\SOFTWARE\Policies\IonEngine` (registry) | `ION_ENTERPRISE_CONFIG` env var |
 | All | `ION_ENTERPRISE_CONFIG` env var (checked first on all platforms) | -- |
 
+`ION_ENTERPRISE_CONFIG` is ignored on an installation carrying the [managed-mode marker](../enterprise/mdm.md#managed-mode).
+
 On Linux, drop-in files in `/etc/ion/config.d/` are merged alphabetically on top of the main `/etc/ion/config.json`. This allows package managers and configuration management tools to deliver partial overrides.
 
 ### Profile config

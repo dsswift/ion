@@ -25,6 +25,10 @@ its drop-ins. Every `EnterpriseConfig` field can be set here: allowed/blocked mo
 tool restrictions, resource limits, `customFields`, all of it. This is the only layer
 that can lock a value -- a lock set here cannot be loosened by anything downstream.
 
+On an installation carrying the [managed-mode marker](../enterprise/mdm.md#managed-mode),
+`ION_ENTERPRISE_CONFIG` is not a machine-layer source: it is ignored. If no machine
+source resolves there, the engine locks instead of running unrestricted.
+
 ## LAN discovery seal
 
 `customFields['ion-studio'].lanDiscovery: "disabled"` turns LAN discovery off for the
@@ -58,8 +62,8 @@ dropped before the merge, not merely overridden.
 | Linux | `~/.config/ion/enterprise-user.json` |
 
 Each source is read once at startup, exactly like the machine layer. `ION_ENTERPRISE_CONFIG`
-has no per-user equivalent -- it always resolves the whole machine config outright and the
-per-user layer still merges its `environments` in on top.
+has no per-user equivalent -- on an unmanaged installation it resolves the whole machine
+config outright and the per-user layer still merges its `environments` in on top.
 
 ### Merge semantics
 

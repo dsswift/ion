@@ -76,6 +76,8 @@ export type NormalizedEvent =
       retryAfterMs?: number;
       httpStatus?: number;
       stderrTail?: string[];
+      /** The Provider Subscription snapshot of a failed provider request; set only when the request went to the lookup's provider with no looked-up key applied. */
+      providerSubscription?: import("./types-engine-event-model").ProviderSubscriptionStatus;
     }
   | {
       type: "session_dead";

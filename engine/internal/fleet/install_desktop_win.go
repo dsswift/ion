@@ -100,7 +100,7 @@ foreach ($hive in 'HKLM:', 'HKCU:') {
 // InstallWindowsDesktop installs a desktop installer (Ion-Setup-<v>-<arch>.exe)
 // on a Windows host for every user, and checks what landed.
 func InstallWindowsDesktop(ctx context.Context, r Runner, h Host, setup string, o InstallOptions, w io.Writer) (Receipt, error) {
-	log := installLog{w: w, host: h.Name}
+	log := newInstallLog(w, h.Name, o)
 	rec := Receipt{Host: h.Name, RelayApplied: true}
 	if err := o.checkRelay(); err != nil {
 		return rec, err

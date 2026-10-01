@@ -17,7 +17,7 @@ import { runPrincipalBackfill } from './persistence/principal-backfill'
 import { runSettingsScopeMigration } from './persistence/settings-scope-migration'
 import { runRetiredSettingsMigrations } from './persistence/settings-retired-keys-migration'
 import { migrateToHostIdentity } from './identity/host-identity-migration'
-import { applySubjectMoves } from './identity/subject-moves'
+import { applySubjectMoves, foldLocalConnectionSubjects } from './identity/subject-moves'
 import { migratePairedDevices } from './auth/paired-device-migration'
 import { startDiscovery, stopDiscovery, discovery } from './discovery/runtime'
 import { checkEngineVersion } from './engine/version-check'
@@ -389,6 +389,7 @@ export async function main(): Promise<ServerHandle> {
   migratePairedDevices(credentialsStore())
   if (isSharedTenancy()) {
     migrateToHostIdentity(dir, principal.subject)
+    foldLocalConnectionSubjects(dir, principal.subject, config.oidc !== null)
   } else {
     log('isolated tenancy: device-shaped principals left as they are')
   }
