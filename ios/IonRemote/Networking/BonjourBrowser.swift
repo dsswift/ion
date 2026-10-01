@@ -22,7 +22,7 @@ struct DiscoveredService: Identifiable, Hashable {
     var studioServerURL: URL? { StudioServerDiscovery.serverURL(for: self) }
 
     /// The server's label, when it announced one. Its Bonjour instance name is
-    /// decorated ("Ion Studio (grover)"); the TXT record carries the plain one.
+    /// decorated ("Ion Studio (oscar)"); the TXT record carries the plain one.
     var displayName: String { metadata["label"].flatMap { $0.isEmpty ? nil : $0 } ?? name }
 
     init(id: String, name: String, host: String, port: UInt16, metadata: [String: String] = [:]) {
