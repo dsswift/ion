@@ -3,6 +3,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 
 	"golang.org/x/sys/windows/registry"
@@ -118,5 +119,20 @@ func TestReadUserSourceWindowsRegistry_OnlyEnvironmentsSurvive(t *testing.T) {
 	// above is what drops them, and that is asserted by the entries check.
 	if _, hasAllowedModels := raw["allowedModels"]; !hasAllowedModels {
 		t.Error("raw registry value unexpectedly missing allowedModels; the fixture is not exercising the drop path")
+	}
+}
+
+// TestWindowsProgramDataRoot_IgnoresEnvironment pins where machine policy and
+// the managed-mode marker are read from: the system's ProgramData folder,
+// whatever the ProgramData environment variable says.
+func TestWindowsProgramDataRoot_IgnoresEnvironment(t *testing.T) {
+	before := windowsProgramDataRoot()
+	if info, err := os.Stat(before); err != nil || !info.IsDir() {
+		t.Fatalf("windowsProgramDataRoot() = %q, want an existing directory (err=%v)", before, err)
+	}
+
+	t.Setenv("ProgramData", t.TempDir())
+	if after := windowsProgramDataRoot(); after != before {
+		t.Fatalf("a user-set ProgramData moved the root from %q to %q", before, after)
 	}
 }
