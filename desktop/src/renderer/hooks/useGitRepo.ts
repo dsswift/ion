@@ -13,8 +13,8 @@
  *   events while the window was blurred).
  * - On unmount / dir change: calls `gitUnsubscribe`.
  *
- * Detects revision gaps (events arriving with revision > previous + N for some
- * N or events for an unknown repo) and re-snapshots.
+ * Re-snapshots when an event's revision is lower than the last one seen,
+ * which means the repository was recreated and the store's state is stale.
  */
 
 import { useEffect, useRef } from 'react'
