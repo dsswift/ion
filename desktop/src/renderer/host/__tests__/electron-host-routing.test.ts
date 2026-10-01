@@ -33,7 +33,7 @@ function preloadStub(): { sent: Array<{ environmentId: string; frame: StudioFram
 
 beforeEach(() => {
   useSessionStore.setState({
-    tabs: [{ id: 'l1', workingDirectory: '/l' }, { id: 'g1', workingDirectory: '/g', environmentId: 'oscar' }] as never,
+    tabs: [{ id: 'l1', workingDirectory: '/l' }, { id: 'g1', workingDirectory: '/g', environmentId: 'devbox' }] as never,
     activeTabId: 'l1',
   } as never)
 })
@@ -44,7 +44,7 @@ describe('ElectronStudioHost routing', () => {
     const { sent } = preloadStub()
     const host = new ElectronStudioHost()
     host.shell.terminalWrite('g1:shell', 'ls\n')
-    expect(sent[0]).toMatchObject({ environmentId: 'oscar', frame: { action: 'terminal.write' } })
+    expect(sent[0]).toMatchObject({ environmentId: 'devbox', frame: { action: 'terminal.write' } })
   })
 
   it('sends a path-based call to the active conversation\'s server and resolves only its reply', async () => {
@@ -52,8 +52,8 @@ describe('ElectronStudioHost routing', () => {
     const host = new ElectronStudioHost()
     expect(await host.shell.gitIsRepo('/g')).toBe('from-local')
     useSessionStore.setState({ activeTabId: 'g1' } as never)
-    expect(await host.shell.gitIsRepo('/g')).toBe('from-oscar')
-    expect(sent.map((s) => s.environmentId)).toEqual([LOCAL_ENVIRONMENT_ID, 'oscar'])
+    expect(await host.shell.gitIsRepo('/g')).toBe('from-devbox')
+    expect(sent.map((s) => s.environmentId)).toEqual([LOCAL_ENVIRONMENT_ID, 'devbox'])
   })
 
   it('keeps per-device calls on the local server whatever tab is active', async () => {
@@ -74,15 +74,15 @@ describe('ElectronStudioHost routing', () => {
     host.shell.onGitEvent((payload: unknown) => git.push(payload))
     host.shell.onOpenAuthUrl((payload: { url: string }) => models.push(payload))
     deliver(LOCAL_ENVIRONMENT_ID, { type: 'studio_event', channel: 'ion:terminal-incoming', payload: ['l1:sh', 'a'] })
-    deliver('oscar', { type: 'studio_event', channel: 'ion:terminal-incoming', payload: ['g1:sh', 'b'] })
+    deliver('devbox', { type: 'studio_event', channel: 'ion:terminal-incoming', payload: ['g1:sh', 'b'] })
     deliver(LOCAL_ENVIRONMENT_ID, { type: 'studio_event', channel: 'ion:git-event', payload: 'git-local' })
-    deliver('oscar', { type: 'studio_event', channel: 'ion:git-event', payload: 'git-oscar-1' })
+    deliver('devbox', { type: 'studio_event', channel: 'ion:git-event', payload: 'git-devbox-1' })
     useSessionStore.setState({ activeTabId: 'g1' } as never)
-    deliver('oscar', { type: 'studio_event', channel: 'ion:git-event', payload: 'git-oscar-2' })
+    deliver('devbox', { type: 'studio_event', channel: 'ion:git-event', payload: 'git-devbox-2' })
     deliver(LOCAL_ENVIRONMENT_ID, { type: 'studio_event', channel: 'ion:open-auth-url', payload: { url: 'm-local' } })
-    deliver('oscar', { type: 'studio_event', channel: 'ion:open-auth-url', payload: { url: 'm-oscar' } })
+    deliver('devbox', { type: 'studio_event', channel: 'ion:open-auth-url', payload: { url: 'm-devbox' } })
     expect(terminal).toEqual(['l1:sh', 'g1:sh'])
-    expect(git).toEqual(['git-local', 'git-oscar-2'])
+    expect(git).toEqual(['git-local', 'git-devbox-2'])
     expect(models).toEqual([{ url: 'm-local' }])
   })
 })

@@ -28,17 +28,17 @@ describe('dropEnvironmentState', () => {
   beforeEach(() => {
     useSessionStore.setState({ tabs: [], settledHistory: [], activeTabId: undefined, conversationPanes: new Map(), terminalPanes: new Map(), terminalOpenTabIds: new Set(), tabsReady: false })
     hydrateTabsFromSync(snapshot(['local-1']), 'local')
-    hydrateTabsFromSync(snapshot(['oscar-1', 'oscar-2']), 'oscar')
+    hydrateTabsFromSync(snapshot(['devbox-1', 'devbox-2']), 'devbox')
   })
 
   it('removes every row, pane and worktree slice the environment published, and leaves the others alone', () => {
     useSessionStore.setState({ activeTabId: 'local-1' })
-    dropEnvironmentState('oscar')
+    dropEnvironmentState('devbox')
 
     const state = useSessionStore.getState()
     expect(state.tabs.map((t) => t.id)).toEqual(['local-1'])
-    expect(state.conversationPanes.has('oscar-1')).toBe(false)
-    expect(state.conversationPanes.has('oscar-2')).toBe(false)
+    expect(state.conversationPanes.has('devbox-1')).toBe(false)
+    expect(state.conversationPanes.has('devbox-2')).toBe(false)
     expect(state.conversationPanes.has('local-1')).toBe(true)
   })
 
@@ -49,21 +49,21 @@ describe('dropEnvironmentState', () => {
    * its place.
    */
   it('keeps the conversation being read as an empty shell rather than yanking the window', () => {
-    useSessionStore.setState({ activeTabId: 'oscar-1' })
-    const result = dropEnvironmentState('oscar')
+    useSessionStore.setState({ activeTabId: 'devbox-1' })
+    const result = dropEnvironmentState('devbox')
 
     const state = useSessionStore.getState()
-    expect(result.keptActiveTabId).toBe('oscar-1')
-    expect(state.activeTabId).toBe('oscar-1')
-    expect(state.tabs.map((t) => t.id)).toEqual(['local-1', 'oscar-1'])
+    expect(result.keptActiveTabId).toBe('devbox-1')
+    expect(state.activeTabId).toBe('devbox-1')
+    expect(state.tabs.map((t) => t.id)).toEqual(['local-1', 'devbox-1'])
     // The tab is a shell: its transcript is exactly the stale state.
-    expect(state.conversationPanes.has('oscar-1')).toBe(false)
+    expect(state.conversationPanes.has('devbox-1')).toBe(false)
   })
 
   it('refuses to drop the local environment, which would leave a blank window with nothing to return to', () => {
     useSessionStore.setState({ activeTabId: 'local-1' })
     dropEnvironmentState('local')
-    expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['local-1', 'oscar-1', 'oscar-2'])
+    expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['local-1', 'devbox-1', 'devbox-2'])
   })
 
   /**
@@ -73,12 +73,12 @@ describe('dropEnvironmentState', () => {
    * climbed past the old high-water mark.
    */
   it('clears the environment revision cursor so a restarted server is believed again', () => {
-    hydrateTabsFromSync(snapshot(['oscar-1'], 50), 'oscar')
-    expect(useSessionStore.getState().tabs.some((t) => t.id === 'oscar-1')).toBe(true)
+    hydrateTabsFromSync(snapshot(['devbox-1'], 50), 'devbox')
+    expect(useSessionStore.getState().tabs.some((t) => t.id === 'devbox-1')).toBe(true)
 
-    dropEnvironmentState('oscar')
+    dropEnvironmentState('devbox')
     // Revision 1 from a server that restarted its counters: applied, not dropped.
-    hydrateTabsFromSync(snapshot(['oscar-3'], 1), 'oscar')
-    expect(useSessionStore.getState().tabs.some((t) => t.id === 'oscar-3')).toBe(true)
+    hydrateTabsFromSync(snapshot(['devbox-3'], 1), 'devbox')
+    expect(useSessionStore.getState().tabs.some((t) => t.id === 'devbox-3')).toBe(true)
   })
 })

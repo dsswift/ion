@@ -29,8 +29,8 @@ import { RelayStudioSocket } from '../transport-relay'
 
 const secret = Buffer.alloc(32, 9)
 const relays = [{ url: 'wss://relay.example', auth: { mode: 'psk' as const, key: 'psk-1' } }]
-const HOME = 'http://192.168.86.211:7331'
-const NAME = 'http://dcitag8331.local:7331'
+const HOME = 'http://192.168.1.211:7331'
+const NAME = 'http://macbook.local:7331'
 const target = { kind: 'paired' as const, label: 'Work laptop', url: HOME, credentialRef: 'env-w', via: 'lan' as const, environmentId: 'env-w' }
 
 /** A network where only the given base URLs answer, each reporting an environment id. */
@@ -134,6 +134,6 @@ describe('findDirectUrl', () => {
   })
 
   it('lists the saved address first and each other address once', () => {
-    expect(directCandidates(HOME, [`${HOME}/`, NAME, 'ws://192.168.86.211:7331/studio'])).toEqual([HOME, NAME])
+    expect(directCandidates(HOME, [`${HOME}/`, NAME, 'ws://192.168.1.211:7331/studio'])).toEqual([HOME, NAME])
   })
 })

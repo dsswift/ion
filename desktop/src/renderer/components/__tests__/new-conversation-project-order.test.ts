@@ -19,8 +19,8 @@ import {
 
 const catalog = [
   { id: 'local', label: 'This Mac' },
-  { id: 'oscar', label: 'oscar' },
-  { id: 'work', label: 'dcitag8331' },
+  { id: 'devbox', label: 'devbox' },
+  { id: 'work', label: 'macbook' },
 ]
 
 function holder(environmentId: string, dir: string, usageCount: number): ProjectHolder {
@@ -36,17 +36,17 @@ function row(displayName: string, holders: ProjectHolder[]): MergedProjectRow {
   return { key: `remote:${displayName}`, displayName, dir: holders[0].entry.dir, repoRemote: `github.com/o/${displayName}`, holders }
 }
 
-const ion = row('ion', [holder('local', '/Users/me/src/ion', 1383), holder('oscar', '/home/g/src/ion', 7)])
+const ion = row('ion', [holder('local', '/Users/me/src/ion', 1383), holder('devbox', '/home/g/src/ion', 7)])
 const notes = row('notes', [holder('local', '/Users/me/notes', 42)])
 const billing = row('billing', [holder('work', '/Users/w/src/billing', 300)])
-const zebra = row('zebra', [holder('oscar', '/home/g/src/zebra', 0)])
-const apple = row('apple', [holder('oscar', '/home/g/src/apple', 0)])
+const zebra = row('zebra', [holder('devbox', '/home/g/src/zebra', 0)])
+const apple = row('apple', [holder('devbox', '/home/g/src/apple', 0)])
 const rows = [ion, notes, billing, zebra, apple]
 
 describe('usage', () => {
   it('reads a machine\'s own count, and the total across every machine', () => {
     expect(usageOn(ion, 'local')).toBe(1383)
-    expect(usageOn(ion, 'oscar')).toBe(7)
+    expect(usageOn(ion, 'devbox')).toBe(7)
     expect(usageOn(ion, 'work')).toBe(0)
     expect(totalUsage(ion)).toBe(1390)
   })
@@ -68,8 +68,8 @@ describe('sortProjectRows', () => {
   })
 
   it('ranks by one machine\'s count when given one', () => {
-    const onOscar = sortProjectRows([ion, zebra], 'most-used', (r) => usageOn(r, 'oscar'))
-    expect(onOscar.map((r) => r.displayName)).toEqual(['ion', 'zebra'])
+    const onDevbox = sortProjectRows([ion, zebra], 'most-used', (r) => usageOn(r, 'devbox'))
+    expect(onDevbox.map((r) => r.displayName)).toEqual(['ion', 'zebra'])
   })
 
   it('does not mutate its input', () => {
@@ -110,8 +110,8 @@ describe('groupProjectRows', () => {
     const groups = groupProjectRows({ rows, grouping: 'by-host', order: 'most-used', catalog })
     expect(groups.map((g) => [g.label, g.environmentId, g.rows.map((r) => r.displayName)])).toEqual([
       ['This Mac', 'local', ['ion', 'notes']],
-      ['oscar', 'oscar', ['ion', 'apple', 'zebra']],
-      ['dcitag8331', 'work', ['billing']],
+      ['devbox', 'devbox', ['ion', 'apple', 'zebra']],
+      ['macbook', 'work', ['billing']],
     ])
   })
 
@@ -132,7 +132,7 @@ describe('flattenProjectGroups', () => {
     const groups = groupProjectRows({ rows, grouping: 'by-host', order: 'most-used', catalog })
     expect(flattenProjectGroups(groups).map((f) => [f.row.displayName, f.environmentId])).toEqual([
       ['ion', 'local'], ['notes', 'local'],
-      ['ion', 'oscar'], ['apple', 'oscar'], ['zebra', 'oscar'],
+      ['ion', 'devbox'], ['apple', 'devbox'], ['zebra', 'devbox'],
       ['billing', 'work'],
     ])
   })
@@ -140,7 +140,7 @@ describe('flattenProjectGroups', () => {
   // The keyboard must not be able to land on a row nobody can see.
   it('skips a collapsed section', () => {
     const groups = groupProjectRows({ rows, grouping: 'by-host', order: 'most-used', catalog })
-    const flat = flattenProjectGroups(groups, new Set(['host:oscar']))
+    const flat = flattenProjectGroups(groups, new Set(['host:devbox']))
     expect(flat.map((f) => [f.row.displayName, f.environmentId])).toEqual([
       ['ion', 'local'], ['notes', 'local'], ['billing', 'work'],
     ])

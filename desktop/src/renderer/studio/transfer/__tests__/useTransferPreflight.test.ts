@@ -42,7 +42,7 @@ describe('useTransferPreflight', () => {
   // Whole-worktree by default: the worktree cases below are about moving one
   // whole, and a conversation with no worktree ignores the mode.
   async function mount(resolvedHere: Parameters<typeof useTransferPreflight>[4] = null, mode: Parameters<typeof useTransferPreflight>[5] = 'worktree', targetProjects: Parameters<typeof useTransferPreflight>[6] = []): Promise<void> {
-    function Harness(): null { result = useTransferPreflight('src', 'tab-1', 'oscar', 'oscar', resolvedHere, mode, targetProjects); return null }
+    function Harness(): null { result = useTransferPreflight('src', 'tab-1', 'devbox', 'devbox', resolvedHere, mode, targetProjects); return null }
     await act(async () => { root.render(React.createElement(Harness)); await flush(); await flush() })
   }
 
@@ -58,8 +58,8 @@ describe('useTransferPreflight', () => {
     const repo = result.checks.find((c) => c.id === 'repo')!
     expect(repo.state).toBe('fixable')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('oscar', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
-    expect(actionMock).toHaveBeenCalledWith('oscar', 'transfer.preflight', [{ repoRemote: 'github.com/o/r', sourceBranch: 'josh', branch: 'wt/x' }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'transfer.preflight', [{ repoRemote: 'github.com/o/r', sourceBranch: 'josh', branch: 'wt/x' }])
   })
 
   // The repository declares code to run, so the clone is where trust is
@@ -76,9 +76,9 @@ describe('useTransferPreflight', () => {
     expect(repo.fixes?.map((f) => f.label)).toEqual(['Clone and trust', 'Clone only'])
     expect(repo.detail).toContain('runs its setup, make bootstrap, as soon as it lands, and lets its worktrees run npm ci')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('oscar', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src', trust: true }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src', trust: true }])
     await repo.fixes![1].run()
-    expect(actionMock).toHaveBeenLastCalledWith('oscar', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
+    expect(actionMock).toHaveBeenLastCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
   })
 
   it('refuses before anything is exported when the source writes an older archive format', async () => {
@@ -152,7 +152,7 @@ describe('useTransferPreflight', () => {
     expect(result.ready).toBe(false)
     expect(result.checks.find((c) => c.id === 'clean')?.state).toBe('blocked')
     const before = actionMock.mock.calls.filter((c) => c[1] === 'transfer.preflight').length
-    await act(async () => { for (const cb of frameListeners) cb('oscar', { type: 'studio_event', channel: 'ion:projects-changed', payload: {} }); await flush(); await flush() })
+    await act(async () => { for (const cb of frameListeners) cb('devbox', { type: 'studio_event', channel: 'ion:projects-changed', payload: {} }); await flush(); await flush() })
     expect(actionMock.mock.calls.filter((c) => c[1] === 'transfer.preflight').length).toBe(before + 1)
 
   })
@@ -206,7 +206,7 @@ describe('useTransferPreflight', () => {
     expect(repo.fixes?.map((f) => f.label)).toEqual(['Clone and trust', 'Clone only'])
     expect(repo.detail).toBe('The conversation lands in the clone. Clone and trust runs its setup, make bootstrap, as soon as it lands. Clone only runs none of its code.')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('oscar', 'environment.projects.clone', [expect.objectContaining({ trust: true })])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [expect.objectContaining({ trust: true })])
   })
 
   it('asks which checkout when the destination has the repository twice, and refuses until told', async () => {

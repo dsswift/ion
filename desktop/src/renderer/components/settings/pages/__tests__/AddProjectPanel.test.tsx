@@ -26,7 +26,7 @@ vi.mock('../../../../rendererLogger', () => ({ rError: vi.fn(), rWarn: vi.fn(), 
 const { AddProjectPanel } = await import('../AddProjectPanel')
 const { SettingsEnvironmentProvider } = await import('../../settings-servers')
 
-const oscar = { id: 'oscar', label: 'oscar', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
+const devbox = { id: 'devbox', label: 'devbox', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
 const local = { id: 'local', label: 'This Mac', target: { kind: 'local' } } as unknown as EnvironmentCatalogEntry
 const have: EnvironmentProject = { dir: '/g/ion', entry: { addedManually: true, lastUsedAt: 0, repoRemote: 'github.com/o/ion' }, displayName: 'ion', exists: true, isGitRepo: true }
 
@@ -53,7 +53,7 @@ async function type(input: HTMLInputElement, value: string): Promise<void> {
 async function mount(): Promise<void> {
   await act(async () => {
     root.render(
-      <SettingsEnvironmentProvider entry={oscar}>
+      <SettingsEnvironmentProvider entry={devbox}>
         <AddProjectPanel open baseDir="~/source" existing={[have]} onDone={onDone} onClose={vi.fn()} />
       </SettingsEnvironmentProvider>,
     )
@@ -64,7 +64,7 @@ async function mount(): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks()
   onDone = vi.fn<() => void>()
-  mocks.readCatalog.mockResolvedValue([local, oscar])
+  mocks.readCatalog.mockResolvedValue([local, devbox])
   mocks.action.mockImplementation(async (env: string, name: string, args: unknown[]) => {
     if (name === 'environment.fs.browse') {
       const path = (args[0] as { path: string }).path
@@ -85,16 +85,16 @@ afterEach(() => { act(() => root.unmount()); container.remove() })
 describe('AddProjectPanel', () => {
   it('browses the server for a folder, marks git checkouts, and adds the picked one', async () => {
     await mount()
-    expect(mocks.action).toHaveBeenCalledWith('oscar', 'environment.fs.browse', [{ path: '~/source', showHidden: false }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.fs.browse', [{ path: '~/source', showHidden: false }])
     expect(container.textContent).toContain('/g/source')
     expect(container.textContent).toContain('git')
     const input = container.querySelector('input[aria-label="Folder path"]') as HTMLInputElement
     await type(input, '~/source/.hid')
-    expect(mocks.action).toHaveBeenCalledWith('oscar', 'environment.fs.browse', [{ path: '~/source', showHidden: true }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.fs.browse', [{ path: '~/source', showHidden: true }])
     await type(input, '~/source/')
     const ion = [...container.querySelectorAll('[role="listitem"]')].find((r) => r.textContent?.includes('ion')) as HTMLElement
     await click(ion, 'dblclick')
-    expect(mocks.action).toHaveBeenCalledWith('oscar', 'environment.projects.add', [{ dir: '/g/source/ion' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.add', [{ dir: '/g/source/ion' }])
     expect(onDone).toHaveBeenCalled()
   })
 
@@ -105,7 +105,7 @@ describe('AddProjectPanel', () => {
     await type(container.querySelector('input[aria-label="Repository URL"]') as HTMLInputElement, 'git@github.com:o/api.git')
     expect(container.textContent).toContain('~/source/api')
     await click(button('Clone'))
-    expect(mocks.action).toHaveBeenCalledWith('oscar', 'environment.projects.clone', [{ url: 'git@github.com:o/api.git', parentDir: '~/source' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/api.git', parentDir: '~/source' }])
     expect(onDone).toHaveBeenCalled()
   })
 
@@ -116,6 +116,6 @@ describe('AddProjectPanel', () => {
     expect(container.textContent).toContain('from This Mac')
     expect(container.querySelector('input[aria-label="Copy ion"]')).toBeNull()
     await click(button('Clone 1 project'))
-    expect(mocks.action).toHaveBeenCalledWith('oscar', 'environment.projects.clone', [{ url: 'https://github.com/o/web.git', parentDir: '~/source', name: 'web' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'https://github.com/o/web.git', parentDir: '~/source', name: 'web' }])
   })
 })

@@ -289,10 +289,10 @@ describe('wire loop', () => {
     await openGraph()
     const stop = registerStudioGraphCommands()
     const deliver = (environmentId: string, frame: StudioFrame): void => { for (const l of [...frameListeners]) l(environmentId, frame) }
-    deliver('oscar', { type: 'studio_command', id: 'w1', command: 'graph.state', args: { kind: 'state', ...base }, timeoutMs: 5000 })
-    deliver('oscar', { type: 'studio_command', id: 'w2', command: 'graph.node', args: { kind: 'node', ...base, nodeId: 'ghost' }, timeoutMs: 5000 })
+    deliver('devbox', { type: 'studio_command', id: 'w1', command: 'graph.state', args: { kind: 'state', ...base }, timeoutMs: 5000 })
+    deliver('devbox', { type: 'studio_command', id: 'w2', command: 'graph.node', args: { kind: 'node', ...base, nodeId: 'ghost' }, timeoutMs: 5000 })
     await vi.waitFor(() => expect(sentFrames).toHaveLength(2))
-    expect(sentFrames.map((s) => s.environmentId)).toEqual(['oscar', 'oscar'])
+    expect(sentFrames.map((s) => s.environmentId)).toEqual(['devbox', 'devbox'])
     const replies = sentFrames.map((s) => s.frame).filter((f): f is Extract<StudioFrame, { type: 'studio_command_result' }> => f.type === 'studio_command_result')
     expect(replies.map((r) => [r.id, r.ok])).toEqual([['w1', true], ['w2', true]])
     expect(replies.map((r) => (r.value as StudioGraphCommandResult).ok)).toEqual([true, false])

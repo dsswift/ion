@@ -132,8 +132,8 @@ describe('pairEnvironment', () => {
   })
 
   it('prefers an explicit label over the link label', async () => {
-    const result = await pairEnvironment({ link: mintLink(), label: 'Oscar' }, 'desktop test')
-    expect(result.ok && result.target.label).toBe('Oscar')
+    const result = await pairEnvironment({ link: mintLink(), label: 'Devbox' }, 'desktop test')
+    expect(result.ok && result.target.label).toBe('Devbox')
   })
 
   it('explains a used link instead of throwing', async () => {

@@ -29,7 +29,7 @@ vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => null })
 vi.mock('./ConversationHoverCard', () => ({ ConversationHoverCard: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 vi.mock('../../components/git/Tooltip', () => ({ Tooltip: ({ text, children }: { text: string; children: React.ReactNode }) => <span data-tooltip={text}>{children}</span> }))
 vi.mock('../../host/host-instance', () => ({
-  host: { deviceSettings: async () => ({ environments: [{ kind: 'paired', label: 'Oscar', url: 'http://oscar.local:7331', credentialRef: 'oscar', via: 'lan', environmentId: 'oscar' }] }), capabilities: () => ['local'] },
+  host: { deviceSettings: async () => ({ environments: [{ kind: 'paired', label: 'Devbox', url: 'http://devbox.local:7331', credentialRef: 'devbox', via: 'lan', environmentId: 'devbox' }] }), capabilities: () => ['local'] },
 }))
 vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn() }))
 
@@ -71,13 +71,13 @@ describe('InboxRow layout', () => {
   })
 
   it('puts the extension badge after the directory and the remote badge last, off the title line', async () => {
-    act(() => root.render(<InboxRow tab={tab({ engineProfileId: 'profile-1', environmentId: 'oscar' } as Partial<TabState>)} unread={false} woke={false} projectName="ion" variant="card" backgroundLiveness={null} />))
+    act(() => root.render(<InboxRow tab={tab({ engineProfileId: 'profile-1', environmentId: 'devbox' } as Partial<TabState>)} unread={false} woke={false} projectName="ion" variant="card" backgroundLiveness={null} />))
     await flush()
     const { title, detail } = lines()
     expect(title.textContent).toBe('My conversation')
     const parts = Array.from(detail.children).map((el) => el.textContent ?? '')
     expect(parts[0]).toBe('ion')
     expect(parts[1]).toBe('COS')
-    expect(parts[parts.length - 1]).toContain('Oscar')
+    expect(parts[parts.length - 1]).toContain('Devbox')
   })
 })

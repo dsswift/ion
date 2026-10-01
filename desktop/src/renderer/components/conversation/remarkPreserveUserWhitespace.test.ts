@@ -166,7 +166,7 @@ describe('remarkPreserveUserWhitespace — the reported paste', () => {
   // The console transcript from the bug report: hard-wrapped lines with blank
   // lines between paragraphs. Every newline must survive.
   const TRANSCRIPT = [
-    'λ ssh josh@192.168.86.166',
+    'λ ssh josh@192.168.1.166',
     'Linux hass-debian 6.1.0-51-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.177-1',
     '',
     'The programs included with the Debian GNU/Linux system are free software;',

@@ -99,7 +99,7 @@ describe('EngineProfilesSection', () => {
   })
 
   it('loads and saves a remote server’s profiles through its settings', async () => {
-    Object.assign(env, { id: 'oscar', label: 'Oscar', isLocal: false })
+    Object.assign(env, { id: 'devbox', label: 'Devbox', isLocal: false })
     shell.loadSettings.mockResolvedValue({ engineProfiles: [COS] })
     await h.render(<EngineProfilesSection />)
     expect(h.container.querySelector('[role="listitem"]')?.textContent).toContain('cos')

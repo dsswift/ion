@@ -54,7 +54,7 @@ describe('persist() — save scope', () => {
     // in-memory value got frozen into the overlay by a sibling setter call.
     usePreferencesStore.setState({
       preferredModel: 'dci-marketing/claude-sonnet-5',
-      projects: { '/data/home/jsprague/orion': { addedManually: true, lastUsedAt: 0, isDefault: true } },
+      projects: { '/data/home/jdoe/orion': { addedManually: true, lastUsedAt: 0, isDefault: true } },
     })
     saves.length = 0 // setState() above is not a persisted setter; clear any incidental noise
 
@@ -77,7 +77,7 @@ describe('persist() — save scope', () => {
     usePreferencesStore.setState({ preferredModel: 'dci-marketing/claude-sonnet-5' })
     saves.length = 0
 
-    usePreferencesStore.getState().addRecentBaseDirectory('/data/home/jsprague/orion')
+    usePreferencesStore.getState().addRecentBaseDirectory('/data/home/jdoe/orion')
 
     expect(saves.length).toBe(1)
     expect(Object.keys(saves[0]).sort()).toEqual(['directoryUsageCounts', 'recentBaseDirectories'])

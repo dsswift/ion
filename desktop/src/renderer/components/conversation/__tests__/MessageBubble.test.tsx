@@ -258,7 +258,7 @@ describe('MessageBubble — verbatim whitespace', () => {
   // before the fix every single newline collapsed to a space and the whole thing
   // reflowed into one paragraph.
   const TRANSCRIPT = [
-    'λ ssh josh@192.168.86.166',
+    'λ ssh josh@192.168.1.166',
     'Linux hass-debian 6.1.0-51-amd64 #1 SMP PREEMPT_DYNAMIC',
     '',
     'The programs included with the Debian GNU/Linux system are free software;',

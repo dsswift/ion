@@ -24,10 +24,10 @@ const preferenceState = {
 }
 const remoteProject = (dir: string, repoRemote: string) => ({ dir, entry: { addedManually: true, lastUsedAt: 0, repoRemote }, displayName: dir.split('/').pop()!, exists: true, isGitRepo: true })
 // One project per case the row has to render: `ion` on three machines,
-// `apex` on this one and oscar, `solo` only here, `billing` only elsewhere.
+// `apex` on this one and devbox, `solo` only here, `billing` only elsewhere.
 const projectsByEnvironment: Record<string, ReturnType<typeof remoteProject>[]> = {
   local: [remoteProject('/Users/me/src/ion', 'github.com/o/ion'), remoteProject('/Users/me/src/apex', 'github.com/o/apex'), remoteProject('/Users/me/src/solo', 'github.com/o/solo')],
-  oscar: [remoteProject('/home/g/src/ion', 'github.com/o/ion'), remoteProject('/home/g/src/apex', 'github.com/o/apex')],
+  devbox: [remoteProject('/home/g/src/ion', 'github.com/o/ion'), remoteProject('/home/g/src/apex', 'github.com/o/apex')],
   work: [remoteProject('/Users/w/src/billing', 'github.com/o/billing'), remoteProject('/Users/w/src/ion', 'github.com/o/ion')],
 }
 
@@ -35,7 +35,7 @@ vi.mock('../../theme', () => ({ useColors: () => ({ scrim: '#000', popoverBg: '#
 vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../../preferences', () => ({ usePreferencesStore: (selector: (state: typeof preferenceState) => unknown) => selector(preferenceState) }))
 vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rError: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn() }))
-vi.mock('../../studio/connection/catalog', () => ({ readCatalog: async () => [{ id: 'local', label: 'This Mac' }, { id: 'oscar', label: 'oscar' }, { id: 'work', label: 'dcitag8331' }] }))
+vi.mock('../../studio/connection/catalog', () => ({ readCatalog: async () => [{ id: 'local', label: 'This Mac' }, { id: 'devbox', label: 'devbox' }, { id: 'work', label: 'macbook' }] }))
 vi.mock('../../studio/connection/select-when-present', () => ({ selectTabWhenPresent: vi.fn() }))
 vi.mock('../settings/environment/environment-client', () => ({
   environmentClient: { listProjects: async (env: string) => projectsByEnvironment[env] ?? [] },
@@ -47,10 +47,10 @@ const probe = vi.hoisted(() => ({ target: (): string | null => null, refuseWith:
 vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: {
     getState: () => ({
-      // The operator is looking at a conversation on oscar.
-      tabs: [{ id: 'oscar-tab', environmentId: 'oscar' }],
+      // The operator is looking at a conversation on devbox.
+      tabs: [{ id: 'devbox-tab', environmentId: 'devbox' }],
       settledHistory: [],
-      activeTabId: 'oscar-tab',
+      activeTabId: 'devbox-tab',
       createConversationTab: (directory: string) => { if (probe.refuseWith) return Promise.reject(new Error(probe.refuseWith)); created.push({ directory, environmentId: probe.target() }); return Promise.resolve('tab-created') },
     }),
   },
@@ -115,7 +115,7 @@ describe('NewConversationPicker — the machine a row opens on', () => {
   it('names the machine in the detail line rather than in a pill', async () => {
     await render()
     expect(row('ion').textContent).toContain('This Mac · /Users/me/src/ion')
-    expect(row('billing').textContent).toContain('dcitag8331 · /Users/w/src/billing')
+    expect(row('billing').textContent).toContain('macbook · /Users/w/src/billing')
   })
 
   // Colour is what separates a remote row from a local one now, and it has to
@@ -151,9 +151,9 @@ describe('NewConversationPicker — the machine a row opens on', () => {
 
   it('offers one chip when exactly one other machine has it, and opens there in one click', async () => {
     await render()
-    expect(trailingOf('apex')).toEqual(['oscar'])
+    expect(trailingOf('apex')).toEqual(['devbox'])
     await click(trailingButton('apex'))
-    expect(created).toEqual([{ directory: '/home/g/src/apex', environmentId: 'oscar' }])
+    expect(created).toEqual([{ directory: '/home/g/src/apex', environmentId: 'devbox' }])
     expect(close).toHaveBeenCalled()
   })
 
@@ -163,8 +163,8 @@ describe('NewConversationPicker — the machine a row opens on', () => {
 
     await click(trailingButton('ion'))
     expect(menuItems().map((item) => item.textContent)).toEqual([
-      expect.stringContaining('oscar'),
-      expect.stringContaining('dcitag8331'),
+      expect.stringContaining('devbox'),
+      expect.stringContaining('macbook'),
     ])
 
     await click(menuItems()[1])
@@ -186,7 +186,7 @@ describe('NewConversationPicker — the machine a row opens on', () => {
   })
 
   // The reported failure: a local worktree's "New conversation", with a
-  // conversation on oscar in view, was created on oscar. With no
+  // conversation on devbox in view, was created on devbox. With no
   // conversation profiles there is one conversation type, so a picker that
   // already has its directory creates at once.
   it('a picker opened with a directory opens on this machine, never the active tab\'s', async () => {
@@ -239,24 +239,24 @@ describe('NewConversationPicker — ordering and grouping', () => {
     const ionRows = rows('ion')
     expect(ionRows).toHaveLength(3)
     expect(ionRows[1].textContent).toContain('/home/g/src/ion')
-    expect(ionRows[1].textContent).not.toContain('oscar ·')
+    expect(ionRows[1].textContent).not.toContain('devbox ·')
     // The heading names the machine for every row under it, so the rows
     // neither colour it nor offer one.
     expect(machineColor('ion')).toBeUndefined()
     expect(ionRows[1].querySelectorAll('[role="button"]')).toHaveLength(0)
 
     await click(ionRows[1])
-    expect(created).toEqual([{ directory: '/home/g/src/ion', environmentId: 'oscar' }])
+    expect(created).toEqual([{ directory: '/home/g/src/ion', environmentId: 'devbox' }])
   })
 
   it('collapses a machine section and stops the keyboard entering it', async () => {
     await render()
     await openMenu('This Mac first')
     await chooseOption('By machine')
-    const oscarHeader = [...document.querySelectorAll('button[aria-expanded]')].find((header) => header.textContent?.includes('oscar'))!
-    await click(oscarHeader)
+    const devboxHeader = [...document.querySelectorAll('button[aria-expanded]')].find((header) => header.textContent?.includes('devbox'))!
+    await click(devboxHeader)
 
-    expect(oscarHeader.getAttribute('aria-expanded')).toBe('false')
+    expect(devboxHeader.getAttribute('aria-expanded')).toBe('false')
     expect(rows('ion')).toHaveLength(2)
   })
 })

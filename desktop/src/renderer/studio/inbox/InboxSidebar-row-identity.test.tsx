@@ -21,7 +21,7 @@ import type { TabState } from '@ion/shared/types'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const REPO = '/Users/test/project'
-const OSCAR = 'env-oscar'
+const DEVBOX = 'env-devbox'
 
 const refreshWorkspaceViews = vi.fn()
 
@@ -138,8 +138,8 @@ describe('InboxSidebar row identity across machines', () => {
   const other = tab({ id: 'conv-other', lastActivityAt: 200 } as Partial<TabState> & { id: string })
 
   it.each([
-    ['this machine to another', tab({ id: 'conv-1', lastActivityAt: 300 } as Partial<TabState> & { id: string }), tab({ id: 'conv-1', environmentId: OSCAR, lastActivityAt: 100 } as Partial<TabState> & { id: string })],
-    ['another machine to this one', tab({ id: 'conv-1', environmentId: OSCAR, lastActivityAt: 300 } as Partial<TabState> & { id: string }), tab({ id: 'conv-1', lastActivityAt: 100 } as Partial<TabState> & { id: string })],
+    ['this machine to another', tab({ id: 'conv-1', lastActivityAt: 300 } as Partial<TabState> & { id: string }), tab({ id: 'conv-1', environmentId: DEVBOX, lastActivityAt: 100 } as Partial<TabState> & { id: string })],
+    ['another machine to this one', tab({ id: 'conv-1', environmentId: DEVBOX, lastActivityAt: 300 } as Partial<TabState> & { id: string }), tab({ id: 'conv-1', lastActivityAt: 100 } as Partial<TabState> & { id: string })],
   ])('leaves exactly the destination row after a move from %s', async (_label, source, destination) => {
     useFakeStore.setState({ tabs: [source, other] })
     const root = createRoot(container)

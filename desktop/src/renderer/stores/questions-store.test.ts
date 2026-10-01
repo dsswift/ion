@@ -91,44 +91,44 @@ beforeEach(() => {
 describe('hydrateQuestions', () => {
   it('pulls every reachable Environment, not just the local one', async () => {
     h.snapshots.set('local', { workflows: [workflow('w-local', 'tab-local')] })
-    h.snapshots.set('oscar', { workflows: [workflow('w-oscar', 'tab-oscar')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
 
-    h.emitPhases({ local: 'connected', oscar: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(2))
 
-    expect(h.targets).toContain('oscar')
-    expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId).sort()).toEqual(['w-oscar', 'w-local'])
+    expect(h.targets).toContain('devbox')
+    expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId).sort()).toEqual(['w-devbox', 'w-local'])
   })
 
   it('does not pull an Environment that is not reachable', async () => {
     const { useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', oscar: 'offline' })
+    h.emitPhases({ local: 'connected', devbox: 'offline' })
     await vi.waitFor(() => expect(h.questionsGetState).toHaveBeenCalledTimes(1))
-    expect(h.targets).not.toContain('oscar')
-    expect(useQuestionsStore.getState().byEnvironment.oscar).toBeUndefined()
+    expect(h.targets).not.toContain('devbox')
+    expect(useQuestionsStore.getState().byEnvironment.devbox).toBeUndefined()
   })
 
   it('keeps one Environment’s workflows when another publishes a snapshot', async () => {
     h.snapshots.set('local', { workflows: [workflow('w-local', 'tab-local')] })
-    h.snapshots.set('oscar', { workflows: [workflow('w-oscar', 'tab-oscar')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', oscar: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(2))
 
-    // oscar answers its own question: its list empties, local's must not.
-    h.emitState('oscar', { workflows: [] })
+    // devbox answers its own question: its list empties, local's must not.
+    h.emitState('devbox', { workflows: [] })
 
     expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId)).toEqual(['w-local'])
   })
 
   it('drops an Environment’s workflows when it stops being reachable', async () => {
-    h.snapshots.set('oscar', { workflows: [workflow('w-oscar', 'tab-oscar')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
-    h.emitPhases({ oscar: 'connected' })
+    h.emitPhases({ devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(1))
 
-    h.emitPhases({ oscar: 'offline' })
+    h.emitPhases({ devbox: 'offline' })
 
     expect(useQuestionsStore.getState().workflows).toEqual([])
   })
@@ -136,21 +136,21 @@ describe('hydrateQuestions', () => {
 
 describe('patchQuestions', () => {
   it('routes to the Environment holding the workflow, not the local one', async () => {
-    h.snapshots.set('oscar', { workflows: [workflow('w-oscar', 'tab-oscar')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { patchQuestions, useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', oscar: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(1))
     h.targets.length = 0
 
     await patchQuestions({
-      workflowId: 'w-oscar',
-      requestId: 'w-oscar-req',
+      workflowId: 'w-devbox',
+      requestId: 'w-devbox-req',
       expectedRevision: 1,
       actionId: 'act-1',
       answers: [],
     })
 
-    expect(h.targets).toEqual(['oscar'])
+    expect(h.targets).toEqual(['devbox'])
     expect(h.questionsPatch).toHaveBeenCalledTimes(1)
   })
 })

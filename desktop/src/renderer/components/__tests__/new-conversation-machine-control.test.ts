@@ -16,8 +16,8 @@ function holder(environmentId: string, label: string): ProjectHolder {
   }
 }
 const local = holder('local', 'This Mac')
-const oscar = holder('oscar', 'oscar')
-const work = holder('work', 'dcitag8331')
+const devbox = holder('devbox', 'devbox')
+const work = holder('work', 'macbook')
 
 function row(holders: ProjectHolder[]): MergedProjectRow {
   return { key: 'remote:proj', displayName: 'proj', dir: holders[0]?.entry.dir ?? '/src', repoRemote: 'github.com/o/proj', holders }
@@ -27,30 +27,30 @@ describe('machineControlFor — the offer on the right', () => {
   // Most projects live on one machine, so most rows carry nothing.
   it('says nothing when no other machine has it', () => {
     expect(machineControlFor(row([local]), 'local')).toEqual({ kind: 'none' })
-    expect(machineControlFor(row([oscar]), 'oscar')).toEqual({ kind: 'none' })
+    expect(machineControlFor(row([devbox]), 'devbox')).toEqual({ kind: 'none' })
   })
 
   it('offers the one other machine as a single chip', () => {
-    expect(machineControlFor(row([local, oscar]), 'local')).toEqual({ kind: 'alternative', holder: oscar })
+    expect(machineControlFor(row([local, devbox]), 'local')).toEqual({ kind: 'alternative', holder: devbox })
   })
 
   it('offers several other machines as one counted control', () => {
-    expect(machineControlFor(row([local, oscar, work]), 'local')).toEqual({ kind: 'alternatives', alternatives: [oscar, work] })
+    expect(machineControlFor(row([local, devbox, work]), 'local')).toEqual({ kind: 'alternatives', alternatives: [devbox, work] })
   })
 
   // Where the row opens is the second line's job, so the offer never repeats it.
   it('never offers the machine the row already opens on', () => {
-    const control = machineControlFor(row([local, oscar, work]), 'work')
-    expect(control).toEqual({ kind: 'alternatives', alternatives: [local, oscar] })
+    const control = machineControlFor(row([local, devbox, work]), 'work')
+    expect(control).toEqual({ kind: 'alternatives', alternatives: [local, devbox] })
   })
 
   it('offers the other remote machine when none of them are local', () => {
-    expect(machineControlFor(row([oscar, work]), 'oscar')).toEqual({ kind: 'alternative', holder: work })
+    expect(machineControlFor(row([devbox, work]), 'devbox')).toEqual({ kind: 'alternative', holder: work })
   })
 
   // The sections there ARE the machine picker.
   it('says nothing inside a per-machine section', () => {
-    expect(machineControlFor(row([local, oscar, work]), 'oscar', { inMachineSection: true })).toEqual({ kind: 'none' })
+    expect(machineControlFor(row([local, devbox, work]), 'devbox', { inMachineSection: true })).toEqual({ kind: 'none' })
   })
 
   it('says nothing for a row with no checkouts left after a policy filter', () => {
@@ -60,13 +60,13 @@ describe('machineControlFor — the offer on the right', () => {
 
 describe('actingHolder — the machine the row names and opens on', () => {
   it('is the requested machine when the row has it', () => {
-    expect(actingHolder(row([local, oscar]), 'oscar')).toBe(oscar)
+    expect(actingHolder(row([local, devbox]), 'devbox')).toBe(devbox)
   })
 
   // A row must always name something real, even if a filter removed the
   // machine the caller asked for.
   it('falls back to the first holder otherwise', () => {
-    expect(actingHolder(row([oscar, work]), 'local')).toBe(oscar)
+    expect(actingHolder(row([devbox, work]), 'local')).toBe(devbox)
     expect(actingHolder(row([]), 'local')).toBeUndefined()
   })
 })
@@ -74,7 +74,7 @@ describe('actingHolder — the machine the row names and opens on', () => {
 describe('isLocalEnvironment — which colour the second line uses', () => {
   it('separates this machine from every other', () => {
     expect(isLocalEnvironment('local')).toBe(true)
-    expect(isLocalEnvironment('oscar')).toBe(false)
+    expect(isLocalEnvironment('devbox')).toBe(false)
     expect(isLocalEnvironment('work')).toBe(false)
   })
 })

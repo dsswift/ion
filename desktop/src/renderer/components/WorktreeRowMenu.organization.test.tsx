@@ -227,7 +227,7 @@ describe('WorktreeRowMenu organization', () => {
   // took the active conversation's machine instead, and a worktree on one
   // machine got its new conversation created on another.
   it('opens the conversation-type picker for the selected worktree, on the machine that has it', async () => {
-    mocks.repoEnvironment.mockReturnValue('oscar')
+    mocks.repoEnvironment.mockReturnValue('devbox')
     let pickerTarget: unknown
     const pickerListener = vi.fn((event: Event) => {
       pickerTarget = (event as CustomEvent).detail
@@ -242,7 +242,7 @@ describe('WorktreeRowMenu organization', () => {
     expect(mocks.repoEnvironment).toHaveBeenCalledWith(REPO)
     expect(pickerTarget).toEqual({
       initialDirectory: WT,
-      initialEnvironmentId: 'oscar',
+      initialEnvironmentId: 'devbox',
       initialWorktree: {
         repoPath: REPO,
         worktreePath: WT,

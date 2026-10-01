@@ -27,7 +27,7 @@ const { GitAccessPage } = await import('../GitAccessPage')
 const { SettingsEnvironmentProvider } = await import('../../settings-servers')
 const { PopoverLayerProvider } = await import('../../../PopoverLayer')
 
-const oscar = { id: 'oscar', label: 'oscar', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
+const devbox = { id: 'devbox', label: 'devbox', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 let container: HTMLDivElement
 let root: Root
@@ -52,7 +52,7 @@ beforeEach(async () => {
   mocks.action.mockImplementation(async (env: string, name: string, args: unknown[] = []) => {
     calls.push({ env, name, args })
     switch (name) {
-      case 'gitIdentity.list': return [{ host: 'github.com', kind: 'ssh', source: 'user', publicKey: 'ssh-ed25519 AAAA oscar' }]
+      case 'gitIdentity.list': return [{ host: 'github.com', kind: 'ssh', source: 'user', publicKey: 'ssh-ed25519 AAAA devbox' }]
       case 'environment.git.hostKeys': return []
       case 'environment.git.author.get': return { name: 'A User', email: 'user@example.com' }
       case 'gitIdentity.mintSshKey': return { publicKey: 'ssh-ed25519 BBBB minted' }
@@ -63,7 +63,7 @@ beforeEach(async () => {
   document.body.appendChild(container)
   root = createRoot(container)
   await act(async () => {
-    root.render(<PopoverLayerProvider><SettingsEnvironmentProvider entry={oscar}><GitAccessPage /></SettingsEnvironmentProvider></PopoverLayerProvider>)
+    root.render(<PopoverLayerProvider><SettingsEnvironmentProvider entry={devbox}><GitAccessPage /></SettingsEnvironmentProvider></PopoverLayerProvider>)
     await flush(); await flush()
   })
 })
@@ -83,7 +83,7 @@ describe('GitAccessPage', () => {
     await click(button('Add credential'))
     type('Git host', 'gitlab.com')
     await click(button('Add'))
-    expect(calls.find((c) => c.name === 'gitIdentity.mintSshKey')).toEqual({ env: 'oscar', name: 'gitIdentity.mintSshKey', args: [{ host: 'gitlab.com' }] })
+    expect(calls.find((c) => c.name === 'gitIdentity.mintSshKey')).toEqual({ env: 'devbox', name: 'gitIdentity.mintSshKey', args: [{ host: 'gitlab.com' }] })
     expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Public key"]')?.value).toBe('ssh-ed25519 BBBB minted')
   })
 
@@ -91,6 +91,6 @@ describe('GitAccessPage', () => {
     await click(button('Edit'))
     type('Git author name', 'B User')
     await click(button('Save'))
-    expect(calls.find((c) => c.name === 'environment.git.author.set')).toEqual({ env: 'oscar', name: 'environment.git.author.set', args: [{ name: 'B User', email: 'user@example.com' }] })
+    expect(calls.find((c) => c.name === 'environment.git.author.set')).toEqual({ env: 'devbox', name: 'environment.git.author.set', args: [{ name: 'B User', email: 'user@example.com' }] })
   })
 })
