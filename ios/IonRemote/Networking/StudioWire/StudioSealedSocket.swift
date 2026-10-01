@@ -195,6 +195,16 @@ final class StudioSealedSocket: StudioSocket, @unchecked Sendable {
             DiagnosticLog.log("studio socket: relay control frame skipped", tag: "studio.socket", level: .debug, fields: [
                 "peer": options.label, "head": String(text.prefix(60))
             ])
+            // The server joined the channel anew, or left it. The Connection
+            // that welcomed this socket is gone, and one that rejoined drops
+            // every frame until it gets a hello: end the session so the
+            // transport joins again and says hello.
+            if Self.isServerPresenceChange(text) {
+                DiagnosticLog.log("studio socket: the server left or rejoined the relay channel, ending this session", tag: "studio.socket", level: .warn, fields: [
+                    "route": routeKind.rawValue, "peer": options.label
+                ])
+                finish(StudioSocketClosure(closeCode: nil, httpStatus: nil, reason: "server left or rejoined the relay channel"))
+            }
             return
         }
         guard let opened = SealedEnvelope.open(text, key: key) else {
@@ -220,6 +230,12 @@ final class StudioSealedSocket: StudioSocket, @unchecked Sendable {
     /// whose first member is `"type":"relay:…"`.
     static func isRelayControlFrame(_ text: String) -> Bool {
         text.range(of: #"^\s*\{\s*"type"\s*:\s*"relay:"#, options: .regularExpression) != nil
+    }
+
+    /// Whether a relay control frame says the server left the channel or
+    /// joined it anew, either of which ends the session this socket carries.
+    static func isServerPresenceChange(_ text: String) -> Bool {
+        text.range(of: #""relay:peer-(reconnected|disconnected)""#, options: .regularExpression) != nil
     }
 
     // MARK: - Send and finish

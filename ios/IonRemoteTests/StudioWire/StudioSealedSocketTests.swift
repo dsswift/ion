@@ -115,6 +115,14 @@ final class StudioSealedSocketTests: XCTestCase {
         XCTAssertTrue(StudioSealedSocket.isRelayControlFrame(#"  { "type" : "relay:x"}"#))
         XCTAssertFalse(StudioSealedSocket.isRelayControlFrame(#"{"v":1,"nonce":"n","ciphertext":"relay:"}"#))
     }
+
+    /// A server that restarts rejoins with a Connection that drops every frame
+    /// until it gets a hello, so its leaving or rejoining ends the session.
+    func testTheServerLeavingOrRejoiningIsAPresenceChange() {
+        XCTAssertTrue(StudioSealedSocket.isServerPresenceChange(#"{"type":"relay:peer-reconnected"}"#))
+        XCTAssertTrue(StudioSealedSocket.isServerPresenceChange(#"{"type":"relay:peer-disconnected"}"#))
+        XCTAssertFalse(StudioSealedSocket.isServerPresenceChange(#"{"type":"relay:push-failed","reason":"no_token"}"#))
+    }
 }
 
 /// A WebSocket task a test scripts: it records what is sent and delivers what the test hands it.
