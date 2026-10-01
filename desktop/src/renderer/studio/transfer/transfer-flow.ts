@@ -117,7 +117,9 @@ export interface WorktreeMoveResult {
  * time, so moving one conversation and leaving its siblings here would put
  * two copies of one branch on two machines; the dialog names the siblings
  * and this runs them all. The checkout itself is removed with the last
- * conversation that held it. The first tab's export carries the
+ * conversation that held it, and only when the export carried it: a
+ * conversation leaving on its own (`exportOptions.carryWorktree` unset)
+ * leaves its worktree where it was. The first tab's export carries the
  * bundle the destination needs; each later import finds the checkout
  * already current and reuses it. Stops at the first failure and reports
  * which tabs are already across, so a retry resumes rather than repeats.
@@ -135,9 +137,10 @@ export async function runWorktreeMove(
   let targetTabId: string | undefined
   for (const [index, tabId] of tabIds.entries()) {
     // The checkout goes with the LAST conversation. Every earlier one still
-    // needs it: each conversation's export packages the worktree again.
-    const isLast = index === tabIds.length - 1
-    const result = await runTransfer(sourceEnvironmentId, tabId, targetEnvironmentId, deps, exportOptions, landing, isLast)
+    // needs it: each conversation's export packages the worktree again. A
+    // move that does not carry the worktree never retires it.
+    const retireWorktree = exportOptions.carryWorktree === true && index === tabIds.length - 1
+    const result = await runTransfer(sourceEnvironmentId, tabId, targetEnvironmentId, deps, exportOptions, landing, retireWorktree)
     if (!result.ok) {
       return { ok: false, targetEnvironmentId, moved, targetTabId, failed: { tabId, step: result.step, refusal: result.refusal } }
     }

@@ -190,7 +190,7 @@ describe('runWorktreeMove', () => {
   // reported for "Open there".
   it('moves every conversation in order and reports the first destination tab', async () => {
     const d = deps()
-    const result = await runWorktreeMove('env-a', ['tab-1', 'tab-2', 'tab-3'], 'env-b', d)
+    const result = await runWorktreeMove('env-a', ['tab-1', 'tab-2', 'tab-3'], 'env-b', d, { carryWorktree: true })
     expect(result).toEqual({ ok: true, targetEnvironmentId: 'env-b', moved: ['tab-1', 'tab-2', 'tab-3'], targetTabId: 'dest-tab-1' })
     expect(d.calls).toEqual(['export:tab-1', 'import:tab-1', 'remove:tab-1', 'export:tab-2', 'import:tab-2', 'remove:tab-2', 'export:tab-3', 'import:tab-3', 'remove:tab-3:retire'])
   })
@@ -200,8 +200,16 @@ describe('runWorktreeMove', () => {
   // first removal deleted the checkout the second export needed.
   it('retires the source worktree with the last conversation only', async () => {
     const d = deps()
-    await runWorktreeMove('env-a', ['tab-1', 'tab-2'], 'env-b', d)
+    await runWorktreeMove('env-a', ['tab-1', 'tab-2'], 'env-b', d, { carryWorktree: true })
     expect(d.calls.filter((c) => c.startsWith('remove:'))).toEqual(['remove:tab-1', 'remove:tab-2:retire'])
+  })
+
+  // A conversation leaving its worktree ships no checkout, so the source
+  // worktree and its branch are the only copy. Retiring it deleted them.
+  it('never retires the source worktree when the conversation moves on its own', async () => {
+    const d = deps()
+    await runWorktreeMove('env-a', ['tab-1'], 'env-b', d, {}, { kind: 'checkout', dir: '/repo' })
+    expect(d.calls).toEqual(['export:tab-1', 'import:tab-1', 'remove:tab-1'])
   })
 
   it('stops at the first failure and says which conversations are already across', async () => {
