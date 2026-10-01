@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.2.3](https://github.com/dsswift/ion/compare/desktop-v2.2.2...desktop-v2.2.3) (2026-10-01)
+
+### Bug Fixes
+
+* **server:** name a worktree only from its first prompt ([c5038ab](https://github.com/dsswift/ion/commit/c5038abf3d246eff56f74f065cfa20108bf29fe9))
+
 ## [2.2.2](https://github.com/dsswift/ion/compare/desktop-v2.2.1...desktop-v2.2.2) (2026-10-01)
 
 ### Bug Fixes

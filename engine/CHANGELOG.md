@@ -18,6 +18,19 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.90.0](https://github.com/dsswift/ion/compare/engine-v1.89.0...engine-v1.90.0) (2026-10-01)
+
+### Features
+
+* **engine:** carry child conversation id on dispatch outcomes (#380) ([225670c](https://github.com/dsswift/ion/commit/225670c1ebd275c4d23e5e19754d6f919a4d93c0))
+
+### Bug Fixes
+
+* **engine:** pass the recaller's reason to recallinfo ([bbdb0be](https://github.com/dsswift/ion/commit/bbdb0be84897f608892f762813c9bc049e4ed286))
+* **engine:** make dispatch cancel take the recall reason ([c235942](https://github.com/dsswift/ion/commit/c23594234672c50347d244e2dc44cdbb64e63b3f))
+* **engine:** keep cli session id when init fields change type ([766f9ec](https://github.com/dsswift/ion/commit/766f9ec6d01322c48c82700411d834f7248a1537))
+* **engine:** log each dispatch terminal outcome ([0d2788c](https://github.com/dsswift/ion/commit/0d2788ccce00b15fb3e9a68c19f22d2cd23cb2c9))
+
 ## [1.89.0](https://github.com/dsswift/ion/compare/engine-v1.88.0...engine-v1.89.0) (2026-10-01)
 
 ### Features

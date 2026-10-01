@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.16](https://github.com/dsswift/ion/compare/sdk/go-v0.1.15...sdk/go-v0.1.16) (2026-10-01)
+
+### Features
+
+* **sdk:** mirror child conversation id on go dispatch outcomes (#380) ([9b8d0d3](https://github.com/dsswift/ion/commit/9b8d0d333cb59f7cd58953389c60aea686389106))
+
 ## [0.1.15](https://github.com/dsswift/ion/compare/sdk/go-v0.1.14...sdk/go-v0.1.15) (2026-09-30)
 
 ### Features
