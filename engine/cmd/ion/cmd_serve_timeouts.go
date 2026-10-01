@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -15,5 +16,6 @@ func configureSubsystemTimeouts(timeouts *types.TimeoutsConfig) {
 	}
 	mcp.SetDefaultCallTimeout(timeouts.McpCall())
 	mcp.SetDefaultMetadataTimeout(timeouts.McpMetadata())
+	backend.SetTextGenTimeout(timeouts.TextGen())
 	extension.ConfiguredDefaultTimeout = timeouts.HookDefault()
 }

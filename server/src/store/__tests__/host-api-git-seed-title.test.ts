@@ -8,9 +8,10 @@
  * The decision table these tests pin:
  *   - registered worktree, no title  → persist, announce
  *   - registered worktree, has title → REFUSED, stored title untouched
+ *   - has title, and the seed names it as the one it replaces → swapped
  *   - unregistered directory         → REFUSED
  *   - empty/whitespace seed          → REFUSED
- *   - the operator rename is the ONE path that may replace an existing name
+ *   - the operator rename is the ONE path that may replace any existing name
  *
  * Regression direction: dropping the `registration.title` short-circuit turns
  * first-prompt-wins red; leaking it into the rename turns the last test red.
@@ -65,6 +66,22 @@ describe('seed-title decision', () => {
     expect(await gitWorktreeSeedTitle(WT, 'What the worktree is for')).toEqual({ ok: true, title: 'What the worktree is for' })
     expect(await gitWorktreeSeedTitle(WT, 'A later conversation about something else')).toEqual({ ok: false, reason: 'already-titled', title: 'What the worktree is for' })
     expect(lookupWorktreeTitle(WT)).toBe('What the worktree is for')
+  })
+
+  it('lets a generated title replace the placeholder the same conversation stamped', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    await gitWorktreeSeedTitle(WT, 'the auth middleware rejects valid tok...')
+    expect(await gitWorktreeSeedTitle(WT, 'Fix the token expiry check', 'the auth middleware rejects valid tok...')).toEqual({ ok: true, title: 'Fix the token expiry check' })
+    expect(lookupWorktreeTitle(WT)).toBe('Fix the token expiry check')
+    expect(deps.announceWorktreeTitle).toHaveBeenLastCalledWith(REPO, WT, 'Fix the token expiry check')
+  })
+
+  it('refuses a replacement once the operator or another conversation has named the worktree', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    await gitWorktreeSeedTitle(WT, 'the auth middleware rejects valid tok...')
+    await gitWorktreeSetTitle({ worktreePath: WT, repoPath: REPO, title: 'Renamed by hand' })
+    expect(await gitWorktreeSeedTitle(WT, 'Fix the token expiry check', 'the auth middleware rejects valid tok...')).toEqual({ ok: false, reason: 'already-titled', title: 'Renamed by hand' })
+    expect(lookupWorktreeTitle(WT)).toBe('Renamed by hand')
   })
 
   it('refuses a seed for an ordinary project directory', async () => {

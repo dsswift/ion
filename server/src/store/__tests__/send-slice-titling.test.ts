@@ -2,9 +2,10 @@
  * send-slice — send-time titling, for the conversation AND its worktree
  *
  * Pins the contract that ONE title generation fires at SEND TIME (in parallel
- * with the run), not at task_complete, and that its single result names both the
- * tab and — when the conversation is running in a worktree that has no name yet
- * — the worktree. The title is derived from the user's first message, which is
+ * with the run), not at task_complete, and that the conversation's title names
+ * both the tab and — when the conversation is running in a worktree that has no
+ * name yet — the worktree: the truncated prompt at once, then the generated
+ * title in its place. The title is derived from the user's first message, which is
  * available instantly at submit(), so there is no reason to wait for turn
  * completion.
  *
@@ -20,7 +21,8 @@
  *   8. submitRemotePrompt slash → NOT called.
  *   9. The ONE generated string reaches both the tab and the worktree seed.
  *  10. A slash command seeds nothing — it is an operation, not a description.
- *  11. Failed title generation keeps fallback, skips seed, and logs a warning.
+ *  11. Failed or empty title generation leaves the truncated title on both.
+ *  12. aiGeneratedTitles=false still stamps the worktree with the truncated title.
  *
  * Regression direction for case 1: removing the slash guard in
  * event-slice-titling.ts causes generateTitle to be called and case 1 goes red.
@@ -300,23 +302,25 @@ describe('send-slice — send-time tab titling', () => {
 })
 
 /**
- * Worktree naming rides the tab-titling round-trip: ONE generated string names
- * both, at the same moment.
+ * Worktree naming rides tab titling: the worktree takes the conversation's
+ * title — the truncated prompt first, then the ONE generated string.
  *
  * ── What this replaces ──────────────────────────────────────────────────────
  * Worktree naming used to be a SECOND `generateTitle` call over the same prompt,
  * fired on every send. Two round-trips over one prompt produced two
  * independently-worded names for one piece of work, and they drifted from the
  * moment they were written. The worktree is now SEEDED with the string generated
- * for the tab, so the two cannot disagree.
+ * for the tab, so the two cannot disagree. Before a generated title arrives (or
+ * when none ever does) the worktree carries the same truncated prompt the tab
+ * shows, rather than staying on its machine slug.
  *
  * ── Where idempotency lives ─────────────────────────────────────────────────
  * The seed rides the `needsTitle && !isBusy` guard, so it fires on a
  * conversation's FIRST prompt. Several conversations routinely share one
- * worktree, and each of their first sends reaches here — the main process
- * refuses a seed for a worktree that already has a name, so whichever
- * conversation prompts first names it ("first prompt wins"). That decision lives
- * against the registry, not here.
+ * worktree, and each of their first sends reaches here — a seed is refused for
+ * a worktree that already has a name, so whichever conversation prompts first
+ * names it ("first prompt wins"). That decision lives against the registry, not
+ * here; the generated title names the fallback it may replace.
  *
  * Regression direction: a second generateTitle call for the worktree turns the
  * call-count assertion red; seeding a slash command turns the operation case
@@ -335,7 +339,7 @@ describe('send-slice — worktree seeding', () => {
     const { state, get } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
 
     state.submit('tab-1', 'the auth middleware rejects valid tokens')
-    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalled())
+    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(2))
 
     // Exactly one round-trip — a second would be the drift this removed.
     expect(mockGenerateTitle).toHaveBeenCalledTimes(1)
@@ -343,7 +347,9 @@ describe('send-slice — worktree seeding', () => {
     // The tab got it...
     expect(get().tabs.find((t) => t.id === 'tab-1')?.customTitle).toBe('Fix the token expiry check')
     // ...and the worktree got the same string, not a separately-worded one.
-    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/wt/ion-a3f1', 'Fix the token expiry check')
+    // It replaces only this conversation's own truncated stamp.
+    expect(mockWorktreeSeedTitle).toHaveBeenNthCalledWith(1, '/wt/ion-a3f1', 'the auth middleware rejects valid tokens', undefined)
+    expect(mockWorktreeSeedTitle).toHaveBeenNthCalledWith(2, '/wt/ion-a3f1', 'Fix the token expiry check', 'the auth middleware rejects valid tokens')
   })
 
   /**
@@ -382,7 +388,7 @@ describe('send-slice — worktree seeding', () => {
     expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
   })
 
-  it('keeps truncated fallback, skips worktree seed, and warns when title generation rejects', async () => {
+  it('keeps the truncated fallback on the tab and the worktree, and warns, when title generation rejects', async () => {
     const error = new Error('title service unavailable')
     mockGenerateTitle.mockRejectedValueOnce(error)
     const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
@@ -394,7 +400,8 @@ describe('send-slice — worktree seeding', () => {
 
     expect(state.tabs[0].title).toBe(fallback)
     expect(state.tabs[0].customTitle).toBeNull()
-    expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(1)
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/wt/ion-a3f1', fallback, undefined)
     expect(rWarn).toHaveBeenCalledWith(
       'event.title',
       'AI title generation failed; keeping truncated fallback',
@@ -402,27 +409,32 @@ describe('send-slice — worktree seeding', () => {
     )
   })
 
-  it('seeds nothing when generation returns an empty title', async () => {
-    // The engine returns "" when no titling model is configured — a legitimate
-    // configuration. Nothing to apply, so nothing to seed.
+  // The fix this pins: a conversation whose generated title never arrives
+  // still names its worktree, with the truncated prompt the tab shows.
+  it('stamps the worktree with the truncated title when generation returns nothing', async () => {
     mockGenerateTitle.mockResolvedValueOnce('' as any)
     const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
 
     state.submit('tab-1', 'plain prose that generates nothing')
     await vi.waitFor(() => expect(mockGenerateTitle).toHaveBeenCalled())
+    await Promise.resolve()
 
-    expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+    expect(state.tabs[0].title).toBe('plain prose that generates nothing')
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(1)
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/wt/ion-a3f1', 'plain prose that generates nothing', undefined)
   })
 
-  it('respects the aiGeneratedTitles preference', async () => {
+  it('stamps the worktree with the truncated title when the aiGeneratedTitles preference is off', async () => {
     stamp.aiGeneratedTitles = false
     const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+    const prompt = 'plain prose that would normally trigger titling'
 
-    state.submit('tab-1', 'plain prose that would normally trigger titling')
+    state.submit('tab-1', prompt)
     await Promise.resolve()
 
     expect(mockGenerateTitle).not.toHaveBeenCalled()
-    expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(1)
+    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/wt/ion-a3f1', `${prompt.substring(0, 37)}...`, undefined)
   })
 
   it('does not seed for a tab with no directory at all', async () => {
@@ -448,12 +460,12 @@ describe('send-slice — worktree seeding', () => {
     )
 
     state.submit('tab-1', 'plain prose in a normal project tab')
-    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalled())
+    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(2))
 
-    // Fired, and the main process replies `not-a-worktree` — one registry
-    // lookup, no extra generation. Deciding here instead would mean each window
-    // guessing from its own possibly-stale inventory snapshot.
-    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/home/test/src/ion', 'A generated name')
+    // Fired, and the reply is `not-a-worktree` — one registry lookup, no extra
+    // generation. Deciding here instead would mean each window guessing from
+    // its own possibly-stale inventory snapshot.
+    expect(mockWorktreeSeedTitle).toHaveBeenLastCalledWith('/home/test/src/ion', 'A generated name', 'plain prose in a normal project tab')
   })
 
   it('seeds on the iOS send path too', async () => {
@@ -461,9 +473,9 @@ describe('send-slice — worktree seeding', () => {
     const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
 
     state.submitRemotePrompt('tab-1', 'ios user described the work')
-    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalled())
+    await vi.waitFor(() => expect(mockWorktreeSeedTitle).toHaveBeenCalledTimes(2))
 
     expect(mockGenerateTitle).toHaveBeenCalledTimes(1)
-    expect(mockWorktreeSeedTitle).toHaveBeenCalledWith('/wt/ion-a3f1', 'Work the phone described')
+    expect(mockWorktreeSeedTitle).toHaveBeenLastCalledWith('/wt/ion-a3f1', 'Work the phone described', 'ios user described the work')
   })
 })

@@ -534,7 +534,7 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 		case "anthropic":
 			RegisterProvider(NewAnthropicProvider(opts))
 		case "openai":
-			RegisterProvider(NewOpenAIProvider(opts))
+			RegisterProvider(newStockOpenAIProvider(cfg.BaseURL, cfg.AuthHeader))
 			// Re-register the image provider in case baseURL was overridden
 			// (e.g. Azure OpenAI endpoint serving DALL-E).
 			RegisterImageProvider(NewOpenAIImageProvider(opts))
@@ -609,7 +609,7 @@ func init() {
 func restoreInitRegistries() {
 	// Register provider instances
 	RegisterProvider(NewAnthropicProvider(nil))
-	RegisterProvider(NewOpenAIProvider(nil))
+	RegisterProvider(newStockOpenAIProvider("", ""))
 	RegisterProvider(NewGoogleProvider(nil))
 	RegisterProvider(NewBedrockProvider(nil))
 	RegisterProvider(NewAzureOpenAIProvider(&AzureOptions{}))
@@ -635,6 +635,6 @@ func restoreInitRegistries() {
 		panic("failed to load model catalog: " + err.Error())
 	}
 
-	// Register the OpenAI image provider (DALL-E 3, gpt-image-1).
+	// Register the OpenAI image provider.
 	RegisterImageProvider(NewOpenAIImageProvider(nil))
 }

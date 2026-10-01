@@ -23,13 +23,19 @@ describe('getFilteredModels (D-011 enterprise allowlist)', () => {
   })
 
   it('filters to multiple allowed models preserving list order', () => {
-    const filtered = getFilteredModels(['grok-3', 'claude-sonnet-4-6'])
-    expect(filtered.map((m) => m.id)).toEqual(['claude-sonnet-4-6', 'grok-3'])
+    const filtered = getFilteredModels(['grok-4.7', 'claude-sonnet-4-6'])
+    expect(filtered.map((m) => m.id)).toEqual(['claude-sonnet-4-6', 'grok-4.7'])
   })
 
   it('ignores allowlist entries that are not in AVAILABLE_MODELS', () => {
     const filtered = getFilteredModels(['claude-sonnet-4-6', 'nonexistent-model'])
     expect(filtered.map((m) => m.id)).toEqual(['claude-sonnet-4-6'])
+  })
+
+  it('offers the current Claude models, not only an older generation', () => {
+    const ids = AVAILABLE_MODELS.map((m) => m.id)
+    expect(ids).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1']))
+    expect(getModelContextWindow('claude-sonnet-5-5')).toBe(1_000_000)
   })
 
   it('returns an empty list when nothing matches (engine still enforces)', () => {

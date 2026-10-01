@@ -230,3 +230,76 @@ func TestGenerateTitleTruncatesLongInputOnRuneBoundaries(t *testing.T) {
 		t.Error("truncated prompt contains a replacement char; input was sliced mid-rune")
 	}
 }
+
+func withDelegatedGenerator(t *testing.T, fn DelegatedGenerator) {
+	t.Helper()
+	prior := delegatedGenerator
+	delegatedGenerator = fn
+	t.Cleanup(func() { delegatedGenerator = prior })
+}
+
+func TestGenerateTitleUsesDelegatedCLIBeforeProvider(t *testing.T) {
+	provider, model := registerTitleProvider(t, []types.LlmStreamEvent{
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: "From The Provider"}},
+	})
+	withTitleModel(t, model)
+
+	var gotModel, gotSystem, gotPrompt string
+	withDelegatedGenerator(t, func(_ context.Context, m, system, prompt string) (string, bool, error) {
+		gotModel, gotSystem, gotPrompt = m, system, prompt
+		return "  \"From The CLI\"\n", true, nil
+	})
+
+	title, err := GenerateTitle(context.Background(), "auto titles do not work")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error = %v", err)
+	}
+	if title != "From The CLI" {
+		t.Errorf("GenerateTitle() = %q, want the sanitized delegated answer", title)
+	}
+	if gotModel != model || gotSystem != titleSystemPrompt || !strings.HasSuffix(gotPrompt, "auto titles do not work") {
+		t.Errorf("delegated call got model=%q system=%q prompt=%q", gotModel, gotSystem, gotPrompt)
+	}
+	if provider.options().Model != "" {
+		t.Error("the provider API was called although the delegated CLI answered")
+	}
+}
+
+func TestGenerateTitleFallsBackToProviderWhenNotDelegated(t *testing.T) {
+	_, model := registerTitleProvider(t, []types.LlmStreamEvent{
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: "From The Provider"}},
+	})
+	withTitleModel(t, model)
+	withDelegatedGenerator(t, func(context.Context, string, string, string) (string, bool, error) {
+		return "", false, nil
+	})
+
+	title, err := GenerateTitle(context.Background(), "auto titles do not work")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error = %v", err)
+	}
+	if title != "From The Provider" {
+		t.Errorf("GenerateTitle() = %q, want the provider's title", title)
+	}
+}
+
+func TestGenerateTitleDelegatedFailureYieldsNoTitle(t *testing.T) {
+	provider, model := registerTitleProvider(t, []types.LlmStreamEvent{
+		{Type: "content_block_delta", Delta: &types.LlmStreamDelta{Type: "text_delta", Text: "From The Provider"}},
+	})
+	withTitleModel(t, model)
+	withDelegatedGenerator(t, func(context.Context, string, string, string) (string, bool, error) {
+		return "", true, context.DeadlineExceeded
+	})
+
+	title, err := GenerateTitle(context.Background(), "auto titles do not work")
+	if err != nil {
+		t.Fatalf("GenerateTitle() error = %v", err)
+	}
+	if title != "" {
+		t.Errorf("GenerateTitle() = %q, want no title after a delegated failure", title)
+	}
+	if provider.options().Model != "" {
+		t.Error("the provider API was called for a model the delegated CLI serves")
+	}
+}

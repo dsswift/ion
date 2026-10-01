@@ -66,10 +66,17 @@ This is useful for proxies that expect `Authorization: Bearer <token>` instead o
 
 | Model | Context Window | Input $/1K | Output $/1K | Features |
 |-------|---------------|------------|-------------|----------|
-| `claude-opus-4-6` | 1,000,000 | $0.015 | $0.075 | Caching, thinking, images |
-| `claude-opus-4-7` | 1,000,000 | $0.015 | $0.075 | Caching, thinking, images |
-| `claude-sonnet-4-6` | 200,000 | $0.003 | $0.015 | Caching, thinking, images |
-| `claude-haiku-4-5-20251001` | 200,000 | $0.0008 | $0.004 | Caching, images |
+| `claude-fable-5-1` | 1,000,000 | $0.01 | $0.05 | Caching, thinking, images |
+| `claude-fable-5` | 1,000,000 | $0.01 | $0.05 | Caching, thinking, images |
+| `claude-opus-5-5` | 1,000,000 | $0.004 | $0.02 | Caching, thinking, images |
+| `claude-opus-5` | 1,000,000 | $0.005 | $0.025 | Caching, thinking, images |
+| `claude-sonnet-5-5` | 1,000,000 | $0.002 | $0.01 | Caching, thinking, images |
+| `claude-sonnet-5` | 1,000,000 | $0.002 | $0.01 | Caching, thinking, images |
+| `claude-opus-4-8` | 1,000,000 | $0.005 | $0.025 | Caching, thinking, images |
+| `claude-opus-4-7` | 1,000,000 | $0.005 | $0.025 | Caching, thinking, images |
+| `claude-opus-4-6` | 1,000,000 | $0.005 | $0.025 | Caching, thinking, images |
+| `claude-sonnet-4-6` | 1,000,000 | $0.003 | $0.015 | Caching, thinking, images |
+| `claude-haiku-4-5-20251001` | 200,000 | $0.001 | $0.005 | Caching, thinking, images |
 
 Models not in this table still work if the name starts with `claude-`. The engine routes them to the Anthropic provider via prefix matching.
 

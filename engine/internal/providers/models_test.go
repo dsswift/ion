@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -122,7 +123,8 @@ func TestModelCatalogJSON_AllModelsRegistered(t *testing.T) {
 		{"o3", "openai", 200000},
 		{"gemini-2.5-pro", "google", 1048576},
 		{"gemini-2.5-flash", "google", 1048576},
-		{"grok-3", "xai", 131072},
+		{"grok-4.7", "xai", 500000},
+		{"gpt-6.1-sol", "openai", 1050000},
 		{"deepseek-chat", "deepseek", 65536},
 		{"deepseek-reasoner", "deepseek", 65536},
 		{"llama-3.3-70b-versatile", "groq", 131072},
@@ -162,6 +164,7 @@ func TestModelCatalogAnthropicDisplayNames(t *testing.T) {
 		"claude-fable-5":            "Claude Fable 5",
 		"claude-opus-5-5":           "Claude Opus 5.5",
 		"claude-opus-5":             "Claude Opus 5",
+		"claude-sonnet-5-5":         "Claude Sonnet 5.5",
 		"claude-sonnet-5":           "Claude Sonnet 5",
 		"claude-opus-4-8":           "Claude Opus 4.8",
 		"claude-opus-4-7":           "Claude Opus 4.7",
@@ -224,6 +227,59 @@ func TestModelCatalogAnthropicDisplayNames(t *testing.T) {
 	if o55.ThinkingMode != "adaptive" || !o55.SupportsThinking ||
 		!o55.SupportsCaching || !o55.SupportsImages {
 		t.Errorf("claude-opus-5-5 capabilities = %+v", o55)
+	}
+
+	// Sonnet 5.5 keeps Sonnet 5's rates and limits. Pin them with the full
+	// effort ladder the picker offers for it.
+	s55 := GetModelInfo("claude-sonnet-5-5")
+	if s55 == nil {
+		t.Fatal("claude-sonnet-5-5 not registered from catalog")
+	}
+	if s55.CostPer1kInput != 0.002 || s55.CostPer1kOutput != 0.01 ||
+		s55.CostPer1kCacheCreation != 0.0025 || s55.CostPer1kCacheRead != 0.0002 {
+		t.Errorf("claude-sonnet-5-5 pricing = %+v", s55)
+	}
+	if s55.ContextWindow != 1000000 || s55.MaxOutputTokens != 128000 {
+		t.Errorf("claude-sonnet-5-5 limits = ctx %d, maxOut %d", s55.ContextWindow, s55.MaxOutputTokens)
+	}
+	if s55.ThinkingMode != "adaptive" || !s55.SupportsThinking ||
+		!s55.SupportsCaching || !s55.SupportsImages ||
+		!slices.Equal(s55.ThinkingEfforts, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Errorf("claude-sonnet-5-5 capabilities = %+v", s55)
+	}
+}
+
+// TestModelCatalogRetiredModelsAbsent pins that ids their providers no longer
+// serve stay out of the catalog, so the picker never offers a dead model.
+func TestModelCatalogRetiredModelsAbsent(t *testing.T) {
+	var entries []catalogEntry
+	if err := json.Unmarshal(modelCatalogJSON, &entries); err != nil {
+		t.Fatalf("failed to parse models.json: %v", err)
+	}
+	retired := []string{"dall-e-3", "grok-3", "grok-3-fast", "grok-3-mini", "grok-3-mini-fast", "grok-2"}
+	for _, e := range entries {
+		if slices.Contains(retired, e.ID) {
+			t.Errorf("retired model %q is still in models.json", e.ID)
+		}
+	}
+}
+
+// TestModelCatalogOpenAIResponsesModels pins the dialect on the OpenAI models
+// that accept function tools only on the Responses API. Without it the stock
+// provider sends them to Chat Completions and every tool-carrying turn fails.
+func TestModelCatalogOpenAIResponsesModels(t *testing.T) {
+	for _, id := range []string{"gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"} {
+		info := GetModelInfo(id)
+		if info == nil {
+			t.Errorf("%s: not registered from catalog", id)
+			continue
+		}
+		if info.ProviderID != "openai" || info.Dialect != "openai-responses" {
+			t.Errorf("%s: provider %q dialect %q, want openai / openai-responses", id, info.ProviderID, info.Dialect)
+		}
+		if info.ThinkingMode != "reasoning_effort" || !slices.Contains(info.ThinkingEfforts, "xhigh") {
+			t.Errorf("%s: thinking = %q %v", id, info.ThinkingMode, info.ThinkingEfforts)
+		}
 	}
 }
 

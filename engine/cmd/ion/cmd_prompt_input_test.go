@@ -16,8 +16,13 @@ func pipeWithContent(t *testing.T, content string) *os.File {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
+	// Cleanups run last-in first-out: closing r unblocks a writer the test
+	// never drained, then the wait keeps its t.Logf inside the test's life.
+	written := make(chan struct{})
+	t.Cleanup(func() { <-written })
 	t.Cleanup(func() { r.Close() }) //nolint:errcheck // test cleanup
 	go func() {
+		defer close(written)
 		defer w.Close() //nolint:errcheck // writer close signals EOF
 		if content == "" {
 			return

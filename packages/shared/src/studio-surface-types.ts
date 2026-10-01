@@ -106,7 +106,7 @@ export interface BrowserTab {
    * comes back at the zoom it was left at.
    */
   zoomLevel?: number
-  /** The page's favicon, reported by the guest. Absent until the first page reports one. */
+  /** The page's favicon as a `data:` URL, reported by the guest. Absent until the first page reports one. */
   faviconUrl?: string
 }
 export interface TerminalTab { kind: 'terminal'; id: string; instanceId: string; cwd: string; title: string }

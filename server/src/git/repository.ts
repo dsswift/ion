@@ -86,7 +86,7 @@ export class GitRepository extends EventEmitter {
     }
   }
   private _snapshot: RepoSnapshot | null = null
-  private _refreshing = false
+  private _refreshRun: Promise<void> | null = null
   private _refreshAgain = false
   private _initialRefresh: Promise<void> | null = null
 
@@ -149,7 +149,7 @@ export class GitRepository extends EventEmitter {
   }
 
   private handleWatchEvent(event: GitWatchEvent): void {
-    log('git_repository: watch event', { kind: event.kind, path: this.path, revision: this._revision, refreshing: this._refreshing })
+    log('git_repository: watch event', { kind: event.kind, path: this.path, revision: this._revision, refreshing: this._refreshRun !== null })
     switch (event.kind) {
       case 'head:changed':
         this.bumpRevision()
@@ -176,9 +176,18 @@ export class GitRepository extends EventEmitter {
 
   // ─── Snapshot + delta computation ───
 
-  async refreshSnapshot(): Promise<void> {
-    if (this._refreshing) { this._refreshAgain = true; return }
-    this._refreshing = true
+  /**
+   * Recompute the snapshot and emit deltas. A call made while a refresh is
+   * running queues one more pass and resolves with that same run, so every
+   * caller resolves only once a snapshot reflecting its request exists.
+   */
+  refreshSnapshot(): Promise<void> {
+    if (this._refreshRun) { this._refreshAgain = true; return this._refreshRun }
+    this._refreshRun = this.runRefresh().finally(() => { this._refreshRun = null })
+    return this._refreshRun
+  }
+
+  private async runRefresh(): Promise<void> {
     log('git_repository: refreshSnapshot starting', { path: this.path, revision: this._revision })
     try {
       do {
@@ -218,7 +227,6 @@ export class GitRepository extends EventEmitter {
         }
       } while (this._refreshAgain)
     } finally {
-      this._refreshing = false
       log('git_repository: refreshSnapshot done', { path: this.path, revision: this._revision })
     }
   }

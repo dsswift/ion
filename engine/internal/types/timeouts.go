@@ -54,12 +54,17 @@ type TimeoutsConfig struct {
 	BashBlockingSleepMs int64 `json:"bashBlockingSleepMs,omitempty"` // default: 2000 (2s)
 	McpCallMs           int64 `json:"mcpCallMs,omitempty"`           // default: 60000
 	McpMetadataMs       int64 `json:"mcpMetadataMs,omitempty"`       // default: 30000
-	McpWriteMs          int64 `json:"mcpWriteMs,omitempty"`          // default: 30000
-	WebFetchMs          int64 `json:"webFetchMs,omitempty"`          // default: 30000
-	GlobMs              int64 `json:"globMs,omitempty"`              // default: 60000
-	SshDefaultMs        int64 `json:"sshDefaultMs,omitempty"`        // default: 120000
-	ExtensionRpcMs      int64 `json:"extensionRpcMs,omitempty"`      // default: 30000
-	HookDefaultMs       int64 `json:"hookDefaultMs,omitempty"`       // default: 30000
+	// TextGenMs bounds one delegated-CLI text generation (the one-shot CLI
+	// call that answers a small utility prompt such as a conversation title).
+	// The default sits under CommandDispatchMs so the command that asked for
+	// the text still gets its answer. Zero uses the compiled default.
+	TextGenMs      int64 `json:"textGenMs,omitempty"`      // default: 20000 (20s)
+	McpWriteMs     int64 `json:"mcpWriteMs,omitempty"`     // default: 30000
+	WebFetchMs     int64 `json:"webFetchMs,omitempty"`     // default: 30000
+	GlobMs         int64 `json:"globMs,omitempty"`         // default: 60000
+	SshDefaultMs   int64 `json:"sshDefaultMs,omitempty"`   // default: 120000
+	ExtensionRpcMs int64 `json:"extensionRpcMs,omitempty"` // default: 30000
+	HookDefaultMs  int64 `json:"hookDefaultMs,omitempty"`  // default: 30000
 	// ShutdownMs bounds graceful shutdown: how long the engine waits for
 	// session teardown before exiting under its own control rather than being
 	// killed by its supervisor. Zero uses the compiled 15-second default. See
@@ -225,6 +230,11 @@ func (t *TimeoutsConfig) BashBlockingSleep() (time.Duration, bool) {
 // McpCall returns the MCP tool call timeout (default 60s).
 func (t *TimeoutsConfig) McpCall() time.Duration {
 	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.McpCallMs }), 60000)
+}
+
+// TextGen returns the delegated-CLI text generation timeout (default 20s).
+func (t *TimeoutsConfig) TextGen() time.Duration {
+	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.TextGenMs }), 20000)
 }
 
 // McpMetadata returns the MCP metadata operation timeout (default 30s).
@@ -426,6 +436,9 @@ func MergeTimeouts(dst, src *TimeoutsConfig) *TimeoutsConfig {
 	}
 	if src.McpMetadataMs != 0 {
 		dst.McpMetadataMs = src.McpMetadataMs
+	}
+	if src.TextGenMs != 0 {
+		dst.TextGenMs = src.TextGenMs
 	}
 	if src.McpWriteMs != 0 {
 		dst.McpWriteMs = src.McpWriteMs
