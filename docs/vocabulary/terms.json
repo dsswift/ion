@@ -5096,7 +5096,7 @@
     {
       "id": "web-application",
       "term": "Web Application",
-      "definition": "A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.",
+      "definition": "A local HTML service whose listening process is owned by a Terminal. The server confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.",
       "domain": "clients",
       "kind": "state",
       "status": "canonical",

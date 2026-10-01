@@ -2340,7 +2340,7 @@ A caller-chosen identity for a launch that opens a Terminal, unique within one C
 
 #### Web Application {#term-web-application}
 
-A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.
+A local HTML service whose listening process is owned by a Terminal. The server confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.
 
 - **ID:** `web-application`
 - **Status:** `canonical`
