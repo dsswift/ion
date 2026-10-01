@@ -8,6 +8,13 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.2.1](https://github.com/dsswift/ion/compare/server-v1.2.0...server-v1.2.1) (2026-10-01)
+
+### Bug Fixes
+
+* **server:** keep a relay channel open across token expiries ([19660db](https://github.com/dsswift/ion/commit/19660dbf7a13e8d6825660beabf582a4ac26c242))
+* **server:** stub the worktree title seed in send tests (#461) ([9924fa4](https://github.com/dsswift/ion/commit/9924fa4b6c95383ef5121bb413898a185d1dd468))
+
 ## [1.2.0](https://github.com/dsswift/ion/compare/server-v1.1.2...server-v1.2.0) (2026-10-01)
 
 ### Features
