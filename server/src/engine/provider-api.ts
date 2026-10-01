@@ -124,18 +124,19 @@ export async function setDefaultProvider(payload: unknown): Promise<MutationResu
 }
 
 /**
- * Store a provider credential. The value is bearer-grade, so only its
- * presence is ever logged — never the value, and never its length alongside
- * the provider name in a way that would narrow it.
+ * Store a provider credential, or clear it: an empty credential is the
+ * explicit "remove this key" instruction. The value is bearer-grade, so only
+ * its presence is ever logged — never the value, and never its length
+ * alongside the provider name in a way that would narrow it.
  */
 export async function storeCredential(payload: unknown): Promise<MutationResult> {
   const provider = (payload as { provider?: unknown } | null)?.provider
   const credential = (payload as { credential?: unknown } | null)?.credential
-  if (!nonEmptyString(provider) || !nonEmptyString(credential)) {
+  if (!nonEmptyString(provider) || typeof credential !== 'string') {
     log('store_credential rejected: malformed input')
-    return { ok: false, error: 'provider and credential are required' }
+    return { ok: false, error: 'a provider and a credential string are required' }
   }
-  log('store_credential', { provider })
+  log('store_credential', { provider, cleared: credential === '' })
   const result = await engineBridge.storeCredential(provider, credential)
   if (result.ok) {
     // Auth status changed — the engine runs discovery for this provider,

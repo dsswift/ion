@@ -66,8 +66,16 @@ describe('PROVIDER_ACTIONS dispatch', () => {
 
   it('refuses a malformed credential payload instead of forwarding it', async () => {
     const outcome = await PROVIDER_ACTIONS['provider.storeCredential'].handler(conn, [{ provider: 'anthropic' }])
-    expect(outcome).toEqual({ ok: true, value: { ok: false, error: 'provider and credential are required' } })
+    expect(outcome).toEqual({ ok: true, value: { ok: false, error: 'a provider and a credential string are required' } })
     expect(bridge.storeCredential).not.toHaveBeenCalled()
+  })
+
+  it('forwards an empty credential, which is how a client removes a stored key', async () => {
+    const outcome = await PROVIDER_ACTIONS['provider.storeCredential'].handler(conn, [
+      { provider: 'openai', credential: '' },
+    ])
+    expect(outcome).toEqual({ ok: true, value: { ok: true } })
+    expect(bridge.storeCredential).toHaveBeenCalledWith('openai', '')
   })
 
   it('turns a thrown engine error into a typed action error rather than dropping the reply', async () => {
