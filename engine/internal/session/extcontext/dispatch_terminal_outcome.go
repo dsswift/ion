@@ -5,7 +5,10 @@ package extcontext
 // DispatchAgentResult, so every outcome type for a dispatch carries the same
 // identity fields, including the child conversation ID.
 
-import "github.com/dsswift/ion/engine/internal/extension"
+import (
+	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/utils"
+)
 
 // terminalDispatchError builds the OnError payload from a terminal result.
 func terminalDispatchError(result extension.DispatchAgentResult) extension.DispatchError {
@@ -31,4 +34,29 @@ func terminalRecallInfo(result extension.DispatchAgentResult, reason string) ext
 		ToolCount:           result.ToolCount,
 		ChildConversationID: result.ChildConversationID,
 	}
+}
+
+// logTerminalOutcome records which terminal outcome an asynchronous dispatch
+// reached and the identity it carries. child_conversation_id is empty when the
+// dispatch ended before its child conversation existed.
+func logTerminalOutcome(sessionKey string, result extension.DispatchAgentResult, recalled bool, recallReason string) {
+	outcome := "complete"
+	switch {
+	case recalled:
+		outcome = "recall"
+	case result.ExitCode != 0:
+		outcome = "error"
+	}
+	fields := map[string]any{
+		"session_id":            sessionKey,
+		"dispatch_id":           result.DispatchID,
+		"model":                 result.Name,
+		"outcome":               outcome,
+		"exit_code":             result.ExitCode,
+		"child_conversation_id": result.ChildConversationID,
+	}
+	if recalled {
+		fields["recall_reason"] = recallReason
+	}
+	utils.LogWithFields(utils.LevelInfo, "server", "dispatch terminal outcome", fields)
 }

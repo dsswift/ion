@@ -1662,6 +1662,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 				// Callbacks observe terminal state only. Isolate failures so a
 				// callback cannot re-panic this goroutine after owner delivery.
+				logTerminalOutcome(key, *result, recalled.Load(), recallReason)
 				if recalled.Load() {
 					invokeDispatchCallback(func() {
 						if opts.OnRecall != nil {

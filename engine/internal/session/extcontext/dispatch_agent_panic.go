@@ -105,6 +105,7 @@ func recoverBackgroundDispatchPanic(
 // engine-owned parent/root delivery. A callback panic is logged, not allowed to
 // re-panic the dispatch goroutine after recovery.
 func invokePanicTerminalCallback(callback func(extension.DispatchAgentResult), result extension.DispatchAgentResult, sessionKey, dispatchID string) {
+	logTerminalOutcome(sessionKey, result, false, "")
 	if callback == nil {
 		return
 	}
