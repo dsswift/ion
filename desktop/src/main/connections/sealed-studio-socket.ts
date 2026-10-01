@@ -18,6 +18,7 @@ import { EventEmitter } from 'events'
 import WebSocket from 'ws'
 import { sealRelayFrame, openRelayFrame } from '@ion/shared/studio-wire/relay-envelope'
 import { keepSocketAlive } from './socket-keepalive'
+import { guardEarlyError } from './early-error-guard'
 import { log as _log, warn as _warn } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -58,6 +59,11 @@ export class SealedStudioSocket extends EventEmitter implements StudioSocketLike
 
   constructor(private readonly ws: WebSocket, private readonly sharedSecret: Buffer, private readonly options: SealedStudioSocketOptions) {
     super()
+    // The caller (`EnvironmentConnection.attempt()`) attaches its own
+    // `once('error', ...)` to THIS wrapper only after an async `open()`
+    // resolves, while `ws` below is already dialing -- see
+    // `early-error-guard.ts` for why that race needs covering here too.
+    guardEarlyError(this, options.label)
     keepSocketAlive(ws, options.label)
     ws.once('open', () => this.emit('open'))
     ws.on('message', (raw: Buffer | string) => this.onRaw(raw))
