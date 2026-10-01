@@ -502,7 +502,7 @@ func fetchModelsForProviderAuth(providerID, baseURL string, applyAuth authApplie
 		// OpenAI and every OpenAI-compatible provider (incl. custom gateways):
 		// normalize to a /v1 base so the request hits {base}/v1/models. The
 		// stock compatible providers' default base URLs already end in /v1;
-		// api.openai.com and enterprise gateways (e.g. https://ai.dcim.com) do not.
+		// api.openai.com and enterprise gateways (e.g. https://ai.example.com) do not.
 		if !strings.HasSuffix(baseURL, "/v1") && !strings.Contains(baseURL, "/v1/") {
 			baseURL = strings.TrimRight(baseURL, "/") + "/v1"
 		}

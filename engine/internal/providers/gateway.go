@@ -88,7 +88,7 @@ func (p *gatewayProvider) inner(model string) LlmProvider {
 }
 
 func (p *gatewayProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
-	// Strip a provider-qualified id (e.g. "dci-marketing/claude-opus-4-8") to
+	// Strip a provider-qualified id (e.g. "corp-gateway/claude-opus-4-8") to
 	// the bare wire model — the gateway expects the vendor's model id.
 	opts.Model = StripProviderQualifier(p.id, opts.Model)
 	inner := p.inner(opts.Model)

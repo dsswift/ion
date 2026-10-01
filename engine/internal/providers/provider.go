@@ -127,7 +127,7 @@ func ResolveProvider(model string) LlmProvider {
 	}
 
 	// Provider-qualified id: "<providerID>/<model>" routes to that provider
-	// directly (dual-provider coexistence — e.g. "dci-marketing/claude-opus-4-8"
+	// directly (dual-provider coexistence — e.g. "corp-gateway/claude-opus-4-8"
 	// alongside public anthropic's "claude-opus-4-8"). Only fires when the
 	// prefix matches a REGISTERED provider id, so OpenRouter-style wire ids
 	// ("deepseek/deepseek-chat"), whose slash is part of the model id and which
@@ -422,7 +422,7 @@ func ListModels() []types.ModelEntry {
 				// coexistence in model_discovery.storeResult). Advertising the
 				// bare id here would let a consumer pick a model displayed under
 				// this provider whose id routes elsewhere — the exact misroute
-				// that sent a dci-marketing Sonnet pick to the anthropic CLI.
+				// that sent a corp-gateway Sonnet pick to the anthropic CLI.
 				// Emit the provider-qualified alias instead, which storeResult
 				// registered for dialect-carrying gateway entries and which
 				// routing resolves to THIS provider.

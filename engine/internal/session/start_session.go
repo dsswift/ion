@@ -563,7 +563,7 @@ func (m *Manager) startSession(
 // resolvedUserIdentity(). On a desktop install where the engine runs its own
 // OIDC login (auth.identityProvider), signing in populates that slot
 // (server/dispatch_oidc.go's broadcastOidcIdentity) and all of those events
-// carry a user. On an Orion instance pod, the owner authenticates through
+// carry a user. On a hosted instance pod, the owner authenticates through
 // the SERVER's own OIDC door (server.json's oidc config, the bearer auth
 // door) -- engine.json carries no identityProvider there -- so
 // resolvedUserIdentity() was never populated and the same events shipped

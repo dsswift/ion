@@ -178,7 +178,7 @@ func (a *principalTestAccessor) Principal() *types.SessionPrincipal { return a.p
 // TestDispatchAgentSpanUserAttributionCarried pins the origin fix for a
 // dispatch.agent event shipping with no user at all on a deployment where
 // the server's own OIDC door authenticates the session's principal but the
-// engine has no process-wide operator identity of its own (every Orion
+// engine has no process-wide operator identity of its own (every Atlas
 // instance pod: server.json's oidc/allowedSubjects authenticate the person,
 // engine.json carries no auth.identityProvider). startDispatchSpan
 // (pre-fix) called the bare two-arg Collector.StartSpan, which always

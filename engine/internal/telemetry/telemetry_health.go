@@ -9,8 +9,7 @@ import (
 )
 
 // telemetry_health.go surfaces the delivery health of a target's retry queue
-// as observable state (issue #379, and the "telemetry on whether telemetry is
-// flowing" requirement in Orion 0008).
+// as observable state (issue #379).
 //
 // The engine's own logs already record every delivery failure, but a log line
 // is a poor foundation for an operator alert: it requires someone to be

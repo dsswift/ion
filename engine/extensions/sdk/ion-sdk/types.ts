@@ -725,7 +725,7 @@ export interface DiscoverAgentsOpts {
   sources?: string[]
   /** Additional directories to scan (appended after named sources) */
   extraDirs?: string[]
-  /** Filter to a specific bundle subdirectory (e.g., "cloudops") */
+  /** Filter to a specific bundle subdirectory (e.g., "platform") */
   bundleName?: string
   /** Walk subdirectories. Default true. */
   recursive?: boolean

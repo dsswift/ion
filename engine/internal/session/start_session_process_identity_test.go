@@ -20,7 +20,7 @@ import (
 // (correlationCtx/correlationCtxExt never carry it, or the ctx is nil) --
 // still carry a user via identityForEvent's fallback.
 //
-// On an Orion instance pod the owner authenticates through the SERVER's own
+// On an Atlas instance pod the owner authenticates through the SERVER's own
 // OIDC door (server.json's oidc config, the bearer auth door) -- engine.json
 // carries no identityProvider there -- so nothing ever called
 // telemetry.SetUserIdentity, and those same events shipped with an empty

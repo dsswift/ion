@@ -11,7 +11,7 @@ import (
 // provider configured against a private gateway. It retains every user-defined
 // entry and every model the gateway actually returned. Discovery records bare
 // wire IDs; ListModels deliberately emits qualified IDs for collisions (for
-// example dci-marketing/claude-opus-4-8), so matching must compare both forms.
+// example corp-gateway/claude-opus-4-8), so matching must compare both forms.
 func filterCustomGatewayModels(models []types.ModelEntry, customGateways map[string]bool) []types.ModelEntry {
 	discovered := make(map[string]map[string]bool, len(customGateways))
 	for providerID := range customGateways {

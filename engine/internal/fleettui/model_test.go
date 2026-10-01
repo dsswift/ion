@@ -437,7 +437,7 @@ func TestDevicesInTableAndDetail(t *testing.T) {
 // A host deployed outside the fleet is only read: deploy, restart, and relay
 // say why instead of opening a screen.
 func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
-	ext := fleet.Host{Name: "orion", URL: "https://orion.example.org", Kind: fleet.KindServer}
+	ext := fleet.Host{Name: "atlas", URL: "https://atlas.example.org", Kind: fleet.KindServer}
 	r := &recorder{}
 	m := New(testDeps(r, ext))
 	m = answered(t, m, statusesFor([]fleet.Host{ext}, "3"))
@@ -448,7 +448,7 @@ func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
 		}
 	}
 	m, _ = press(t, m, "enter")
-	if view := m.View().Content; !strings.Contains(view, "https://orion.example.org · deployed outside the fleet, read only") || strings.Contains(view, "d deploy this host") {
+	if view := m.View().Content; !strings.Contains(view, "https://atlas.example.org · deployed outside the fleet, read only") || strings.Contains(view, "d deploy this host") {
 		t.Errorf("detail:\n%s", view)
 	}
 	if len(r.prepared) != 0 || len(r.restarted) != 0 || len(r.relays) != 0 {

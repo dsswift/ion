@@ -35,16 +35,16 @@ func TestResolveApplicationConfigSource(t *testing.T) {
 	prev := applicationConfig
 	t.Cleanup(func() { applicationConfig = prev })
 	applicationConfig = func(reader Reader, key string) (string, error) {
-		if reader.Principal == "user-a" && reader.ExtensionID == "orion" && key == "gatewayKey" {
+		if reader.Principal == "user-a" && reader.ExtensionID == "atlas" && key == "gatewayKey" {
 			return "gk-value", nil
 		}
 		return "", appconfig.NotReadyError{State: appconfig.StateDeferred}
 	}
 	ref := types.SecretReference{SecretRef: "gatewayKey", SecretSource: types.SecretSourceApplicationConfig}
-	if got, err := Resolve(Reader{Principal: "user-a", ExtensionID: "orion"}, ref); err != nil || got != "gk-value" {
+	if got, err := Resolve(Reader{Principal: "user-a", ExtensionID: "atlas"}, ref); err != nil || got != "gk-value" {
 		t.Fatalf("got %q, %v", got, err)
 	}
-	_, err := Resolve(Reader{Principal: "user-b", ExtensionID: "orion"}, ref)
+	_, err := Resolve(Reader{Principal: "user-b", ExtensionID: "atlas"}, ref)
 	var notReady appconfig.NotReadyError
 	if !errors.As(err, &notReady) {
 		t.Fatalf("the source's condition must stay inspectable: %v", err)
@@ -66,7 +66,7 @@ func TestReaderRidesContext(t *testing.T) {
 	if got := ReaderFromContext(context.Background()); got != (Reader{}) {
 		t.Fatalf("absent reader: %+v", got)
 	}
-	want := Reader{Principal: "user-a", ExtensionID: "orion"}
+	want := Reader{Principal: "user-a", ExtensionID: "atlas"}
 	if got := ReaderFromContext(WithReader(context.Background(), want)); got != want {
 		t.Fatalf("reader = %+v", got)
 	}

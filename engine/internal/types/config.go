@@ -802,7 +802,7 @@ type ProviderConfig struct {
 	BaseURL    string `json:"baseURL,omitempty"`
 	AuthHeader string `json:"authHeader,omitempty"`
 	// DisplayName is the human-friendly name clients show for this provider
-	// (e.g. "dci Marketing" for provider id "dci-marketing"). Empty means
+	// (e.g. "Corp Gateway" for provider id "corp-gateway"). Empty means
 	// clients fall back to their built-in name map / capitalized id.
 	DisplayName string `json:"displayName,omitempty"`
 	// Backend selects which run backend serves this provider's models when
@@ -1466,7 +1466,7 @@ type TelemetryConfig struct {
 	EventHubName string `json:"eventHubName,omitempty"`
 
 	// EventHubNamespace selects secretless authentication: the fully
-	// qualified namespace host (e.g. "orion-events.servicebus.windows.net")
+	// qualified namespace host (e.g. "atlas-events.servicebus.windows.net")
 	// reached with a token minted by the engine's configured identity,
 	// instead of a connection string.
 	//

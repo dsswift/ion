@@ -32,18 +32,18 @@ func TestDispatchDefaultProviderSetGetClearRoundTrips(t *testing.T) {
 	t.Cleanup(func() { conn.Close() })
 
 	sendJSON(t, conn, map[string]interface{}{
-		"cmd": "set_default_provider", "requestId": "set", "text": "DCI-Marketing",
+		"cmd": "set_default_provider", "requestId": "set", "text": "Corp-Gateway",
 	})
 	setLines := readLines(t, conn, 2, 3*time.Second)
 	setEvent := findDefaultProviderEvent(t, setLines)
-	if setEvent == nil || setEvent.DefaultProvider == nil || *setEvent.DefaultProvider != "dci-marketing" {
+	if setEvent == nil || setEvent.DefaultProvider == nil || *setEvent.DefaultProvider != "corp-gateway" {
 		t.Fatalf("set did not broadcast normalized default provider: %v", setLines)
 	}
 
 	sendJSON(t, conn, map[string]interface{}{"cmd": "get_default_provider", "requestId": "get"})
 	getLines := readLines(t, conn, 2, 3*time.Second)
 	getEvent := findDefaultProviderEvent(t, getLines)
-	if getEvent == nil || getEvent.DefaultProvider == nil || *getEvent.DefaultProvider != "dci-marketing" {
+	if getEvent == nil || getEvent.DefaultProvider == nil || *getEvent.DefaultProvider != "corp-gateway" {
 		t.Fatalf("get snapshot = %+v, lines = %v", getEvent, getLines)
 	}
 

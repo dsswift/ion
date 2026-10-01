@@ -315,7 +315,7 @@ func TestUserModels(t *testing.T) {
 // enterprise-gateway user declare image models (e.g. FLUX deployments
 // behind an OpenAI-compatible gateway) in ~/.ion/models.json:
 //
-//	"openai": { "baseURL": "https://ai.dcim.com", "models": {
+//	"openai": { "baseURL": "https://ai.example.com", "models": {
 //	    "FLUX.2-pro": { "modelKind": "image" } } }
 //
 // Without modelKind flowing through UserModels, the entry registers with
@@ -324,7 +324,7 @@ func TestUserModels_ModelKind(t *testing.T) {
 	config := map[string]interface{}{
 		"providers": map[string]interface{}{
 			"openai": map[string]interface{}{
-				"baseURL": "https://ai.dcim.com",
+				"baseURL": "https://ai.example.com",
 				"models": map[string]interface{}{
 					"FLUX.2-pro": map[string]interface{}{
 						"modelKind": "image",

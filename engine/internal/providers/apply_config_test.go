@@ -97,7 +97,7 @@ func TestApplyConfig_ImageProviders(t *testing.T) {
 		ResetRegistries()
 
 		ApplyConfig(map[string]types.ProviderConfig{
-			"openai": {BaseURL: "https://ai.dcim.com", APIKey: "gw-key"},
+			"openai": {BaseURL: "https://ai.example.com", APIKey: "gw-key"},
 		})
 
 		ip := GetImageProvider("openai")
@@ -151,7 +151,7 @@ func TestApplyConfig_ImageProviders(t *testing.T) {
 		ResetRegistries()
 
 		ApplyConfig(map[string]types.ProviderConfig{
-			"openai": {BaseURL: "https://ai.dcim.com", APIKey: "gw-key"},
+			"openai": {BaseURL: "https://ai.example.com", APIKey: "gw-key"},
 		})
 		// Mimic the server registering a user-config image model entry
 		// (modelKind flows from models.json via modelconfig.UserModels).

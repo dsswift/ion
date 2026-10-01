@@ -12,7 +12,7 @@ func secretSnapshot() Snapshot {
 			Secrets: map[string]string{"gatewayKey": "common-key", "shadowed": "common-secret"},
 		},
 		Extensions: map[string]Section{
-			"orion":  {Secrets: map[string]string{"gatewayKey": "orion-key", "ownOnly": "orion-only"}},
+			"atlas":  {Secrets: map[string]string{"gatewayKey": "atlas-key", "ownOnly": "atlas-only"}},
 			"shadow": {Values: map[string]any{"shadowed": "now-plain"}},
 		},
 	}}
@@ -28,8 +28,8 @@ func TestSnapshotSecretFollowsViewScoping(t *testing.T) {
 		err                                 error
 	}{
 		{"common secret", "", "", "gatewayKey", "common-key", nil},
-		{"own section wins", "subject-a", "orion", "gatewayKey", "orion-key", nil},
-		{"own-only secret", "subject-a", "orion", "ownOnly", "orion-only", nil},
+		{"own section wins", "subject-a", "atlas", "gatewayKey", "atlas-key", nil},
+		{"own-only secret", "subject-a", "atlas", "ownOnly", "atlas-only", nil},
 		{"another extension's secret", "subject-a", "shadow", "ownOnly", "", ErrNotFound},
 		{"no trusted id sees common only", "subject-a", "", "ownOnly", "", ErrNotFound},
 		{"plain value refused", "", "", "endpoint", "", ErrNotSecret},

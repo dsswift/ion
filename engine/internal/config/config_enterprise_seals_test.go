@@ -458,7 +458,7 @@ func TestEnterpriseSealForwardsEventHubDestination(t *testing.T) {
 		ConversationEvents: &types.ConversationEventsConfig{
 			Enabled:               true,
 			Targets:               []string{"eventhub"},
-			EventHubNamespace:     "orion.servicebus.windows.net",
+			EventHubNamespace:     "atlas.servicebus.windows.net",
 			EventHubName:          "conversation-events",
 			EventHubTokenScope:    "https://eventhubs.azure.net/.default",
 			EventHubTokenAudience: "aud",
@@ -471,7 +471,7 @@ func TestEnterpriseSealForwardsEventHubDestination(t *testing.T) {
 	if ce == nil || !ce.Enabled {
 		t.Fatal("enterprise did not force conversation events on")
 	}
-	if ce.EventHubNamespace != "orion.servicebus.windows.net" {
+	if ce.EventHubNamespace != "atlas.servicebus.windows.net" {
 		t.Errorf("namespace = %q, want the enterprise value — without it the sealed target has nowhere to send", ce.EventHubNamespace)
 	}
 	if ce.EventHubName != "conversation-events" {

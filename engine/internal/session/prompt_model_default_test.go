@@ -21,19 +21,19 @@ import (
 
 // Nobody supplied a model -> the engine.json default fills it in.
 func TestApplyConfigDefaults_ModelInheritedWhenUnset(t *testing.T) {
-	m := &Manager{config: &types.EngineRuntimeConfig{DefaultModel: "dci-marketing/claude-sonnet-5"}}
+	m := &Manager{config: &types.EngineRuntimeConfig{DefaultModel: "corp-gateway/claude-sonnet-5"}}
 	opts := types.RunOptions{}
 
 	m.applyConfigDefaults(&opts)
 
-	if opts.Model != "dci-marketing/claude-sonnet-5" {
+	if opts.Model != "corp-gateway/claude-sonnet-5" {
 		t.Fatalf("Model = %q; want engine.json defaultModel to fill the empty field", opts.Model)
 	}
 }
 
 // A caller-supplied model must never be overwritten by the config default.
 func TestApplyConfigDefaults_ModelPreservedWhenSet(t *testing.T) {
-	m := &Manager{config: &types.EngineRuntimeConfig{DefaultModel: "dci-marketing/claude-sonnet-5"}}
+	m := &Manager{config: &types.EngineRuntimeConfig{DefaultModel: "corp-gateway/claude-sonnet-5"}}
 	opts := types.RunOptions{Model: "anthropic/claude-sonnet-5"}
 
 	m.applyConfigDefaults(&opts)
