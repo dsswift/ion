@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -255,6 +256,22 @@ func cmdServe(flags map[string]string) {
 		return providers.WithRequestCredential(ctx, a)
 	}
 	titling.SetAuthResolver(attachUnattributedAuth)
+
+	// A backend that runs delegated CLIs can also answer the titling prompt
+	// through one, on the CLI's own login, for a model no API credential
+	// serves.
+	if generator, ok := b.(backend.TextGenerator); ok {
+		titling.SetDelegatedGenerator(func(ctx context.Context, model, system, prompt string) (string, bool, error) {
+			text, err := generator.GenerateText(ctx, backend.TextGenRequest{Model: model, System: system, Prompt: prompt})
+			if errors.Is(err, backend.ErrTextGenUnsupported) {
+				return "", false, nil
+			}
+			return text, true, err
+		})
+		utils.LogWithFields(utils.LevelInfo, "main", "titling: delegated cli generator wired", map[string]any{"backend": cfg.Backend})
+	} else {
+		utils.LogWithFields(utils.LevelInfo, "main", "titling: backend has no delegated cli generator", map[string]any{"backend": cfg.Backend})
+	}
 
 	// Wire the same hook into compaction (same pattern as titling above). A
 	// session-scoped compaction call authenticates as the acting principal

@@ -81,6 +81,25 @@ The top-level `"backend"` values `"api"` and `"claude-code"` keep
 all-runs-one-backend semantics; `"hybrid"` is the router. `"cli"` is a
 permanently accepted legacy alias for `"claude-code"`, normalized at config load.
 
+## Text generation without a run
+
+The engine has small utility prompts of its own, such as the conversation title
+behind `generate_title`. They are a single question with a single text answer,
+not a run. On the provider API they need an API credential, which a setup that
+signs in through a delegated CLI does not have.
+
+A backend that can answer such a prompt through its CLI implements
+`backend.TextGenerator` (`internal/backend/text_generation.go`). The call is a
+one-shot subprocess on the CLI's own login: `claude -p` for `claude-code`,
+`codex exec` for `codex`. It is isolated from every run. It gets no tools, no
+hooks, no MCP servers, and no session persistence, and it runs in a scratch
+directory that is removed afterwards.
+
+`HybridBackend` routes the prompt with the same rule as a run of that model, so
+an API credential still wins. A model that routes to `api`, or to a CLI kind
+with no one-shot mode (`grok`, `cursor`), is reported as unsupported and the
+caller uses the provider API. The subprocess is bounded by `timeouts.textGenMs`.
+
 ## CLI probes and provider status
 
 `internal/cliprobe` interrogates each delegated CLI for install path, version,
