@@ -8,7 +8,7 @@ export interface NearbyStudioServer {
   environmentId: string
   label: string
   serverVersion: string
-  /** The name the server announced itself under, e.g. `grover.local`. Shown, not dialled. */
+  /** The name the server announced itself under, e.g. `oscar.local`. Shown, not dialled. */
   host: string
   port: number
   /**

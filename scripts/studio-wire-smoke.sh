@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bundles scripts/studio-wire-smoke.mts (the @ion/shared sources use
 # extensionless imports Node's own resolver cannot follow) and runs it.
-#   scripts/studio-wire-smoke.sh --host grover.local [--keep] [--link <ion-studio://…>]
+#   scripts/studio-wire-smoke.sh --host oscar.local [--keep] [--link <ion-studio://…>]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p build
