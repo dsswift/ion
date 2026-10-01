@@ -105,10 +105,10 @@ export interface RegistryEntry {
    * Human-readable description of what this worktree is FOR.
    *
    * Seeded from the conversation that started the worktree: either the name it
-   * already had when it was converted into one, or the title generated for its
-   * first real prompt (see the seed IPC). Written ONCE — later conversations
-   * opened in the same worktree never change it, because a worktree's topic is
-   * set by the work it was cut for. The operator can override it explicitly.
+   * already had when it was converted into one, or the title of its first real
+   * prompt. Later conversations opened in the same worktree never change it,
+   * because a worktree's topic is set by the work it was cut for. The operator
+   * can override it explicitly.
    *
    * Absent until then. Every other identifier a worktree has — `ion-03e81090`,
    * `wt/ion-03e81090`, a commit sha — is a machine string that tells the

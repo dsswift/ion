@@ -149,13 +149,25 @@ export async function gitWorktreeSetTitle(args: { worktreePath: string; repoPath
   return { ok: true, title: trimmed }
 }
 
-export async function gitWorktreeSeedTitle(worktreePath: string, title: string) {
+/**
+ * Stamp a worktree with its conversation's name, without overriding a name it
+ * already has.
+ *
+ * `replaces` is the one exception: the name this same conversation stamped a
+ * moment ago (its placeholder, taken from the prompt). The stored title is
+ * swapped only while it still equals that string, so a generated title can
+ * improve on its own placeholder but never on a name the operator typed or
+ * another conversation stamped first.
+ */
+export async function gitWorktreeSeedTitle(worktreePath: string, title: string, replaces?: string) {
   const trimmed = title?.trim() ?? ''
   if (!worktreePath || !trimmed) return { ok: false, reason: 'empty-input' as const }
   if (!isValidProjectPath(worktreePath)) return { ok: false, reason: 'invalid-path' as const }
   const registration = lookupWorktreeRegistration(worktreePath)
   if (!registration) return { ok: false, reason: 'not-a-worktree' as const }
-  if (registration.title) return { ok: false, reason: 'already-titled' as const, title: registration.title }
+  if (registration.title && registration.title !== replaces?.trim()) {
+    return { ok: false, reason: 'already-titled' as const, title: registration.title }
+  }
   if (!setWorktreeTitle(worktreePath, trimmed)) return { ok: false, reason: 'persist-failed' as const }
   await announceWorktreeTitle(registration.repoPath, worktreePath, trimmed)
   return { ok: true, title: trimmed }

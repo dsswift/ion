@@ -90,7 +90,7 @@ describe('convertToWorktree — name seeding', () => {
 
     await state.convertToWorktree('tab-1')
 
-    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'Fix the token expiry check')
+    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'Fix the token expiry check', undefined)
   })
 
   // The operator's own name wins over the generated one, exactly as it does
@@ -100,7 +100,7 @@ describe('convertToWorktree — name seeding', () => {
 
     await state.convertToWorktree('tab-1')
 
-    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'abc')
+    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'abc', undefined)
   })
 
   it('seeds nothing for a tab still on the New Tab placeholder', async () => {
@@ -137,7 +137,7 @@ describe('setupWorktree — name seeding', () => {
 
     await state.setupWorktree('tab-1', 'josh', false)
 
-    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'Fix the token expiry check')
+    expect(mockSeedTitle).toHaveBeenCalledWith(WT, 'Fix the token expiry check', undefined)
   })
 
   it('seeds nothing for a placeholder tab', async () => {

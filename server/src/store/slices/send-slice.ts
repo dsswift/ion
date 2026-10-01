@@ -538,13 +538,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // for task_complete. Guard: only on the first send of a fresh tab
       // (needsTitle) and not on a mid-turn steer (isBusy).
       //
-      // The one generated string names BOTH the tab and — when this
+      // The conversation's title names BOTH the tab and — when this
       // conversation is running in a worktree that has no name yet — the
-      // worktree. The seed is refused by the main process once the worktree is
-      // named, so first prompt wins and a later conversation opened in the same
-      // worktree never re-titles it.
+      // worktree: the truncated `title` at once, then the generated one.
       if (needsTitle && !isBusy) {
-        maybeSendTimeTitle(tabId, text, get().renameTab, resolvedPath);
+        maybeSendTimeTitle(tabId, text, title, get().renameTab, resolvedPath);
       }
 
       if (isBusy && !implementationPhase) {
@@ -903,9 +901,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       // Same send-time title logic as submit() — fire in parallel, first send
-      // only, and the one generated string names the worktree too. See submit().
+      // only, and the conversation's title names the worktree too. See submit().
       if (needsTitle && (!isBusy || isImplementation)) {
-        maybeSendTimeTitle(tabId, prompt, get().renameTab, resolvedPath);
+        maybeSendTimeTitle(tabId, prompt, title, get().renameTab, resolvedPath);
       }
 
       if (isBusy && !isImplementation) {
