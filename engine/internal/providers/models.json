@@ -92,6 +92,29 @@
     "tokenizer": "o200k_base"
   },
   {
+    "id": "claude-sonnet-5-5",
+    "providerId": "anthropic",
+    "displayName": "Claude Sonnet 5.5",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.01,
+    "costPer1kCacheCreation": 0.0025,
+    "costPer1kCacheRead": 0.0002,
+    "maxOutputTokens": 128000,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base"
+  },
+  {
     "id": "claude-sonnet-5",
     "providerId": "anthropic",
     "displayName": "Claude Sonnet 5",
@@ -220,6 +243,74 @@
     "tokenizer": "o200k_base"
   },
   {
+    "id": "gpt-6-astra",
+    "providerId": "openai",
+    "displayName": "GPT-6 Astra",
+    "contextWindow": 1050000,
+    "costPer1kInput": 0.01,
+    "costPer1kOutput": 0.05,
+    "costPer1kCacheCreation": 0.0125,
+    "costPer1kCacheRead": 0.001,
+    "maxOutputTokens": 128000,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base",
+    "dialect": "openai-responses"
+  },
+  {
+    "id": "gpt-6.1-sol",
+    "providerId": "openai",
+    "displayName": "GPT-6.1 Sol",
+    "contextWindow": 1050000,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.01,
+    "costPer1kCacheCreation": 0.0025,
+    "costPer1kCacheRead": 0.0001,
+    "maxOutputTokens": 128000,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base",
+    "dialect": "openai-responses"
+  },
+  {
+    "id": "gpt-6-luna",
+    "providerId": "openai",
+    "displayName": "GPT-6 Luna",
+    "contextWindow": 1050000,
+    "costPer1kInput": 0.0001,
+    "costPer1kOutput": 0.0005,
+    "costPer1kCacheRead": 1e-05,
+    "maxOutputTokens": 128000,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base",
+    "dialect": "openai-responses"
+  },
+  {
     "id": "gpt-4.1",
     "providerId": "openai",
     "displayName": "GPT-4.1",
@@ -314,62 +405,89 @@
     "tokenizer": "cl100k_base"
   },
   {
-    "id": "grok-3",
+    "id": "grok-4.7",
     "providerId": "xai",
-    "displayName": "Grok 3",
-    "contextWindow": 131072,
-    "costPer1kInput": 0.003,
-    "costPer1kOutput": 0.015,
-    "supportsImages": true,
-    "tokenizer": "cl100k_base"
-  },
-  {
-    "id": "grok-3-fast",
-    "providerId": "xai",
-    "displayName": "Grok 3 Fast",
-    "contextWindow": 131072,
-    "costPer1kInput": 0.005,
-    "costPer1kOutput": 0.025,
-    "supportsImages": true,
-    "tokenizer": "cl100k_base"
-  },
-  {
-    "id": "grok-3-mini",
-    "providerId": "xai",
-    "displayName": "Grok 3 Mini",
-    "contextWindow": 131072,
-    "costPer1kInput": 0.0003,
-    "costPer1kOutput": 0.0005,
-    "supportsThinking": true,
-    "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": [
-      "low",
-      "high"
-    ],
-    "tokenizer": "cl100k_base"
-  },
-  {
-    "id": "grok-3-mini-fast",
-    "providerId": "xai",
-    "displayName": "Grok 3 Mini Fast",
-    "contextWindow": 131072,
-    "costPer1kInput": 0.0006,
-    "costPer1kOutput": 0.004,
-    "supportsThinking": true,
-    "thinkingMode": "reasoning_effort",
-    "thinkingEfforts": [
-      "low",
-      "high"
-    ],
-    "tokenizer": "cl100k_base"
-  },
-  {
-    "id": "grok-2",
-    "providerId": "xai",
-    "displayName": "Grok 2",
-    "contextWindow": 131072,
+    "displayName": "Grok 4.7",
+    "contextWindow": 500000,
     "costPer1kInput": 0.002,
-    "costPer1kOutput": 0.01,
+    "costPer1kOutput": 0.006,
+    "costPer1kCacheRead": 0.0005,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "tokenizer": "cl100k_base"
+  },
+  {
+    "id": "grok-4.6",
+    "providerId": "xai",
+    "displayName": "Grok 4.6",
+    "contextWindow": 500000,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.006,
+    "costPer1kCacheRead": 0.0005,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "tokenizer": "cl100k_base"
+  },
+  {
+    "id": "grok-4.5",
+    "providerId": "xai",
+    "displayName": "Grok 4.5",
+    "contextWindow": 500000,
+    "costPer1kInput": 0.002,
+    "costPer1kOutput": 0.006,
+    "costPer1kCacheRead": 0.0003,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "tokenizer": "cl100k_base"
+  },
+  {
+    "id": "grok-4.3",
+    "providerId": "xai",
+    "displayName": "Grok 4.3",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.00125,
+    "costPer1kOutput": 0.0025,
+    "costPer1kCacheRead": 0.0002,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "reasoning_effort",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "tokenizer": "cl100k_base"
+  },
+  {
+    "id": "grok-build-0.1",
+    "providerId": "xai",
+    "displayName": "Grok Build 0.1",
+    "contextWindow": 256000,
+    "costPer1kInput": 0.001,
+    "costPer1kOutput": 0.002,
+    "costPer1kCacheRead": 0.0002,
     "supportsImages": true,
     "tokenizer": "cl100k_base"
   },
@@ -455,9 +573,15 @@
     "tokenizer": "cl100k_base"
   },
   {
-    "id": "dall-e-3",
+    "id": "gpt-image-2.5-sunburst",
     "providerId": "openai",
-    "displayName": "DALL-E 3",
+    "displayName": "GPT Image 2.5 Sunburst",
+    "modelKind": "image"
+  },
+  {
+    "id": "gpt-image-2.5-flare",
+    "providerId": "openai",
+    "displayName": "GPT Image 2.5 Flare",
     "modelKind": "image"
   },
   {

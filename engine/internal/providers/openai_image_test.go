@@ -11,9 +11,9 @@ import (
 )
 
 // TestImageModelCatalogEntries pins that the embedded catalog registers
-// dall-e-3 and gpt-image-1 with modelKind="image" after init().
+// its OpenAI image models with modelKind="image" after init().
 func TestImageModelCatalogEntries(t *testing.T) {
-	for _, id := range []string{"dall-e-3", "gpt-image-1"} {
+	for _, id := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-1"} {
 		info := GetModelInfo(id)
 		if info == nil {
 			t.Errorf("%s: not found in model registry after init()", id)
@@ -36,7 +36,7 @@ func TestImageModelListModelsKind(t *testing.T) {
 	for _, e := range entries {
 		byID[e.ID] = e
 	}
-	for _, id := range []string{"dall-e-3", "gpt-image-1"} {
+	for _, id := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-1"} {
 		e, ok := byID[id]
 		if !ok {
 			t.Errorf("%s: not found in ListModels()", id)
@@ -49,9 +49,9 @@ func TestImageModelListModelsKind(t *testing.T) {
 }
 
 // TestResolveImageProvider pins that ResolveImageProvider returns a non-nil
-// ImageProvider for the two image models after init().
+// ImageProvider for the catalog image models after init().
 func TestResolveImageProvider(t *testing.T) {
-	for _, id := range []string{"dall-e-3", "gpt-image-1"} {
+	for _, id := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-1"} {
 		p := ResolveImageProvider(id)
 		if p == nil {
 			t.Errorf("ResolveImageProvider(%q) = nil, want non-nil", id)

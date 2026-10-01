@@ -91,8 +91,8 @@ func TestOpenAIBuildRequestBody_KeepsReasoningForMisdeclaredChatDialectWithoutTo
 }
 
 // THE regression guard. A stock compatible provider declares no dialect and
-// must keep reasoning even with tools present. grok-3-mini, grok-3-mini-fast,
-// and deepseek-reasoner all take this path.
+// must keep reasoning even with tools present. The catalog's xAI and DeepSeek
+// reasoning models all take this path.
 func TestOpenAIBuildRequestBody_KeepsReasoningForStockCompatibleProvider(t *testing.T) {
 	registerDialectReasoningModels()
 	p := &openaiProvider{id: "xai"}

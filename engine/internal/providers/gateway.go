@@ -113,3 +113,16 @@ func StripProviderQualifier(providerID, model string) string {
 	}
 	return model
 }
+
+// newStockOpenAIProvider builds the first-class "openai" provider. OpenAI
+// serves two chat protocols and its newer models accept function tools only on
+// the Responses API, so the provider dispatches per model on the registered
+// Dialect: "openai-responses" goes to /v1/responses, everything else stays on
+// Chat Completions. An empty baseURL selects each client's own default.
+func newStockOpenAIProvider(baseURL, authHeader string) LlmProvider {
+	return NewGatewayProvider(CompatibleProviderOptions{
+		ID:         "openai",
+		BaseURL:    baseURL,
+		AuthHeader: authHeader,
+	})
+}
