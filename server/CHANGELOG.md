@@ -8,6 +8,18 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.2.0](https://github.com/dsswift/ion/compare/server-v1.1.2...server-v1.2.0) (2026-10-01)
+
+### Features
+
+* **server:** refresh the static model list with current models ([aebc9ca](https://github.com/dsswift/ion/commit/aebc9caaef901ad6f078c53dcb6a320a6e4ddce3))
+
+### Bug Fixes
+
+* **server:** let a client remove a stored provider api key ([b6e9149](https://github.com/dsswift/ion/commit/b6e91490fb7d7c8ae1f64dae09b7be956100af70))
+* **server:** answer git subscribe with the first repo snapshot ([d2553e1](https://github.com/dsswift/ion/commit/d2553e19f2219201c2bd344bfacbe2be10240e44))
+* **server:** name a worktree from its conversation's title ([3a91a04](https://github.com/dsswift/ion/commit/3a91a045df5891a87730c388c24a51a713962488))
+
 ## [1.1.2](https://github.com/dsswift/ion/compare/server-v1.1.1...server-v1.1.2) (2026-09-30)
 
 ### Bug Fixes

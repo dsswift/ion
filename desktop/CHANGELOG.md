@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.2.1](https://github.com/dsswift/ion/compare/desktop-v2.2.0...desktop-v2.2.1) (2026-10-01)
+
+### Bug Fixes
+
+* **desktop:** show studio browser favicons as data urls ([4f6cae0](https://github.com/dsswift/ion/commit/4f6cae009f49607d369fd24b2c6e164df48af9fa))
+
 ## [2.2.0](https://github.com/dsswift/ion/compare/desktop-v2.1.0...desktop-v2.2.0) (2026-09-30)
 
 ### Features

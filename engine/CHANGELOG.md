@@ -18,6 +18,17 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.89.0](https://github.com/dsswift/ion/compare/engine-v1.88.0...engine-v1.89.0) (2026-10-01)
+
+### Features
+
+* **engine:** add sonnet 5.5 and current openai and xai models ([e254060](https://github.com/dsswift/ion/commit/e25406092d613921dfaf8667a8943b71aa03d5ea))
+* **engine:** generate titles through the delegated cli ([023da76](https://github.com/dsswift/ion/commit/023da76b4fe441d8225f7aee11a094a98c7aa9d6))
+
+### Bug Fixes
+
+* **engine:** remove timing races from two engine tests (#458) ([5d05e25](https://github.com/dsswift/ion/commit/5d05e25e68a002e8162c198daaef5b74f24a0886))
+
 ## [1.88.0](https://github.com/dsswift/ion/compare/engine-v1.87.1...engine-v1.88.0) (2026-09-30)
 
 ### Features
