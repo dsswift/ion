@@ -137,9 +137,9 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     group: 'general',
     page: 'behavior',
     section: 'device-behavior',
-    label: 'Show TODO list panel',
+    label: 'Show task list',
     description:
-      'Render the TODO list panel for tabs that have an active TodoWrite tool.',
+      "Show the agent's task checklist at the bottom of the conversation while it works. Dispatch previews always show their task list.",
     defaultValue: true,
   },
   {

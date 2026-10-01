@@ -1,9 +1,10 @@
 /**
  * AgentDetailBody — the dispatch-preview body: breadcrumb drill-down,
  * sub-conversation loading, pinned header (pager + meta bar), and the
- * Transcript. Extracted from AgentDetailPanel so two hosts render ONE
- * implementation: the overlay's FloatingPanel popup (AgentDetailPanel) and
- * the Studio center's inline DispatchSplitPane.
+ * Transcript, and the displayed dispatch's task list. Extracted from
+ * AgentDetailPanel so every host renders ONE implementation: the
+ * FloatingPanel popup (AgentDetailPanel), the Studio center's inline
+ * DispatchSplitPane, and the Studio DispatchSurface tab.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +12,7 @@ import { CaretRight } from "@phosphor-icons/react";
 import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
 import { Transcript } from "./conversation/Transcript";
+import { TodoListPanel } from "./TodoListPanel";
 import { DispatchPager } from "./DispatchPager";
 import { DispatchMetaBar } from "./DispatchMetaBar";
 import {
@@ -395,6 +397,16 @@ export function AgentDetailBody({
           </div>
         )}
       </div>
+
+      {/* The displayed dispatch's own task list. Always shown when it has
+          items: the showTodoList preference governs the main conversation. */}
+      {!topLoading && topMessages && (
+        <TodoListPanel
+          messages={topMessages}
+          isRunning={topStatus === "running"}
+          alwaysShow
+        />
+      )}
     </div>
   );
 }
