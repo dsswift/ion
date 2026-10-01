@@ -107,6 +107,7 @@ const mockSteer = vi.fn()
 const mockCancelBash = vi.fn()
 const mockEngineAbort = vi.fn()
 vi.mock('../host-api', () => ({
+  gitWorktreeSeedTitle: vi.fn(async () => ({ ok: false, reason: 'not-a-worktree' as const })),
   echoUserTurnToStudio: vi.fn(),
   prompt: (...args: any[]) => mockPrompt(...args),
   setPermissionMode: (...args: any[]) => mockSetPermissionMode(...args),
