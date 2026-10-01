@@ -167,8 +167,8 @@ same installer with `ION_STUDIO_BUNDLE` pointing at the copy. A consumer
 gets the identical layout, services, and `server.json`.
 
 ```bash
-make deploy-studio-server HOST=grover.local                             # package, ship, install, health-check
-make deploy-studio-server HOST=grover.local ARGS="--no-build --pair laptop"  # reuse the packaged bundle, mint a link
+make deploy-studio-server HOST=oscar.local                             # package, ship, install, health-check
+make deploy-studio-server HOST=oscar.local ARGS="--no-build --pair laptop"  # reuse the packaged bundle, mint a link
 make package-studio-server GOOS=darwin GOARCH=amd64                     # just the bundle, into build/deploy
 ```
 
@@ -179,7 +179,7 @@ a bundle with no working terminal.
 
 ### Proving the host works before touching the desktop
 
-`scripts/studio-wire-smoke.sh --host grover.local` is a headless Studio
+`scripts/studio-wire-smoke.sh --host oscar.local` is a headless Studio
 client: it mints a pairing link over ssh, redeems it, connects with the
 paired credential, creates a conversation on the host, reads a directory,
 asks git, opens a terminal and reads its output back, sends a prompt through
@@ -396,7 +396,7 @@ Each row opens its project on one machine, and clicking the row is how you
 do it. The row answers two separate questions in two separate places.
 
 **Where it opens** is the machine named in the row's second line
-(`grover · /path`), coloured to say which machine it is: this machine in the
+(`oscar · /path`), coloured to say which machine it is: this machine in the
 accent, any other machine in the informational colour. That colour is what
 keeps a row under "Other machines" from reading like a local one.
 
