@@ -37,7 +37,7 @@ export interface ModelStoreState {
   /**
    * Every OTHER Environment's catalog, keyed by environment id (ADR-033
    * union store). The desktop shows every paired server's conversations at
-   * once, and a Grover tab's model picker must list GROVER's models, not the
+   * once, and a Oscar tab's model picker must list OSCAR's models, not the
    * laptop's; Settings -> Providers stores a key on whichever Environment
    * its selector names. Read through `environmentModels()` so the local
    * slice and the remote slices have one selector. The server process

@@ -64,8 +64,8 @@ describe('lanHostname', () => {
   })
 
   it('uses the first label of the host name elsewhere', () => {
-    expect(lanHostname({ platform: 'linux', hostname: () => 'grover.example.org' })).toBe('grover.local')
-    expect(lanHostname({ platform: 'linux', hostname: () => 'grover.local' })).toBe('grover.local')
+    expect(lanHostname({ platform: 'linux', hostname: () => 'oscar.example.org' })).toBe('oscar.local')
+    expect(lanHostname({ platform: 'linux', hostname: () => 'oscar.local' })).toBe('oscar.local')
   })
 
   it('returns nothing for an empty host name', () => {
