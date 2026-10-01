@@ -98,6 +98,7 @@ describe('worktree title storage', () => {
       branchName: '',
       sourceBranch: null,
       title: 'Hand-rolled experiment',
+      awaitingFirstPrompt: false,
     })
   })
 

@@ -54,14 +54,14 @@ describe('settled tab snapshot restore capability', () => {
 
   it('marks a missing registered worktree as permanent history', () => {
     writeSettled(worktreePath)
-    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null })
+    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null, awaitingFirstPrompt: false })
     expect(settledTabsSnapshot()[0]?.canRestoreSettled).toBe(false)
   })
 
   it('keeps a registered worktree record restorable', () => {
     mkdirSync(worktreePath, { recursive: true })
     writeSettled(worktreePath)
-    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null })
+    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null, awaitingFirstPrompt: false })
     expect(settledTabsSnapshot()[0]?.canRestoreSettled).toBe(true)
   })
 })
@@ -91,7 +91,7 @@ describe('settled snapshot permanence by role', () => {
     // its members' pins regardless of the checkout existing right now.
     mkdirSync(worktreePath, { recursive: true })
     writeSettled(worktreePath, 'bench-conversation')
-    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null })
+    lookup.mockReturnValue({ repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', title: null, awaitingFirstPrompt: false })
     expect(settledTabsSnapshot()[0]?.canRestoreSettled).toBe(false)
   })
 })

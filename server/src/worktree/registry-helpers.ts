@@ -52,6 +52,7 @@ export function lookupWorktreeRegistration(worktreePath: string): {
   branchName: string;
   sourceBranch: string | null;
   title: string | null;
+  awaitingFirstPrompt: boolean;
   landedAt?: number;
 } | null {
   const entry = loadRegistry().find(
@@ -63,8 +64,37 @@ export function lookupWorktreeRegistration(worktreePath: string): {
     branchName: entry.branchName,
     sourceBranch: entry.sourceBranch,
     title: entry.title ?? null,
+    awaitingFirstPrompt: entry.awaitingFirstPrompt === true,
     landedAt: entry.landedAt,
   };
+}
+
+/**
+ * Record that a conversation has sent its first prompt in this worktree, which
+ * ends the worktree's chance to be named automatically.
+ *
+ * Returns whether this call was the one that ended it. A worktree with no
+ * registry entry, or one whose window was already closed, is a logged no-op.
+ */
+export function closeWorktreeTitleSeed(worktreePath: string): boolean {
+  const entries = loadRegistry();
+  const existing = entries.find((e) => e.worktreePath === worktreePath);
+  if (!existing?.awaitingFirstPrompt) {
+    log("worktree title seed already closed", {
+      worktree_path: worktreePath,
+      registered: !!existing,
+    });
+    return false;
+  }
+  delete existing.awaitingFirstPrompt;
+  const saved = saveRegistry(entries);
+  if (saved) {
+    log("worktree title seed closed", {
+      worktree_path: worktreePath,
+      title: existing.title ?? "",
+    });
+  }
+  return saved;
 }
 
 /** Drop a worktree's registry entry (after a retire). */
