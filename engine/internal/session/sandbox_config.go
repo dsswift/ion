@@ -11,11 +11,10 @@ import (
 // buildSandboxConfig resolves the per-session *sandbox.Config, wiring
 // SecurityConfig.Sandbox (user layer) merged with SandboxEnterpriseConfig
 // (enterprise seal: Required forces the sandbox on regardless of the user
-// setting; AdditionalDenyPaths/AdditionalDangerousPatterns are additive).
-// Returns nil -- the historical, unchanged behavior -- when the sandbox is
-// not enabled by either layer. This is the FIRST place anything ever
-// assigns RunConfig.SandboxCfg; before this, the sandbox package was fully
-// implemented but never reachable from a real session.
+// setting; AdditionalDenyPaths is additive). Returns nil when the sandbox is
+// not enabled by either layer. The enterprise AdditionalDangerousPatterns are
+// not part of this config: they are enforced with the sandbox on or off (see
+// compileCommandPatterns).
 //
 // When principal partitioning is active for this session's principal
 // (attributed, enforcement != none), the sandbox additionally denies read
@@ -52,9 +51,6 @@ func buildSandboxConfig(m *Manager, principal *types.SessionPrincipal) *sandbox.
 	}
 	if enterpriseCfg != nil {
 		cfg.Filesystem.DenyRead = append(cfg.Filesystem.DenyRead, enterpriseCfg.AdditionalDenyPaths...)
-		for _, p := range enterpriseCfg.AdditionalDangerousPatterns {
-			cfg.Patterns = append(cfg.Patterns, sandbox.DangerousPattern{Pattern: p.Pattern, Reason: p.Reason})
-		}
 	}
 
 	applyPartitioningToSandbox(cfg, principal)

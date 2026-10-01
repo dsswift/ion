@@ -47,7 +47,11 @@ func (s *SandboxedBashOperations) Exec(ctx context.Context, command, cwd string,
 	for _, p := range s.Config.Patterns {
 		re, err := regexp.Compile(p.Pattern)
 		if err != nil {
-			continue
+			// A rule that cannot be evaluated is reported, not treated as absent.
+			return &ExecResult{
+				ExitCode: 1,
+				Stderr:   fmt.Sprintf("Sandbox: invalid dangerous pattern %q: %v", p.Pattern, err),
+			}, nil
 		}
 		if re.MatchString(command) {
 			return &ExecResult{

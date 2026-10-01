@@ -292,7 +292,7 @@ func TestValidateWithConfig_MultipleCustomPatterns(t *testing.T) {
 	}
 }
 
-func TestValidateWithConfig_InvalidRegexIgnored(t *testing.T) {
+func TestValidateWithConfig_InvalidRegexBlocksAndIsReported(t *testing.T) {
 	cfg := Config{
 		Patterns: []DangerousPattern{
 			{Pattern: `[invalid`, Reason: "bad regex"},
@@ -300,13 +300,15 @@ func TestValidateWithConfig_InvalidRegexIgnored(t *testing.T) {
 		},
 	}
 
-	// Invalid regex should be silently skipped; valid one still works.
-	safe, reason, source := ValidateWithConfig("foo bar", cfg)
+	// A rule that cannot be evaluated must not be treated as absent: even a
+	// command no valid pattern matches is refused, and the reason names the
+	// broken pattern.
+	safe, reason, source := ValidateWithConfig("ls -la", cfg)
 	if safe {
-		t.Error("expected blocked by foo pattern")
+		t.Error("expected a command to be blocked while a configured pattern is invalid")
 	}
-	if reason != "foo blocked" {
-		t.Errorf("expected 'foo blocked', got %q", reason)
+	if !strings.Contains(reason, "[invalid") {
+		t.Errorf("expected the reason to name the invalid pattern, got %q", reason)
 	}
 	if source != "custom" {
 		t.Errorf("expected source 'custom', got %q", source)
@@ -483,5 +485,22 @@ func TestGenerateBwrapArgs_AllowReadReExposesSubpathAfterTmpfs(t *testing.T) {
 	roBindIdx := strings.Index(joined, "--ro-bind /data/principals/alice--abc123")
 	if roBindIdx < tmpfsIdx {
 		t.Error("expected the ro-bind exception to be appended AFTER the tmpfs mount it carves an exception out of")
+	}
+}
+
+func TestCompilePatterns_ReportsInvalidAndKeepsValid(t *testing.T) {
+	compiled, errs := CompilePatterns([]DangerousPattern{
+		{Pattern: `[invalid`, Reason: "bad regex"},
+		{Pattern: `\bfoo\b`, Reason: "foo blocked"},
+	})
+	if len(errs) != 1 || errs[0].Index != 0 || errs[0].Pattern != `[invalid` || errs[0].Err == nil {
+		t.Fatalf("expected the invalid pattern reported with its index and error, got %+v", errs)
+	}
+	p, matched := MatchPatterns("foo bar", compiled)
+	if !matched || p.Reason != "foo blocked" {
+		t.Errorf("expected the valid pattern to match with its reason, got matched=%v %+v", matched, p)
+	}
+	if _, matched := MatchPatterns("ls -la", compiled); matched {
+		t.Error("expected a non-matching command to pass")
 	}
 }

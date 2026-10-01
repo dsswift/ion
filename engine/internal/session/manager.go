@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/scheduling"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -23,6 +24,9 @@ type Manager struct {
 	forkReservations map[string]*forkReservation
 	backend          backend.RunBackend
 	config           *types.EngineRuntimeConfig
+	// commandPatterns is the compiled enterprise dangerous-command pattern
+	// set, rebuilt by SetConfig.
+	commandPatterns []sandbox.CompiledPattern
 
 	// runKeyBindings maps an active run's requestID -> its session key,
 	// independent of engineSession.requestID. It exists because event routing
@@ -169,12 +173,6 @@ func (m *Manager) ConversationEventsTelemetry() *telemetry.Collector {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.conversationEventsTelemetry
-}
-
-func (m *Manager) SetConfig(cfg *types.EngineRuntimeConfig) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.config = cfg
 }
 
 // GetTelemetryConfig returns the engine telemetry config. Nil if telemetry

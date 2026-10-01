@@ -106,6 +106,10 @@ func ValidateShellSyntax(command string) (safe bool, reason string) {
 // The returned source names which pattern set produced a block: "default" when
 // a built-in dangerous pattern matched, "custom" when a config-supplied pattern
 // matched. When the command is safe, source is "" (no block occurred).
+//
+// A custom pattern that does not compile blocks the command, with the pattern
+// and the compile error as the reason: a rule that cannot be evaluated is
+// reported to the caller rather than treated as absent.
 func ValidateWithConfig(command string, cfg Config) (safe bool, reason string, source string) {
 	// Check default patterns first.
 	if safe, reason := ValidateShellSyntax(command); !safe {
@@ -113,14 +117,12 @@ func ValidateWithConfig(command string, cfg Config) (safe bool, reason string, s
 	}
 
 	// Check custom patterns.
-	for _, p := range cfg.Patterns {
-		re, err := regexp.Compile(p.Pattern)
-		if err != nil {
-			continue
-		}
-		if re.MatchString(command) {
-			return false, p.Reason, "custom"
-		}
+	compiled, errs := CompilePatterns(cfg.Patterns)
+	if len(errs) > 0 {
+		return false, fmt.Sprintf("invalid dangerous pattern %q: %v", errs[0].Pattern, errs[0].Err), "custom"
+	}
+	if p, matched := MatchPatterns(command, compiled); matched {
+		return false, p.Reason, "custom"
 	}
 
 	return true, "", ""
