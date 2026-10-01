@@ -361,6 +361,7 @@ An error signal from the engine. It carries structured classification when the s
 | `retryable`     | boolean | Whether the error is transient                 |
 | `retryAfterMs`  | number  | Suggested retry delay in milliseconds          |
 | `httpStatus`    | number  | HTTP status code from the provider             |
+| `providerSubscription` | object | The [Provider Subscription](#engine_provider_subscription) snapshot taken when a provider request failed. Present only when the request went to the `subscriptionLookup` provider while no looked-up key was applied (any state other than `applied`). It says why the request may have had no key; `message` is unchanged. |
 
 **Error Codes:**
 

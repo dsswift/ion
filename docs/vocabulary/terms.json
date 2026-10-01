@@ -3493,6 +3493,38 @@
       ]
     },
     {
+      "id": "provider-subscription-prompt",
+      "term": "Provider Subscription Prompt",
+      "definition": "The prompt a client shows, outside Settings, when a Provider Subscription needs a person: several subscriptions with none chosen, or none at all. It lists the offered subscriptions by label and applies the one picked, or says there is none and offers to look up again. It shows once per transition into either state; dismissing it leaves the Settings control as the way back.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "nextSubscriptionAttention",
+          "path": "packages/shared/src/provider-subscription.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ProviderSubscriptionPrompt",
+          "path": "desktop/src/renderer/studio/ProviderSubscriptionPrompt.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ProviderSubscriptionPromptOverlay",
+          "path": "ios/IonRemote/Views/ProviderSubscriptionPromptView.swift"
+        }
+      ]
+    },
+    {
       "id": "push-address",
       "term": "Push address",
       "definition": "Where a paired phone receives push notifications: its APNs device token and the APNs environment that issued it. The phone registers it with each server it is paired to; the server keeps it on the pairing record and sends it with every push. The relay only delivers and keeps none.",
