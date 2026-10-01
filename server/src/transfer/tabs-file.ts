@@ -44,7 +44,7 @@ export function readTab(tabsFile: string, tabId: string): PersistedTab | null {
 export function persistSealPendingOnTabsFile(
   tabsFile: string,
   tabId: string,
-  sealPending: { targetEnvironmentId: string; since: number },
+  sealPending: { targetEnvironmentId: string; since: number; carriesWorktree?: boolean },
 ): void {
   const state = readTabsState(tabsFile)
   const found = findTab(state, tabId)

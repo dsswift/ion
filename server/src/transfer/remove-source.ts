@@ -21,7 +21,11 @@
  * "remove it" when it is not there is that it is not there.
  *
  * The worktree is retired only when the caller says the whole worktree is
- * moving AND this is the last conversation left in it. A worktree move runs
+ * moving, the export that put this tab in flight packaged that worktree
+ * (`sealPending.carriesWorktree`), AND this is the last conversation left in
+ * it. The second is checked here rather than trusted from the caller: a
+ * checkout that was never shipped exists nowhere else, so retiring it would
+ * destroy the only copy of its branch. A worktree move runs
  * one conversation at a time, so retiring on the first would delete the
  * checkout the next conversation still has to package. A conversation that
  * leaves a worktree on its own never retires it: the checkout, its other
@@ -109,14 +113,19 @@ export async function removeTransferredSource(args: RemoveSourceArgs): Promise<R
   const othersInWorktree = worktree
     ? state.tabs.filter((t) => t.id !== args.tabId && t.worktree?.worktreePath === worktree.worktreePath).length
     : 0
-  if (worktree && args.retireWorktree && othersInWorktree > 0) {
+  const shipped = found.tab.sealPending?.carriesWorktree === true
+  if (worktree && args.retireWorktree && !shipped) {
+    // Asked to retire a checkout the export never packaged. The destination
+    // does not have it; keep it and say so. The move still completes.
+    warn('worktree kept: the export did not carry it', { ...logFields, step: 'remove_worktree', outcome: 'kept_not_shipped', worktree_path: worktree.worktreePath, others: othersInWorktree })
+  } else if (worktree && args.retireWorktree && othersInWorktree > 0) {
     // Asked to retire a checkout other conversations still live in. Retiring
     // it would strand them; keep it and say so. The move still completes.
     warn('worktree kept: other conversations still live in it', { ...logFields, step: 'remove_worktree', outcome: 'kept', worktree_path: worktree.worktreePath, others: othersInWorktree })
   } else if (worktree && !args.retireWorktree) {
     log('worktree kept: this move takes the conversation only', { ...logFields, step: 'remove_worktree', outcome: 'kept', worktree_path: worktree.worktreePath, others: othersInWorktree })
   }
-  if (worktree && args.retireWorktree && othersInWorktree === 0) {
+  if (worktree && args.retireWorktree && shipped && othersInWorktree === 0) {
     const retire = args.retireWorktreeFn ?? realRetireWorktree
     const result = await retire({
       repoPath: worktree.repoPath,
