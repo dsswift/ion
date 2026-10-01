@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.1](https://github.com/dsswift/ion/compare/ios-v2.1.0...ios-v2.1.1) (2026-10-01)
+
+### Bug Fixes
+
+* **ios:** say hello again when the server rejoins a relay ([283c165](https://github.com/dsswift/ion/commit/283c16500e12da983d90b99caabea2c426ea14e5))
+
 ## [2.1.0](https://github.com/dsswift/ion/compare/ios-v2.0.0...ios-v2.1.0) (2026-09-30)
 
 ### Features

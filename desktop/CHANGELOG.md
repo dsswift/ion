@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.3.0](https://github.com/dsswift/ion/compare/desktop-v2.2.3...desktop-v2.3.0) (2026-10-01)
+
+### Features
+
+* **desktop:** forward remote environment ports to localhost ([cac610f](https://github.com/dsswift/ion/commit/cac610f88c16ffc5fe752e93b46cb864f69eb1bc))
+
+### Bug Fixes
+
+* **desktop:** say hello again when the server rejoins a relay ([b6602b6](https://github.com/dsswift/ion/commit/b6602b6683ea447a6679c89c39db3381af3c25fd))
+* **desktop:** open a forwarded port over https by default ([2796efc](https://github.com/dsswift/ion/commit/2796efce3ed901f0ade485b381bd54c1e9ba44b2))
+
 ## [2.2.3](https://github.com/dsswift/ion/compare/desktop-v2.2.2...desktop-v2.2.3) (2026-10-01)
 
 ### Bug Fixes

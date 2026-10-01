@@ -8,6 +8,12 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.3.0](https://github.com/dsswift/ion/compare/server-v1.2.2...server-v1.3.0) (2026-10-01)
+
+### Features
+
+* **server:** dial host ports for port forward streams ([380afed](https://github.com/dsswift/ion/commit/380afed192027cd5dad8bbc5a140d11dff832e7b))
+
 ## [1.2.2](https://github.com/dsswift/ion/compare/server-v1.2.1...server-v1.2.2) (2026-10-01)
 
 ### Bug Fixes
