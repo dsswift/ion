@@ -12,6 +12,7 @@
 // elicitation/export/compaction/stall/steer arms plus handleDeadEvent.
 // Status reconciliation lives in engine-control-plane-status-event.ts.
 import type { EngineEvent, NormalizedEvent } from "@ion/shared/types";
+import { describeSubscriptionFailure } from "@ion/shared/provider-subscription";
 import { log as _log, debug as _debug, trace as _trace, error as _error } from "../logger";
 import { handleExportEvent } from "./engine-export-handler";
 import { handleThinkingEvent } from "./engine-control-plane-thinking";
@@ -252,15 +253,24 @@ export function handleEngineEvent(
       handleStatusEvent(ctx, tabId, tab, event);
       break;
 
-    case "engine_error":
-      error("engine_error", { tab_id: tabId, error: event.message });
+    case "engine_error": {
+      // A request that failed because no looked-up key applies says so first;
+      // the provider's own failure text follows it.
+      const subscriptionNotice = describeSubscriptionFailure(event.providerSubscription);
+      error("engine_error", {
+        tab_id: tabId,
+        error: event.message,
+        state: event.providerSubscription?.state ?? "",
+      });
       ctx.emit("event", tabId, {
         type: "error",
-        message: event.message,
+        message: subscriptionNotice ? `${subscriptionNotice}\n\n${event.message}` : event.message,
         isError: true,
         stderrTail: event.stderrTail ?? [],
+        ...(event.providerSubscription ? { providerSubscription: event.providerSubscription } : {}),
       } as NormalizedEvent);
       break;
+    }
 
     case "engine_dead":
       handleDeadEvent(ctx, tabId, tab, event);
