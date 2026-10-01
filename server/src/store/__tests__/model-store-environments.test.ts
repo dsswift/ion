@@ -30,29 +30,29 @@ vi.mock('../host-api', () => ({
 import { useModelStore, setupModelSync, environmentModels, REMOTE_BROWSER_LOGIN_REFUSAL, canStartProviderLogin } from '../model-store'
 
 const localModels = [{ id: 'local-m', providerId: 'anthropic' }]
-const oscarModels = [{ id: 'oscar-m', providerId: 'openai' }]
+const devboxModels = [{ id: 'devbox-m', providerId: 'openai' }]
 
 beforeEach(() => {
   vi.clearAllMocks()
   useModelStore.setState({ models: [], providers: [], loading: false, lastFetched: 0, byEnvironment: {}, loginStates: {}, onHost: { local: true } })
   mocks.listModels.mockImplementation(async (environmentId?: string) =>
-    environmentId === 'oscar'
-      ? { models: oscarModels, providers: [{ id: 'openai', hasAuth: true, backend: 'codex' }] }
+    environmentId === 'devbox'
+      ? { models: devboxModels, providers: [{ id: 'openai', hasAuth: true, backend: 'codex' }] }
       : { models: localModels, providers: [{ id: 'anthropic', hasAuth: true }] })
 })
 
 describe('per-environment catalogs', () => {
   it('fetches a remote environment into its own slice and leaves local alone', async () => {
-    await useModelStore.getState().fetchModelsFor('oscar')
-    expect(mocks.listModels).toHaveBeenCalledWith('oscar')
+    await useModelStore.getState().fetchModelsFor('devbox')
+    expect(mocks.listModels).toHaveBeenCalledWith('devbox')
     const s = useModelStore.getState()
     expect(s.models).toEqual([])
-    expect(s.modelsFor('oscar')).toEqual(oscarModels)
-    expect(environmentModels(s, 'oscar').providers[0].id).toBe('openai')
-    expect(s.findModelIn('oscar', 'oscar-m')?.id).toBe('oscar-m')
-    expect(s.findModel('oscar-m')).toBeUndefined()
-    expect(s.isModelCliServedIn('oscar', 'oscar-m')).toBe(true)
-    expect(s.isModelCliServed('oscar-m')).toBe(false)
+    expect(s.modelsFor('devbox')).toEqual(devboxModels)
+    expect(environmentModels(s, 'devbox').providers[0].id).toBe('openai')
+    expect(s.findModelIn('devbox', 'devbox-m')?.id).toBe('devbox-m')
+    expect(s.findModel('devbox-m')).toBeUndefined()
+    expect(s.isModelCliServedIn('devbox', 'devbox-m')).toBe(true)
+    expect(s.isModelCliServed('devbox-m')).toBe(false)
   })
 
   it('fetchModels fills the top-level local slice and environmentModels reads it back', async () => {
@@ -67,9 +67,9 @@ describe('per-environment catalogs', () => {
   it('coalesces a fetch already in flight for the same environment', async () => {
     let release: (v: { models: unknown[]; providers: unknown[] }) => void = () => {}
     mocks.listModels.mockImplementationOnce(() => new Promise((r) => { release = r }))
-    const first = useModelStore.getState().fetchModelsFor('oscar')
-    const second = useModelStore.getState().fetchModelsFor('oscar')
-    release({ models: oscarModels, providers: [] })
+    const first = useModelStore.getState().fetchModelsFor('devbox')
+    const second = useModelStore.getState().fetchModelsFor('devbox')
+    release({ models: devboxModels, providers: [] })
     await Promise.all([first, second])
     expect(mocks.listModels).toHaveBeenCalledTimes(1)
   })
@@ -80,25 +80,25 @@ describe('setupModelSync per environment', () => {
     setupModelSync()
     await Promise.resolve()
     mocks.listModels.mockClear()
-    mocks.modelsUpdatedListener?.('oscar')
+    mocks.modelsUpdatedListener?.('devbox')
     await new Promise((r) => setTimeout(r, 0))
-    expect(mocks.listModels).toHaveBeenCalledWith('oscar')
+    expect(mocks.listModels).toHaveBeenCalledWith('devbox')
 
-    mocks.loginListener?.({ provider: 'openai', backend: 'codex', stage: 'started' }, 'oscar')
-    expect(useModelStore.getState().loginStateFor('oscar', 'openai')?.phase).toBe('waiting')
+    mocks.loginListener?.({ provider: 'openai', backend: 'codex', stage: 'started' }, 'devbox')
+    expect(useModelStore.getState().loginStateFor('devbox', 'openai')?.phase).toBe('waiting')
     expect(useModelStore.getState().loginStateFor('local', 'openai')).toBeUndefined()
 
-    mocks.loginListener?.({ provider: 'openai', backend: 'codex', stage: 'await_device_code', userCode: 'ABCD', verificationUrl: 'https://v' }, 'oscar')
-    expect(useModelStore.getState().loginStateFor('oscar', 'openai')?.userCode).toBe('ABCD')
+    mocks.loginListener?.({ provider: 'openai', backend: 'codex', stage: 'await_device_code', userCode: 'ABCD', verificationUrl: 'https://v' }, 'devbox')
+    expect(useModelStore.getState().loginStateFor('devbox', 'openai')?.userCode).toBe('ABCD')
     expect(mocks.openExternal).toHaveBeenCalledWith('https://v')
   })
 
   it('abandons a remote browser-callback login with a message and cancels it on that environment', () => {
     setupModelSync()
-    mocks.loginListener?.({ provider: 'xai', backend: 'grok', stage: 'await_browser', authUrl: 'http://127.0.0.1:5555/cb' }, 'oscar')
-    expect(useModelStore.getState().loginStateFor('oscar', 'xai')).toEqual({ phase: 'error', error: REMOTE_BROWSER_LOGIN_REFUSAL })
+    mocks.loginListener?.({ provider: 'xai', backend: 'grok', stage: 'await_browser', authUrl: 'http://127.0.0.1:5555/cb' }, 'devbox')
+    expect(useModelStore.getState().loginStateFor('devbox', 'xai')).toEqual({ phase: 'error', error: REMOTE_BROWSER_LOGIN_REFUSAL })
     expect(mocks.openExternal).not.toHaveBeenCalled()
-    expect(mocks.providerLoginCancel).toHaveBeenCalledWith('xai', 'oscar')
+    expect(mocks.providerLoginCancel).toHaveBeenCalledWith('xai', 'devbox')
   })
 
   it('abandons a browser-callback login on the local environment id when the server said this client is not on its host', () => {
@@ -115,8 +115,8 @@ describe('setupModelSync per environment', () => {
     setupModelSync()
     mocks.loginListener?.({ provider: 'xai', backend: 'grok', stage: 'await_browser', authUrl: 'https://x' }, 'local')
     expect(mocks.openExternal).toHaveBeenCalledWith('https://x')
-    mocks.loginListener?.({ provider: 'anthropic', backend: 'claude-code', stage: 'await_browser', authUrl: 'https://fallback' }, 'oscar')
-    expect(useModelStore.getState().loginStateFor('oscar', 'anthropic')).toEqual({ phase: 'waiting', url: 'https://fallback' })
+    mocks.loginListener?.({ provider: 'anthropic', backend: 'claude-code', stage: 'await_browser', authUrl: 'https://fallback' }, 'devbox')
+    expect(useModelStore.getState().loginStateFor('devbox', 'anthropic')).toEqual({ phase: 'waiting', url: 'https://fallback' })
     expect(mocks.providerLoginCancel).not.toHaveBeenCalled()
   })
 })

@@ -52,7 +52,7 @@ import { pathBasename } from '@ion/shared/paths'
  * resurrected every conversation deleted on a small install as soon as the
  * server restarted: delete one of two tabs, restart, and both are back --
  * the deleted one now without its content file. Observed on the first
- * Oscar deploy.
+ * Devbox deploy.
  *
  * The precise signal is on disk already. Closing or deleting a tab removes
  * its externalized content file (`deleteInstanceContent`) before the

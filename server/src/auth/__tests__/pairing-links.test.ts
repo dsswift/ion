@@ -85,15 +85,15 @@ describe('completePairing', () => {
 describe('createPairingLink: link carries the server address', () => {
   it('encodes code, advertised url, and server label as query parameters', () => {
     const caller: PairingCaller = { subject: 'josh', scopes: ['admin'] }
-    const result = createPairingLink(caller, {}, ['conversations:read'], { url: 'http://oscar.local:7331', label: 'Oscar Lab' })
+    const result = createPairingLink(caller, {}, ['conversations:read'], { url: 'http://devbox.local:7331', label: 'Devbox Lab' })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const parsed = new URL(result.value.url)
     expect(parsed.protocol).toBe('ion-studio:')
     expect(parsed.host).toBe('pair')
     expect(parsed.searchParams.get('code')).toBe(result.value.code)
-    expect(parsed.searchParams.get('url')).toBe('http://oscar.local:7331')
-    expect(parsed.searchParams.get('env')).toBe('Oscar Lab')
+    expect(parsed.searchParams.get('url')).toBe('http://devbox.local:7331')
+    expect(parsed.searchParams.get('env')).toBe('Devbox Lab')
   })
 })
 

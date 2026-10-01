@@ -22,9 +22,9 @@ describe('pairingAdvertiseUrl', () => {
   const v4 = (address: string, internal: boolean) => ({ address, family: 'IPv4', internal })
 
   it('points at an address, never the bare host name', () => {
-    ifaces.value = { lo0: [v4('127.0.0.1', true)], en0: [v4('192.168.86.237', false)] }
+    ifaces.value = { lo0: [v4('127.0.0.1', true)], en0: [v4('192.168.1.237', false)] }
     const url = pairingAdvertiseUrl(config())
-    expect(url).toBe('http://192.168.86.237:7331')
+    expect(url).toBe('http://192.168.1.237:7331')
     expect(url).not.toBe('http://jolteon:7331')
   })
 
@@ -36,7 +36,7 @@ describe('pairingAdvertiseUrl', () => {
   })
 
   it('an explicit advertiseUrl still wins', () => {
-    ifaces.value = { en0: [v4('192.168.86.237', false)] }
+    ifaces.value = { en0: [v4('192.168.1.237', false)] }
     expect(pairingAdvertiseUrl(config('https://ion.example.com'))).toBe('https://ion.example.com')
   })
 })

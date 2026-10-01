@@ -94,7 +94,7 @@ describe('advertisedHostname', () => {
   })
 
   it('falls back to the host name, still as a name of our own', () => {
-    expect(advertisedHostname('', 'dcitag8331')).toBe('ion-dcitag8331.local')
+    expect(advertisedHostname('', 'macbook')).toBe('ion-macbook.local')
     expect(advertisedHostname('', '')).toBe('ion-studio.local')
   })
 })

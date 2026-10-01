@@ -45,7 +45,7 @@ describe('model store fetch', () => {
     const listener = vi.fn()
     const off = onLocalModelsFetched(listener)
     try {
-      await useModelStore.getState().fetchModelsFor('oscar')
+      await useModelStore.getState().fetchModelsFor('devbox')
       expect(listener).not.toHaveBeenCalled()
       await useModelStore.getState().fetchModels()
       expect(listener).toHaveBeenCalledWith(models)

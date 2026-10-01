@@ -12,10 +12,10 @@ describe('directAddresses', () => {
   it('offers every non-loopback IPv4 address with the listen port', () => {
     const urls = directAddresses(7331, {
       lo0: [v4('127.0.0.1', true)],
-      en0: [v4('192.168.86.237', false)],
+      en0: [v4('192.168.1.237', false)],
       en1: [v4('10.0.0.4', false)],
     })
-    expect(urls).toEqual(['http://192.168.86.237:7331', 'http://10.0.0.4:7331'])
+    expect(urls).toEqual(['http://192.168.1.237:7331', 'http://10.0.0.4:7331'])
   })
 
   // Node reports `family` as 'IPv4' on current releases and 4 on older ones.
@@ -40,12 +40,12 @@ describe('reachableAddresses', () => {
   const v4 = (address: string) => ({ address, family: 'IPv4', internal: false }) as never
 
   it('offers the addresses first and the .local name last', () => {
-    expect(reachableAddresses(7331, { en0: [v4('192.168.86.211')] }, 'dcitag8331.local'))
-      .toEqual(['http://192.168.86.211:7331', 'http://dcitag8331.local:7331'])
+    expect(reachableAddresses(7331, { en0: [v4('192.168.1.211')] }, 'macbook.local'))
+      .toEqual(['http://192.168.1.211:7331', 'http://macbook.local:7331'])
   })
 
   it('still offers the name when the host has no LAN address', () => {
-    expect(reachableAddresses(7331, {}, 'dcitag8331.local')).toEqual(['http://dcitag8331.local:7331'])
+    expect(reachableAddresses(7331, {}, 'macbook.local')).toEqual(['http://macbook.local:7331'])
   })
 
   it('offers no name when there is none', () => {
@@ -56,7 +56,7 @@ describe('reachableAddresses', () => {
 describe('lanHostname', () => {
   // A DHCP server can rename a Mac's host name; the Bonjour name stays.
   it('uses the LocalHostName on macOS, not the host name', () => {
-    expect(lanHostname({ platform: 'darwin', localHostName: () => 'dcitag8331', hostname: () => 'lease-42.corp.example.com' })).toBe('dcitag8331.local')
+    expect(lanHostname({ platform: 'darwin', localHostName: () => 'macbook', hostname: () => 'lease-42.corp.example.com' })).toBe('macbook.local')
   })
 
   it('falls back to the host name when the LocalHostName cannot be read', () => {
@@ -64,8 +64,8 @@ describe('lanHostname', () => {
   })
 
   it('uses the first label of the host name elsewhere', () => {
-    expect(lanHostname({ platform: 'linux', hostname: () => 'oscar.example.org' })).toBe('oscar.local')
-    expect(lanHostname({ platform: 'linux', hostname: () => 'oscar.local' })).toBe('oscar.local')
+    expect(lanHostname({ platform: 'linux', hostname: () => 'devbox.example.org' })).toBe('devbox.local')
+    expect(lanHostname({ platform: 'linux', hostname: () => 'devbox.local' })).toBe('devbox.local')
   })
 
   it('returns nothing for an empty host name', () => {
