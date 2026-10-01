@@ -1,15 +1,13 @@
 /**
  * useDispatchTranscript — one streaming/reconcile implementation for the
- * dispatch preview, shared by AgentPanel's floating popup (overlay) and
- * the Studio DispatchSplitPane (two hosts, one machinery).
+ * dispatch preview, shared by every host of the dispatch body (one
+ * machinery).
  *
  * Owns:
  *   - per-conversation transcript cache (file-backed snapshots via
  *     getConversation) with one-shot load + background refetch
- *   - the 12s CORRECTNESS-BACKSTOP reconcile for a running dispatch and
- *     the final reconcile at the running→terminal transition (the live
- *     stream is the dispatch_activity push path; the timer only heals
- *     dropped deltas/reconnects)
+ *   - the backstop reconcile for the selected dispatch
+ *     (useDispatchReconcile)
  *   - resolveDispatchData: snapshot ⊕ live push reconciliation keyed by
  *     dispatch id (NOT conversationId — two dispatches can share one)
  *
@@ -18,7 +16,8 @@
  * a newer dispatch can never steal an open view; dispatchId === '' is the
  * agent-level sentinel (agent with no registered dispatch yet).
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useDispatchReconcile } from './useDispatchReconcile'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { getDispatches, dispatchKey, mostRecentDispatch } from '../components/agent-panel-helpers'
 import { mapConversationMessages } from '@ion/shared/transcript/agent-conversation-mapper'
@@ -52,8 +51,6 @@ export interface DispatchTranscriptApi {
   /** Default index (most recent dispatch) for an agent's dispatch list. */
   defaultDispatchIndex: (dispatches: DispatchInfo[]) => number
 }
-
-const RECONCILE_INTERVAL_MS = 12000
 
 /**
  * Resolve the subject's agent from a visible set: by name AND dispatch
@@ -170,8 +167,7 @@ export function useDispatchTranscript(subject: DispatchSubject | null, subjectAg
     if (subjectAgent) loadAgentDispatch(subjectAgent, subject?.dispatchId)
   }, [subjectSig]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 12s CORRECTNESS-BACKSTOP reconcile while the selected dispatch runs +
-  // one final reconcile at the running→terminal transition.
+  // Backstop reconcile for the selected dispatch.
   const subjectDispatches = subjectAgent ? getDispatches(subjectAgent) : []
   const selIdx = subjectAgent ? subjectDispatches.findIndex((d) => d.id === subject?.dispatchId) : -1
   const selDispatch = selIdx >= 0 ? subjectDispatches[selIdx] : undefined
@@ -181,20 +177,7 @@ export function useDispatchTranscript(subject: DispatchSubject | null, subjectAg
       ? selDispatch.status === 'running'
       : subjectAgent.status === 'running'
     : false
-  useEffect(() => {
-    if (!subject || !selConvId || !selRunning) return
-    const timer = setInterval(() => {
-      refetchConversation(selConvId).catch((err) => rDebug('dispatch-transcript', 'reconcile refetch failed', { conversation_id: selConvId, error: String(err) }))
-    }, RECONCILE_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [subject, selConvId, selRunning, refetchConversation])
-  const prevRunning = useRef(false)
-  useEffect(() => {
-    if (subject && selConvId && prevRunning.current && !selRunning) {
-      refetchConversation(selConvId).catch((err) => rDebug('dispatch-transcript', 'final reconcile refetch failed', { conversation_id: selConvId, error: String(err) }))
-    }
-    prevRunning.current = selRunning
-  }, [subject, selConvId, selRunning, refetchConversation])
+  useDispatchReconcile(subject ? selConvId : '', selRunning, refetchConversation)
 
   return {
     loadSingleConversation,
