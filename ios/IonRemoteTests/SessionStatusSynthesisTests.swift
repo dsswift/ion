@@ -154,7 +154,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
         // any field that gets dropped by a mechanical refactor.
         let denial = PermissionDenialEntry(toolName: "ExitPlanMode", toolUseId: "tu-9", toolInput: nil)
         let s = makeStatus(
-            key: "ion-ops:inst-2",
+            key: "ion-notes:inst-2",
             state: "idle",
             sessionId: "conv-xyz",
             model: "claude-4",
@@ -166,9 +166,9 @@ final class SessionStatusSynthesisTests: XCTestCase {
             extensionName: "Ion Operations",
             backgroundAgentCount: 1
         )
-        let f = SessionStatusSynthesis.toStatusFields(tabId: "ion-ops", status: s)
+        let f = SessionStatusSynthesis.toStatusFields(tabId: "ion-notes", status: s)
 
-        XCTAssertEqual(f.label, "ion-ops")
+        XCTAssertEqual(f.label, "ion-notes")
         XCTAssertEqual(f.state, "idle")
         XCTAssertEqual(f.sessionId, "conv-xyz")
         XCTAssertEqual(f.model, "claude-4")

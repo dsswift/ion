@@ -27,7 +27,7 @@ final class TabRowRestraintTests: XCTestCase {
         hasRunningChildren: Bool? = nil,
         permissionQueue: [PermissionRequest] = [],
         backgroundShellCount: Int? = nil,
-        workingDirectory: String = "/tmp/orion",
+        workingDirectory: String = "/tmp/atlas",
         lastMessage: String? = nil,
         isTerminalOnly: Bool? = nil
     ) -> RemoteTabState {
@@ -138,15 +138,15 @@ final class TabRowRestraintTests: XCTestCase {
     /// Precedence 3: no message → the directory name, so a fresh conversation
     /// still says where it lives.
     func testIdleTabWithNoMessageFallsBackToDirectory() {
-        let tab = makeTab(status: .idle, workingDirectory: "/Users/x/src/orion", lastMessage: nil)
-        XCTAssertEqual(TabRowView(tab: tab, idleSince: since).subtitle(at: now)?.text, "orion")
+        let tab = makeTab(status: .idle, workingDirectory: "/Users/x/src/atlas", lastMessage: nil)
+        XCTAssertEqual(TabRowView(tab: tab, idleSince: since).subtitle(at: now)?.text, "atlas")
     }
 
     /// An empty message string is treated as absent, not rendered as a blank
     /// line — otherwise the row would show an empty subtitle.
     func testEmptyMessageFallsBackToDirectory() {
-        let tab = makeTab(status: .idle, workingDirectory: "/tmp/orion", lastMessage: "")
-        XCTAssertEqual(TabRowView(tab: tab, idleSince: since).subtitle(at: now)?.text, "orion")
+        let tab = makeTab(status: .idle, workingDirectory: "/tmp/atlas", lastMessage: "")
+        XCTAssertEqual(TabRowView(tab: tab, idleSince: since).subtitle(at: now)?.text, "atlas")
     }
 
     /// The subtitle is a relative timestamp on the status branch, so it must
