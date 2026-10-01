@@ -9,32 +9,34 @@
 # inbox is the issue list.
 #
 # Usage:
-#   report-run-failures.sh <label> <title-prefix> <needs-json> [consequence]
+#   NEEDS_JSON=<needs-json> report-run-failures.sh <label> <title-prefix> [consequence]
 #
-#   needs-json is `toJSON(needs)` from the reporting job: a map of job id to
+#   NEEDS_JSON is `toJSON(needs)` from the reporting job: a map of job id to
 #   { result, outputs }. Matrix legs collapse into their job id; the issue
-#   links the run, where the leg is one click away.
+#   links the run, where the leg is one click away. It arrives in the
+#   environment, never as an argument: job outputs hold free text, and text
+#   pasted into a command line is parsed by the shell.
 #
 #   consequence is the sentence in the issue body that says what the failure
 #   did to the release. It defaults to the non-blocking lanes' answer.
 #
-# Environment (all set by GitHub Actions):
-#   GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
+# Environment (NEEDS_JSON from the reporting job, the rest set by GitHub Actions):
+#   NEEDS_JSON, GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
 #   GITHUB_SHA, GITHUB_SERVER_URL, GITHUB_EVENT_NAME
 #
 # Dependencies: gh, jq, and open-ci-issue.sh beside this script.
 
 set -euo pipefail
 
-if [ $# -lt 3 ] || [ $# -gt 4 ]; then
-  echo "Usage: $0 <label> <title-prefix> <needs-json> [consequence]" >&2
+if [ $# -lt 2 ] || [ $# -gt 3 ] || [ -z "${NEEDS_JSON:-}" ]; then
+  echo "Usage: NEEDS_JSON=<needs-json> $0 <label> <title-prefix> [consequence]" >&2
   exit 1
 fi
 
 LABEL="$1"
 PREFIX="$2"
-NEEDS="$3"
-CONSEQUENCE="${4:-The release for this push was not held; fix forward.}"
+NEEDS="$NEEDS_JSON"
+CONSEQUENCE="${3:-The release for this push was not held; fix forward.}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 ATTEMPT="${GITHUB_RUN_ATTEMPT:-1}"
