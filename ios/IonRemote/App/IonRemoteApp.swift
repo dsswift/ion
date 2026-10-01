@@ -138,6 +138,7 @@ struct ContentView: View {
                 TabListView()
             }
         }
+        .overlay { ProviderSubscriptionPromptOverlay() }
         .overlay(alignment: .top) {
             ToastOverlay(
                 messages: viewModel.toastMessages,

@@ -608,6 +608,7 @@
 		E83B139E6FFE4D0503D3EF67 /* ServerAdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B0D2C3EDF26022226C02243 /* ServerAdminClient.swift */; };
 		FAEC4355AF5C33EA05FB3DAD /* ServerAdminSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44B71AA4F7AEF526E661EE08 /* ServerAdminSession.swift */; };
 		C3864FBC0E9635C9CEABB480 /* SessionViewModel+ServerAdmin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */; };
+		F57EDBC02EAFA9CEA67CB15A /* SubscriptionPromptModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */; };
 		53A704EC3B524576BC5B6AD8 /* SessionViewModel+FileLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */; };
 		4B9588B9862EA9200D750B11 /* PhoneActionTableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D39A84873C22A7B3EDC9703 /* PhoneActionTableTests.swift */; };
 		53F7E6FF78438CE3A92639A6 /* ServerAdminAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C613F75DF1F0ABBE5615522 /* ServerAdminAccessTests.swift */; };
@@ -793,6 +794,7 @@
 		E210DB862020180ED243E468 /* GitHubDeviceCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */; };
 		27C3E3F97EFDB9AD74029798 /* McpServerStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB78AA732324888A9281E0DE /* McpServerStatus.swift */; };
 		9BBE5E948076B6E8EBF8FD06 /* ProviderSubscriptionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */; };
+		39120C079C0A2C8DCF866BEE /* SubscriptionAttention.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0141A1049DA4A2C6314E5FAB /* SubscriptionAttention.swift */; };
 		DFFC69DC59ADCC114F7302FA /* McpUpdateOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */; };
 		9C2FDB687CB64159769B0F74 /* McpOAuthStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */; };
 		70F53809C7DAE1CDC0363547 /* McpSignInStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */; };
@@ -899,6 +901,7 @@
 		A0EBDCB3B3A3042FF32602B3 /* McpAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C361512AD5C89D48D32BD18C /* McpAdminTests.swift */; };
 		11807241D262B388D90727AB /* EntraAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */; };
 		2757EBAC3E22AAB2F6738125 /* ProviderSubscriptionAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */; };
+		41E6AA7EA9B294B0DA9BDBBD /* SubscriptionPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADBE9E597140A7412C79BE96 /* SubscriptionPromptTests.swift */; };
 		C5E370A3DEADB3192EF27648 /* AutomationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */; };
 		B1FCC6679B59639DA3EC7984 /* AutomationDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */; };
 		10487418C6B27540F4692D84 /* AutomationsAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */; };
@@ -921,6 +924,7 @@
 		44944EA1786EB3A6639345B1 /* ServerAccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E86B358ABAA5B7EC238E554 /* ServerAccessPolicy.swift */; };
 		350051D8A89B35AC5722B10E /* ServerSettingsListEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D5A5E87DE349EB9EDE7FDFC /* ServerSettingsListEditor.swift */; };
 		17F1D7EAD4B0749C40E38D78 /* ServerAccessRecoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F98482FB6CF9C3131C0816CA /* ServerAccessRecoveryView.swift */; };
+		32002696138AF978B8B35A92 /* ProviderSubscriptionPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD981168245BEFE025CD57A2 /* ProviderSubscriptionPromptView.swift */; };
 		B95B931AB51DFFC0A465F896 /* ServerSettingsListRecordEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C9646A61D219C7DC3C8FCF /* ServerSettingsListRecordEditor.swift */; };
 		91C3E38657E1D5B523070A9B /* ServerPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95199F7B42D521084D2EAC9F /* ServerPickerMenu.swift */; };
 		37E2D3BCBECDF3EE17EB8B39 /* ServerSettingsPrimitiveListEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A5A5CFE4D42FF6097A5E8E /* ServerSettingsPrimitiveListEditor.swift */; };
@@ -1544,6 +1548,7 @@
 		7B0D2C3EDF26022226C02243 /* ServerAdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient.swift"; sourceTree = "<group>"; };
 		44B71AA4F7AEF526E661EE08 /* ServerAdminSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminSession.swift"; sourceTree = "<group>"; };
 		7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ServerAdmin.swift"; sourceTree = "<group>"; };
+		72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionPromptModel.swift"; sourceTree = "<group>"; };
 		2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FileLinks.swift"; sourceTree = "<group>"; };
 		5D39A84873C22A7B3EDC9703 /* PhoneActionTableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhoneActionTableTests.swift"; sourceTree = "<group>"; };
 		2C613F75DF1F0ABBE5615522 /* ServerAdminAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminAccessTests.swift"; sourceTree = "<group>"; };
@@ -1729,6 +1734,7 @@
 		D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitHubDeviceCode.swift"; sourceTree = "<group>"; };
 		DB78AA732324888A9281E0DE /* McpServerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpServerStatus.swift"; sourceTree = "<group>"; };
 		117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionStatus.swift"; sourceTree = "<group>"; };
+		0141A1049DA4A2C6314E5FAB /* SubscriptionAttention.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionAttention.swift"; sourceTree = "<group>"; };
 		9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpUpdateOutcome.swift"; sourceTree = "<group>"; };
 		4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpOAuthStatus.swift"; sourceTree = "<group>"; };
 		4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpSignInStart.swift"; sourceTree = "<group>"; };
@@ -1835,6 +1841,7 @@
 		C361512AD5C89D48D32BD18C /* McpAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpAdminTests.swift"; sourceTree = "<group>"; };
 		45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraAdminTests.swift"; sourceTree = "<group>"; };
 		93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionAdminTests.swift"; sourceTree = "<group>"; };
+		ADBE9E597140A7412C79BE96 /* SubscriptionPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionPromptTests.swift"; sourceTree = "<group>"; };
 		DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationCatalogTests.swift"; sourceTree = "<group>"; };
 		A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationDraftTests.swift"; sourceTree = "<group>"; };
 		58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationsAdminTests.swift"; sourceTree = "<group>"; };
@@ -1857,6 +1864,7 @@
 		1E86B358ABAA5B7EC238E554 /* ServerAccessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAccessPolicy.swift"; sourceTree = "<group>"; };
 		1D5A5E87DE349EB9EDE7FDFC /* ServerSettingsListEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerSettingsListEditor.swift"; sourceTree = "<group>"; };
 		F98482FB6CF9C3131C0816CA /* ServerAccessRecoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAccessRecoveryView.swift"; sourceTree = "<group>"; };
+		AD981168245BEFE025CD57A2 /* ProviderSubscriptionPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionPromptView.swift"; sourceTree = "<group>"; };
 		F0C9646A61D219C7DC3C8FCF /* ServerSettingsListRecordEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerSettingsListRecordEditor.swift"; sourceTree = "<group>"; };
 		95199F7B42D521084D2EAC9F /* ServerPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerPickerMenu.swift"; sourceTree = "<group>"; };
 		36A5A5CFE4D42FF6097A5E8E /* ServerSettingsPrimitiveListEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerSettingsPrimitiveListEditor.swift"; sourceTree = "<group>"; };
@@ -2188,6 +2196,7 @@
 				791D2A37380915824A10B691 /* Settings */,
 				1D5A5E87DE349EB9EDE7FDFC /* ServerSettingsListEditor.swift */,
 				F98482FB6CF9C3131C0816CA /* ServerAccessRecoveryView.swift */,
+				AD981168245BEFE025CD57A2 /* ProviderSubscriptionPromptView.swift */,
 				F0C9646A61D219C7DC3C8FCF /* ServerSettingsListRecordEditor.swift */,
 				95199F7B42D521084D2EAC9F /* ServerPickerMenu.swift */,
 				36A5A5CFE4D42FF6097A5E8E /* ServerSettingsPrimitiveListEditor.swift */,
@@ -2259,6 +2268,7 @@
 				A1B2C3D4E5F600010010B2AA /* PlanContentStore.swift */,
 				SVMRLPAIR0000000001 /* SessionViewModel+RelayPairing.swift */,
 				7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */,
+				72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */,
 				2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */,
 				1F373EC4262380484715E17F /* Admin */,
 				DCDCD43D9ECF4F8288F8CDA1 /* Settings */,
@@ -2826,6 +2836,7 @@
 				D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */,
 				DB78AA732324888A9281E0DE /* McpServerStatus.swift */,
 				117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */,
+				0141A1049DA4A2C6314E5FAB /* SubscriptionAttention.swift */,
 				9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */,
 				4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */,
 				4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */,
@@ -3018,6 +3029,7 @@
 				C361512AD5C89D48D32BD18C /* McpAdminTests.swift */,
 				45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */,
 				93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */,
+				ADBE9E597140A7412C79BE96 /* SubscriptionPromptTests.swift */,
 				DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */,
 				A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */,
 				58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */,
@@ -3674,6 +3686,7 @@
 				E83B139E6FFE4D0503D3EF67 /* ServerAdminClient.swift in Sources */,
 				FAEC4355AF5C33EA05FB3DAD /* ServerAdminSession.swift in Sources */,
 				C3864FBC0E9635C9CEABB480 /* SessionViewModel+ServerAdmin.swift in Sources */,
+				F57EDBC02EAFA9CEA67CB15A /* SubscriptionPromptModel.swift in Sources */,
 				53A704EC3B524576BC5B6AD8 /* SessionViewModel+FileLinks.swift in Sources */,
 				4B716CBD5CF7277EF9E3C1AB /* ProjectedSettingsSource.swift in Sources */,
 				CB1D6FEB2F62CAEBDC6EC1EC /* ProjectedSettingRow.swift in Sources */,
@@ -3852,6 +3865,7 @@
 				E210DB862020180ED243E468 /* GitHubDeviceCode.swift in Sources */,
 				27C3E3F97EFDB9AD74029798 /* McpServerStatus.swift in Sources */,
 				9BBE5E948076B6E8EBF8FD06 /* ProviderSubscriptionStatus.swift in Sources */,
+				39120C079C0A2C8DCF866BEE /* SubscriptionAttention.swift in Sources */,
 				DFFC69DC59ADCC114F7302FA /* McpUpdateOutcome.swift in Sources */,
 				9C2FDB687CB64159769B0F74 /* McpOAuthStatus.swift in Sources */,
 				70F53809C7DAE1CDC0363547 /* McpSignInStart.swift in Sources */,
@@ -3941,6 +3955,7 @@
 				44944EA1786EB3A6639345B1 /* ServerAccessPolicy.swift in Sources */,
 				350051D8A89B35AC5722B10E /* ServerSettingsListEditor.swift in Sources */,
 				17F1D7EAD4B0749C40E38D78 /* ServerAccessRecoveryView.swift in Sources */,
+				32002696138AF978B8B35A92 /* ProviderSubscriptionPromptView.swift in Sources */,
 				B95B931AB51DFFC0A465F896 /* ServerSettingsListRecordEditor.swift in Sources */,
 				91C3E38657E1D5B523070A9B /* ServerPickerMenu.swift in Sources */,
 				37E2D3BCBECDF3EE17EB8B39 /* ServerSettingsPrimitiveListEditor.swift in Sources */,
@@ -4183,6 +4198,7 @@
 				A0EBDCB3B3A3042FF32602B3 /* McpAdminTests.swift in Sources */,
 				11807241D262B388D90727AB /* EntraAdminTests.swift in Sources */,
 				2757EBAC3E22AAB2F6738125 /* ProviderSubscriptionAdminTests.swift in Sources */,
+				41E6AA7EA9B294B0DA9BDBBD /* SubscriptionPromptTests.swift in Sources */,
 				C5E370A3DEADB3192EF27648 /* AutomationCatalogTests.swift in Sources */,
 				B1FCC6679B59639DA3EC7984 /* AutomationDraftTests.swift in Sources */,
 				10487418C6B27540F4692D84 /* AutomationsAdminTests.swift in Sources */,
