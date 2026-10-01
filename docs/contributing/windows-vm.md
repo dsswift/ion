@@ -64,7 +64,7 @@ thing that fails. Twice in one session it produced a false negative:
 `git diff` names only what the current branch touched. It cannot name what an
 earlier partial sync missed. That is why the sync ships every tracked file
 under the roots named in `scripts/sync-windows-vm.sh` (the engine, the Studio
-server, the workspace packages, the desktop, packaging, scripts, the CI workflows, and the npm
+server, the workspace packages, the desktop, packaging, the docs that engine tests read, scripts, the CI workflows, and the npm
 workspace root) every time — a few seconds of transfer in exchange for
 eliminating the failure mode.
 
