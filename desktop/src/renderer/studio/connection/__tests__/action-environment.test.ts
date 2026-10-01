@@ -11,21 +11,21 @@ const { resolveActionEnvironment, activeTabIdForAction, withTargetEnvironment } 
 const { hydrateWorktreeFromSync } = await import('../../state/secondary-store-worktree-sync')
 
 describe('resolveActionEnvironment', () => {
-  beforeEach(() => { state.tabs = [{ id: 'local-1' }, { id: 'grover-1', environmentId: 'env-grover' }]; state.activeTabId = 'grover-1' })
+  beforeEach(() => { state.tabs = [{ id: 'local-1' }, { id: 'devbox-1', environmentId: 'env-devbox' }]; state.activeTabId = 'devbox-1' })
 
   // A mode switch in a conversation on another environment went to the
   // local server and changed whichever conversation was active there.
   it('an action that acts on the active tab goes to the active tab\'s environment and carries its id', () => {
     for (const name of ['setPermissionMode', 'togglePermissionMode', 'setThinkingEffort', 'clearTab', 'addDirectory', 'removeDirectory', 'addAttachments', 'removeAttachment', 'clearAttachments']) {
-      expect(resolveActionEnvironment(name, ['x'])).toBe('env-grover')
-      expect(activeTabIdForAction(name)).toBe('grover-1')
+      expect(resolveActionEnvironment(name, ['x'])).toBe('env-devbox')
+      expect(activeTabIdForAction(name)).toBe('devbox-1')
     }
     state.activeTabId = 'local-1'
     expect(resolveActionEnvironment('setPermissionMode', ['auto'])).toBe('local')
   })
 
   it('a named tab still decides, and bookkeeping with no tab stays local', () => {
-    expect(resolveActionEnvironment('settleTab', ['grover-1'])).toBe('env-grover')
+    expect(resolveActionEnvironment('settleTab', ['devbox-1'])).toBe('env-devbox')
     expect(resolveActionEnvironment('settleTab', ['local-1'])).toBe('local')
     expect(resolveActionEnvironment('reorderPinnedTabs', [[]])).toBe('local')
     expect(activeTabIdForAction('reorderPinnedTabs')).toBeUndefined()

@@ -101,13 +101,13 @@ describe('serializePersistedMessages — slash provenance', () => {
       content: '/align',
       timestamp: 1,
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     }])
 
     expect(persisted).toMatchObject({
       content: '/align',
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     })
     expect(persisted.slashCommand).toBeUndefined()
   })

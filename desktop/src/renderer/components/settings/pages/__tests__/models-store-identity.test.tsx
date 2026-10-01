@@ -51,12 +51,12 @@ const { DefaultModelsSection } = await import('../models/DefaultModelsSection')
 
 // A browser client on a server with one keyed provider among many unkeyed ones.
 const providers = [
-  { id: 'dci-marketing', hasAuth: true },
+  { id: 'corp-gateway', hasAuth: true },
   { id: 'anthropic', hasAuth: false },
   { id: 'openai', hasAuth: false },
 ] as ProviderEntry[]
 const models = [
-  { id: 'claude-sonnet-5', providerId: 'dci-marketing' },
+  { id: 'claude-sonnet-5', providerId: 'corp-gateway' },
   { id: 'gpt-5', providerId: 'openai' },
 ] as ModelEntry[]
 

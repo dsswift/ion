@@ -22,7 +22,7 @@ const { RemoveServerPanel } = await import('../RemoveServerPanel')
 const { SettingsServersProvider } = await import('../../settings-servers')
 const { SettingsNavProvider } = await import('../../settings-nav')
 
-const entry: EnvironmentCatalogEntry = { id: 'env-g', label: 'grover', target: { kind: 'paired', label: 'grover', url: 'http://127.0.0.1:1', credentialRef: 'c', via: 'ssh' } }
+const entry: EnvironmentCatalogEntry = { id: 'env-g', label: 'devbox', target: { kind: 'paired', label: 'devbox', url: 'http://127.0.0.1:1', credentialRef: 'c', via: 'ssh' } }
 const appraisal = { conversations: 3, dataBytes: 2048, clonedProjects: [{ dir: '/h/src/a', dirty: false, bytes: 10 }, { dir: '/h/src/b', dirty: true, bytes: 20 }], gitCredentialHosts: ['github.com'], bundle: { root: '/h/.ion/studio-server', version: '0.1.0' } }
 
 const forget = vi.fn(async () => {})

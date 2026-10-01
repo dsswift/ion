@@ -54,8 +54,8 @@
 
   Runs as SYSTEM (Intune "Install behavior: System"). It writes HKLM and one
   directory under %ProgramData%\Ion\themes. It never touches a user profile,
-  %USERPROFILE%\.ion, conversations, credentials, an operator's ~\orion or
-  ~\.orion, another theme pack, or the administrator-authored
+  %USERPROFILE%\.ion, conversations, credentials, an operator's ~\atlas or
+  ~\.atlas, another theme pack, or the administrator-authored
   enterprise-config files under %ProgramData%\Ion.
 
 .PARAMETER PolicyFile

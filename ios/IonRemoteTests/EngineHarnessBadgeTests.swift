@@ -33,8 +33,8 @@ final class EngineHarnessBadgeTests: XCTestCase {
     }
 
     func testFiveCharName_passesThrough() {
-        // "Orion" → "Orion" (exactly 5 chars, no abbreviation, case preserved)
-        XCTAssertEqual(abbreviateProfileName("Orion"), "Orion")
+        // "Atlas" → "Atlas" (exactly 5 chars, no abbreviation, case preserved)
+        XCTAssertEqual(abbreviateProfileName("Atlas"), "Atlas")
     }
 
     func testOneCharName_passesThrough() {

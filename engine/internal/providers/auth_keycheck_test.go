@@ -48,7 +48,7 @@ func TestRequireKey_KeyPresentPasses(t *testing.T) {
 // proxies) may be legitimately keyless: the precheck gates ONLY the
 // canonical vendor hosts.
 func TestRequireKey_CustomHostsNeverGated(t *testing.T) {
-	for _, host := range []string{"localhost:11434", "gateway.corp.example", "ai.dcim.com"} {
+	for _, host := range []string{"localhost:11434", "gateway.corp.example", "ai.example.com"} {
 		if pe := requireKeyForHost(host, "custom", ""); pe != nil {
 			t.Errorf("host %s: custom hosts must never be gated on a missing key, got %v", host, pe)
 		}

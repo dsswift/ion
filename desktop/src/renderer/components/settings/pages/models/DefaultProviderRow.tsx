@@ -66,7 +66,7 @@ export function DefaultProviderRow({ environmentId }: { environmentId: string })
     <FormRow
       label="Default provider"
       anchor="default-provider"
-      description="Prefer this provider when a model name doesn’t specify one. An explicitly qualified model (e.g. dci-marketing/claude-sonnet-5) always uses its own provider regardless of this setting."
+      description="Prefer this provider when a model name doesn’t specify one. An explicitly qualified model (e.g. corp-gateway/claude-sonnet-5) always uses its own provider regardless of this setting."
     >
       {loading ? <Muted>Loading…</Muted> : (
         <Select aria-label="Default provider" width={220} value={provider} onChange={(event) => choose(event.target.value)}>

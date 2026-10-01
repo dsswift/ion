@@ -29,7 +29,7 @@ import Foundation
 /// Rules (applied in order, matching desktop conversation-status.ts):
 ///  1. Nil/empty name → "EXT"
 ///  2. Strip leading/trailing whitespace.
-///  3. Stripped name ≤ 8 chars → return as-is (e.g. "COS"->"COS", "Orion"->"Orion", "ion-dev"->"ion-dev").
+///  3. Stripped name ≤ 8 chars → return as-is (e.g. "COS"->"COS", "Atlas"->"Atlas", "ion-dev"->"ion-dev").
 ///  4. Multiple words → take first letter of each word, uppercase, cap at 8
 ///     (e.g. "Ion Dev"->"ID", "My Long Name X"->"MLN").
 ///  5. Single long word → first 8 chars uppercased (e.g. "Cosmos"->"COSMOS").
@@ -39,7 +39,7 @@ func abbreviateProfileName(_ name: String?) -> String {
     guard let name, !name.isEmpty else { return "EXT" }
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else { return "EXT" }
-    // Rule 3: short names pass through unchanged (preserves case, e.g. "Orion")
+    // Rule 3: short names pass through unchanged (preserves case, e.g. "Atlas")
     if trimmed.count <= 8 { return trimmed }
     // Rule 4: multi-word initials
     let words = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }

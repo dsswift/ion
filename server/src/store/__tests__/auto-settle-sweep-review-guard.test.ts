@@ -50,7 +50,7 @@ import type { State, StoreGet, StoreSet } from '../session-store-types'
 function reviewTab(overrides: Record<string, unknown> = {}) {
   return {
     id: 'review-me',
-    title: 'ai.dcim.com',
+    title: 'ai.example.com',
     customTitle: null,
     workingDirectory: '/repo',
     status: 'idle',

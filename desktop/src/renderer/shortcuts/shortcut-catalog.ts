@@ -77,6 +77,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
   { id: 'studio.surface.gitpanel', group: 'Studio', description: 'Toggle git canvas tab', defaultBinding: 'Mod+Alt+6' },
   { id: 'studio.surface.graph', group: 'Studio', description: 'Toggle graph canvas tab', defaultBinding: 'Mod+Alt+8' },
   { id: 'studio.surface.notification', group: 'Studio', description: 'Toggle notification canvas tab', defaultBinding: 'Mod+Alt+7' },
+  { id: 'studio.surface.ports', group: 'Studio', description: 'Toggle ports canvas tab', defaultBinding: 'Mod+Alt+9' },
 
   { id: 'studio.tab.slot1', group: 'Studio', description: 'Select conversation 1', defaultBinding: 'Mod+Ctrl+1' },
   { id: 'studio.tab.slot2', group: 'Studio', description: 'Select conversation 2', defaultBinding: 'Mod+Ctrl+2' },

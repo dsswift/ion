@@ -20,7 +20,7 @@ vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => documen
 vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 vi.mock('../../hooks/useAnchoredPopover', () => ({ useAnchoredPopover: () => ({ ref: () => {}, left: 0, top: 0, ready: true }) }))
 vi.mock('../connection/environment-availability', () => ({
-  useEnvironmentAvailabilityMap: () => new Map([['grover', { environmentId: 'grover', label: 'grover', availability: 'offline', since: Date.now() - 60_000 }]]),
+  useEnvironmentAvailabilityMap: () => new Map([['devbox', { environmentId: 'devbox', label: 'devbox', availability: 'offline', since: Date.now() - 60_000 }]]),
 }))
 
 let picked: EnvironmentViewFilter | null = null
@@ -32,7 +32,7 @@ function Harness({ initial }: { initial: EnvironmentViewFilter }): React.JSX.Ele
     anchor={{ x: 0, y: 0 }}
     environments={[
       { id: 'local', label: 'This Mac', count: 30 },
-      { id: 'grover', label: 'grover', count: 67 },
+      { id: 'devbox', label: 'devbox', count: 67 },
     ]}
     selected={selected}
     onSelect={(next) => { picked = next; setSelected(next) }}
@@ -78,12 +78,12 @@ describe('InboxEnvironmentPicker', () => {
     act(() => { option('This Mac')!.click() })
     expect(picked).toBe('local')
 
-    act(() => { option('grover')!.click() })
-    expect(picked).toBe('grover')
+    act(() => { option('devbox')!.click() })
+    expect(picked).toBe('devbox')
   })
 
   it('says when an environment is offline, so an empty list is explained rather than mysterious', () => {
     render('all')
-    expect(option('grover')!.textContent).toContain('offline')
+    expect(option('devbox')!.textContent).toContain('offline')
   })
 })

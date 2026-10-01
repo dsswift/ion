@@ -27,7 +27,7 @@
  *   9. unpair    auth.revokeClient{self:true} on the run's own pairing, so a
  *                smoke leaves no device row behind (--keep keeps it)
  *
- * usage: scripts/studio-wire-smoke.sh --host grover.local [--link <ion-studio://...>] [--dir <remote dir>] [--keep] [--delete-tab <id>]...
+ * usage: scripts/studio-wire-smoke.sh --host devbox.local [--link <ion-studio://...>] [--dir <remote dir>] [--keep] [--delete-tab <id>]...
  *
  * Run from the repo root (imports @ion/shared through the workspace). Node
  * strips the types itself; no build step.

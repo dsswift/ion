@@ -156,8 +156,8 @@ or the engine, and Graph View is desktop configuration.
   "desktop": {
     "graphView": {
       "corpusRoots": [
-        { "path": "~/orion", "label": "My Ops Repo" },
-        { "path": "~/.orion/knowledge", "label": "Subscribed Knowledge" }
+        { "path": "~/atlas", "label": "My Ops Repo" },
+        { "path": "~/.atlas/knowledge", "label": "Subscribed Knowledge" }
       ],
       "identityField": "id",
       "labelField": "title",

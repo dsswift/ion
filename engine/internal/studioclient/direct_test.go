@@ -38,7 +38,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 	}
 	mux.HandleFunc("/auth/config", func(w http.ResponseWriter, _ *http.Request) {
 		write(w, map[string]any{"oidc": map[string]any{"issuer": f.srv.URL + "/tenant/v2.0", "audience": "server-app", "scope": "Studio.Access", "clientId": "server-app"},
-			"environmentId": "env-9", "label": "Orion Beta", "serverVersion": "0.1.0"})
+			"environmentId": "env-9", "label": "Atlas Beta", "serverVersion": "0.1.0"})
 	})
 	mux.HandleFunc("/versionz", func(w http.ResponseWriter, _ *http.Request) {
 		write(w, map[string]any{"serverVersion": "0.1.0", "engineVersion": "1.85.3", "engineMinVersion": "0.0.0", "engineMeetsMin": true,
@@ -122,12 +122,12 @@ func (f *fakeServer) serveStudio(ctx context.Context, conn *websocket.Conn) {
 				conn.Close(websocket.StatusPolicyViolation, "unauthorized") //nolint:errcheck // test teardown
 				return
 			}
-			send(map[string]any{"type": "studio_welcome", "environmentId": "env-9", "label": "Orion Beta", "serverVersion": "0.1.0"})
+			send(map[string]any{"type": "studio_welcome", "environmentId": "env-9", "label": "Atlas Beta", "serverVersion": "0.1.0"})
 		case "studio_action":
 			var value any
 			switch msg["action"] {
 			case "environment.server.info":
-				value = map[string]any{"serverVersion": "0.1.0", "engineVersion": "1.85.3", "hostname": "orion-0", "platform": "linux", "arch": "x64", "runningConversations": 2,
+				value = map[string]any{"serverVersion": "0.1.0", "engineVersion": "1.85.3", "hostname": "atlas-0", "platform": "linux", "arch": "x64", "runningConversations": 2,
 					"formats": []map[string]any{{"id": "transfer-archive", "owner": "server", "version": "3", "rule": "exact", "meaning": "m"}}}
 			case "environment.devices":
 				value = []map[string]any{{"clientId": "p", "label": "iPhone", "kind": "mobile", "connected": true}}
@@ -143,7 +143,7 @@ func TestReadPublic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !p.Ready || p.Auth.Label != "Orion Beta" || p.Auth.OIDC == nil || p.Auth.OIDC.ClientID != "server-app" || p.Versionz.ServerVersion != "0.1.0" {
+	if !p.Ready || p.Auth.Label != "Atlas Beta" || p.Auth.OIDC == nil || p.Auth.OIDC.ClientID != "server-app" || p.Versionz.ServerVersion != "0.1.0" {
 		t.Fatalf("public = %+v", p)
 	}
 	r := p.Report("load: not signed in")
@@ -206,7 +206,7 @@ func TestReadDirectStatus_BearerOnTheUpgradeAndInTheHello(t *testing.T) {
 		t.Errorf("header %q hello %v", header, hello)
 	}
 	r := st.Report()
-	if r.Hostname != "orion-0" || r.RunningConversations == nil || *r.RunningConversations != 2 || len(r.Devices) != 1 {
+	if r.Hostname != "atlas-0" || r.RunningConversations == nil || *r.RunningConversations != 2 || len(r.Devices) != 1 {
 		t.Errorf("report = %+v", r)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -217,7 +217,7 @@ func TestReadDirectStatus_BearerOnTheUpgradeAndInTheHello(t *testing.T) {
 	if _, err := studioURL("ftp://x"); err == nil {
 		t.Error("only http and https addresses")
 	}
-	if u, _ := studioURL("https://orion.example.org/"); u != "wss://orion.example.org/studio" { //nolint:errcheck // asserted by the value
+	if u, _ := studioURL("https://atlas.example.org/"); u != "wss://atlas.example.org/studio" { //nolint:errcheck // asserted by the value
 		t.Errorf("studio url = %s", u)
 	}
 }

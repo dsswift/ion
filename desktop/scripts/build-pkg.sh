@@ -2,8 +2,7 @@
 # @file-size-exception: build script; length is inline documentation, not logic
 #
 # build-pkg.sh — wrap the built Ion.app into a macOS installer .pkg for MDM
-# (Intune) deployment. This is the last Orion Phase 1 deployment artifact
-# (D-003): electron-builder produces the release zip for auto-update and this
+# (Intune) deployment. electron-builder produces the release zip for auto-update and this
 # package for every human or managed install.
 #
 # What it does:

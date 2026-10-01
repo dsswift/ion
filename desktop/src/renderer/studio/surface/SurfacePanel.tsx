@@ -27,6 +27,7 @@ import { TerminalSurface } from './tabs/TerminalSurface'
 import { BrowserSurface } from './tabs/BrowserSurface'
 import { ResourceSurface } from './tabs/ResourceSurface'
 import { StatusSurface } from './tabs/StatusSurface'
+import { PortsSurface } from '../ports/PortsSurface'
 import { DispatchSurface } from './tabs/DispatchSurface'
 import { QuestionsSurface } from './tabs/QuestionsSurface'
 import { RuntimePanelBody } from './runtime-panel-registry'
@@ -63,6 +64,7 @@ function bodyFor(tab: SurfaceTab, active: boolean, conversationTabId: string, on
       if (!active) return null
       if (tab.id === 'plan') return <PlanSurface key={tab.id} />
       if (tab.id === 'status') return <StatusSurface key={tab.id} />
+      if (tab.id === 'ports') return <PortsSurface key={tab.id} />
       if (tab.id === 'files')
         return (
           <div key={tab.id} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

@@ -71,7 +71,7 @@ describe('TransferDialog and the inbox environment filter', () => {
   })
 
   it('widens to all — never pins to the target — when the current filter would hide the moved conversation', async () => {
-    filter.current = 'grover-environment-id'
+    filter.current = 'devbox-environment-id'
     await renderDialog()
     expect(setViewFilter).toHaveBeenCalledWith('all')
   })

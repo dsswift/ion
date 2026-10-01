@@ -71,12 +71,12 @@ func TestMetricsExportMintsFromNamedTokenProvider(t *testing.T) {
 	rec := newAuthRecorder(t)
 	withProvider(t, &fakeExpiringProvider{token: "operator"})
 	machine := &fakeExpiringProvider{token: "workload"}
-	withOtelTokenSource(t, "orion-telemetry", machine)
+	withOtelTokenSource(t, "atlas-telemetry", machine)
 
 	exportMetricsOnce(t, types.OtelConfig{
 		Endpoint:      rec.srv.URL,
 		TokenScope:    "api://collector/.default",
-		TokenProvider: "orion-telemetry",
+		TokenProvider: "atlas-telemetry",
 		Metrics:       &types.OtelMetricsConfig{Enabled: true, ExportIntervalMs: 60_000},
 	})
 	if got := rec.first(t); got != "Bearer workload" {
@@ -91,7 +91,7 @@ func TestMetricsExportMintsFromNamedTokenProvider(t *testing.T) {
 func TestMetricsExportUnsetTokenProviderUsesIdentity(t *testing.T) {
 	rec := newAuthRecorder(t)
 	withProvider(t, &fakeExpiringProvider{token: "operator"})
-	withOtelTokenSource(t, "orion-telemetry", &fakeExpiringProvider{token: "workload"})
+	withOtelTokenSource(t, "atlas-telemetry", &fakeExpiringProvider{token: "workload"})
 
 	exportMetricsOnce(t, types.OtelConfig{
 		Endpoint: rec.srv.URL,
@@ -133,11 +133,11 @@ func TestMetricsTokenScopePrecedence(t *testing.T) {
 func TestCollectorTraceExportMintsFromNamedTokenProvider(t *testing.T) {
 	rec := newAuthRecorder(t)
 	withProvider(t, &fakeExpiringProvider{token: "operator"})
-	withOtelTokenSource(t, "orion-telemetry", &fakeExpiringProvider{token: "workload"})
+	withOtelTokenSource(t, "atlas-telemetry", &fakeExpiringProvider{token: "workload"})
 
 	bridge := NewOtelBridge(OtelConfig{
 		Endpoint: rec.srv.URL, Protocol: otlpProtocolHTTPProtobuf, BatchSize: 1,
-		TokenScope: "api://collector/.default", TokenProvider: "orion-telemetry",
+		TokenScope: "api://collector/.default", TokenProvider: "atlas-telemetry",
 	})
 	bridge.RecordEvent(Event{Name: "telemetry.auth", Ts: time.Now().UTC().Format(time.RFC3339Nano)})
 	if err := bridge.Close(); err != nil {
@@ -167,13 +167,13 @@ func TestNewCollectorPassesOtelTokenFields(t *testing.T) {
 	rec := newAuthRecorder(t)
 	c := NewCollector(types.TelemetryConfig{
 		Enabled: true, Targets: []string{"otel"},
-		Otel: &types.OtelConfig{Enabled: true, Endpoint: rec.srv.URL, TokenScope: "s", TokenProvider: "orion-telemetry"},
+		Otel: &types.OtelConfig{Enabled: true, Endpoint: rec.srv.URL, TokenScope: "s", TokenProvider: "atlas-telemetry"},
 	})
 	t.Cleanup(func() { c.Close() })
 	if c.otelBridge == nil {
 		t.Fatal("otel bridge not configured")
 	}
-	if c.otelBridge.config.TokenScope != "s" || c.otelBridge.config.TokenProvider != "orion-telemetry" {
+	if c.otelBridge.config.TokenScope != "s" || c.otelBridge.config.TokenProvider != "atlas-telemetry" {
 		t.Fatalf("bridge config = %+v", c.otelBridge.config)
 	}
 }

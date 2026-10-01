@@ -42,7 +42,7 @@ describe('useTransferPreflight', () => {
   // Whole-worktree by default: the worktree cases below are about moving one
   // whole, and a conversation with no worktree ignores the mode.
   async function mount(resolvedHere: Parameters<typeof useTransferPreflight>[4] = null, mode: Parameters<typeof useTransferPreflight>[5] = 'worktree', targetProjects: Parameters<typeof useTransferPreflight>[6] = []): Promise<void> {
-    function Harness(): null { result = useTransferPreflight('src', 'tab-1', 'grover', 'grover', resolvedHere, mode, targetProjects); return null }
+    function Harness(): null { result = useTransferPreflight('src', 'tab-1', 'devbox', 'devbox', resolvedHere, mode, targetProjects); return null }
     await act(async () => { root.render(React.createElement(Harness)); await flush(); await flush() })
   }
 
@@ -58,8 +58,8 @@ describe('useTransferPreflight', () => {
     const repo = result.checks.find((c) => c.id === 'repo')!
     expect(repo.state).toBe('fixable')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('grover', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
-    expect(actionMock).toHaveBeenCalledWith('grover', 'transfer.preflight', [{ repoRemote: 'github.com/o/r', sourceBranch: 'josh', branch: 'wt/x' }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'transfer.preflight', [{ repoRemote: 'github.com/o/r', sourceBranch: 'josh', branch: 'wt/x' }])
   })
 
   // The repository declares code to run, so the clone is where trust is
@@ -76,9 +76,9 @@ describe('useTransferPreflight', () => {
     expect(repo.fixes?.map((f) => f.label)).toEqual(['Clone and trust', 'Clone only'])
     expect(repo.detail).toContain('runs its setup, make bootstrap, as soon as it lands, and lets its worktrees run npm ci')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('grover', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src', trust: true }])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src', trust: true }])
     await repo.fixes![1].run()
-    expect(actionMock).toHaveBeenLastCalledWith('grover', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
+    expect(actionMock).toHaveBeenLastCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/r.git', parentDir: '~/src' }])
   })
 
   it('refuses before anything is exported when the source writes an older archive format', async () => {
@@ -152,7 +152,7 @@ describe('useTransferPreflight', () => {
     expect(result.ready).toBe(false)
     expect(result.checks.find((c) => c.id === 'clean')?.state).toBe('blocked')
     const before = actionMock.mock.calls.filter((c) => c[1] === 'transfer.preflight').length
-    await act(async () => { for (const cb of frameListeners) cb('grover', { type: 'studio_event', channel: 'ion:projects-changed', payload: {} }); await flush(); await flush() })
+    await act(async () => { for (const cb of frameListeners) cb('devbox', { type: 'studio_event', channel: 'ion:projects-changed', payload: {} }); await flush(); await flush() })
     expect(actionMock.mock.calls.filter((c) => c[1] === 'transfer.preflight').length).toBe(before + 1)
 
   })
@@ -206,7 +206,7 @@ describe('useTransferPreflight', () => {
     expect(repo.fixes?.map((f) => f.label)).toEqual(['Clone and trust', 'Clone only'])
     expect(repo.detail).toBe('The conversation lands in the clone. Clone and trust runs its setup, make bootstrap, as soon as it lands. Clone only runs none of its code.')
     await repo.fixes![0].run()
-    expect(actionMock).toHaveBeenCalledWith('grover', 'environment.projects.clone', [expect.objectContaining({ trust: true })])
+    expect(actionMock).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [expect.objectContaining({ trust: true })])
   })
 
   it('asks which checkout when the destination has the repository twice, and refuses until told', async () => {
@@ -238,7 +238,7 @@ describe('useTransferPreflight', () => {
       if (name === 'transfer.describe') return { status: 'idle', worktree: null }
       if (name === 'transfer.preflight') {
         asked.push(args[0] as Record<string, unknown>)
-        return { projectDir: '/Users/Shared/source/personal/ion', projectDirs: ['/Users/Shared/source/personal/ion'], allProjectDirs: ['/Users/Shared/source/personal/ion', '/Users/josh/orion'], sourceDirectoryExists: false, hasSourceBranch: false, knownTips: [], worktreeCopy: null }
+        return { projectDir: '/Users/Shared/source/personal/ion', projectDirs: ['/Users/Shared/source/personal/ion'], allProjectDirs: ['/Users/Shared/source/personal/ion', '/Users/josh/atlas'], sourceDirectoryExists: false, hasSourceBranch: false, knownTips: [], worktreeCopy: null }
       }
       throw new Error(`unexpected ${name}`)
     })
@@ -251,7 +251,7 @@ describe('useTransferPreflight', () => {
     // The match is preselected, never the only choice: every other project
     // is still offered, after it.
     expect(result.destinationMatches).toEqual(['/Users/Shared/source/personal/ion'])
-    expect(result.destinationOthers).toEqual(['/Users/josh/orion'])
+    expect(result.destinationOthers).toEqual(['/Users/josh/atlas'])
   })
 
   // A conversation leaving its worktree resolves its destination like a

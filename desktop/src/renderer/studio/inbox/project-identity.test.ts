@@ -8,14 +8,14 @@ const { buildProjectScopeResolver, normalizeProjectSelection } = await import('.
 const p = (dir: string, repoRemote?: string): EnvironmentProject => ({ dir, entry: { addedManually: true, lastUsedAt: 0, ...(repoRemote ? { repoRemote } : {}) }, displayName: dir.split('/').pop()!, exists: true, isGitRepo: true })
 const byEnvironment = {
   local: [p('/Users/u/src/ion', 'github.com/o/ion'), p('/Users/u/notes')],
-  grover: [p('/home/g/source/ion', 'github.com/o/ion')],
+  devbox: [p('/home/g/source/ion', 'github.com/o/ion')],
 }
 
 describe('project identity', () => {
   it('resolves a checkout to its repository per environment, and leaves an unknown path as itself', () => {
     const scopeOf = buildProjectScopeResolver(byEnvironment)
     expect(scopeOf('/Users/u/src/ion', 'local')).toBe('remote:github.com/o/ion')
-    expect(scopeOf('/home/g/source/ion', 'grover')).toBe('remote:github.com/o/ion')
+    expect(scopeOf('/home/g/source/ion', 'devbox')).toBe('remote:github.com/o/ion')
     // The same path on the wrong machine is not that repository.
     expect(scopeOf('/home/g/source/ion', 'local')).toBe('/home/g/source/ion')
     expect(scopeOf('/Users/u/notes', 'local')).toBe('/Users/u/notes')

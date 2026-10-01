@@ -42,15 +42,15 @@ describe('loadServerConfig: homeProject', () => {
   it('parses a complete config', () => {
     writeFileSync(join(dir, 'server.json'), JSON.stringify({
       homeProject: {
-        directory: 'orion',
-        gitRemote: 'git@gitlab.dcim.com:cloud/ops.git',
+        directory: 'atlas',
+        gitRemote: 'git@gitlab.example.com:team/ops.git',
         engineProfile: { name: 'cos2', extensions: ['/data/.ion/extensions/cos2/main'], defaultMode: 'auto' },
       },
     }))
     const config = loadServerConfig(dir)
     expect(config.homeProject).toEqual({
-      directory: 'orion',
-      gitRemote: 'git@gitlab.dcim.com:cloud/ops.git',
+      directory: 'atlas',
+      gitRemote: 'git@gitlab.example.com:team/ops.git',
       engineProfile: { name: 'cos2', extensions: ['/data/.ion/extensions/cos2/main'], defaultMode: 'auto' },
     })
   })
@@ -58,8 +58,8 @@ describe('loadServerConfig: homeProject', () => {
   it('defaults engineProfile.defaultMode to auto when omitted', () => {
     writeFileSync(join(dir, 'server.json'), JSON.stringify({
       homeProject: {
-        directory: 'orion',
-        gitRemote: 'git@gitlab.dcim.com:cloud/ops.git',
+        directory: 'atlas',
+        gitRemote: 'git@gitlab.example.com:team/ops.git',
         engineProfile: { name: 'cos2', extensions: ['/data/.ion/extensions/cos2/main'] },
       },
     }))
@@ -69,9 +69,9 @@ describe('loadServerConfig: homeProject', () => {
 
   it.each([
     ['missing directory', { gitRemote: 'git@x', engineProfile: { name: 'cos2', extensions: ['a'] } }],
-    ['missing gitRemote', { directory: 'orion', engineProfile: { name: 'cos2', extensions: ['a'] } }],
-    ['missing engineProfile.name', { directory: 'orion', gitRemote: 'git@x', engineProfile: { extensions: ['a'] } }],
-    ['empty engineProfile.extensions', { directory: 'orion', gitRemote: 'git@x', engineProfile: { name: 'cos2', extensions: [] } }],
+    ['missing gitRemote', { directory: 'atlas', engineProfile: { name: 'cos2', extensions: ['a'] } }],
+    ['missing engineProfile.name', { directory: 'atlas', gitRemote: 'git@x', engineProfile: { extensions: ['a'] } }],
+    ['empty engineProfile.extensions', { directory: 'atlas', gitRemote: 'git@x', engineProfile: { name: 'cos2', extensions: [] } }],
   ])('treats an incomplete config (%s) as absent, not a partial value', (_label, homeProject) => {
     writeFileSync(join(dir, 'server.json'), JSON.stringify({ homeProject }))
     const config = loadServerConfig(dir)

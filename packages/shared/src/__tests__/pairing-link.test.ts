@@ -5,8 +5,8 @@ const CODE = '740d9128241659d5730b7aea7ed983de'
 
 describe('parsePairingLink', () => {
   it('parses a server-minted link into code, url, and label', () => {
-    const result = parsePairingLink(`ion-studio://pair?code=${CODE}&url=http%3A%2F%2Fgrover.local%3A7331&env=grover`)
-    expect(result).toEqual({ ok: true, link: { code: CODE, url: 'http://grover.local:7331', label: 'grover' } })
+    const result = parsePairingLink(`ion-studio://pair?code=${CODE}&url=http%3A%2F%2Fdevbox.local%3A7331&env=devbox`)
+    expect(result).toEqual({ ok: true, link: { code: CODE, url: 'http://devbox.local:7331', label: 'devbox' } })
   })
 
   it('tolerates surrounding whitespace and a trailing slash on the url', () => {
@@ -42,7 +42,7 @@ describe('parsePairingLink', () => {
 
 describe('normalizeServerHttpBase', () => {
   it('accepts http and https, strips query, hash, and trailing slash', () => {
-    expect(normalizeServerHttpBase('http://grover.local:7331/')).toBe('http://grover.local:7331')
+    expect(normalizeServerHttpBase('http://devbox.local:7331/')).toBe('http://devbox.local:7331')
     expect(normalizeServerHttpBase('https://ion.example.com/?x=1#f')).toBe('https://ion.example.com')
   })
   it('refuses non-http schemes and garbage', () => {

@@ -26,7 +26,7 @@
 # be fresh WHILE its paired server/desktop stream on the SAME host has gone
 # stale, rather than firing on any one component's absolute silence.
 #
-# No notification contact point is configured. az-lz-cloudops has no Grafana
+# No notification contact point is configured. az-lz-platform has no Grafana
 # contact point today (investigated 2026-09-28: no grafana_contact_point /
 # grafana_notification_policy resource anywhere in that repo, and the one
 # azurerm_monitor_action_group in the repo is scoped to the AI Gateway, not

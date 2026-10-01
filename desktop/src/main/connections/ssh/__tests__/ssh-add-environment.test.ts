@@ -14,7 +14,7 @@ vi.mock('../ssh-bootstrap', async (importOriginal) => {
     ...actual,
     probeHost: vi.fn(async () => ({ goos: 'darwin', goarch: 'amd64', home: '/Users/j' })),
     appraiseHost: vi.fn(async () => ({ studioVersion: null, user: 'josh', port: null, conversations: 2, gitCredentialHosts: 1, projects: 3 })),
-    mintPairingLink: vi.fn(async () => ({ url: 'ion-studio://pair?code=abc&url=http://grover.local:7331', code: 'abc', expiresAt: 1 })),
+    mintPairingLink: vi.fn(async () => ({ url: 'ion-studio://pair?code=abc&url=http://devbox.local:7331', code: 'abc', expiresAt: 1 })),
   }
 })
 
@@ -38,25 +38,25 @@ describe('addEnvironmentOverSsh', () => {
   it('walks connecting -> installing -> starting -> pairing -> done and returns a via:ssh target', async () => {
     const tunnels = tunnelManager()
     const stages: SshAddEnvironmentProgress[] = []
-    const pairedTarget: PairedEnvironmentTarget = { kind: 'paired', label: 'grover', url: 'http://127.0.0.1:50123', credentialRef: 'env-42', via: 'lan', environmentId: 'env-42' }
+    const pairedTarget: PairedEnvironmentTarget = { kind: 'paired', label: 'devbox', url: 'http://127.0.0.1:50123', credentialRef: 'env-42', via: 'lan', environmentId: 'env-42' }
     const pair = vi.fn(async () => ({ ok: true as const, target: pairedTarget }))
     const install = vi.fn(async (_d: unknown, _a: unknown, onLine: (l: string) => void) => { onLine('==> installing 0.2.0'); return { ok: true as const, version: '0.2.0', port: 7331, dataDir: '/Users/j/.ion' } })
 
-    const result = await addEnvironmentOverSsh({ destinationInput: 'josh@grover.local', tunnels, onProgress: (p) => stages.push(p), assets, pair, install, clientLabel: 'desktop mac' })
+    const result = await addEnvironmentOverSsh({ destinationInput: 'josh@devbox.local', tunnels, onProgress: (p) => stages.push(p), assets, pair, install, clientLabel: 'desktop mac' })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.target.via).toBe('ssh')
-    expect(result.target.ssh).toEqual({ destination: 'josh@grover.local', port: undefined, remotePort: 7331 })
+    expect(result.target.ssh).toEqual({ destination: 'josh@devbox.local', port: undefined, remotePort: 7331 })
     expect(result.target.url).toBe('http://127.0.0.1:7331')
-    expect(result.target.label).toBe('grover')
+    expect(result.target.label).toBe('devbox')
     expect(result.target.credentialRef).toBe('env-42')
 
     expect(stages.map((s) => s.stage)).toEqual(['connecting', 'connecting', 'connecting', 'installing', 'installing', 'installing', 'starting', 'starting', 'pairing', 'done'])
     expect(stages.some((s) => s.message === '==> installing 0.2.0')).toBe(true)
     // A re-added host says what it already has before anything is installed.
     expect(stages[2].message).toBe('Already on the host: no Studio Server for josh, 2 conversations, git credentials for 1 host, 3 projects. Everything is kept.')
-    expect(stages.every((s) => s.destination === 'josh@grover.local')).toBe(true)
+    expect(stages.every((s) => s.destination === 'josh@devbox.local')).toBe(true)
 
     // The pairing ran against the tunnel's local end, not the host's advertised address.
     const link = (pair.mock.calls[0] as unknown as [{ link: string }])[0].link
@@ -66,7 +66,7 @@ describe('addEnvironmentOverSsh', () => {
 
     // The forward now lives under the environment id.
     expect(tunnels.localPortOf('env-42')).toBe(50123)
-    expect(tunnels.localPortOf(provisionalTunnelKey({ destination: 'josh@grover.local' }))).toBeNull()
+    expect(tunnels.localPortOf(provisionalTunnelKey({ destination: 'josh@devbox.local' }))).toBeNull()
     expect(probeHost).toHaveBeenCalled()
   })
 
@@ -76,17 +76,17 @@ describe('addEnvironmentOverSsh', () => {
   it('pairs to an existing install on its own port without reinstalling', async () => {
     const tunnels = tunnelManager()
     const stages: SshAddEnvironmentProgress[] = []
-    const pairedTarget: PairedEnvironmentTarget = { kind: 'paired', label: 'grover', url: 'http://127.0.0.1:50123', credentialRef: 'env-42', via: 'lan', environmentId: 'env-42' }
+    const pairedTarget: PairedEnvironmentTarget = { kind: 'paired', label: 'devbox', url: 'http://127.0.0.1:50123', credentialRef: 'env-42', via: 'lan', environmentId: 'env-42' }
     const pair = vi.fn(async () => ({ ok: true as const, target: pairedTarget }))
     const install = vi.fn(async () => ({ ok: true as const, version: '0.2.0', port: 7331, dataDir: '/d' }))
     const appraise = vi.fn(async () => ({ studioVersion: '0.1.0', user: 'josh', port: 7333, conversations: 0, gitCredentialHosts: 0, projects: 0 }))
 
-    const result = await addEnvironmentOverSsh({ destinationInput: 'josh@grover.local', tunnels, onProgress: (p) => stages.push(p), assets, pair, install, appraise })
+    const result = await addEnvironmentOverSsh({ destinationInput: 'josh@devbox.local', tunnels, onProgress: (p) => stages.push(p), assets, pair, install, appraise })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(install).not.toHaveBeenCalled()
-    expect(result.target.ssh).toEqual({ destination: 'josh@grover.local', port: undefined, remotePort: 7333 })
+    expect(result.target.ssh).toEqual({ destination: 'josh@devbox.local', port: undefined, remotePort: 7333 })
     expect(result.target.url).toBe('http://127.0.0.1:7333')
     expect(stages.map((s) => s.stage)).toEqual(['connecting', 'connecting', 'connecting', 'installing', 'starting', 'starting', 'pairing', 'done'])
     expect(stages[3].message).toBe('Studio Server 0.1.0 is already installed for josh; nothing to install')

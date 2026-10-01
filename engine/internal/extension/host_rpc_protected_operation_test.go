@@ -9,8 +9,8 @@ import (
 // caller, sets the extension identity a protected operation reads secrets
 // for: a forged identity in the request is ignored.
 func TestProtectedOperationRPCStampsTrustedID(t *testing.T) {
-	h := &Host{name: "orion-extension"}
-	h.SetTrustedIDForTest("orion")
+	h := &Host{name: "atlas-extension"}
+	h.SetTrustedIDForTest("atlas")
 	got := make(chan ProtectedOperationParams, 1)
 	ctx := &Context{ProtectedOperation: func(params ProtectedOperationParams) (*ProtectedOperationResult, error) {
 		got <- params
@@ -21,7 +21,7 @@ func TestProtectedOperationRPCStampsTrustedID(t *testing.T) {
 
 	select {
 	case params := <-got:
-		if params.ExtensionID != "orion" || params.Name != "gateway" || string(params.Payload) != `{"v":1}` {
+		if params.ExtensionID != "atlas" || params.Name != "gateway" || string(params.Payload) != `{"v":1}` {
 			t.Fatalf("params = %+v", params)
 		}
 	case <-time.After(2 * time.Second):

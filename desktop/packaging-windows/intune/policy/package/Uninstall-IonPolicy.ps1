@@ -20,8 +20,8 @@
       somebody else and stays. The pack root itself is never removed.
 
   What it never touches, whatever the ownership record says: a user profile,
-  %USERPROFILE%\.ion, conversations, credentials, an operator's ~\orion or
-  ~\.orion, a theme pack this package did not install, or the
+  %USERPROFILE%\.ion, conversations, credentials, an operator's ~\atlas or
+  ~\.atlas, a theme pack this package did not install, or the
   administrator-authored enterprise-config files under %ProgramData%\Ion.
 
   With no ownership record there is nothing to remove and that is not an

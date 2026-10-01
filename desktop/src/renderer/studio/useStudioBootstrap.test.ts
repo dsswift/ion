@@ -74,7 +74,7 @@ describe('useStudioBootstrap model preferences', () => {
     const h = renderBootstrapHook(true)
     try {
       expect(modelSync.listener).not.toBeNull()
-      const models = [{ id: 'claude-sonnet-5', providerId: 'dci-marketing' }]
+      const models = [{ id: 'claude-sonnet-5', providerId: 'corp-gateway' }]
       modelSync.listener!(models)
       await act(async () => { await Promise.resolve() })
       expect(normalizeModelPreferences).toHaveBeenCalledWith(models)

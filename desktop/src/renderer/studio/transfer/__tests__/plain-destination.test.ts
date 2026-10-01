@@ -96,9 +96,9 @@ describe('destinationChoices', () => {
 
   // A match narrows the default, never the menu.
   it('lists the matches first and every other project after them, once each', () => {
-    const choice = destinationChoices(preflight({ projectDirs: ['/src/ion'], allProjectDirs: ['/notes', '/src/ion', '/src/orion'] }))
+    const choice = destinationChoices(preflight({ projectDirs: ['/src/ion'], allProjectDirs: ['/notes', '/src/ion', '/src/atlas'] }))
     expect(choice.matches).toEqual(['/src/ion'])
-    expect(choice.others).toEqual(['/notes', '/src/orion'])
+    expect(choice.others).toEqual(['/notes', '/src/atlas'])
   })
 })
 
@@ -106,6 +106,6 @@ describe('projectNameFor', () => {
   it('names a directory by its project on that machine, else by its last segment', () => {
     const projects = [project('/Users/Shared/source/personal/ion', 'r', 'Ion')]
     expect(projectNameFor('/Users/Shared/source/personal/ion', projects)).toBe('Ion')
-    expect(projectNameFor('/Users/josh/orion', projects)).toBe('orion')
+    expect(projectNameFor('/Users/josh/atlas', projects)).toBe('atlas')
   })
 })

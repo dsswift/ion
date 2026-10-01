@@ -101,7 +101,7 @@ export function ModelPicker() {
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
   // The active conversation's Environment owns the catalog this picker
-  // lists (ADR-033): a Grover tab picks from Grover's models.
+  // lists (ADR-033): a Devbox tab picks from Devbox's models.
   const environmentId = useActiveTabEnvironmentId()
   const allModels = useModelStore((s) => environmentModels(s, environmentId).models)
   const fetchModelsFor = useModelStore((s) => s.fetchModelsFor)

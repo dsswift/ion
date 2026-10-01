@@ -20,7 +20,7 @@ import (
 // (correlationCtx/correlationCtxExt never carry it, or the ctx is nil) --
 // still carry a user via identityForEvent's fallback.
 //
-// On an Orion instance pod the owner authenticates through the SERVER's own
+// On an Atlas instance pod the owner authenticates through the SERVER's own
 // OIDC door (server.json's oidc config, the bearer auth door) -- engine.json
 // carries no identityProvider there -- so nothing ever called
 // telemetry.SetUserIdentity, and those same events shipped with an empty
@@ -44,7 +44,7 @@ func TestStartSessionPromotesPrincipalToProcessWideIdentity(t *testing.T) {
 		Subject:     "entra-oid-pod-owner",
 		Provider:    "entra",
 		Kind:        "operator",
-		DisplayName: "JSprague@dciartform.com",
+		DisplayName: "JDoe@example.com",
 	}
 	cfg := defaultConfig()
 	if _, err := mgr.StartSession("pod-session", cfg, principal); err != nil {
@@ -69,8 +69,8 @@ func TestStartSessionPromotesPrincipalToProcessWideIdentity(t *testing.T) {
 	if found == nil {
 		t.Fatal("expected an extension.coldstart event")
 	}
-	if found.User != "JSprague@dciartform.com" {
-		t.Errorf("User = %q, want %q (pod owner's session principal promoted process-wide)", found.User, "JSprague@dciartform.com")
+	if found.User != "JDoe@example.com" {
+		t.Errorf("User = %q, want %q (pod owner's session principal promoted process-wide)", found.User, "JDoe@example.com")
 	}
 }
 

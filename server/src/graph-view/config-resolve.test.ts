@@ -27,26 +27,26 @@ describe('resolveGraphViewConfig', () => {
   })
 
   it('both files absent, real projectPath defaults corpusRoots to the project directory', () => {
-    const config = resolveGraphViewConfig({}, {}, '/Users/josh/cloudops')
-    expect(config.corpusRoots).toEqual([{ path: '/Users/josh/cloudops' }])
+    const config = resolveGraphViewConfig({}, {}, '/Users/josh/platform')
+    expect(config.corpusRoots).toEqual([{ path: '/Users/josh/platform' }])
   })
 
   it('a project setting its own corpusRoots suppresses the project-cwd default', () => {
     const projectRaw = { desktop: { graphView: { corpusRoots: ['/repo'] } } }
-    const config = resolveGraphViewConfig({}, projectRaw, '/Users/josh/cloudops')
+    const config = resolveGraphViewConfig({}, projectRaw, '/Users/josh/platform')
     expect(config.corpusRoots).toEqual([{ path: '/repo' }])
   })
 
   it('a project explicitly setting corpusRoots to [] still suppresses the default', () => {
     const projectRaw = { desktop: { graphView: { corpusRoots: [] } } }
-    const config = resolveGraphViewConfig({}, projectRaw, '/Users/josh/cloudops')
+    const config = resolveGraphViewConfig({}, projectRaw, '/Users/josh/platform')
     expect(config.corpusRoots).toEqual([])
   })
 
   it('user-scope roots union in on top of the project-cwd default', () => {
     const userRaw = { desktop: { graphView: { corpusRoots: ['/subscribed-bundle'] } } }
-    const config = resolveGraphViewConfig(userRaw, {}, '/Users/josh/cloudops')
-    expect(config.corpusRoots.map((r) => r.path)).toEqual(['/Users/josh/cloudops', '/subscribed-bundle'])
+    const config = resolveGraphViewConfig(userRaw, {}, '/Users/josh/platform')
+    expect(config.corpusRoots.map((r) => r.path)).toEqual(['/Users/josh/platform', '/subscribed-bundle'])
   })
 
   it('project-only sets identityField from project scope', () => {
@@ -179,7 +179,7 @@ describe('isGraphViewAvailable', () => {
   })
 
   it('is true by default with a real projectPath and no configuration', () => {
-    const config = resolveGraphViewConfig({}, {}, '/Users/josh/cloudops')
+    const config = resolveGraphViewConfig({}, {}, '/Users/josh/platform')
     expect(isGraphViewAvailable(config)).toBe(true)
   })
 

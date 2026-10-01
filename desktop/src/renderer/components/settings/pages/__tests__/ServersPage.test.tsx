@@ -49,11 +49,11 @@ const { SettingsNavProvider } = await import('../../settings-nav')
 const { registry } = await import('../../../../studio/connection/registry')
 
 const local: EnvironmentCatalogEntry = { id: 'local', label: 'This Mac', target: { kind: 'local' } }
-const grover: EnvironmentCatalogEntry = { id: 'env-g', label: 'grover', target: { kind: 'paired', label: 'grover', url: 'http://127.0.0.1:7331', credentialRef: 'c', via: 'ssh', ssh: { destination: 'user@grover.local', remotePort: 7331 } } }
+const devbox: EnvironmentCatalogEntry = { id: 'env-g', label: 'devbox', target: { kind: 'paired', label: 'devbox', url: 'http://127.0.0.1:7331', credentialRef: 'c', via: 'ssh', ssh: { destination: 'user@devbox.local', remotePort: 7331 } } }
 const managed: EnvironmentCatalogEntry = { id: 'env-m', label: 'corp', target: { kind: 'bearer', label: 'corp', url: 'https://ion.example.org', managed: true } }
 const sshTarget = { kind: 'paired', label: 'lab', url: 'http://127.0.0.1:7332', credentialRef: 'e', via: 'ssh', ssh: { destination: 'user@lab.local', remotePort: 7331 } }
 
-const servers = { entries: [local, grover, managed], justAddedId: null, add: vi.fn(), relabel: vi.fn(), forget: vi.fn(async () => {}) }
+const servers = { entries: [local, devbox, managed], justAddedId: null, add: vi.fn(), relabel: vi.fn(), forget: vi.fn(async () => {}) }
 const navigate = vi.fn()
 let h: Harness
 
@@ -91,7 +91,7 @@ describe('ServersPage list', () => {
     const rows = rowsOf('Servers')
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining('The server on this Mac'),
-      expect.stringContaining('ssh user@grover.local · port 7331'),
+      expect.stringContaining('ssh user@devbox.local · port 7331'),
       expect.stringContaining('Managed'),
     ])
     expect(rows[0].textContent).toContain('local')
@@ -119,7 +119,7 @@ describe('ServersPage list', () => {
     await mount()
     const rows = rowsOf('Hidden and blocked')
     expect(rows).toHaveLength(1)
-    expect(rows[0].textContent).toContain('grover')
+    expect(rows[0].textContent).toContain('devbox')
     expect(rows[0].textContent).toContain('protocol_version')
     await h.click('Refresh')
     expect(registry.refresh).toHaveBeenCalled()
@@ -181,7 +181,7 @@ describe('Add server panel', () => {
 
   it('pairs a nearby server with the typed code, refusing this desktop and ones already added', async () => {
     const found = (id: string, label: string) => ({ environmentId: id, label, serverVersion: '0.1.0', host: `${label}.local`, port: 7331, url: `http://${label}.local:7331` })
-    hostMock.browseNearby.mockResolvedValue([found('env-n', 'nova'), found('env-self', 'self'), found('env-g', 'grover')])
+    hostMock.browseNearby.mockResolvedValue([found('env-n', 'nova'), found('env-self', 'self'), found('env-g', 'devbox')])
     const target = { kind: 'paired', label: 'nova', url: 'http://nova.local:7331', credentialRef: 'env-n', via: 'lan' }
     hostMock.pairEnvironment.mockResolvedValue({ ok: true, target })
     servers.add.mockResolvedValue({ id: 'env-n', label: 'nova', target })

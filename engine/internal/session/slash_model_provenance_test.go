@@ -218,15 +218,15 @@ func TestSlashModelProvenance_PromptPrecedence(t *testing.T) {
 
 func TestFinalizeSlashModelProvenance(t *testing.T) {
 	opts := &types.RunOptions{
-		Model:                   "dci-marketing/gpt-5.6-terra",
+		Model:                   "corp-gateway/gpt-5.6-terra",
 		ResolvedSlashModelAlias: "standard",
 	}
 	finalizeSlashModelProvenance(opts, "test-session")
-	if opts.ResolvedSlashModelEffective != "dci-marketing/gpt-5.6-terra" {
+	if opts.ResolvedSlashModelEffective != "corp-gateway/gpt-5.6-terra" {
 		t.Fatalf("ResolvedSlashModelEffective = %q, want resolved concrete model", opts.ResolvedSlashModelEffective)
 	}
 
-	plain := &types.RunOptions{Model: "dci-marketing/claude-opus-5"}
+	plain := &types.RunOptions{Model: "corp-gateway/claude-opus-5"}
 	finalizeSlashModelProvenance(plain, "test-session")
 	if plain.ResolvedSlashModelEffective != "" {
 		t.Fatalf("plain prompt effective provenance = %q, want empty", plain.ResolvedSlashModelEffective)

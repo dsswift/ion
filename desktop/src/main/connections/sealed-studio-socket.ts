@@ -83,6 +83,14 @@ export class SealedStudioSocket extends EventEmitter implements StudioSocketLike
     const text = raw.toString()
     if (this.options.skipRelayControlFrames && /^\s*\{\s*"type"\s*:\s*"relay:/.test(text)) {
       log('relay control frame', { peer: this.options.label, head: text.slice(0, 60) })
+      // The server joined the channel anew, or left it. Either way the
+      // Connection that welcomed this socket is gone: a server that rejoined
+      // holds a new one that drops every frame until it gets a hello. The
+      // session ends here, so the broker joins again and says hello.
+      if (/"relay:peer-(reconnected|disconnected)"/.test(text)) {
+        warn('the server left or rejoined the relay channel; ending this session so the next join says hello', { peer: this.options.label })
+        this.ws.terminate()
+      }
       return
     }
     const opened = openRelayFrame(text, this.sharedSecret)

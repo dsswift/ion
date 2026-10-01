@@ -102,14 +102,14 @@ final class StudioFrameCodecTests: XCTestCase {
     func testWelcomeCarriesTheServersDirectAddresses() throws {
         var welcome = try jsonObject(try fixture("studio_welcome.json")) as? [String: Any] ?? [:]
         welcome["pairedClientId"] = "phone-1"
-        welcome["directAddresses"] = ["http://192.168.86.237:7331", "http://10.0.0.4:7331"]
+        welcome["directAddresses"] = ["http://192.168.1.237:7331", "http://10.0.0.4:7331"]
         let text = String(decoding: try JSONSerialization.data(withJSONObject: welcome), as: UTF8.self)
         guard case .welcome(let decoded) = try StudioFrame.decode(text: text) else { return XCTFail("not a welcome") }
-        XCTAssertEqual(decoded.directAddresses, ["http://192.168.86.237:7331", "http://10.0.0.4:7331"])
+        XCTAssertEqual(decoded.directAddresses, ["http://192.168.1.237:7331", "http://10.0.0.4:7331"])
         // Round-trips too: the key is on the encode side as well, so a frame
         // this client re-sends does not quietly drop it.
         let reencoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
-        XCTAssertTrue(reencoded.contains("192.168.86.237"))
+        XCTAssertTrue(reencoded.contains("192.168.1.237"))
     }
 
     /// A server that predates the field sends none, and that is not an error.

@@ -110,8 +110,8 @@ describe('studio_hello: local credential transport binding', () => {
 
   it('prefers the engine\'s signed-in Entra identity over the OS username on {kind:"local"}', async () => {
     vi.mocked(getSignedInIdentityIfEngineConnected).mockResolvedValueOnce({
-      user: 'JSprague@dciartform.com',
-      username: 'JSprague@dciartform.com',
+      user: 'JDoe@example.com',
+      username: 'JDoe@example.com',
       displayName: '',
       oid: 'entra-oid-123',
       issuer: 'https://login.microsoftonline.com/tenant/v2.0',
@@ -124,10 +124,10 @@ describe('studio_hello: local credential transport binding', () => {
     if (frame.type === 'studio_welcome') {
       expect(frame.principal).toMatchObject({
         subject: 'entra-oid-123',
-        displayName: 'JSprague@dciartform.com',
+        displayName: 'JDoe@example.com',
         provider: 'entra',
         kind: 'operator',
-        username: 'JSprague@dciartform.com',
+        username: 'JDoe@example.com',
       })
     }
     await closeSocket(ws)

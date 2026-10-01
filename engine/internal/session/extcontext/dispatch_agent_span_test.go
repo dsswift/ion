@@ -178,7 +178,7 @@ func (a *principalTestAccessor) Principal() *types.SessionPrincipal { return a.p
 // TestDispatchAgentSpanUserAttributionCarried pins the origin fix for a
 // dispatch.agent event shipping with no user at all on a deployment where
 // the server's own OIDC door authenticates the session's principal but the
-// engine has no process-wide operator identity of its own (every Orion
+// engine has no process-wide operator identity of its own (every Atlas
 // instance pod: server.json's oidc/allowedSubjects authenticate the person,
 // engine.json carries no auth.identityProvider). startDispatchSpan
 // (pre-fix) called the bare two-arg Collector.StartSpan, which always
@@ -192,7 +192,7 @@ func TestDispatchAgentSpanUserAttributionCarried(t *testing.T) {
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	acc := &principalTestAccessor{
 		depthTestAccessor: depthTestAccessor{telem: col},
-		principal:         &types.SessionPrincipal{Subject: "entra-oid-123", DisplayName: "JSprague@dciartform.com"},
+		principal:         &types.SessionPrincipal{Subject: "entra-oid-123", DisplayName: "JDoe@example.com"},
 	}
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
@@ -212,8 +212,8 @@ func TestDispatchAgentSpanUserAttributionCarried(t *testing.T) {
 	if found == nil {
 		t.Fatal("expected a dispatch.agent span event")
 	}
-	if found.User != "JSprague@dciartform.com" {
-		t.Errorf("User = %q, want %q", found.User, "JSprague@dciartform.com")
+	if found.User != "JDoe@example.com" {
+		t.Errorf("User = %q, want %q", found.User, "JDoe@example.com")
 	}
 }
 

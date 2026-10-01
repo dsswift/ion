@@ -11,7 +11,7 @@ const summary: StudioPrincipalSummary = {
   subject: 'entra-oid-teammate',
   provider: 'entra',
   kind: 'operator',
-  displayName: 'teammate@dciartform.com',
+  displayName: 'teammate@example.com',
 }
 
 // Pins the multiTenant flag toSessionPrincipal now sets from isSharedTenancy():

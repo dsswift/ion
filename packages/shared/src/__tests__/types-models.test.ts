@@ -24,7 +24,7 @@ describe('getProviderDisplayName', () => {
   })
 
   it('capitalizes an unknown provider id as the final fallback', () => {
-    expect(getProviderDisplayName('dci-marketing')).toBe('Dci-marketing')
+    expect(getProviderDisplayName('corp-gateway')).toBe('Corp-gateway')
   })
 
   it('prefers an operator-configured displayName over the built-in map', () => {
@@ -36,14 +36,14 @@ describe('getProviderDisplayName', () => {
 
   it('uses a configured displayName for a provider absent from the built-in map', () => {
     const providers: ProviderEntry[] = [
-      { id: 'dci-marketing', hasAuth: true, displayName: 'dci Marketing' },
+      { id: 'corp-gateway', hasAuth: true, displayName: 'Corp Gateway' },
     ]
-    expect(getProviderDisplayName('dci-marketing', providers)).toBe('dci Marketing')
+    expect(getProviderDisplayName('corp-gateway', providers)).toBe('Corp Gateway')
   })
 
   it('falls back when the entry exists but carries no displayName', () => {
-    const providers: ProviderEntry[] = [{ id: 'dci-marketing', hasAuth: true }]
-    expect(getProviderDisplayName('dci-marketing', providers)).toBe('Dci-marketing')
+    const providers: ProviderEntry[] = [{ id: 'corp-gateway', hasAuth: true }]
+    expect(getProviderDisplayName('corp-gateway', providers)).toBe('Corp-gateway')
   })
 
   it('falls back when the provider list has no matching entry', () => {
@@ -61,7 +61,7 @@ describe('getModelDisplayLabel', () => {
   })
 
   it('shows the same name for a gateway copy the engine named', () => {
-    expect(getModelDisplayLabel(model({ id: 'dci-marketing/claude-opus-4-8', providerId: 'dci-marketing', displayName: 'Claude Opus 4.8' })))
+    expect(getModelDisplayLabel(model({ id: 'corp-gateway/claude-opus-4-8', providerId: 'corp-gateway', displayName: 'Claude Opus 4.8' })))
       .toBe('Claude Opus 4.8')
   })
 
@@ -72,7 +72,7 @@ describe('getModelDisplayLabel', () => {
   })
 
   it("drops the engine's own provider qualifier from an unnamed entry", () => {
-    expect(getModelDisplayLabel(model({ id: 'dci-marketing/gpt-5.2-codex', providerId: 'dci-marketing' })))
+    expect(getModelDisplayLabel(model({ id: 'corp-gateway/gpt-5.2-codex', providerId: 'corp-gateway' })))
       .toBe('gpt-5.2-codex')
   })
 

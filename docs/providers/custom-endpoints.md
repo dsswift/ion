@@ -104,17 +104,17 @@ Declare the gateway like any other provider. The provider id is yours to choose:
 ```json
 {
   "providers": {
-    "dci-marketing": {
-      "apiKey": "DCI_GATEWAY_KEY",
+    "corp-gateway": {
+      "apiKey": "GATEWAY_API_KEY",
       "baseURL": "https://ai.example.com",
       "authHeader": "x-api-key",
-      "displayName": "dci Marketing"
+      "displayName": "Corp Gateway"
     }
   }
 }
 ```
 
-`displayName` is what clients show in provider lists and model pickers; without it they fall back to the capitalized id (`Dci-marketing`).
+`displayName` is what clients show in provider lists and model pickers; without it they fall back to the capitalized id (`Corp-gateway`).
 
 ### Self-describing discovery
 
@@ -175,7 +175,7 @@ The `dialect` values and the protocol each one selects are listed in [models.jso
 ```json
 {
   "providers": {
-    "dci-marketing": {
+    "corp-gateway": {
       "models": {
         "gpt-5.2-codex": { "dialect": "openai-responses" }
       }
@@ -190,7 +190,7 @@ When a gateway serves a model id that a public provider already owns (for exampl
 
 ```
 claude-opus-4-6                 → the public anthropic provider
-dci-marketing/claude-opus-4-6   → the same model through your gateway
+corp-gateway/claude-opus-4-6   → the same model through your gateway
 ```
 
 Use the qualified form anywhere a model id is accepted (`defaultModel`, `--model`, a per-run override). The engine strips the prefix before calling the gateway, so the vendor still receives its own bare model id on the wire. Meta-router ids whose slash is part of the model id itself (OpenRouter's `deepseek/deepseek-chat`) are unaffected — the prefix only routes when it matches a configured provider id.

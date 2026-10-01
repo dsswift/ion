@@ -29,7 +29,7 @@ vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => null })
 vi.mock('./ConversationHoverCard', () => ({ ConversationHoverCard: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 vi.mock('../../components/git/Tooltip', () => ({ Tooltip: ({ text, children }: { text: string; children: React.ReactNode }) => <span data-tooltip={text}>{children}</span> }))
 vi.mock('../../host/host-instance', () => ({
-  host: { deviceSettings: async () => ({ environments: [{ kind: 'paired', label: 'Grover', url: 'http://grover.local:7331', credentialRef: 'grover', via: 'lan', environmentId: 'grover' }] }), capabilities: () => ['local'] },
+  host: { deviceSettings: async () => ({ environments: [{ kind: 'paired', label: 'Devbox', url: 'http://devbox.local:7331', credentialRef: 'devbox', via: 'lan', environmentId: 'devbox' }] }), capabilities: () => ['local'] },
 }))
 vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn() }))
 
@@ -48,11 +48,11 @@ afterEach(() => { act(() => root.unmount()); host.remove() })
 
 describe('InboxRow environment badge', () => {
   it('names the remote environment on its row, with the host on hover', async () => {
-    act(() => root.render(<InboxRow tab={tab({ environmentId: 'grover' })} unread={false} woke={false} projectName={null} variant="card" backgroundLiveness={null} />))
+    act(() => root.render(<InboxRow tab={tab({ environmentId: 'devbox' })} unread={false} woke={false} projectName={null} variant="card" backgroundLiveness={null} />))
     await flush()
     const badge = host.querySelector('[data-testid="environment-badge"]')
-    expect(badge?.textContent).toContain('Grover')
-    expect(badge?.parentElement?.getAttribute('data-tooltip')).toContain('http://grover.local:7331')
+    expect(badge?.textContent).toContain('Devbox')
+    expect(badge?.parentElement?.getAttribute('data-tooltip')).toContain('http://devbox.local:7331')
   })
 
   it('wears no badge for a local conversation', async () => {

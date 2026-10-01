@@ -592,7 +592,7 @@ Assert-Equal $true ($detect -match [regex]::Escape($ExpectedSentinel)) `
   'Detect carries the expected-payload sentinel the packaging tool stamps'
 
 # -- Nothing in the package touches operator data -----------------------------
-# %USERPROFILE%\.ion holds conversations and credentials; ~\orion and ~\.orion
+# %USERPROFILE%\.ion holds conversations and credentials; ~\atlas and ~\.atlas
 # hold operator data. A policy package has no business in any of them, and the
 # check is here because the cost of finding out otherwise is somebody's work.
 # Comments are stripped first: these scripts DOCUMENT what they never touch,
@@ -608,7 +608,7 @@ foreach ($pair in @(
   @{ Text = (Remove-IonComment $uninstall); Name = 'Uninstall' },
   @{ Text = (Remove-IonComment $detect);    Name = 'Detect' }
 )) {
-  foreach ($forbidden in @('USERPROFILE', 'orion', 'conversations')) {
+  foreach ($forbidden in @('USERPROFILE', 'atlas', 'conversations')) {
     Assert-Equal $false ($pair.Text -match "(?<![A-Za-z])$([regex]::Escape($forbidden))(?![A-Za-z])") `
       "$($pair.Name) never operates on $forbidden"
   }

@@ -512,7 +512,7 @@ type DiscoverAgentsOpts struct {
 	Sources []string `json:"sources,omitempty"`
 	// ExtraDirs adds arbitrary directories to scan (appended after named sources).
 	ExtraDirs []string `json:"extraDirs,omitempty"`
-	// BundleName filters to a specific bundle subdirectory (e.g., "cloudops").
+	// BundleName filters to a specific bundle subdirectory (e.g., "platform").
 	// If empty, all bundles in each source directory are included.
 	BundleName string `json:"bundleName,omitempty"`
 	// Recursive walks subdirectories within each agent directory. Default true.

@@ -45,6 +45,7 @@ export const STUDIO_COMMANDS = [
   "studio.surface.files",
   "studio.surface.gitpanel",
   "studio.surface.graph",
+  "studio.surface.ports",
   "studio.surface.notification",
   "studio.tab.slot1",
   "studio.tab.slot2",

@@ -38,8 +38,8 @@ import { ensureHomeProject } from '../home-project'
 import type { ServerHomeProjectConfig } from '../../config/server-config'
 
 const CONFIG: ServerHomeProjectConfig = {
-  directory: '/data/home/jsprague/orion',
-  gitRemote: 'git@gitlab.dcim.com:cloud/ops.git',
+  directory: '/data/home/jdoe/atlas',
+  gitRemote: 'git@gitlab.example.com:team/ops.git',
   engineProfile: { name: 'cos2', extensions: ['/data/.ion/extensions/cos2/main'], defaultMode: 'auto' },
 }
 
@@ -186,7 +186,7 @@ describe('ensureHomeProject', () => {
     setDirectoryExists(true)
     readSettingsMock.mockReturnValue({
       projects: {
-        '/data/home/jsprague/other-repo': {
+        '/data/home/jdoe/other-repo': {
           addedManually: true, lastUsedAt: 999, isDefault: true, name: 'My Other Repo',
         },
       },
@@ -195,7 +195,7 @@ describe('ensureHomeProject', () => {
     await ensureHomeProject(CONFIG)
 
     const written = writeSettingsMock.mock.calls[0][0]
-    expect(written.projects['/data/home/jsprague/other-repo']).toEqual({
+    expect(written.projects['/data/home/jdoe/other-repo']).toEqual({
       addedManually: true, lastUsedAt: 999, isDefault: false, name: 'My Other Repo',
     })
     expect(written.projects[CONFIG.directory].isDefault).toBe(true)

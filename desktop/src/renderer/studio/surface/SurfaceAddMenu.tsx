@@ -8,7 +8,7 @@
 import React, { useEffect, useRef } from 'react'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { createPortal } from 'react-dom'
-import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, NotePencil, TerminalWindow } from '@phosphor-icons/react'
+import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, NotePencil, Plugs, TerminalWindow } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
@@ -23,6 +23,8 @@ interface AddEntryContext {
   /** False on a client with no `browser` capability (a browser tab). */
   browserTabAvailable: boolean
   graphViewAvailable: boolean
+  /** False on a client that cannot listen on its own machine (a browser tab). */
+  portForwardAvailable: boolean
 }
 
 interface AddEntry {
@@ -66,6 +68,14 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
     icon: GraphIcon,
     create: (s) => s.openSingleton('graph'),
     available: (ctx) => ctx.graphViewAvailable,
+  },
+  {
+    id: 'ports',
+    label: 'Ports',
+    icon: Plugs,
+    create: (s) => s.openSingleton('ports'),
+    // A forward listens on this machine, which a browser tab cannot do.
+    available: (ctx) => ctx.portForwardAvailable,
   },
 ]
 
@@ -115,6 +125,7 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
   const ctx: AddEntryContext = {
     graphViewAvailable,
     browserTabAvailable: host.capabilities().includes('browser'),
+    portForwardAvailable: Boolean(host.portForward),
   }
   const visibleEntries = SURFACE_ADD_ENTRIES.filter((entry) => entry.available?.(ctx) !== false)
 

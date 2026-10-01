@@ -11,8 +11,8 @@ import { installFakeWire, emitOnChannel } from '../../../../host/__tests__/fake-
 
 const store = vi.hoisted(() => ({
   state: {
-    models: [{ id: 'model-a', providerId: 'test' }, { id: 'model-b', providerId: 'test' }, { id: 'claude-opus-5', providerId: 'dci-marketing' }] as Array<{ id: string; providerId: string }>,
-    providers: [{ id: 'anthropic', hasAuth: true }, { id: 'dci-marketing', hasAuth: true }, { id: 'test', hasAuth: true }, { id: 'unauthed-provider', hasAuth: false }] as Array<{ id: string; hasAuth: boolean }>,
+    models: [{ id: 'model-a', providerId: 'test' }, { id: 'model-b', providerId: 'test' }, { id: 'claude-opus-5', providerId: 'corp-gateway' }] as Array<{ id: string; providerId: string }>,
+    providers: [{ id: 'anthropic', hasAuth: true }, { id: 'corp-gateway', hasAuth: true }, { id: 'test', hasAuth: true }, { id: 'unauthed-provider', hasAuth: false }] as Array<{ id: string; hasAuth: boolean }>,
     loading: false,
     loginStates: {},
     fetchModelsFor: async (): Promise<void> => undefined,
@@ -85,14 +85,14 @@ describe('Providers & models routing', () => {
       await h.render(<ModelTiersSection />)
       expect(stub.getDefaultProvider).toHaveBeenCalledOnce()
       expect(select(h, 'Default provider').value).toBe('anthropic')
-      expect([...select(h, 'Default provider').options].map((o) => o.value)).toEqual(['', 'anthropic', 'dci-marketing', 'test'])
+      expect([...select(h, 'Default provider').options].map((o) => o.value)).toEqual(['', 'anthropic', 'corp-gateway', 'test'])
       expect(select(h, 'Default provider').textContent).toContain('No preference')
     })
 
     it('saves a choice, clears it, and reverts when the engine refuses', async () => {
       await h.render(<ModelTiersSection />)
-      await choose(h, 'Default provider', 'dci-marketing')
-      expect(stub.setDefaultProvider).toHaveBeenLastCalledWith({ provider: 'dci-marketing' })
+      await choose(h, 'Default provider', 'corp-gateway')
+      expect(stub.setDefaultProvider).toHaveBeenLastCalledWith({ provider: 'corp-gateway' })
       await choose(h, 'Default provider', '')
       expect(stub.setDefaultProvider).toHaveBeenLastCalledWith({ provider: '' })
       stub.setDefaultProvider.mockResolvedValue({ ok: false, error: 'nope' })

@@ -110,7 +110,7 @@ describe('Providers', () => {
       await h.render(<ProvidersSection />)
       expect(h.container.textContent).toContain('Start the engine to see providers')
       h.unmount()
-      Object.assign(env, { id: 'grover', label: 'Grover', isLocal: false })
+      Object.assign(env, { id: 'devbox', label: 'Devbox', isLocal: false })
       h = createHarness()
       await h.render(<ProvidersSection />)
       expect(h.container.textContent).toContain('may not be an admin of it')
@@ -144,20 +144,20 @@ describe('Providers', () => {
       await renderPanel({ id: 'openai', hasAuth: false })
       expect(keyInput(h)).not.toBeNull()
       expect(labels(h)).not.toContain('Add API key')
-      await renderPanel({ id: 'dci-marketing', hasAuth: false, baseURL: 'https://gw.example.org' })
+      await renderPanel({ id: 'corp-gateway', hasAuth: false, baseURL: 'https://gw.example.org' })
       expect(keyInput(h)).not.toBeNull()
-      await renderPanel({ id: 'dci-marketing', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org' })
+      await renderPanel({ id: 'corp-gateway', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org' })
       expect(labels(h)).toEqual(expect.arrayContaining(['Change', 'Remove']))
       await renderPanel({ id: 'mystery-provider', hasAuth: false })
       expect(keyInput(h)).toBeNull()
     })
 
     it('stores a key on the server the page is about, not this device', async () => {
-      await renderPanel({ id: 'anthropic', hasAuth: false }, 'grover')
+      await renderPanel({ id: 'anthropic', hasAuth: false }, 'devbox')
       act(() => setInput(keyInput(h)!, 'sk-test'))
       await h.click('Save')
       expect(stub.storeCredential).toHaveBeenCalledWith({ provider: 'anthropic', credential: 'sk-test' })
-      expect(sent.filter((s) => s.action === 'provider.storeCredential').map((s) => s.environmentId)).toEqual(['grover'])
+      expect(sent.filter((s) => s.action === 'provider.storeCredential').map((s) => s.environmentId)).toEqual(['devbox'])
     })
 
     it('warns about an OpenAI key that returns no models', async () => {
@@ -166,9 +166,9 @@ describe('Providers', () => {
     })
 
     it('describes a scope refusal on a remote server as a missing admin grant', () => {
-      expect(describeProviderActionError(new StudioActionFailure('provider.storeCredential requires scope admin', 'scope'), 'grover')).toMatch(/not an admin of the grover environment/)
+      expect(describeProviderActionError(new StudioActionFailure('provider.storeCredential requires scope admin', 'scope'), 'devbox')).toMatch(/not an admin of the devbox environment/)
       expect(describeProviderActionError(new StudioActionFailure('boom', 'scope'), 'local')).toBe('boom')
-      expect(describeProviderActionError(new Error('network'), 'grover')).toBe('network')
+      expect(describeProviderActionError(new Error('network'), 'devbox')).toBe('network')
     })
   })
 
@@ -231,10 +231,10 @@ describe('Providers', () => {
     })
 
     it('refuses a host-only browser flow when this client is not on the server\'s host, but not a pasted-code flow or on the host', async () => {
-      await renderCli({ id: 'xai', hasAuth: false, cli: { backend: 'grok', ...installed }, loginFlow: 'browser-callback' }, 'grover')
+      await renderCli({ id: 'xai', hasAuth: false, cli: { backend: 'grok', ...installed }, loginFlow: 'browser-callback' }, 'devbox')
       expect(h.maybeControl('Sign in with Grok')).toBeUndefined()
       expect(h.container.textContent).toMatch(/completes in a browser on the host itself/)
-      await renderCli({ id: 'anthropic', hasAuth: false, cli: { backend: 'claude-code', ...installed }, loginFlow: 'browser-code' }, 'grover')
+      await renderCli({ id: 'anthropic', hasAuth: false, cli: { backend: 'claude-code', ...installed }, loginFlow: 'browser-code' }, 'devbox')
       expect(h.maybeControl('Sign in with Claude Code')).toBeTruthy()
       await renderCli({ id: 'xai', hasAuth: false, cli: { backend: 'grok', ...installed }, loginFlow: 'browser-callback' }, 'local')
       expect(h.maybeControl('Sign in with Grok')).toBeTruthy()

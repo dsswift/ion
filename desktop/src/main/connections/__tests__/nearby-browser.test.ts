@@ -6,7 +6,7 @@ const { browseNearby, nearbyFromService } = await import('../nearby-browser')
 
 describe('nearbyFromService', () => {
   it('reads the address and the announced identity, and ignores an announcement with no usable address', () => {
-    expect(nearbyFromService({ name: 'Ion Studio (grover)', host: 'grover.local.', port: 7331, txt: { label: 'grover', id: 'env-1', v: '0.1.0' } })).toEqual({ environmentId: 'env-1', label: 'grover', serverVersion: '0.1.0', host: 'grover.local', port: 7331, url: 'http://grover.local:7331' })
+    expect(nearbyFromService({ name: 'Ion Studio (devbox)', host: 'devbox.local.', port: 7331, txt: { label: 'devbox', id: 'env-1', v: '0.1.0' } })).toEqual({ environmentId: 'env-1', label: 'devbox', serverVersion: '0.1.0', host: 'devbox.local', port: 7331, url: 'http://devbox.local:7331' })
     expect(nearbyFromService({ name: 'x', host: 'box.local', port: 7332 })).toMatchObject({ label: 'x', environmentId: '', url: 'http://box.local:7332' })
     expect(nearbyFromService({ name: 'x', port: 7331 })).toBeNull()
     expect(nearbyFromService({ name: 'x', host: 'box.local' })).toBeNull()
@@ -36,15 +36,15 @@ describe('browseNearby', () => {
       durationMs: 1000,
       browse: (onService) => {
         onService({ host: 'zed.local', port: 7331, txt: { label: 'zed', id: 'env-z' } })
-        onService({ host: 'grover.local', port: 7331, txt: { label: 'grover', id: 'env-g' } })
-        onService({ host: 'grover.local', port: 7331, txt: { label: 'grover', id: 'env-g' } })
+        onService({ host: 'devbox.local', port: 7331, txt: { label: 'devbox', id: 'env-g' } })
+        onService({ host: 'devbox.local', port: 7331, txt: { label: 'devbox', id: 'env-g' } })
         onService({ name: 'broken' })
         return stop
       },
     })
     vi.advanceTimersByTime(1001)
     const rows = await pending
-    expect(rows.map((r) => r.label)).toEqual(['grover', 'zed'])
+    expect(rows.map((r) => r.label)).toEqual(['devbox', 'zed'])
     expect(stop).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })

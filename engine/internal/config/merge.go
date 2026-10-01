@@ -170,8 +170,8 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 
 	// MCP server restrictions -- allow list. A server passes when its config
 	// key is on the allowlist (exact match) OR its configured URL host
-	// glob-matches an allowlist pattern (D-010: "*.dcim.com" admits any
-	// server whose URL host is a dcim.com subdomain, regardless of what the
+	// glob-matches an allowlist pattern (D-010: "*.example.com" admits any
+	// server whose URL host is a example.com subdomain, regardless of what the
 	// server entry is named). Host matching closes the rename bypass: a
 	// name-only allowlist lets a constrained user point a server named
 	// "internal-tools" anywhere; host patterns pin the actual destination.

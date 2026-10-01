@@ -105,4 +105,12 @@ export const STUDIO_WINDOW_IPC = {
   HOST_TRANSFER_IMPORT_FROM_FILE: "studio:host-transfer-import-from-file",
   HOST_TRANSFER_PROGRESS: "studio:host-transfer-progress",
   HOST_TRANSFER_CANCEL: "studio:host-transfer-cancel",
+  // Port Forward (`main/connections/port-forward.ts`): main listens on a
+  // loopback port of this machine and carries each connection to a port on an
+  // Environment's host over that Environment's Studio connection.
+  // HOST_PORT_FORWARD_START and _STOP name one remote port; HOST_PORT_FORWARDS
+  // is the full list, both as an invoke and as a push on every change.
+  HOST_PORT_FORWARD_START: "studio:host-port-forward-start",
+  HOST_PORT_FORWARD_STOP: "studio:host-port-forward-stop",
+  HOST_PORT_FORWARDS: "studio:host-port-forwards",
 } as const;

@@ -9,7 +9,7 @@ import (
 // AADSTS28000 *after* the user has signed in and consented, so the browser
 // shows a token-exchange failure and the app registration looks broken.
 //
-// The dci tenant's configuration is exactly this shape: the app's own
+// A real tenant configuration has exactly this shape: the app's own
 // api:// scope plus two on a separate API host.
 func TestSplitLoginScopes_OneResourcePerLogin(t *testing.T) {
 	scopes := []string{

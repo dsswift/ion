@@ -19,7 +19,7 @@ describe('telemetry health notifier', () => {
   it('ignores reports that are not worth a notification, other channels, and other environments', () => {
     const show = vi.fn()
     notifyTelemetryHealth('local', report(false), { show, enabled: () => true })
-    notifyTelemetryHealth('grover', report(true), { show, enabled: () => true })
+    notifyTelemetryHealth('devbox', report(true), { show, enabled: () => true })
     notifyTelemetryHealth('local', { type: 'studio_event', channel: 'ion:themes-changed', payload: [] }, { show, enabled: () => true })
     expect(show).not.toHaveBeenCalled()
   })

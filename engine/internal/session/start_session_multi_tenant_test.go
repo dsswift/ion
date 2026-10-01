@@ -35,7 +35,7 @@ func TestStartSessionMultiTenantPrincipalSkipsProcessWidePromotion(t *testing.T)
 		Subject:     "entra-oid-teammate",
 		Provider:    "entra",
 		Kind:        "operator",
-		DisplayName: "teammate@dciartform.com",
+		DisplayName: "teammate@example.com",
 		MultiTenant: true,
 	}
 	cfg := defaultConfig()
@@ -83,7 +83,7 @@ func TestStartSessionMultiTenantPrincipalDoesNotClobberExistingIdentity(t *testi
 		Subject:     "entra-oid-teammate",
 		Provider:    "entra",
 		Kind:        "operator",
-		DisplayName: "teammate@dciartform.com",
+		DisplayName: "teammate@example.com",
 		MultiTenant: true,
 	}
 	cfg := defaultConfig()

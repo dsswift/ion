@@ -99,7 +99,7 @@ func statusesFor(hosts []fleet.Host, transfers ...string) []fleet.HostStatus {
 }
 
 var (
-	grover = fleet.Host{Name: "grover", SSH: "grover", Kind: fleet.KindServer, Profile: "home"}
+	devbox = fleet.Host{Name: "devbox", SSH: "devbox", Kind: fleet.KindServer, Profile: "home"}
 	mac    = fleet.Host{Name: "mac", SSH: "mac", Kind: fleet.KindDesktop}
 )
 
@@ -142,8 +142,8 @@ func answered(t *testing.T, m Model, statuses []fleet.HostStatus) Model {
 }
 
 func loaded(t *testing.T, r *recorder) Model {
-	m := New(testDeps(r, grover, mac))
-	return answered(t, m, statusesFor([]fleet.Host{grover, mac}, "3", "2"))
+	m := New(testDeps(r, devbox, mac))
+	return answered(t, m, statusesFor([]fleet.Host{devbox, mac}, "3", "2"))
 }
 
 // clock is a test's hand-moved time.
@@ -190,7 +190,7 @@ func runQuick(cmd tea.Cmd) []tea.Msg {
 
 func TestSelectionAndTargets(t *testing.T) {
 	m := loaded(t, &recorder{})
-	if got := m.targets(); len(got) != 1 || got[0].Name != "grover" {
+	if got := m.targets(); len(got) != 1 || got[0].Name != "devbox" {
 		t.Fatalf("no selection targets the cursor host: %v", got)
 	}
 	m, _ = press(t, m, "down")
@@ -212,7 +212,7 @@ func TestRestartAsksThenRuns(t *testing.T) {
 	r := &recorder{}
 	m := loaded(t, r)
 	m, _ = press(t, m, "R")
-	if m.screen != screenConfirm || !strings.Contains(m.View().Content, "restart on grover?") {
+	if m.screen != screenConfirm || !strings.Contains(m.View().Content, "restart on devbox?") {
 		t.Fatalf("R must ask first: screen=%v", m.screen)
 	}
 	m, cmd := press(t, m, "n")
@@ -224,13 +224,13 @@ func TestRestartAsksThenRuns(t *testing.T) {
 	for _, msg := range runCmd(cmd) {
 		m, _ = update(t, m, msg)
 	}
-	if len(r.restarted) != 1 || r.restarted[0] != "grover" || !strings.Contains(m.notice, "restart on grover done") {
+	if len(r.restarted) != 1 || r.restarted[0] != "devbox" || !strings.Contains(m.notice, "restart on devbox done") {
 		t.Fatalf("restarted=%v notice=%q", r.restarted, m.notice)
 	}
 	m, _ = press(t, m, "L")
 	_, cmd = press(t, m, "y")
 	runCmd(cmd)
-	if len(r.relays) != 1 || r.relays[0] != "grover wss://relay.example.org" {
+	if len(r.relays) != 1 || r.relays[0] != "devbox wss://relay.example.org" {
 		t.Fatalf("relays = %v", r.relays)
 	}
 }
@@ -282,7 +282,7 @@ func TestDeployFlow(t *testing.T) {
 	if m.source != fleet.SourceRelease || r.prepared[1] != fleet.SourceRelease || m.editingSource {
 		t.Fatalf("a typed source prepares again: %v", r.prepared)
 	}
-	m.prepared.Preflight.Downgrades = []fleet.Downgrade{{Host: "grover"}}
+	m.prepared.Preflight.Downgrades = []fleet.Downgrade{{Host: "devbox"}}
 	m, cmd = press(t, m, "y")
 	if cmd != nil || m.deploying || !strings.Contains(m.notice, "press D") {
 		t.Fatalf("a downgrade needs D first: deploying=%v notice=%q", m.deploying, m.notice)
@@ -302,7 +302,7 @@ func TestDeployFlow(t *testing.T) {
 		t.Fatalf("progress travels through Send: %v", r.sent)
 	}
 	m, _ = update(t, m, r.sent[0])
-	if m.deploying || len(m.results) != 1 || m.stages["grover"].Stage != fleet.StageDeploying || !strings.Contains(m.notice, "deployed 1") {
+	if m.deploying || len(m.results) != 1 || m.stages["devbox"].Stage != fleet.StageDeploying || !strings.Contains(m.notice, "deployed 1") {
 		t.Fatalf("after: deploying=%v results=%v stages=%v notice=%q", m.deploying, m.results, m.stages, m.notice)
 	}
 }
@@ -319,10 +319,10 @@ func typeText(t *testing.T, m Model, text string) Model {
 // the source prompt instead of failing, and a typed path is what prepares.
 func TestDeployAsksForASourceWhenNoneIsKnown(t *testing.T) {
 	r := &recorder{}
-	deps := testDeps(r, grover)
+	deps := testDeps(r, devbox)
 	deps.DefaultSource = ""
 	m := New(deps)
-	m = answered(t, m, statusesFor([]fleet.Host{grover}))
+	m = answered(t, m, statusesFor([]fleet.Host{devbox}))
 	m, cmd := press(t, m, "d")
 	if m.screen != screenDeploy || !m.editingSource || cmd != nil || len(r.prepared) != 0 {
 		t.Fatalf("d with no source must ask for one: screen=%v editing=%v", m.screen, m.editingSource)
@@ -347,12 +347,12 @@ func TestDeployAsksForASourceWhenNoneIsKnown(t *testing.T) {
 
 // TestDeploySourceThatFailsIsAskedForAgain keeps the prompt open with the reason.
 func TestDeploySourceThatFailsIsAskedForAgain(t *testing.T) {
-	deps := testDeps(&recorder{}, grover)
+	deps := testDeps(&recorder{}, devbox)
 	deps.Prepare = func(context.Context, []fleet.Host, string, []fleet.HostStatus) (*fleet.Prepared, error) {
 		return nil, errors.New("/tmp is not an Ion checkout (no scripts/package-studio-server.sh)")
 	}
 	m := New(deps)
-	m = answered(t, m, statusesFor([]fleet.Host{grover}))
+	m = answered(t, m, statusesFor([]fleet.Host{devbox}))
 	m, cmd := press(t, m, "d")
 	for _, msg := range runCmd(cmd) {
 		m, _ = update(t, m, msg)
@@ -437,7 +437,7 @@ func TestDevicesInTableAndDetail(t *testing.T) {
 // A host deployed outside the fleet is only read: deploy, restart, and relay
 // say why instead of opening a screen.
 func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
-	ext := fleet.Host{Name: "orion", URL: "https://orion.example.org", Kind: fleet.KindServer}
+	ext := fleet.Host{Name: "atlas", URL: "https://atlas.example.org", Kind: fleet.KindServer}
 	r := &recorder{}
 	m := New(testDeps(r, ext))
 	m = answered(t, m, statusesFor([]fleet.Host{ext}, "3"))
@@ -448,7 +448,7 @@ func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
 		}
 	}
 	m, _ = press(t, m, "enter")
-	if view := m.View().Content; !strings.Contains(view, "https://orion.example.org · deployed outside the fleet, read only") || strings.Contains(view, "d deploy this host") {
+	if view := m.View().Content; !strings.Contains(view, "https://atlas.example.org · deployed outside the fleet, read only") || strings.Contains(view, "d deploy this host") {
 		t.Errorf("detail:\n%s", view)
 	}
 	if len(r.prepared) != 0 || len(r.restarted) != 0 || len(r.relays) != 0 {
@@ -462,31 +462,31 @@ func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
 func TestHostsReadOnTheirOwnSchedule(t *testing.T) {
 	r := &recorder{}
 	c := &clock{t: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)}
-	deps := testDeps(r, grover, mac)
+	deps := testDeps(r, devbox, mac)
 	deps.Now = c.now
 	m := New(deps)
 	if reads, _ := readsStarted(t, r, m.Init()); len(reads) != 2 {
 		t.Fatalf("Init reads every host once: %v", reads)
 	}
 	down := fleet.HostStatus{Host: mac, Via: fleet.ViaNone, Error: "ssh: unreachable"}
-	m = answered(t, m, []fleet.HostStatus{statusesFor([]fleet.Host{grover})[0], down})
+	m = answered(t, m, []fleet.HostStatus{statusesFor([]fleet.Host{devbox})[0], down})
 
 	c.t = c.t.Add(ReadInterval)
 	m, cmd := update(t, m, tickMsg(c.t))
-	if reads, _ := readsStarted(t, r, cmd); len(reads) != 1 || reads[0] != "grover" {
+	if reads, _ := readsStarted(t, r, cmd); len(reads) != 1 || reads[0] != "devbox" {
 		t.Fatalf("after %s only the live host is due: %v", ReadInterval, reads)
 	}
 	if view := m.View().Content; !strings.Contains(view, "down · retry 45s") {
 		t.Errorf("a down host shows when it is tried again:\n%s", view)
 	}
-	m = answered(t, m, statusesFor([]fleet.Host{grover}))
+	m = answered(t, m, statusesFor([]fleet.Host{devbox}))
 
 	c.t = c.t.Add(RetryFirst - ReadInterval)
 	m, cmd = update(t, m, tickMsg(c.t))
 	if reads, _ := readsStarted(t, r, cmd); len(reads) != 2 {
 		t.Fatalf("after %s the down host is tried again beside the live one: %v", RetryFirst, reads)
 	}
-	m = answered(t, m, []fleet.HostStatus{statusesFor([]fleet.Host{grover})[0], down})
+	m = answered(t, m, []fleet.HostStatus{statusesFor([]fleet.Host{devbox})[0], down})
 	c.t = c.t.Add(RetryFirst)
 	m, cmd = update(t, m, tickMsg(c.t))
 	if reads, _ := readsStarted(t, r, cmd); strings.Contains(strings.Join(reads, ","), "mac") {
@@ -505,9 +505,9 @@ func TestHostsReadOnTheirOwnSchedule(t *testing.T) {
 func TestReadsPauseOffTheTable(t *testing.T) {
 	r := &recorder{}
 	c := &clock{t: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)}
-	deps := testDeps(r, grover, mac)
+	deps := testDeps(r, devbox, mac)
 	deps.Now = c.now
-	m := answered(t, New(deps), statusesFor([]fleet.Host{grover, mac}))
+	m := answered(t, New(deps), statusesFor([]fleet.Host{devbox, mac}))
 	m, _ = update(t, m, latestMsg{})
 	m, cmd := press(t, m, "d")
 	for _, msg := range runCmd(cmd) {
@@ -530,7 +530,7 @@ func TestReadsPauseOffTheTable(t *testing.T) {
 func TestReleasesAreReadRarely(t *testing.T) {
 	r := &recorder{}
 	c := &clock{t: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)}
-	deps := testDeps(r, grover)
+	deps := testDeps(r, devbox)
 	deps.Now = c.now
 	m := New(deps)
 	_, msgs := readsStarted(t, r, m.Init())
@@ -569,18 +569,18 @@ func TestReleasesAreReadRarely(t *testing.T) {
 // afterwards become their rows, with no second read.
 func TestDeployUsesAndFeedsTheTable(t *testing.T) {
 	r := &recorder{}
-	deps := testDeps(r, grover, mac)
+	deps := testDeps(r, devbox, mac)
 	deps.Run = func(_ context.Context, p *fleet.Prepared, _ func(fleet.Event)) ([]fleet.Result, error) {
-		after := statusesFor([]fleet.Host{grover}, "4")[0]
-		return []fleet.Result{{Host: "grover", OK: true, After: &after}}, nil
+		after := statusesFor([]fleet.Host{devbox}, "4")[0]
+		return []fleet.Result{{Host: "devbox", OK: true, After: &after}}, nil
 	}
 	m := New(deps)
-	m = answered(t, m, statusesFor([]fleet.Host{grover}))
+	m = answered(t, m, statusesFor([]fleet.Host{devbox}))
 	m, cmd := press(t, m, "d")
 	for _, msg := range runCmd(cmd) {
 		m, _ = update(t, m, msg)
 	}
-	if len(r.known) != 1 || len(r.known[0]) != 1 || r.known[0][0].Host.Name != "grover" {
+	if len(r.known) != 1 || len(r.known[0]) != 1 || r.known[0][0].Host.Name != "devbox" {
 		t.Fatalf("the plan gets the hosts the table has read, not the one still reading: %+v", r.known)
 	}
 	m, cmd = press(t, m, "y")
@@ -590,8 +590,8 @@ func TestDeployUsesAndFeedsTheTable(t *testing.T) {
 			t.Fatal("a finished deploy starts no reads")
 		}
 	}
-	if got := fleet.FormatCell(m.statuses[0].Report, fleet.TransferFormat); got != "4" || m.sched["grover"].next.IsZero() {
-		t.Errorf("the deploy's read is grover's row: transfer %q, schedule %+v", got, m.sched["grover"])
+	if got := fleet.FormatCell(m.statuses[0].Report, fleet.TransferFormat); got != "4" || m.sched["devbox"].next.IsZero() {
+		t.Errorf("the deploy's read is devbox's row: transfer %q, schedule %+v", got, m.sched["devbox"])
 	}
 }
 
@@ -604,8 +604,8 @@ func TestActionReadsOnlyItsHost(t *testing.T) {
 	for _, msg := range runCmd(cmd) {
 		m, cmd = update(t, m, msg)
 	}
-	if reads, _ := readsStarted(t, r, cmd); len(reads) != 1 || reads[0] != "grover" {
-		t.Fatalf("reads after a restart of grover: %v", reads)
+	if reads, _ := readsStarted(t, r, cmd); len(reads) != 1 || reads[0] != "devbox" {
+		t.Fatalf("reads after a restart of devbox: %v", reads)
 	}
 }
 

@@ -147,6 +147,11 @@ export class Broker extends EventEmitter {
     return this.connections.get(environmentId)?.phase
   }
 
+  /** The capabilities an Environment's server advertised in its welcome, or null while it is not connected. */
+  serverCapabilities(environmentId: string): readonly string[] | null {
+    return this.connections.get(environmentId)?.serverCapabilities ?? null
+  }
+
   /**
    * Re-emit an Environment's current phase, for a window that attached after
    * the transition was pushed. The local Environment connects at boot before

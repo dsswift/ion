@@ -1,0 +1,720 @@
+[
+  {
+    "role": "system",
+    "content": "Sample system message 1.",
+    "timestamp": 1783802415902
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 2.",
+    "timestamp": 1783802416058
+  },
+  {
+    "role": "user",
+    "content": "Sample user message 3.",
+    "timestamp": 1783802539757
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 4.",
+    "toolName": "Bash",
+    "toolId": "tool-001",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-1.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802553909
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 5.",
+    "toolName": "Bash",
+    "toolId": "tool-002",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-2.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802554031
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 6.",
+    "toolName": "Bash",
+    "toolId": "tool-003",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-3.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802592947
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 7.",
+    "toolName": "Bash",
+    "toolId": "tool-004",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-4.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802593012
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 8.",
+    "toolName": "Bash",
+    "toolId": "tool-005",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-5.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802599105
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 9.",
+    "toolName": "Bash",
+    "toolId": "tool-006",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-6.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802599129
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-10.png]",
+    "toolName": "Read",
+    "toolId": "tool-007",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-7.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802605283
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-11.png]",
+    "toolName": "Read",
+    "toolId": "tool-008",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-8.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783802605304,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-01.png",
+        "type": "image",
+        "name": "image-01.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-01.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-02.png",
+        "type": "image",
+        "name": "image-02.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-02.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 12.",
+    "timestamp": 1783802606376
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 13.",
+    "timestamp": 1783802606386
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 14.",
+    "timestamp": 1783802606396
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 15.",
+    "timestamp": 1783802606399
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 16.",
+    "timestamp": 1783804127508
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 17.",
+    "timestamp": 1783804180417
+  },
+  {
+    "role": "user",
+    "content": "Sample user message 18.",
+    "timestamp": 1783804596742
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 19.",
+    "toolName": "AskUserQuestion",
+    "toolId": "tool-009",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-9.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804648596
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 20.",
+    "timestamp": 1783804648626
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 21.",
+    "toolName": "dispatch_agent",
+    "toolId": "tool-010",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-10.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804648651
+  },
+  {
+    "role": "user",
+    "content": "Sample user message 22.",
+    "timestamp": 1783804741908
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 23.",
+    "toolName": "Bash",
+    "toolId": "tool-011",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-11.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804748880
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 24.",
+    "toolName": "Bash",
+    "toolId": "tool-012",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-12.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804752597
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 25.",
+    "toolName": "Bash",
+    "toolId": "tool-013",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-13.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804755515
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 26.",
+    "timestamp": 1783804755543
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 27.",
+    "toolName": "Bash",
+    "toolId": "tool-014",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-14.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804759172
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-28.png]",
+    "toolName": "Read",
+    "toolId": "tool-015",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-15.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804765741
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-29.png]",
+    "toolName": "Read",
+    "toolId": "tool-016",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-16.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804765759
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-30.png]",
+    "toolName": "Read",
+    "toolId": "tool-017",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-17.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804765776,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-03.png",
+        "type": "image",
+        "name": "image-03.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-03.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-04.png",
+        "type": "image",
+        "name": "image-04.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-04.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-05.png",
+        "type": "image",
+        "name": "image-05.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-05.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 31.",
+    "timestamp": 1783804765807
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-32.png]",
+    "toolName": "Read",
+    "toolId": "tool-018",
+    "toolStatus": "completed",
+    "timestamp": 1783804773875
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-33.png]",
+    "toolName": "Read",
+    "toolId": "tool-019",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-18.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804773882
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-34.png]",
+    "toolName": "Read",
+    "toolId": "tool-020",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-19.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804773925,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-06.png",
+        "type": "image",
+        "name": "image-06.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-06.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-07.png",
+        "type": "image",
+        "name": "image-07.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-07.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-08.png",
+        "type": "image",
+        "name": "image-08.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-08.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 35.",
+    "timestamp": 1783804773928
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 21.",
+    "toolName": "dispatch_agent",
+    "toolId": "tool-021",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-20.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804823784
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 36.",
+    "timestamp": 1783804823794
+  },
+  {
+    "role": "user",
+    "content": "Sample user message 37.",
+    "timestamp": 1783804936927
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-38.png]",
+    "toolName": "Read",
+    "toolId": "tool-022",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-21.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804947087
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-39.png]",
+    "toolName": "Read",
+    "toolId": "tool-023",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-22.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783804947153,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-09.png",
+        "type": "image",
+        "name": "image-09.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-09.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-10.png",
+        "type": "image",
+        "name": "image-10.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-10.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 40.",
+    "timestamp": 1783804951428
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 41.",
+    "timestamp": 1783804951439
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 42.",
+    "timestamp": 1783804951466
+  },
+  {
+    "role": "system",
+    "content": "Sample system message 15.",
+    "timestamp": 1783804951476
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 21.",
+    "toolName": "dispatch_agent",
+    "toolId": "tool-024",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-23.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805434045
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-43.png]",
+    "toolName": "Read",
+    "toolId": "tool-025",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-24.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805458376
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-44.png]",
+    "toolName": "Read",
+    "toolId": "tool-026",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-25.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805458450
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-45.png]",
+    "toolName": "Read",
+    "toolId": "tool-027",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-26.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805458502
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-46.png]",
+    "toolName": "Read",
+    "toolId": "tool-028",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-27.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805458572,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-11.png",
+        "type": "image",
+        "name": "image-11.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-11.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-12.png",
+        "type": "image",
+        "name": "image-12.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-12.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-13.png",
+        "type": "image",
+        "name": "image-13.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-13.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-14.png",
+        "type": "image",
+        "name": "image-14.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-14.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 19.",
+    "toolName": "AskUserQuestion",
+    "toolId": "tool-029",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-28.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805493184
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 47.",
+    "timestamp": 1783805493380
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 48.",
+    "toolName": "list_dispatches",
+    "toolId": "tool-030",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-29.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805506382
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 49.",
+    "toolName": "answer_agent_question",
+    "toolId": "tool-031",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-30.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805516351
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 50.",
+    "timestamp": 1783805516407
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 19.",
+    "toolName": "AskUserQuestion",
+    "toolId": "tool-032",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-31.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805527989
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 51.",
+    "timestamp": 1783805528324
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 19.",
+    "toolName": "AskUserQuestion",
+    "toolId": "tool-033",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-32.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783805541354
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 52.",
+    "timestamp": 1783805541795
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 53.",
+    "timestamp": 1783819646059
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 54.",
+    "timestamp": 1783819700708
+  },
+  {
+    "role": "user",
+    "content": "Sample user message 55.",
+    "timestamp": 1783819916470
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-30.png]",
+    "toolName": "Read",
+    "toolId": "tool-034",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-33.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819929504
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-32.png]",
+    "toolName": "Read",
+    "toolId": "tool-035",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-34.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819929539
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-33.png]",
+    "toolName": "Read",
+    "toolId": "tool-036",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-35.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819929567,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-05.png",
+        "type": "image",
+        "name": "image-05.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-05.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-06.png",
+        "type": "image",
+        "name": "image-06.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-06.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-07.png",
+        "type": "image",
+        "name": "image-07.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-07.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 56.",
+    "timestamp": 1783819929570
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-45.png]",
+    "toolName": "Read",
+    "toolId": "tool-037",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-36.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819936943
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-43.png]",
+    "toolName": "Read",
+    "toolId": "tool-038",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-37.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819936984
+  },
+  {
+    "role": "tool",
+    "content": "[Image: sample-46.png]",
+    "toolName": "Read",
+    "toolId": "tool-039",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-38.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819937014,
+    "attachments": [
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-13.png",
+        "type": "image",
+        "name": "image-13.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-13.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-11.png",
+        "type": "image",
+        "name": "image-11.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-11.png",
+        "mimeType": "image/png"
+      },
+      {
+        "id": "img:/home/user/.ion/conversations/sample/images/image-14.png",
+        "type": "image",
+        "name": "image-14.png",
+        "path": "/home/user/.ion/conversations/sample/images/image-14.png",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 57.",
+    "timestamp": 1783819937020
+  },
+  {
+    "role": "tool",
+    "content": "Sample tool message 19.",
+    "toolName": "AskUserQuestion",
+    "toolId": "tool-040",
+    "toolInput": "{\"file_path\": \"/home/user/project/file-39.txt\"}",
+    "toolStatus": "completed",
+    "timestamp": 1783819954113
+  },
+  {
+    "role": "assistant",
+    "content": "Sample assistant message 58.",
+    "timestamp": 1783819954165
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 59.",
+    "timestamp": 1783823782726
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 60.",
+    "timestamp": 1783823834972
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 61.",
+    "timestamp": 1783824348499
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 62.",
+    "timestamp": 1783824401495
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 63.",
+    "timestamp": 1783829273187
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 64.",
+    "timestamp": 1783829322496
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 65.",
+    "timestamp": 1783859148809
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 66.",
+    "timestamp": 1783859205527
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 67.",
+    "timestamp": 1783865266430
+  },
+  {
+    "role": "harness",
+    "content": "Sample harness message 68.",
+    "timestamp": 1783865321544
+  }
+]

@@ -14,7 +14,7 @@ type SubscriptionLookupConfig struct {
 	// Endpoint is the http(s) URL the engine GETs.
 	Endpoint string `json:"endpoint"`
 	// Provider is the provider id the resolved key authenticates (a key
-	// under the providers map, e.g. "dci-marketing").
+	// under the providers map, e.g. "corp-gateway").
 	Provider string `json:"provider"`
 	// Scope and Audience shape the bearer token sent to Endpoint. Empty uses
 	// the identity grant's base scope and the provider's default audience.

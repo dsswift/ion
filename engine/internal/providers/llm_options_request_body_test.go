@@ -149,14 +149,14 @@ func TestOpenAIResponsesBuildRequestBody_Temperature(t *testing.T) {
 // the context (applyRequestAuth), never at construction.
 func TestOpenAIResponsesEnvKeyGatedByProviderID(t *testing.T) {
 	gw, ok := NewOpenAIResponsesProvider(&ProviderOptions{
-		ID:      "dci-marketing",
+		ID:      "corp-gateway",
 		BaseURL: "https://ai.example.com",
 	}).(*openaiResponsesProvider)
 	if !ok {
 		t.Fatal("expected *openaiResponsesProvider")
 	}
-	if gw.ID() != "dci-marketing" {
-		t.Errorf("gateway provider ID = %q, want dci-marketing", gw.ID())
+	if gw.ID() != "corp-gateway" {
+		t.Errorf("gateway provider ID = %q, want corp-gateway", gw.ID())
 	}
 
 	direct, ok := NewOpenAIResponsesProvider(&ProviderOptions{ID: "openai"}).(*openaiResponsesProvider)

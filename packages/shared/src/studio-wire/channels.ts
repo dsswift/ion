@@ -289,9 +289,22 @@ export const BinaryChannel = {
    * how short it was.
    */
   FILE_END: 0x04,
+  /**
+   * Port Forward streams (`@ion/shared/port-forward`). The key is the stream
+   * id the client chose in `port.open`. `PORT_DATA` carries the stream's bytes
+   * either way. `PORT_END` says the sender has no more bytes (empty payload)
+   * or abandoned the stream (one byte, `PORT_END_ABORT`). `PORT_CREDIT` is the
+   * receiver granting the sender more bytes (a 4-byte big-endian count) once
+   * it has written what it was sent.
+   */
+  PORT_DATA: 0x05,
+  PORT_END: 0x06,
+  PORT_CREDIT: 0x07,
 } as const
 export type BinaryChannel = (typeof BinaryChannel)[keyof typeof BinaryChannel]
 
+const BINARY_CHANNEL_VALUES: ReadonlySet<number> = new Set(Object.values(BinaryChannel))
+
 export function isBinaryChannel(value: number): value is BinaryChannel {
-  return value === BinaryChannel.TERMINAL_DATA || value === BinaryChannel.TERMINAL_RESIZE || value === BinaryChannel.FILE_CHUNK || value === BinaryChannel.FILE_END
+  return BINARY_CHANNEL_VALUES.has(value)
 }

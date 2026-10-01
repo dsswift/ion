@@ -123,3 +123,20 @@ describe('Broker.replayWelcome', () => {
     expect(delivered).toEqual([])
   })
 })
+
+describe('Broker.serverCapabilities', () => {
+  it('answers what the live welcome advertised, and null before there is one', async () => {
+    FakeWebSocket.instances.length = 0
+    const broker = new Broker()
+    broker.connect(targetSpawning())
+    await flush()
+    const socket = FakeWebSocket.instances[0]
+    socket.simulateOpen()
+    expect(broker.serverCapabilities('env-local')).toBeNull()
+    expect(broker.serverCapabilities('env-missing')).toBeNull()
+
+    socket.simulateMessage({ ...welcomeFrame(), capabilities: ['terminal', 'port-forward'] })
+
+    expect(broker.serverCapabilities('env-local')).toEqual(['terminal', 'port-forward'])
+  })
+})

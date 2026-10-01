@@ -40,7 +40,7 @@ the single-sink contract:
 |---|---|---|
 | OTLP collector | An OpenTelemetry collector (Alloy, the upstream OTel Collector, Vector) exposing OTLP/HTTP | Loki, Tempo, Mimir, any OTLP-capable backend |
 | Plain HTTP endpoint | Any HTTPS service accepting POSTed JSON arrays (the `http` egress wire shape) | SIEM ingestion APIs, custom pipelines, serverless functions |
-| Event bus | A managed ingestion intake (e.g. Azure Event Hubs, reached directly via the engine's native `eventhub` AMQP target — see [`telemetry.md`](telemetry.md) § "Event Hub target" — or fronted by a collector translating OTLP into the bus) | Fan-out to multiple independent consumers (see the [Orion realization](#orion-enterprise-realization) below) |
+| Event bus | A managed ingestion intake (e.g. Azure Event Hubs, reached directly via the engine's native `eventhub` AMQP target — see [`telemetry.md`](telemetry.md) § "Event Hub target" — or fronted by a collector translating OTLP into the bus) | Fan-out to multiple independent consumers (see the [managed-cloud example](#example-a-managed-cloud-event-bus-deployment) below) |
 | Object store | A collector or tailer batching lines into object storage (S3, Azure Blob, GCS) | Athena/Synapse-style query-on-archive, compliance retention |
 
 Swapping one sink for another is a configuration change on the fleet, not a change to any Ion
@@ -390,7 +390,7 @@ cluster. It is the fleet-scale version of the local reference stack
 ([`docs/observability/README.md`](../observability/README.md)) — same components, same label
 policy, same dashboards, but the ingestion endpoint is a cluster service reachable by the
 fleet. Organizations on managed cloud infrastructure may prefer the event-bus variant instead
-(see the [Orion realization](#orion-enterprise-realization) for a fully worked one).
+(see the [managed-cloud example](#example-a-managed-cloud-event-bus-deployment) for a fully worked one).
 
 The walkthrough assumes `kubectl` and `helm` against a cluster you control, and a DNS name
 (`ingest.corp.example.com`) you can point at the cluster's ingress.
@@ -657,33 +657,30 @@ unchanged: the join keys are in the lines, not in any particular stack.
 
 ---
 
-## Orion enterprise realization
+## Example: a managed-cloud event-bus deployment
 
-Everything above is topology-neutral. This section is the concrete, named worked example: how
-one enterprise (dci, deploying Ion Desktop fleet-wide under the **Orion** program) realizes
-the same single-sink contract on managed Azure infrastructure. It is included because a fully
-specified enterprise binding makes the abstract architecture legible — and because it
-exercises the decoupling invariant harder than the self-hosted default does. The governing
-decisions live in dci's Orion decision records, cited by number below.
+Everything above is topology-neutral. This section is one concrete worked example: how an
+enterprise deploying Ion Desktop fleet-wide can realize the same single-sink contract on
+managed Azure infrastructure. It is included because a fully specified enterprise binding
+makes the abstract architecture legible — and because it exercises the decoupling invariant
+harder than the self-hosted default does.
 
-Orion's observability data flows through five layers in a strict pipeline
-(Orion ADR-6005). Each layer has a bounded responsibility, its own retention tier, and a hard
+In this example, observability data flows through five layers in a strict pipeline. Each layer has a bounded responsibility, its own retention tier, and a hard
 interface to the next.
 
 ### Layer 1 — Event Hub (ingestion intake)
 
 Azure Event Hubs is the single sink. Every Ion Desktop instance in the fleet emits to one
-configurable Event Hub endpoint, injected through the MDM configuration layer (Orion
-ADR-2003) — the same delivery channel as [`mdm.md`](mdm.md), carrying the sealed egress
+configurable Event Hub endpoint, injected through the MDM configuration layer — the same delivery channel as [`mdm.md`](mdm.md), carrying the sealed egress
 config. The engine reaches it directly over native AMQP via the `eventhub` target (see
 [`telemetry.md`](telemetry.md) § "Event Hub target") — no HTTPS-fronted intermediary is
 required, since Event Hubs' own ingest protocol is AMQP. Event Hub is a transit buffer, not
 a store: data resides there on the order of days (an event-bus retention window, roughly one
 to seven) while downstream consumers read the stream independently.
 
-This layer *is* the ADR-6005 decoupling invariant made physical: the engine knows one
+This layer *is* the decoupling invariant made physical: the engine knows one
 endpoint and nothing else. Multiple consumers — the hot-path writer, the analytical pipeline —
-subscribe without the engine being aware of them, and dci can replace any downstream layer
+subscribe without the engine being aware of them, and the operator can replace any downstream layer
 without touching a single fleet device. It is the same single-sink contract as the
 self-hosted tutorial, with fan-out as the first-class reason to choose an event bus over a
 direct collector.
@@ -691,12 +688,12 @@ direct collector.
 ### Layer 2 — Cosmos DB (hot path)
 
 The raw conversation stream lands in Cosmos DB: full fidelity, conversation-keyed,
-user-keyed. This is Tier 1 of Orion's tiered conversation storage (Orion ADR-6002) — **30-day
+user-keyed. This is Tier 1 of a tiered conversation store — **30-day
 rolling retention** from last conversation activity, with the clock resetting on each new
 event. During the active window the layer serves conversation replay, session continuity, and
 incident reconstruction against the actual record.
 
-At the 30-day inactivity threshold, the ADR-6002 pipeline takes over: the transcript passes
+At the 30-day inactivity threshold, the tiering pipeline takes over: the transcript passes
 through LLM-driven sanitization (Tier 2 — credentials and secrets identified and redacted by
 a model, not by regex, precisely so the archived record is neither leaky nor lossy) and the
 sanitized transcript lands in the long-term archive (Tier 3). Sanitization happens at the
@@ -706,26 +703,23 @@ conversation, which is what makes it forensically usable.
 ### Layer 3 — Log Analytics (analytical store)
 
 The same event stream lands, via the Event Hub pipeline, in an Azure Log Analytics workspace —
-the KQL-queryable, source-of-truth fleet database. Retention is **365 days hot** (Orion
-ADR-3004, the dci production standard for logs and metrics), supporting trend analysis across
+the KQL-queryable, source-of-truth fleet database. Retention is **365 days hot**, supporting trend analysis across
 quarters and year-over-year fleet comparisons. Direct KQL access is restricted to
 administrative identities; every other consumer reaches this data through a managed
 integration.
 
-Log Analytics also hosts Orion's platform self-monitoring (Orion ADR-6003, Layer 3 of its
-monitoring model): scheduled KQL queries computing cost-anomaly detection against rolling
+Log Analytics also hosts the platform's self-monitoring: scheduled KQL queries computing cost-anomaly detection against rolling
 per-user baselines, conversation lifecycle health (are transcripts moving through the
-ADR-6002 tiers on schedule?), agent-pack invocation success rates, and fleet adoption
+storage tiers on schedule?), agent-pack invocation success rates, and fleet adoption
 metrics.
 
 ### Layer 3 archive — the cold/audit tier
 
 At the 365-day boundary, telemetry exports to structured Azure Blob archive; sanitized
 conversation transcripts follow their own multi-stage progression (warm archive on the order
-of a year, then cold archive on the order of **seven years**, then re-evaluation — Orion
-ADR-3004 refining ADR-6002 Tier 3). Nothing in the conversation record is truncated, sampled,
-or rolled up: complete records are the point. This tier is what satisfies Orion's
-auditability gate (Orion ADR-6001) — the requirement that any incident, however old, is
+of a year, then cold archive on the order of **seven years**, then re-evaluation). Nothing in the conversation record is truncated, sampled,
+or rolled up: complete records are the point. This tier is what satisfies an
+auditability requirement — the requirement that any incident, however old, is
 reconstructable: which user, which conversation, which content the agent processed, which
 tool calls with which inputs and outputs.
 
@@ -738,10 +732,10 @@ workspace. When Application Insights is created with OpenTelemetry (OTLP) suppor
 creates and links an **Azure Monitor workspace**, and OTLP metrics are stored there, not in
 Log Analytics. The Azure Monitor workspace is a hosted Prometheus store queried with PromQL
 ([Ingest OTLP data into Azure Monitor](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion)).
-One asymmetry matters: **Orion-hosted
+One asymmetry matters: **platform-hosted
 services** (hosted MCP servers, functions, workflow apps) instrument through the App
-Insights/OpenTelemetry SDK directly, not through Event Hub (Orion ADR-6003). The event-bus
-intake is for the fleet's Ion devices; dci-managed Azure services use the platform-native
+Insights/OpenTelemetry SDK directly, not through Event Hub. The event-bus
+intake is for the fleet's Ion devices; centrally managed Azure services use the platform-native
 instrumentation path.
 
 ### Layer 5 — Grafana (fleet dashboard)
@@ -772,9 +766,9 @@ Insights](telemetry.md#sending-system-metrics-to-application-insights); the map 
 | Tier | Layer | Retention | Contents |
 |---|---|---|---|
 | Transit | Event Hub | ~1–7 days | In-flight event stream (buffer, not storage) |
-| Hot | Cosmos DB | 30 days rolling | Raw full-fidelity conversation stream (ADR-6002 Tier 1) |
-| Warm | Log Analytics | 365 days | Fleet-queryable analytical store (ADR-3004) |
-| Cold | Blob archive | ~7 years | Sanitized transcripts + exported telemetry; the audit tier (ADR-6001/6002 Tier 3) |
+| Hot | Cosmos DB | 30 days rolling | Raw full-fidelity conversation stream (Tier 1) |
+| Warm | Log Analytics | 365 days | Fleet-queryable analytical store |
+| Cold | Blob archive | ~7 years | Sanitized transcripts + exported telemetry; the audit tier (Tier 3) |
 | Metrics | Azure Monitor workspace | Workspace retention | OTLP System Metrics (host and engine process load), queried with PromQL |
 | *Contrast: home/self-hosted default* | *Single Loki tier* | *90 days flat* | *Everything, one store, one retention knob (the tutorial above)* |
 
@@ -784,7 +778,7 @@ five-layer enterprise pipeline. Only the endpoint and the downstream opinion cha
 
 ### Layer-boundary invariants
 
-These are hard rules in Orion's architecture (Orion ADR-6005), not implementation
+These are hard rules in this topology, not implementation
 preferences. Violations couple components that must stay independent:
 
 - **The engine writes to Event Hub only.** Never to Cosmos DB, Log Analytics, or any
@@ -794,6 +788,7 @@ preferences. Violations couple components that must stay independent:
 - **Hosted services emit via the App Insights/OTel SDK,** not through the Event Hub intake.
 
 ---
+
 
 ## The progression roadmap
 
@@ -816,21 +811,19 @@ ingestion infrastructure → fleet auditability.**
    the authorization URL — `oidc_begin_login` / `oidc_identity` / `oidc_logout` on the
    wire), persists the grant encrypted, silently refreshes, and mints per-scope access
    tokens. Attribution restamps on every login/logout transition, so every event carries
-   the real authenticated user. This is Orion's mandatory per-user attribution (Orion
-   ADR-6005). Egress authenticates per flush: the engine's forwarder mints a fresh token
+   the real authenticated user. Egress authenticates per flush: the engine's forwarder mints a fresh token
    for `logging.egressTokenScope`; a client shipping its own share pulls ephemeral tokens
    via the `oidc_token` command (the refresh token never leaves the engine). Shipping
    responsibility itself is a configurable matrix — `logging.egressShipSources` (engine's
    share) and `logging.egressClientShipSources` (the managing client's share) decide which
    surface ships which of `engine` / `desktop` / `ios` / `telemetry`, generalizing the
    legacy `egressManagedByClient` boolean (still honored when the matrix is absent).
-3. **Build the enterprise ingestion infrastructure.** The five-layer Orion stack above:
-   Event Hub intake, Cosmos DB hot path, Log Analytics, the archive tier, App Insights, and
-   Grafana, with the per-layer retention tiering.
+3. **Build the enterprise ingestion infrastructure.** The five-layer stack in the
+   [managed-cloud example](#example-a-managed-cloud-event-bus-deployment) is one way: Event Hub intake, Cosmos DB hot path, Log
+   Analytics, the archive tier, App Insights, and Grafana, with per-layer retention tiering.
 4. **Ship work-device Ion Desktop logs into it.** Point the fleet's sealed egress config at
-   the Layer 1 intake. With identity attached (stage 2) and ingestion central (stage 3), the
-   log contract becomes the audit trail — who ran what, where, on which build, at what cost —
-   and Orion's auditability rollout gate (Orion ADR-6001) can be satisfied and verified.
+   the central intake. With identity attached (stage 2) and ingestion central (stage 3), the
+   log contract becomes the audit trail — who ran what, where, on which build, at what cost .
 
 Each stage is useless without the one before it: infrastructure ingesting unattributed events
 fails the attribution mandate; attribution stamped onto unstandardized lines fails

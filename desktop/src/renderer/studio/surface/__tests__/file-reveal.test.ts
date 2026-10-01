@@ -14,10 +14,10 @@ function editor(doc: string): EditorView {
 
 describe('applyFileReveal', () => {
   it('selects exactly the match on the requested line', () => {
-    const v = editor('first\n  principal_id = var.cloudops_grafana_principal_id\nlast')
+    const v = editor('first\n  principal_id = var.platform_grafana_principal_id\nlast')
     applyFileReveal(v, { line: 2, column: 22, length: 29 })
     const { from, to } = v.state.selection.main
-    expect(v.state.sliceDoc(from, to)).toBe('cloudops_grafana_principal_id')
+    expect(v.state.sliceDoc(from, to)).toBe('platform_grafana_principal_id')
   })
 
   it('clamps a target past the end of a file that shrank since the search', () => {

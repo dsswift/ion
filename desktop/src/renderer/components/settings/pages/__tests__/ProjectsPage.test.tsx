@@ -54,7 +54,7 @@ const { PopoverLayerProvider } = await import('../../../PopoverLayer')
 
 const ion: EnvironmentProject = { dir: '/h/src/ion', entry: { addedManually: true, lastUsedAt: 1, repoRemote: 'github.com/o/ion', clonedByIon: true }, displayName: 'ion', exists: true, isGitRepo: true, branch: 'main', originUrl: 'git@github.com:o/ion.git' }
 const mine: EnvironmentProject = { dir: '/h/src/mine', entry: { addedManually: true, lastUsedAt: 1 }, displayName: 'mine', exists: true, isGitRepo: true, branch: 'dev' }
-const grover = { id: 'grover', label: 'grover', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
+const devbox = { id: 'devbox', label: 'devbox', target: { kind: 'lan' } } as unknown as EnvironmentCatalogEntry
 
 let container: HTMLDivElement
 let root: Root
@@ -119,16 +119,16 @@ describe('ProjectsPage', () => {
   it('lists projects one line each, re-lists on projects-changed, and shows a running clone as a row', async () => {
     let projects = [ion]
     serve({ 'environment.projects.list': () => projects })
-    await mount(grover)
+    await mount(devbox)
     expect(row('ion').textContent).toContain('/h/src/ion')
     expect(row('ion').textContent).toContain('cloned by Ion')
     expect(text()).toContain('1 project')
     projects = [mine, ion]
-    await act(async () => { emit('grover', 'ion:projects-changed', { reason: 'add' }); await flush(); await flush() })
+    await act(async () => { emit('devbox', 'ion:projects-changed', { reason: 'add' }); await flush(); await flush() })
     const names = [...container.querySelectorAll('[role="listitem"]')].map((r) => r.textContent ?? '')
     expect(names[0]).toContain('ion')
     expect(names[1]).toContain('mine')
-    await act(async () => { emit('grover', 'ion:project-job', { id: 'j1', kind: 'clone', dir: '/h/src/new', phase: 'running', stage: 'receiving objects', percent: 40, url: 'git@github.com:o/new.git', startedAt: 1 }); await flush() })
+    await act(async () => { emit('devbox', 'ion:project-job', { id: 'j1', kind: 'clone', dir: '/h/src/new', phase: 'running', stage: 'receiving objects', percent: 40, url: 'git@github.com:o/new.git', startedAt: 1 }); await flush() })
     const job = [...container.querySelectorAll('[role="listitem"]')][0]
     expect(job.textContent).toContain('new')
     expect(job.textContent).toContain('receiving objects')
@@ -139,20 +139,20 @@ describe('ProjectsPage', () => {
 
   it('cancels a running job and retries a failed clone into the base folder', async () => {
     serve({ 'environment.projects.list': () => [], 'environment.jobs.cancel': () => ({ cancelled: true }), 'environment.projects.clone': () => ({ jobId: 'j3', dir: '/x' }) })
-    await mount(grover)
+    await mount(devbox)
     await act(async () => {
-      emit('grover', 'ion:project-job', { id: 'j1', kind: 'clone', dir: '/h/src/new', phase: 'running', stage: 'receiving objects', url: 'git@github.com:o/new.git', startedAt: 2 })
-      emit('grover', 'ion:project-job', { id: 'j2', kind: 'clone', dir: '/h/src/bad', phase: 'failed', stage: 'failed', error: 'auth refused\nmore', url: 'git@github.com:o/bad.git', startedAt: 1 })
+      emit('devbox', 'ion:project-job', { id: 'j1', kind: 'clone', dir: '/h/src/new', phase: 'running', stage: 'receiving objects', url: 'git@github.com:o/new.git', startedAt: 2 })
+      emit('devbox', 'ion:project-job', { id: 'j2', kind: 'clone', dir: '/h/src/bad', phase: 'failed', stage: 'failed', error: 'auth refused\nmore', url: 'git@github.com:o/bad.git', startedAt: 1 })
       await flush()
     })
     expect(row('bad').textContent).toContain('clone failed')
     expect(row('bad').textContent).toContain('auth refused')
     await openMenu('new')
     await click(menuItem('Cancel'))
-    expect(mocks.action).toHaveBeenCalledWith('grover', 'environment.jobs.cancel', [{ jobId: 'j1' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.jobs.cancel', [{ jobId: 'j1' }])
     await openMenu('bad')
     await click(menuItem('Retry'))
-    expect(mocks.action).toHaveBeenCalledWith('grover', 'environment.projects.clone', [{ url: 'git@github.com:o/bad.git', parentDir: '~/source' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'git@github.com:o/bad.git', parentDir: '~/source' }])
   })
 
   it('Remove appraises first and offers file deletion only for an Ion clone', async () => {
@@ -164,7 +164,7 @@ describe('ProjectsPage', () => {
       },
       'environment.projects.remove': (args) => ({ removed: true, deletedFiles: (args[0] as { deleteFiles?: boolean }).deleteFiles === true }),
     })
-    await mount(grover)
+    await mount(devbox)
     await openMenu('mine')
     await click(menuItem('Remove…'))
     expect(text()).toContain('Ion only forgets it')
@@ -173,7 +173,7 @@ describe('ProjectsPage', () => {
     await openMenu('ion')
     await click(menuItem('Remove…'))
     await click(button('Remove and delete files'))
-    expect(mocks.action).toHaveBeenCalledWith('grover', 'environment.projects.remove', [{ dir: ion.dir, deleteFiles: true, force: false }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.remove', [{ dir: ion.dir, deleteFiles: true, force: false }])
   })
 
   it('forces the delete when the clone is dirty or has worktrees', async () => {
@@ -182,13 +182,13 @@ describe('ProjectsPage', () => {
       'environment.projects.appraiseRemoval': () => ({ dir: ion.dir, registered: true, clonedByIon: true, exists: true, dirty: true, worktrees: 2 }),
       'environment.projects.remove': () => ({ removed: true, deletedFiles: true }),
     })
-    await mount(grover)
+    await mount(devbox)
     await openMenu('ion')
     await click(menuItem('Remove…'))
     expect(text()).toContain('It has uncommitted changes.')
     expect(text()).toContain('2 worktree(s) were cut from it.')
     await click(button('Delete files anyway'))
-    expect(mocks.action).toHaveBeenCalledWith('grover', 'environment.projects.remove', [{ dir: ion.dir, deleteFiles: true, force: true }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.remove', [{ dir: ion.dir, deleteFiles: true, force: true }])
   })
 
   // A checkout Ion cloned runs none of its code until it is trusted: the row
@@ -197,7 +197,7 @@ describe('ProjectsPage', () => {
   it('offers Trust project for an untrusted clone and holds its setup until then', async () => {
     const cloned: EnvironmentProject = { ...ion, trusted: false, setupCommand: 'make bootstrap' }
     serve({ 'environment.projects.list': () => [cloned, mine], 'environment.projects.trust': () => ({ ...cloned, trusted: undefined }) })
-    await mount(grover)
+    await mount(devbox)
     expect(row('ion').textContent).toContain('not trusted')
     await openMenu('ion')
     expect(menuItem('Run setup').disabled).toBe(true)
@@ -212,18 +212,18 @@ describe('ProjectsPage', () => {
     expect(text()).toContain('make bootstrap')
     expect((button('Run setup for ion')).disabled).toBe(true)
     await click(button('Trust project'))
-    expect(mocks.action).toHaveBeenCalledWith('grover', 'environment.projects.trust', [{ dir: '/h/src/ion' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.trust', [{ dir: '/h/src/ion' }])
   })
 
   it('shows an empty state with Add project on a server without projects', async () => {
     serve({ 'environment.projects.list': () => [] })
-    await mount(grover)
-    expect(text()).toContain('No projects on grover yet')
+    await mount(devbox)
+    expect(text()).toContain('No projects on devbox yet')
   })
 
   it('changes the base folder for clones as a device setting keyed by server', async () => {
     serve({ 'environment.projects.list': () => [] })
-    await mount(grover)
+    await mount(devbox)
     expect(text()).toContain('~/source')
     await click(button('Change'))
     const input = container.querySelector('input[aria-label="Base folder for clones"]') as HTMLInputElement
@@ -234,7 +234,7 @@ describe('ProjectsPage', () => {
       input.blur()
       await flush(); await flush()
     })
-    expect(mocks.setDeviceSetting).toHaveBeenCalledWith('environmentCloneBaseDirectories', { grover: '~/src' })
+    expect(mocks.setDeviceSetting).toHaveBeenCalledWith('environmentCloneBaseDirectories', { devbox: '~/src' })
   })
 })
 
@@ -286,7 +286,7 @@ describe('ProjectsPage on this device', () => {
 
   it('hides the device-only default and profile on another server', async () => {
     serve({ 'environment.projects.list': () => [mine] })
-    await mount(grover)
+    await mount(devbox)
     await openMenu('mine')
     expect(() => menuItem('Clear default')).toThrow()
     expect(() => menuItem('Make default')).toThrow()

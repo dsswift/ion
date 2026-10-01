@@ -84,7 +84,7 @@ func startDispatchSpan(sa SessionAccessor, s dispatchSpanStart) *telemetry.SpanH
 	// nil ctx, so dispatch.agent alone always fell through to the
 	// process-wide operator identity -- absent on a deployment where the
 	// server's OIDC door authenticates the person but the engine's own
-	// identityProvider is unconfigured (every Orion instance pod), so
+	// identityProvider is unconfigured (every hosted instance pod), so
 	// dispatch.agent shipped with no user at all instead of falling back
 	// the way a session-scoped event does elsewhere.
 	ctx := map[string]any{}

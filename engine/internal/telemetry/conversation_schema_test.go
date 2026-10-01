@@ -72,13 +72,13 @@ func TestPublishedSchema_ValidatesRealEmittedEvents(t *testing.T) {
 		"conversation_id": "conv-1",
 		"run_id":          "run-1",
 		"trace_id":        "4bf92f3577b34da6a3ce929d0e0e4736",
-		"extension":       "orion",
+		"extension":       "atlas",
 		"app_context":     map[string]any{"client": "desktop", "tab_id": "tab-7"},
 	}
 
 	events := emitAndCapture(t, func(e *ConversationEmitter) {
 		e.SetBeforeEvent(func(BeforeEventInfo) map[string]any {
-			return map[string]any{"department": "cloudops", "agent_pack": "v3"}
+			return map[string]any{"department": "platform", "agent_pack": "v3"}
 		})
 		e.UserMessage(ctx, "conv-1", "entry-1", "run-1", "", "hello")
 		e.AssistantMessage(ctx, "conv-1", "entry-2", "run-1", "", "claude-sonnet-5", "hi", &CallCost{

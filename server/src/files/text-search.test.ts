@@ -15,13 +15,13 @@ describe('searchText', () => {
     mkdirSync(join(dir, 'node_modules/pkg'), { recursive: true })
     writeFileSync(join(dir, 'infra/main.tf'), [
       'resource "x" "y" {',
-      '  principal_id = var.cloudops_grafana_principal_id',
-      '  # CLOUDOPS_GRAFANA_PRINCIPAL_ID documented',
+      '  principal_id = var.platform_grafana_principal_id',
+      '  # PLATFORM_GRAFANA_PRINCIPAL_ID documented',
       '}',
     ].join('\n'))
-    writeFileSync(join(dir, 'infra/vars.tf'), 'variable "cloudops_grafana_principal_id" {}\n')
-    writeFileSync(join(dir, 'build.log'), 'cloudops_grafana_principal_id\n')
-    writeFileSync(join(dir, 'node_modules/pkg/index.js'), 'cloudops_grafana_principal_id\n')
+    writeFileSync(join(dir, 'infra/vars.tf'), 'variable "platform_grafana_principal_id" {}\n')
+    writeFileSync(join(dir, 'build.log'), 'platform_grafana_principal_id\n')
+    writeFileSync(join(dir, 'node_modules/pkg/index.js'), 'platform_grafana_principal_id\n')
   }
 
   function summary(result: Awaited<ReturnType<typeof searchText>>): Record<string, number[]> {
@@ -32,7 +32,7 @@ describe('searchText', () => {
     seed()
     writeFileSync(join(dir, '.gitignore'), '*.log\nnode_modules\n')
     execFileSync('git', ['init', '-q'], { cwd: dir })
-    const result = await searchText({ roots: [dir], query: 'cloudops_grafana_principal_id' })
+    const result = await searchText({ roots: [dir], query: 'platform_grafana_principal_id' })
     expect(summary(result)).toEqual({ 'infra/main.tf': [2, 3], 'infra/vars.tf': [1] })
     expect(result.totalMatches).toBe(3)
     const first = result.files.find((f) => f.relativePath === 'infra/main.tf')!
@@ -44,7 +44,7 @@ describe('searchText', () => {
   it('honours case sensitivity and whole-word matching on the git path', async () => {
     seed()
     execFileSync('git', ['init', '-q'], { cwd: dir })
-    const exact = await searchText({ roots: [join(dir, 'infra')], query: 'CLOUDOPS_GRAFANA', caseSensitive: true })
+    const exact = await searchText({ roots: [join(dir, 'infra')], query: 'PLATFORM_GRAFANA', caseSensitive: true })
     expect(summary(exact)).toEqual({ 'main.tf': [3] })
     const word = await searchText({ roots: [join(dir, 'infra')], query: 'principal_id', wholeWord: true })
     expect(summary(word)).toEqual({ 'main.tf': [2] })
@@ -59,7 +59,7 @@ describe('searchText', () => {
   it('stops at maxResults and says so', async () => {
     seed()
     execFileSync('git', ['init', '-q'], { cwd: dir })
-    const result = await searchText({ roots: [dir], query: 'cloudops', maxResults: 2 })
+    const result = await searchText({ roots: [dir], query: 'platform', maxResults: 2 })
     expect(result.totalMatches).toBe(2)
     expect(result.truncated).toBe(true)
   })

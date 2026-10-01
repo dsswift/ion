@@ -32,8 +32,8 @@ interface AnnouncedService {
  * The address to dial, from one announcement.
  *
  * An announcement's SRV target is whatever the publisher called itself, and
- * a default publisher uses the machine's bare hostname (`dcitag8331`), which
- * resolves nowhere: a Mac answers to `dcitag8331.local`. So the announced IP
+ * a default publisher uses the machine's bare hostname (`macbook`), which
+ * resolves nowhere: a Mac answers to `macbook.local`. So the announced IP
  * is preferred -- it is the address the packet actually came from and needs
  * no resolver -- and a bare name is only used after `.local` is restored.
  * IPv6 is skipped: a link-local address needs a zone index a URL cannot

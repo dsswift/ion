@@ -12,6 +12,8 @@ const { openFileInEditorMock, getSessionStateMock } = vi.hoisted(() => ({
   getSessionStateMock: vi.fn(),
 }))
 vi.mock('../../../rendererLogger', () => ({ rDebug: vi.fn(), rTrace: vi.fn(), rWarn: vi.fn() }))
+const { webApplicationUrlMock } = vi.hoisted(() => ({ webApplicationUrlMock: vi.fn<(tabId: string, url: string) => Promise<string | null>>() }))
+vi.mock('../../ports/port-forward-store', () => ({ webApplicationUrlForThisMachine: webApplicationUrlMock }))
 
 vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => getSessionStateMock() },
@@ -52,6 +54,41 @@ afterEach(() => {
     openHtml: () => undefined,
     openGitDiff: () => false,
   })()
+})
+
+describe('studio router: web application', () => {
+  beforeEach(() => {
+    webApplicationUrlMock.mockReset()
+    getSessionStateMock.mockReturnValue({
+      tabs: [{ id: 'tab-1', workingDirectory: '/repo' }],
+      activeTabId: 'tab-1',
+      conversationPanes: new Map(),
+      selectTab: vi.fn(),
+    })
+  })
+
+  it('opens the URL this machine can reach, not the one the Terminal reported', async () => {
+    webApplicationUrlMock.mockResolvedValue('http://localhost:61000/app')
+    registerStudioFileRouter()
+
+    surfaceRouter()!.openWebApplication!('tab-1', 'http://localhost:5173/app')
+
+    expect(webApplicationUrlMock).toHaveBeenCalledWith('tab-1', 'http://localhost:5173/app')
+    await vi.waitFor(() => {
+      const active = useSurfaceStore.getState().tabs.find((t) => t.id === useSurfaceStore.getState().activeTabId)
+      expect(active).toMatchObject({ kind: 'browser', url: 'http://localhost:61000/app' })
+    })
+  })
+
+  it('opens the Ports surface instead of a page on the wrong machine when the port cannot be forwarded', async () => {
+    webApplicationUrlMock.mockResolvedValue(null)
+    registerStudioFileRouter()
+
+    surfaceRouter()!.openWebApplication!('tab-1', 'http://localhost:5173/app')
+
+    await vi.waitFor(() => expect(useSurfaceStore.getState().activeTabId).toBe('ports'))
+    expect(useSurfaceStore.getState().tabs.some((t) => t.kind === 'browser')).toBe(false)
+  })
 })
 
 describe('file-open-router', () => {

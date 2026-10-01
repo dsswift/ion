@@ -71,7 +71,7 @@ export function lanHostname(deps: LanHostnameDeps = {}): string {
     }
   }
   if (!name) name = (deps.hostname ?? hostname)()
-  // The first label only: `dcitag8331.corp.example.com` answers as `dcitag8331.local`.
+  // The first label only: `macbook.corp.example.com` answers as `macbook.local`.
   const label = name.replace(/\.local\.?$/i, '').split('.')[0]?.trim() ?? ''
   return label ? `${label}.local` : ''
 }

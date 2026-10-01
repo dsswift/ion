@@ -198,7 +198,7 @@ describe('saveTabs / loadTabs', () => {
   })
 
   it('does not resurrect a deliberately deleted tab from .prev on the next boot', async () => {
-    // Regression (first Grover deploy): delete one of two tabs, restart the
+    // Regression (first remote deploy): delete one of two tabs, restart the
     // server, and the deleted tab came back -- .prev "had more tabs" and the
     // primary "had fewer than ten". The deleted tab's content file is gone,
     // which is exactly what says the deletion was meant.

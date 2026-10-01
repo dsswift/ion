@@ -29,9 +29,10 @@ import { GIT_ACTIONS } from './git-actions'
 import { GIT_IDENTITY_ACTIONS } from './git-identity-actions'
 import { SETTINGS_ACTIONS } from './settings-actions'
 import { TERMINAL_ACTIONS } from './terminal-actions'
+import { PORT_ACTIONS } from './port-actions'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
-import { principalSubjectForTab, principalSubjectForConversation } from './tabs-index'
+import { tabOwnedBySubject, principalSubjectForConversation } from './tabs-index'
 import { unownedTabsVisible, isSharedTenancy } from '../config/current'
 import { setDriving } from './presence'
 import { lockableActionGroup, computeSettingsHiddenGroups } from './settings-visibility'
@@ -57,7 +58,7 @@ export function registeredActionNames(): Set<string> {
   return new Set([
     ...Object.keys(FORWARDED_ACTIONS),
     ...[
-      AUTH_ACTIONS, TERMINAL_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
+      AUTH_ACTIONS, TERMINAL_ACTIONS, PORT_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
       STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS,
     ].flatMap((map) => Object.keys(map)),
   ])
@@ -70,7 +71,7 @@ export function registeredActionNames(): Set<string> {
  */
 export function registeredActionSpec(action: string): { requiredScope: Scope; localOnly: boolean } | undefined {
   const maps: ReadonlyArray<Record<string, { requiredScope: Scope; localOnly?: true }>> = [
-    AUTH_ACTIONS, TERMINAL_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
+    AUTH_ACTIONS, TERMINAL_ACTIONS, PORT_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
     STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS,
   ]
   for (const map of maps) {
@@ -100,10 +101,7 @@ function actionOwnsTargetTab(conn: Connection, action: string, args: unknown[]):
 }
 
 function connOwnsTab(conn: Connection, tabId: string): boolean {
-  if (isSharedTenancy()) return true
-  const owner = principalSubjectForTab(tabId)
-  if (!owner) return unownedTabsVisible()
-  return conn.principal !== null && owner === conn.principal.subject
+  return tabOwnedBySubject(tabId, conn.principal?.subject ?? null)
 }
 
 function connOwnsConversation(conn: Connection, conversationId: string): boolean {
@@ -179,7 +177,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
     return
   }
 
-  const terminalSpec = TERMINAL_ACTIONS[frame.action]
+  const terminalSpec = TERMINAL_ACTIONS[frame.action] ?? PORT_ACTIONS[frame.action]
   if (terminalSpec) {
     if (!scopeSatisfies(conn.scopes, terminalSpec.requiredScope)) {
       log('terminal action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: terminalSpec.requiredScope, granted_scopes: conn.scopes })

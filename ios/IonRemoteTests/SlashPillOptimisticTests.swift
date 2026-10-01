@@ -125,10 +125,10 @@ final class SlashPillOptimisticTests: XCTestCase {
     }
 
     func testTranscriptRowCarriesModelProvenance() throws {
-        let json = #"{"id":"entry-align","role":"user","content":"/align","timestamp":1,"slashCommand":"/align","slashModelAlias":"fast","slashModelEffective":"dci-marketing/gpt-5.6-luna"}"#
+        let json = #"{"id":"entry-align","role":"user","content":"/align","timestamp":1,"slashCommand":"/align","slashModelAlias":"fast","slashModelEffective":"corp-gateway/gpt-5.6-luna"}"#
         let message = try JSONDecoder().decode(TranscriptRow.self, from: Data(json.utf8)).message
         XCTAssertEqual(message.slashModelAlias, "fast")
-        XCTAssertEqual(message.slashModelEffective, "dci-marketing/gpt-5.6-luna")
+        XCTAssertEqual(message.slashModelEffective, "corp-gateway/gpt-5.6-luna")
         XCTAssertEqual(message.slashModelDisplay, "Fast · GPT 5.6 Luna")
     }
 
@@ -167,7 +167,7 @@ final class SlashPillOptimisticTests: XCTestCase {
         XCTAssertEqual(message.slashModelDisplay, "Opus 5")
 
         message.slashModelAlias = "fast"
-        message.slashModelEffective = "dci-marketing/gpt-5.6-luna"
+        message.slashModelEffective = "corp-gateway/gpt-5.6-luna"
         XCTAssertEqual(message.slashModelDisplay, "Fast · GPT 5.6 Luna")
 
         message.slashModelEffective = nil

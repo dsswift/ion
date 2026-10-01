@@ -46,7 +46,7 @@ loudly, rather than refusing to boot.
   ],
   "pairing": {
     "defaultScopes": ["conversations:read", "conversations:operate", "terminal:operate", "git:write"],
-    "advertiseUrl": "http://grover.local:7331"
+    "advertiseUrl": "http://devbox.local:7331"
   },
   "engine": { "minVersion": "0.0.0" },
   "web": { "enabled": false },

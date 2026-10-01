@@ -302,7 +302,7 @@ Setting `eventHubNamespace` instead ships nothing secret. The engine authenticat
 
 | Field | Purpose |
 |---|---|
-| `eventHubNamespace` | Fully qualified namespace host, e.g. `orion-events.servicebus.windows.net` |
+| `eventHubNamespace` | Fully qualified namespace host, e.g. `atlas-events.servicebus.windows.net` |
 | `eventHubName` | Target hub. Required for token auth (no EntityPath to fall back on) |
 | `eventHubTokenScope` | Defaults to `https://eventhubs.azure.net/.default` |
 | `eventHubTokenAudience` | For identity providers that bind grants to an explicit audience |

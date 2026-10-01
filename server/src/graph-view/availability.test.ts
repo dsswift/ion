@@ -17,8 +17,8 @@ import { GRAPH_VIEW_DEFAULTS, isGraphViewAvailable } from '@ion/shared/graph-vie
 
 describe('Graph View availability with no configuration', () => {
   it('resolveGraphViewConfig({}, {}, projectPath) returns GRAPH_VIEW_DEFAULTS values with corpusRoots defaulted to projectPath', () => {
-    const config = resolveGraphViewConfig({}, {}, '/Users/josh/cloudops')
-    expect(config.corpusRoots).toEqual([{ path: '/Users/josh/cloudops' }])
+    const config = resolveGraphViewConfig({}, {}, '/Users/josh/platform')
+    expect(config.corpusRoots).toEqual([{ path: '/Users/josh/platform' }])
     expect(config.identityField).toBe(GRAPH_VIEW_DEFAULTS.identityField)
     expect(config.labelField).toBe(GRAPH_VIEW_DEFAULTS.labelField)
     expect(config.groupFields).toEqual(GRAPH_VIEW_DEFAULTS.groupFields)
@@ -29,7 +29,7 @@ describe('Graph View availability with no configuration', () => {
   })
 
   it('isGraphViewAvailable is true with no configuration and a real projectPath', () => {
-    const config = resolveGraphViewConfig({}, {}, '/Users/josh/cloudops')
+    const config = resolveGraphViewConfig({}, {}, '/Users/josh/platform')
     expect(isGraphViewAvailable(config)).toBe(true)
   })
 

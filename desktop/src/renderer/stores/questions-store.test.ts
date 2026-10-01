@@ -91,44 +91,44 @@ beforeEach(() => {
 describe('hydrateQuestions', () => {
   it('pulls every reachable Environment, not just the local one', async () => {
     h.snapshots.set('local', { workflows: [workflow('w-local', 'tab-local')] })
-    h.snapshots.set('grover', { workflows: [workflow('w-grover', 'tab-grover')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
 
-    h.emitPhases({ local: 'connected', grover: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(2))
 
-    expect(h.targets).toContain('grover')
-    expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId).sort()).toEqual(['w-grover', 'w-local'])
+    expect(h.targets).toContain('devbox')
+    expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId).sort()).toEqual(['w-devbox', 'w-local'])
   })
 
   it('does not pull an Environment that is not reachable', async () => {
     const { useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', grover: 'offline' })
+    h.emitPhases({ local: 'connected', devbox: 'offline' })
     await vi.waitFor(() => expect(h.questionsGetState).toHaveBeenCalledTimes(1))
-    expect(h.targets).not.toContain('grover')
-    expect(useQuestionsStore.getState().byEnvironment.grover).toBeUndefined()
+    expect(h.targets).not.toContain('devbox')
+    expect(useQuestionsStore.getState().byEnvironment.devbox).toBeUndefined()
   })
 
   it('keeps one Environment’s workflows when another publishes a snapshot', async () => {
     h.snapshots.set('local', { workflows: [workflow('w-local', 'tab-local')] })
-    h.snapshots.set('grover', { workflows: [workflow('w-grover', 'tab-grover')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', grover: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(2))
 
-    // grover answers its own question: its list empties, local's must not.
-    h.emitState('grover', { workflows: [] })
+    // devbox answers its own question: its list empties, local's must not.
+    h.emitState('devbox', { workflows: [] })
 
     expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId)).toEqual(['w-local'])
   })
 
   it('drops an Environment’s workflows when it stops being reachable', async () => {
-    h.snapshots.set('grover', { workflows: [workflow('w-grover', 'tab-grover')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { useQuestionsStore } = await load()
-    h.emitPhases({ grover: 'connected' })
+    h.emitPhases({ devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(1))
 
-    h.emitPhases({ grover: 'offline' })
+    h.emitPhases({ devbox: 'offline' })
 
     expect(useQuestionsStore.getState().workflows).toEqual([])
   })
@@ -136,21 +136,21 @@ describe('hydrateQuestions', () => {
 
 describe('patchQuestions', () => {
   it('routes to the Environment holding the workflow, not the local one', async () => {
-    h.snapshots.set('grover', { workflows: [workflow('w-grover', 'tab-grover')] })
+    h.snapshots.set('devbox', { workflows: [workflow('w-devbox', 'tab-devbox')] })
     const { patchQuestions, useQuestionsStore } = await load()
-    h.emitPhases({ local: 'connected', grover: 'connected' })
+    h.emitPhases({ local: 'connected', devbox: 'connected' })
     await vi.waitFor(() => expect(useQuestionsStore.getState().workflows).toHaveLength(1))
     h.targets.length = 0
 
     await patchQuestions({
-      workflowId: 'w-grover',
-      requestId: 'w-grover-req',
+      workflowId: 'w-devbox',
+      requestId: 'w-devbox-req',
       expectedRevision: 1,
       actionId: 'act-1',
       answers: [],
     })
 
-    expect(h.targets).toEqual(['grover'])
+    expect(h.targets).toEqual(['devbox'])
     expect(h.questionsPatch).toHaveBeenCalledTimes(1)
   })
 })

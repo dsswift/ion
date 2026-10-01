@@ -430,7 +430,7 @@ func TestParseChecksums(t *testing.T) {
 
 func TestStudioServerConfigDefaults(t *testing.T) {
 	l := testLayout(t)
-	cfg, err := studioServerConfigDefaults(l, map[string]string{"label": "grover", "advertise-url": "http://grover.local:7331"})
+	cfg, err := studioServerConfigDefaults(l, map[string]string{"label": "devbox", "advertise-url": "http://devbox.local:7331"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestStudioServerConfigDefaults(t *testing.T) {
 	if cfg.tenancy != "shared" || cfg.json["tenancy"].(map[string]any)["mode"] != "shared" {
 		t.Fatal("default tenancy must be shared")
 	}
-	if cfg.json["pairing"].(map[string]any)["advertiseUrl"] != "http://grover.local:7331" {
+	if cfg.json["pairing"].(map[string]any)["advertiseUrl"] != "http://devbox.local:7331" {
 		t.Fatalf("advertiseUrl not carried into json: %v", cfg.json["pairing"])
 	}
 	iso, _ := studioServerConfigDefaults(l, map[string]string{"tenancy": "isolated"})
@@ -463,10 +463,10 @@ func TestStudioServerConfigDefaults(t *testing.T) {
 }
 
 func TestDefaultAdvertiseURL(t *testing.T) {
-	if got := defaultAdvertiseURL("darwin", "grover", 7331); got != "http://grover.local:7331" {
+	if got := defaultAdvertiseURL("darwin", "devbox", 7331); got != "http://devbox.local:7331" {
 		t.Fatal(got)
 	}
-	if got := defaultAdvertiseURL("darwin", "grover.local", 7331); got != "http://grover.local:7331" {
+	if got := defaultAdvertiseURL("darwin", "devbox.local", 7331); got != "http://devbox.local:7331" {
 		t.Fatal(got)
 	}
 	if got := defaultAdvertiseURL("linux", "box", 7331); got != "http://box:7331" {

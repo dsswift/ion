@@ -29,7 +29,7 @@ vi.mock('../../settings-target', () => ({
 }))
 const policy = vi.hoisted(() => ({ value: null as unknown }))
 vi.mock('../../use-environment-enterprise-policy', () => ({ useEnvironmentEnterprisePolicy: () => policy.value }))
-vi.mock('../../settings-servers', () => ({ useSettingsEnvironment: () => ({ id: 'grover', label: 'Grover', isLocal: false, justAdded: false }) }))
+vi.mock('../../settings-servers', () => ({ useSettingsEnvironment: () => ({ id: 'devbox', label: 'Devbox', isLocal: false, justAdded: false }) }))
 vi.mock('../../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000' }) }))
 vi.mock('../../../PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../../../../rendererLogger', () => ({ rInfo: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn(), rError: vi.fn() }))

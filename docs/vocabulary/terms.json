@@ -3145,6 +3145,42 @@
       ]
     },
     {
+      "id": "port-forward",
+      "term": "Port Forward",
+      "definition": "A loopback port on the machine Studio runs on that reaches a TCP port on an Environment's host, carried over the Studio connection the desktop already holds to that Environment. The desktop listens, the server dials its own loopback, and each connection is one flow-controlled stream on the binary channel.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "port forwarding",
+        "web forwarding"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export class PortForwardManager",
+          "path": "desktop/src/main/connections/port-forward.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function openPortStream",
+          "path": "server/src/port-forward/port-streams.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "PortsSurface",
+          "path": "desktop/src/renderer/studio/ports/PortsSurface.tsx"
+        }
+      ]
+    },
+    {
       "id": "presence",
       "term": "Presence",
       "definition": "Who is connected to an Environment, which tab each connection has focused, and which tab (if any) each connection is currently driving -- has an in-flight run it started still running. A full snapshot every change, sent to every connected client regardless of tenancy mode: presence is who else is here, which isolated tenancy mode is not designed to hide, unlike tab contents.",
@@ -5060,7 +5096,7 @@
     {
       "id": "web-application",
       "term": "Web Application",
-      "definition": "A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.",
+      "definition": "A local HTML service whose listening process is owned by a Terminal. The server confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.",
       "domain": "clients",
       "kind": "state",
       "status": "canonical",

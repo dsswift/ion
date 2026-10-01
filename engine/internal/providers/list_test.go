@@ -159,7 +159,7 @@ func TestListModelsEnrichmentFillIfZero(t *testing.T) {
 
 // TestListModels_CollidedGatewayModelEmitsQualifiedID is the regression test
 // for the model-identity collision that misrouted a gateway pick to the wrong
-// provider: a dci-marketing "claude-sonnet-4-6" selection dispatched as the
+// provider: a corp-gateway "claude-sonnet-4-6" selection dispatched as the
 // bare id, which the routing registry resolves to anthropic, which hybrid
 // routing sent to the delegated Claude CLI.
 //

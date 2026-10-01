@@ -89,7 +89,7 @@ Surface tabs (`desktop/src/renderer/studio/surface/`) live in a window-local Zus
 - Opening a notification replaces that global tab's resource. It stays open across conversations until the user closes it.
 - Normal file tabs stay conversation-scoped.
 - An unsaved Scratch Document follows every conversation whose canonical editor directory resolves to the same source project, including its worktrees. Saving removes the document from that project record and opens a normal file tab only in the active conversation.
-- Explorer, Git, browser, terminal, and file tabs never pin.
+- Explorer, Git, Ports, browser, terminal, and file tabs never pin.
 - The surface store selects the mirrored active conversation synchronously (`surface-conversation-sync.ts`).
 - Panel width persists per conversation on `SurfaceConversationPersisted.width`, alongside `visible`. `studioLayout.surfaceWidth` remains only as the default for a conversation that has never been resized.
 - One desktop preference (`studioSurfaceSwitchMode`) controls whether visibility and width both stay live across a tab switch or restore each conversation's own saved state.

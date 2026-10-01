@@ -88,8 +88,8 @@ describe('list-valued fields', () => {
   })
 
   it('a scalar field still matches exactly, never as a substring', () => {
-    const n = node({ type: 'com.dcim.orion.note' })
-    const rule: GraphFilterRule = { dimension: { source: 'frontMatter', field: 'type' }, mode: 'include', values: ['com.dcim.orion'] }
+    const n = node({ type: 'com.example.atlas.note' })
+    const rule: GraphFilterRule = { dimension: { source: 'frontMatter', field: 'type' }, mode: 'include', values: ['com.example.atlas'] }
     expect(matchesRule(n, rule, model())).toBe(false)
   })
 })

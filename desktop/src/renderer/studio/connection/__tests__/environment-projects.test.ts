@@ -10,10 +10,10 @@ import { buildMergedProjects, defaultRowEnvironment, rowEnvironments } from '../
 const p = (dir: string, extra: Partial<EnvironmentProject['entry']> = {}, originUrl?: string): EnvironmentProject => ({ dir, entry: { addedManually: true, lastUsedAt: 0, ...extra }, displayName: dir.split('/').pop()!, exists: true, isGitRepo: true, ...(originUrl ? { originUrl } : {}) })
 const local = (dir: string, extra: Partial<EffectiveProjectEntry['entry']> = {}): EffectiveProjectEntry => ({ dir, displayName: dir.split('/').pop()!, entry: { addedManually: true, lastUsedAt: 0, ...extra }, managed: false, profileAction: 'ask' })
 
-const catalog = [{ id: 'local', label: 'This Mac' }, { id: 'grover', label: 'grover' }]
+const catalog = [{ id: 'local', label: 'This Mac' }, { id: 'devbox', label: 'devbox' }]
 const byEnvironment = {
   local: [p('/Users/u/src/ion', { repoRemote: 'github.com/o/ion' }, 'git@github.com:o/ion.git'), p('/Users/u/notes')],
-  grover: [p('/home/g/src/ion', { repoRemote: 'github.com/o/ion', clonedByIon: true, cloneUrl: 'git@github.com:o/ion.git' }), p('/home/g/src/tools', { repoRemote: 'github.com/o/tools' }, 'https://github.com/o/tools.git')],
+  devbox: [p('/home/g/src/ion', { repoRemote: 'github.com/o/ion', clonedByIon: true, cloneUrl: 'git@github.com:o/ion.git' }), p('/home/g/src/tools', { repoRemote: 'github.com/o/tools' }, 'https://github.com/o/tools.git')],
 }
 
 describe('buildMergedProjects', () => {
@@ -23,9 +23,9 @@ describe('buildMergedProjects', () => {
   it('merges the same repository on two machines into one row, backfilling the local identity', () => {
     const rows = buildMergedProjects({ local: [local('/Users/u/src/ion'), local('/Users/u/notes')], byEnvironment, catalog })
     expect(rows.map((r) => [r.displayName, r.holders.map((h) => h.environmentId)])).toEqual([
-      ['ion', ['local', 'grover']],
+      ['ion', ['local', 'devbox']],
       ['notes', ['local']],
-      ['tools', ['grover']],
+      ['tools', ['devbox']],
     ])
     expect(rows[0].repoRemote).toBe('github.com/o/ion')
   })
@@ -35,12 +35,12 @@ describe('buildMergedProjects', () => {
   it('carries each machine\'s own usage count onto its holder', () => {
     const rows = buildMergedProjects({
       local: [local('/Users/u/src/ion'), local('/Users/u/notes')],
-      byEnvironment: { ...byEnvironment, grover: [p('/home/g/src/ion', { repoRemote: 'github.com/o/ion' }), { ...p('/home/g/src/tools', { repoRemote: 'github.com/o/tools' }), usageCount: 9 }] },
+      byEnvironment: { ...byEnvironment, devbox: [p('/home/g/src/ion', { repoRemote: 'github.com/o/ion' }), { ...p('/home/g/src/tools', { repoRemote: 'github.com/o/tools' }), usageCount: 9 }] },
       catalog,
       localUsage: { '/Users/u/src/ion': 1383 },
     })
     const [ion, notes, tools] = rows
-    expect(ion.holders.map((h) => [h.environmentId, h.usageCount])).toEqual([['local', 1383], ['grover', 0]])
+    expect(ion.holders.map((h) => [h.environmentId, h.usageCount])).toEqual([['local', 1383], ['devbox', 0]])
     expect(notes.holders[0].usageCount).toBe(0)
     expect(tools.holders[0].usageCount).toBe(9)
   })
@@ -58,8 +58,8 @@ describe('buildMergedProjects', () => {
     const [ion, notes, tools] = rows
     expect(defaultRowEnvironment(ion)).toBe('local')
     expect(defaultRowEnvironment(notes)).toBe('local')
-    expect(defaultRowEnvironment(tools)).toBe('grover')
-    expect(rowEnvironments(ion)).toEqual(['local', 'grover'])
-    expect(rowEnvironments(tools)).toEqual(['grover'])
+    expect(defaultRowEnvironment(tools)).toBe('devbox')
+    expect(rowEnvironments(ion)).toEqual(['local', 'devbox'])
+    expect(rowEnvironments(tools)).toEqual(['devbox'])
   })
 })

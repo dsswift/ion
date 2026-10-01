@@ -1337,7 +1337,7 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashArgs`     | string | The argument text that followed the command name. May be empty. |
 | `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
 | `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
-| `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
+| `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"corp-gateway/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
 | `implementationPhase` | boolean | `true` when this user turn began the implementation half of a plan-then-implement flow. Absent for ordinary and legacy turns. |
 
 ### Thin-client transcript — TranscriptRow

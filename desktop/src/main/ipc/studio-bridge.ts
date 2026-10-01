@@ -28,6 +28,7 @@ import { clearBearerSignInCooldown } from '../connections/server-bearer'
 import { addEnvironmentOverSsh } from '../connections/ssh/ssh-add-environment'
 import { browseNearby } from '../connections/nearby-browser'
 import { sshTunnels } from '../connections/ssh/ssh-tunnel-instance'
+import { portForwards } from '../connections/port-forward-instance'
 import { hostname } from 'os'
 import { exportToFile, importFromFile, onTransferProgress, cancelTransfer } from '../connections/transfer'
 import { state } from '../state'
@@ -235,6 +236,7 @@ export function registerStudioBridgeIpc(): void {
 
   ipcMain.on(IPC.HOST_DISCONNECT_ENVIRONMENT, (_event, environmentId: string) => {
     log('studio:host-disconnect-environment: disconnect requested', { environment_id: environmentId })
+    portForwards.stopEnvironment(environmentId)
     disconnectEnvironment(environmentId)
   })
 
@@ -266,6 +268,26 @@ export function registerStudioBridgeIpc(): void {
   ipcMain.handle(IPC.HOST_TRANSFER_CANCEL, (_event, tabId: string) => {
     log('studio:host-transfer-cancel: requested', { tab_id: tabId })
     return cancelTransfer(tabId)
+  })
+
+  portForwards.onChange((forwards) => {
+    pushToWindows(IPC.HOST_PORT_FORWARDS, forwards)
+  })
+
+  ipcMain.handle(IPC.HOST_PORT_FORWARDS, () => {
+    log('studio:host-port-forwards: list requested')
+    return portForwards.list()
+  })
+
+  ipcMain.handle(IPC.HOST_PORT_FORWARD_START, (_event, environmentId: unknown, remotePort: unknown) => {
+    log('studio:host-port-forward-start: requested', { environment_id: String(environmentId), remote_port: String(remotePort) })
+    return portForwards.start(environmentId as string, remotePort as number)
+  })
+
+  ipcMain.handle(IPC.HOST_PORT_FORWARD_STOP, (_event, environmentId: unknown, remotePort: unknown) => {
+    log('studio:host-port-forward-stop: requested', { environment_id: String(environmentId), remote_port: String(remotePort) })
+    if (typeof environmentId !== 'string' || typeof remotePort !== 'number') return false
+    return portForwards.stop(environmentId, remotePort)
   })
 
   log('studio-bridge: wired broker to IPC')

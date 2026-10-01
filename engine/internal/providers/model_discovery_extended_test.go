@@ -17,7 +17,7 @@ const extendedModelsPayload = `{
     {
       "id": "claude-opus-5",
       "object": "model",
-      "owned_by": "dcim-ai-gateway",
+      "owned_by": "corp-ai-gateway",
       "displayName": "Claude Opus 5",
       "dialect": "anthropic",
       "contextWindow": 1000000,
@@ -32,7 +32,7 @@ const extendedModelsPayload = `{
     {
       "id": "gpt-5.2-codex",
       "object": "model",
-      "owned_by": "dcim-ai-gateway",
+      "owned_by": "corp-ai-gateway",
       "dialect": "openai-responses",
       "contextWindow": 400000,
       "maxOutputTokens": 128000,
@@ -45,7 +45,7 @@ const extendedModelsPayload = `{
     {
       "id": "FLUX.2-pro",
       "object": "model",
-      "owned_by": "dcim-ai-gateway",
+      "owned_by": "corp-ai-gateway",
       "dialect": "image",
       "modelKind": "image",
       "costPerImage": 0.03
@@ -66,7 +66,7 @@ func TestDiscoveryExtendedPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	models, err := fetchModelsForProvider("dci-marketing", srv.URL, "sub-key", "x-api-key")
+	models, err := fetchModelsForProvider("corp-gateway", srv.URL, "sub-key", "x-api-key")
 	if err != nil {
 		t.Fatalf("fetch error: %v", err)
 	}
@@ -286,9 +286,9 @@ func TestResolveProviderQualifiedID(t *testing.T) {
 // TestStripProviderQualifier covers the wire-model strip contract.
 func TestStripProviderQualifier(t *testing.T) {
 	cases := []struct{ provider, model, want string }{
-		{"dci-marketing", "dci-marketing/claude-opus-4-8", "claude-opus-4-8"},
-		{"dci-marketing", "claude-opus-4-8", "claude-opus-4-8"},
-		{"dci-marketing", "deepseek/deepseek-chat", "deepseek/deepseek-chat"},
+		{"corp-gateway", "corp-gateway/claude-opus-4-8", "claude-opus-4-8"},
+		{"corp-gateway", "claude-opus-4-8", "claude-opus-4-8"},
+		{"corp-gateway", "deepseek/deepseek-chat", "deepseek/deepseek-chat"},
 		{"openrouter", "openrouter/auto", "auto"},
 	}
 	for _, c := range cases {
@@ -455,7 +455,7 @@ func TestStoreResultLiveMetadataWinsOverExisting(t *testing.T) {
 
 	const model = "live-wins-probe-model"
 	RegisterModel(model, types.ModelInfo{
-		ProviderID:      "dci-marketing",
+		ProviderID:      "corp-gateway",
 		ContextWindow:   8000,
 		CostPer1kInput:  0.99,
 		CostPer1kOutput: 9.99,
@@ -464,12 +464,12 @@ func TestStoreResultLiveMetadataWinsOverExisting(t *testing.T) {
 	t.Cleanup(func() {
 		ResetDiscoveryCache()
 		UnregisterModel(model)
-		UnregisterModel("dci-marketing/" + model)
+		UnregisterModel("corp-gateway/" + model)
 	})
 
-	storeResult("dci-marketing", []types.ModelEntry{{
+	storeResult("corp-gateway", []types.ModelEntry{{
 		ID:               model,
-		ProviderID:       "dci-marketing",
+		ProviderID:       "corp-gateway",
 		Dialect:          "openai-responses",
 		ContextWindow:    400000,
 		CostPer1kInput:   0.00175,
@@ -496,7 +496,7 @@ func TestStoreResultLiveMetadataWinsOverExisting(t *testing.T) {
 		t.Errorf("live thinking metadata lost: mode=%q efforts=%v", got.ThinkingMode, got.ThinkingEfforts)
 	}
 	// The qualified alias carries the same live metadata.
-	qualified := GetModelInfo("dci-marketing/" + model)
+	qualified := GetModelInfo("corp-gateway/" + model)
 	if qualified == nil {
 		t.Fatal("qualified id not registered for a dialect-carrying model")
 	}

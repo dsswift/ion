@@ -103,7 +103,7 @@ export function overviewDashboard(): Dashboard {
     // datasource query. It reads live alert-instance state straight from
     // Grafana's own alerting engine (the rules provisioned in
     // ../../grafana/provisioning/alerting/ locally, and the grafana_rule_group
-    // resources in az-lz-cloudops for the deployed instance). Filtered to the
+    // resources in az-lz-platform for the deployed instance). Filtered to the
     // `ion` tag and the Alerting/Error states so a healthy fleet shows "0" and
     // an anomaly (a cost spike, a runaway agent left running overnight, a
     // wedged tailer) shows up here instead of requiring an operator to notice

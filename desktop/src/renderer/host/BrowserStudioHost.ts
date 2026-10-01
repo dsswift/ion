@@ -409,6 +409,7 @@ export class BrowserStudioHost implements StudioHost {
     return () => {}
   }
 
+  readonly portForward = null
   async cancelTransfer(): Promise<boolean> {
     // Nothing can be in flight: exportToFile/importFromFile are refused above.
     return false

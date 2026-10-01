@@ -28,18 +28,18 @@ func TestDefaultProviderID_UnsetAndSet(t *testing.T) {
 	if got := DefaultProviderID(); got != "" {
 		t.Fatalf("DefaultProviderID with no config = %q, want empty", got)
 	}
-	if _, err := SetDefaultProvider("  DCI-Marketing  "); err != nil {
+	if _, err := SetDefaultProvider("  Corp-Gateway  "); err != nil {
 		t.Fatalf("SetDefaultProvider: %v", err)
 	}
-	if got := DefaultProviderID(); got != "dci-marketing" {
-		t.Fatalf("DefaultProviderID = %q, want dci-marketing", got)
+	if got := DefaultProviderID(); got != "corp-gateway" {
+		t.Fatalf("DefaultProviderID = %q, want corp-gateway", got)
 	}
 }
 
 func TestSetDefaultProvider_EmptyRemovesKey(t *testing.T) {
 	home := isolateHome(t)
 
-	if _, err := SetDefaultProvider("dci-marketing"); err != nil {
+	if _, err := SetDefaultProvider("corp-gateway"); err != nil {
 		t.Fatalf("SetDefaultProvider: %v", err)
 	}
 	if _, err := SetDefaultProvider(""); err != nil {
