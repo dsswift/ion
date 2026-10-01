@@ -607,7 +607,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				"error":  utils.ErrStr(streamErr),
 				"cause":  cause,
 			})
-			b.emitError(run, streamErr)
+			b.emitProviderError(run, provider.ID(), streamErr)
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
 		}

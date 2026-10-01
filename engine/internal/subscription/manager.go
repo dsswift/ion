@@ -335,7 +335,7 @@ func (m *Manager) settle(generation uint64, results []Subscription, lookupErr er
 		m.remembered = ""
 		m.status = types.ProviderSubscriptionStatus{State: types.SubscriptionStateNone, Provider: m.cfg.Provider, ResolvedAt: resolvedAt}
 		utils.LogWithFields(utils.LevelInfo, "subscription", "lookup returned no subscriptions", map[string]any{"provider": m.cfg.Provider})
-	case len(results) == 1:
+	case len(results) == 1 && !m.cfg.RequireSelection:
 		m.applyLocked(results[0], options, resolvedAt, "single")
 	default:
 		for _, result := range results {
@@ -348,8 +348,8 @@ func (m *Manager) settle(generation uint64, results []Subscription, lookupErr er
 		m.status = types.ProviderSubscriptionStatus{
 			State: types.SubscriptionStateSelectionRequired, Provider: m.cfg.Provider, Options: options, ResolvedAt: resolvedAt,
 		}
-		utils.LogWithFields(utils.LevelInfo, "subscription", "lookup returned several subscriptions; selection required", map[string]any{
-			"provider": m.cfg.Provider, "count": len(results), "status": m.remembered != "",
+		utils.LogWithFields(utils.LevelInfo, "subscription", "lookup returned subscriptions; selection required", map[string]any{
+			"provider": m.cfg.Provider, "count": len(results), "status": m.remembered != "", "required": m.cfg.RequireSelection,
 		})
 	}
 	return true

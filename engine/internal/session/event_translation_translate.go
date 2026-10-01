@@ -165,6 +165,8 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			ContextTokens: e.ContextTokens,
 			ContextLimit:  e.ContextLimit,
 			ContextWindow: e.ContextWindow,
+
+			ProviderSubscription: e.ProviderSubscription,
 		}
 
 	case *types.UsageEvent:

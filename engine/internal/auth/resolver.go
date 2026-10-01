@@ -85,6 +85,9 @@ type Resolver struct {
 	// as identities sign in and out, so it has its own lock.
 	subscriptionMu sync.RWMutex
 	subscription   map[string]string
+	// subscriptionStatus reads the Provider Subscription snapshot. Nil when
+	// no lookup is configured.
+	subscriptionStatus func() types.ProviderSubscriptionStatus
 }
 
 // NewResolver creates a resolver with the given auth configuration.

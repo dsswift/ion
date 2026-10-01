@@ -29,6 +29,11 @@ type SubscriptionLookupConfig struct {
 	// the key up again, which is how centrally rotated keys reach every
 	// installation.
 	CacheMaxAgeSeconds int `json:"cacheMaxAgeSeconds,omitempty"`
+	// RequireSelection makes the operator choose even when a lookup returns
+	// exactly one subscription, so they see which key the engine uses before
+	// it is applied. False (the default) applies a lone subscription with no
+	// prompt. A choice already made is reused either way.
+	RequireSelection bool `json:"requireSelection,omitempty"`
 }
 
 // DefaultSubscriptionLookupTimeoutMs bounds one lookup when TimeoutMs is zero.
@@ -56,8 +61,9 @@ const (
 	// SubscriptionStateApplied: a key is applied to the provider. Source says
 	// whether it came from a lookup or the cache.
 	SubscriptionStateApplied = "applied"
-	// SubscriptionStateSelectionRequired: the lookup returned several
-	// subscriptions and none is selected. Options lists them.
+	// SubscriptionStateSelectionRequired: the lookup returned subscriptions
+	// the operator must choose among (several, or one under
+	// RequireSelection) and none is selected. Options lists them.
 	SubscriptionStateSelectionRequired = "selection_required"
 	// SubscriptionStateNone: the lookup succeeded and returned zero
 	// subscriptions for this identity.
