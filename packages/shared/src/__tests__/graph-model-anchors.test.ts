@@ -53,8 +53,8 @@ describe('anchorValue', () => {
     expect(anchorValue('sections', { field: 'x', depth: 3 })).toBe('sections')
   })
   it('splits a delimited value and anchors on one segment', () => {
-    const orn = 'orn:com.dcim:note:project/dci-orion:projects/dci-orion/README'
-    expect(anchorValue(orn, { field: 'orn', split: { separator: ':', index: 3 } })).toBe('project/dci-orion')
+    const orn = 'orn:com.example:note:project/atlas:projects/atlas/README'
+    expect(anchorValue(orn, { field: 'orn', split: { separator: ':', index: 3 } })).toBe('project/atlas')
     expect(anchorValue(orn, { field: 'orn', split: { separator: ':', index: 3 }, depth: 1 })).toBe('project')
     expect(anchorValue('a:b', { field: 'orn', split: { separator: ':', index: 5 } })).toBeNull()
   })

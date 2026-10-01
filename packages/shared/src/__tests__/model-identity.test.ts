@@ -15,8 +15,8 @@ function model(id: string, providerId: string, displayName?: string): ModelEntry
 describe('model identity', () => {
   describe('groupModelChoices', () => {
     it('uses engine model.id as the choice value', () => {
-      const groups = groupModelChoices([model('gpt-5.6-sol', 'dci-marketing')])
-      expect(groups.get('dci-marketing')?.[0].value).toBe('gpt-5.6-sol')
+      const groups = groupModelChoices([model('gpt-5.6-sol', 'corp-gateway')])
+      expect(groups.get('corp-gateway')?.[0].value).toBe('gpt-5.6-sol')
     })
 
     it('preserves engine-qualified IDs verbatim', () => {
@@ -63,7 +63,7 @@ describe('model identity', () => {
     })
 
     it('strips provider prefix from legacy qualified ID when bare matches one model', () => {
-      expect(resolveLegacyModelId('dci-marketing/gpt-5.6-sol', [model('gpt-5.6-sol', 'dci-marketing')])).toBe('gpt-5.6-sol')
+      expect(resolveLegacyModelId('corp-gateway/gpt-5.6-sol', [model('gpt-5.6-sol', 'corp-gateway')])).toBe('gpt-5.6-sol')
     })
 
     it('preserves ambiguous legacy qualified ID when bare matches multiple models', () => {

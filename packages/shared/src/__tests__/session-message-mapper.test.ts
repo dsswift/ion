@@ -188,12 +188,12 @@ describe("mapSessionMessage — ordinary rows", () => {
       timestamp: 6001,
       slashCommand: "/align",
       slashModelAlias: "standard",
-      slashModelEffective: "dci-marketing/gpt-5.6-terra",
+      slashModelEffective: "corp-gateway/gpt-5.6-terra",
     };
 
     const msg = mapSessionMessage(row, makeId)!;
     expect(msg.slashModelAlias).toBe("standard");
-    expect(msg.slashModelEffective).toBe("dci-marketing/gpt-5.6-terra");
+    expect(msg.slashModelEffective).toBe("corp-gateway/gpt-5.6-terra");
   });
 
   it("carries implementation provenance through history mapping", () => {
