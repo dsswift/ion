@@ -8,14 +8,14 @@ export interface NearbyStudioServer {
   environmentId: string
   label: string
   serverVersion: string
-  /** The name the server announced itself under, e.g. `oscar.local`. Shown, not dialled. */
+  /** The name the server announced itself under, e.g. `devbox.local`. Shown, not dialled. */
   host: string
   port: number
   /**
    * The base a pairing completes against. Built from the announced IP where
    * there is one, because a server's announced NAME is whatever it calls
-   * itself and frequently does not resolve (a bare `dcitag8331` for a Mac
-   * that answers to `dcitag8331.local`).
+   * itself and frequently does not resolve (a bare `macbook` for a Mac
+   * that answers to `macbook.local`).
    */
   url: string
 }

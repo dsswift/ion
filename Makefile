@@ -734,8 +734,8 @@ package-studio-server:
 # host over SSH: packages the bundle, ships it, runs the same installer a
 # consumer runs. Repeatable: rerun after every fix. `ion fleet deploy --to`
 # does the work (ion fleet deploy --help lists ARGS).
-#   make deploy-studio-server HOST=oscar.local
-#   make deploy-studio-server HOST=oscar.local ARGS="--no-build --pair laptop"
+#   make deploy-studio-server HOST=devbox.local
+#   make deploy-studio-server HOST=devbox.local ARGS="--no-build --pair laptop"
 .PHONY: deploy-studio-server
 deploy-studio-server:
 	@[ -n "$(HOST)" ] || { echo "usage: make deploy-studio-server HOST=<[user@]host> [ARGS=...]"; exit 2; }
