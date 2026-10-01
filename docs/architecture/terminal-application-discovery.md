@@ -19,6 +19,7 @@ Docker Compose attribution uses structured Docker container port data only while
 ## Client behavior
 
 - A confirmed Web Application renders a pink Globe action.
+- The Globe action opens the application in a Studio Browser tab. For a conversation on another Environment, Studio first starts a [Port Forward](port-forward.md) to the application's port and opens the local address.
 - Other Terminal Activity renders a pink Terminal icon.
 - Process and URL details appear in the hover text, not inline.
 - Terminal Activity is background-shell work. Foreground agent work and running agents keep higher status priority.

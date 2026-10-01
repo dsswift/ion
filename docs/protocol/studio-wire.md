@@ -49,6 +49,9 @@ payload:
 | `0x02` | Terminal resize | `tabId:instanceId` | `[cols BE16][rows BE16]` |
 | `0x03` | File chunk | Transfer id | Archive bytes for a `transfer.export` download or a `transfer.import` upload |
 | `0x04` | File end | Transfer id | Empty. "No more chunks for this key" — sent by whichever side finished streaming, including when it stopped early |
+| `0x05` | Port data | Port stream id | A Port Forward stream's bytes, either way |
+| `0x06` | Port end | Port stream id | Empty: the sender has no more bytes. One byte `0x01`: the sender abandoned the stream |
+| `0x07` | Port credit | Port stream id | `[bytes BE32]`: the receiver grants the sender that many more bytes |
 
 Binary frames never use base64 — the whole point of the binary channel is
 avoiding the ~33% size increase that would cost on terminal output.
@@ -358,6 +361,33 @@ subscribing connection only, as `{root, directories, overflow, ignoreRulesChange
 
 A burst of changes is reported once it settles, and a directory that never
 stops changing is still reported about once a second.
+
+#### Port Forward
+
+A client reaches a TCP port on the server's host through its own Studio
+connection. The server advertises `port-forward` in `studio_welcome.capabilities`.
+Both actions take `terminal:operate`: a forward reaches what a shell in a
+Terminal on that host already can.
+
+- `port.listeners` answers every loopback or wildcard TCP listener the server
+  can see, lowest port first, as `{port, pid, processName, tabId, url}`. `tabId`
+  names the conversation whose Terminal owns the listener, when one does and
+  the caller may see that conversation. `url` is the Web Application URL
+  confirmed for the port, when there is one.
+- `port.open {streamId, port}` dials `port` on the server's loopback and
+  answers once it is connected. The client chooses `streamId`. The answer is an
+  error (`connect_failed`, `too_many_streams`, `stream_exists`, `bad_request`,
+  `cancelled`) when no stream was opened.
+
+An open stream's bytes travel as `0x05` frames keyed by its `streamId`. Each
+direction starts with 256 KiB of credit. A sender stops when its credit is
+spent, and the receiver grants more with a `0x07` frame once its own socket has
+taken the bytes, so a slow reader at one end slows the writer at the other.
+`0x06` with an empty payload finishes one direction and leaves the other open;
+with the payload `0x01` it abandons the stream. A stream ends with the
+connection that opened it. The server's stream frames wait for the socket
+rather than counting against the send buffer in [Buffering](#buffering), so a
+large download never closes the client as a slow one.
 
 ### Views
 

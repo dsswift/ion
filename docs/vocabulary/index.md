@@ -153,6 +153,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
 - [Poll](#term-poll)
+- [Port Forward](#term-port-forward)
 - [Presence](#term-presence)
 - [Principal Partition](#term-principal-partition)
 - [Project Job](#term-project-job)
@@ -2531,6 +2532,21 @@ Find within one pane of the Studio shell. The find shortcuts act on the pane tha
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export function paneFindTarget` in `desktop/src/renderer/studio/find/pane-find.ts`
 
+#### Port Forward {#term-port-forward}
+
+A loopback port on the machine Studio runs on that reaches a TCP port on an Environment's host, carried over the Studio connection the desktop already holds to that Environment. The desktop listens, the server dials its own loopback, and each connection is one flow-controlled stream on the binary channel.
+
+- **ID:** `port-forward`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `port forwarding`, `web forwarding`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export class PortForwardManager` in `desktop/src/main/connections/port-forward.ts`
+  - `server` / `code` / `typescript`: `export async function openPortStream` in `server/src/port-forward/port-streams.ts`
+  - `studio` / `ui` / `typescript`: `PortsSurface` in `desktop/src/renderer/studio/ports/PortsSurface.tsx`
+
 #### Project Job {#term-project-job}
 
 Background work an Environment runs on one of its projects: a clone, a setup recipe, or a purge. Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.
@@ -2998,6 +3014,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
 | Project Quick Tool | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | None | iOS |
@@ -3145,6 +3162,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `phone actions` → [Phone Action List](#term-phone-action-list)
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
 - Alias: `popover picker` → [Picker](#term-picker)
+- Alias: `port forwarding` → [Port Forward](#term-port-forward)
 - Alias: `profile` → [Engine profile](#term-engine-profile)
 - Alias: `provider-side compaction` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `push notification` → [Notification](#term-notification)
@@ -3195,6 +3213,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `user turn` → [Turn](#term-turn)
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `wake push` → [Wake notification](#term-wake-notification)
+- Alias: `web forwarding` → [Port Forward](#term-port-forward)
 - Alias: `window title bar` → [Studio Title Bar](#term-studio-title-bar)
 - Alias: `workspace folder` → [Mounted Folder](#term-mounted-folder)
 - Alias: `workspace root` → [Workspace](#term-workspace)
