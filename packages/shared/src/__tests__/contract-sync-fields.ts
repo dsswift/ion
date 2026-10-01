@@ -50,6 +50,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "httpStatus",
     "isError",
     "message",
+    "providerSubscription",
     "retryAfterMs",
     "retryable",
     "sessionId",
