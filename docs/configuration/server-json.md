@@ -263,13 +263,14 @@ the operator is signed in to, and asks the engine for a token for that
 entry's audience and scope. A pair response and every welcome then
 advertise the relay as `{ "mode": "relay-oidc", "issuer": "<tenant>" }`,
 naming the tenant the server joined with (absent until it has joined). The
-relay binds each channel to the first account on it, so the paired client
-signs in to that same tenant: the phone reads the relay's issuers and sets
-up the matching sign-in, and a desktop signed in to a different tenant does
-not join at all. When the client said who it is signed in as at
-pairing (`relayIdentity`), the server announces that identity on the
-client's relay channel, so the relay admits it even from a different
-identity tenant than the server's. See
+relay binds each channel to the server's account, so a paired client joins
+as that same account or as the one the server announces for it. The phone
+reads the relay's issuers and sets up the matching sign-in. When the client
+said who it is signed in as at pairing (`relayIdentity`), the server
+announces that identity on the client's relay channel, so the relay admits
+it even from a different identity tenant than the server's; a desktop joins
+with a token from its own tenant and the relay refuses it (HTTP 403) when
+the channel carries no such announcement. See
 [Several tenants on one relay](../deployment/relay-oidc.md#several-tenants-on-one-relay).
 
 **Installer defaults.** `ion studio install` writes `pairing.advertiseUrl`

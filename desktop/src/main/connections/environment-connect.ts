@@ -272,13 +272,14 @@ async function relayBearer(relay: EnvironmentRelay): Promise<string> {
   if (relay.auth.mode === 'relay-oidc') {
     const identity = await ownRelayIdentity(broker, LOCAL_ENVIRONMENT_ID)
     if (!identity) throw new Error(`relay ${relay.url} needs a signed-in identity; sign in under Settings, then reconnect`)
-    // The relay binds the channel to the first account on it: the server's.
-    // Joining from another tenant is refused, or claims the channel before
-    // the server does and locks it out, so it is never attempted.
+    // The relay binds the channel to the server's account, and the server
+    // announces on it the identity this desktop gave when it paired, so the
+    // relay admits this desktop from another tenant than the server's. The
+    // relay decides: a join never claims a channel, and one it does not
+    // admit is refused there (`transport-relay.ts` reports why).
     const serverIssuer = relay.auth.issuer
     if (serverIssuer && !sameIssuer(serverIssuer, identity.issuer)) {
-      warn('relay join refused: this desktop is signed in to a different tenant than the server', { relay_url: relay.url, server_issuer: serverIssuer, own_issuer: identity.issuer })
-      throw new Error(`relay ${relay.url}: the server joins it from ${serverIssuer}, and this desktop is signed in to ${identity.issuer || 'no tenant'}; sign in to the server's tenant to reach it through the relay`)
+      log('relay join from a different tenant than the server; admission rests on the identity the server announces', { relay_url: relay.url, server_issuer: serverIssuer, own_issuer: identity.issuer })
     }
     const entry = await relayIssuerFor(relay.url, identity.issuer)
     const minted = await requestOidcToken(broker, LOCAL_ENVIRONMENT_ID, { scope: composeOidcScope(entry.audience, entry.requiredScope) })
@@ -290,8 +291,7 @@ async function relayBearer(relay: EnvironmentRelay): Promise<string> {
 
 /**
  * Whether two issuer URLs name one tenant. A trailing slash is ignored: an
- * id_token and a relay's config may spell the same issuer either way, and a
- * refusal must never come from spelling alone.
+ * id_token and a relay's config may spell the same issuer either way.
  */
 function sameIssuer(a: string, b: string): boolean {
   return a.replace(/\/$/, '') === b.replace(/\/$/, '')

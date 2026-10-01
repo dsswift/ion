@@ -58,7 +58,13 @@ export class RelayStudioSocket extends SealedStudioSocket {
     ws.on('unexpected-response', (_req, res) => {
       warn('relay upgrade rejected', { relay_url: relayUrl, http_status: res.statusCode })
       res.resume()
-      this.emit('error', new Error(`relay ${relayUrl} refused the channel join: HTTP ${res.statusCode}`))
+      // 403 is the relay not admitting this identity to the channel: the
+      // server is off the relay (its announcement goes with it), or it holds
+      // no identity for this desktop from pairing.
+      const why = res.statusCode === 403
+        ? ': the channel does not admit the account this desktop is signed in to. The server announces that account while it is on the relay, when this desktop was signed in as it at pairing; otherwise sign in to the server\'s tenant, or pair again'
+        : ''
+      this.emit('error', new Error(`relay ${relayUrl} refused the channel join: HTTP ${res.statusCode}${why}`))
     })
   }
 }

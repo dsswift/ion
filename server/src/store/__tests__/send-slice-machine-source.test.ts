@@ -71,6 +71,7 @@ vi.mock('../../persistence/preferences', () => ({
 
 const mockPrompt = vi.fn(async (..._a: any[]) => {})
 vi.mock('../host-api', () => ({
+  gitWorktreeSeedTitle: vi.fn(async () => ({ ok: false, reason: 'not-a-worktree' as const })),
   echoUserTurnToStudio: vi.fn(),
   prompt: (...args: any[]) => mockPrompt(...args),
   setPermissionMode: vi.fn(),
