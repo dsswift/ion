@@ -263,7 +263,10 @@ export interface StudioBrowserViewState {
   title: string
   canGoBack: boolean
   canGoForward: boolean
-  /** The page's favicon, or empty until a page reports one. */
+  /**
+   * The page's favicon as a `data:` URL (the Studio CSP loads no other image
+   * scheme), or empty until a page reports one that could be fetched.
+   */
   faviconUrl: string
   loading: boolean
   /** Chromium zoom level (0 is 100%). */

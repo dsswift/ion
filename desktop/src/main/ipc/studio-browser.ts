@@ -14,6 +14,7 @@ import {
   zoomBrowserView,
   type ViewBounds,
 } from '../studio-browser-views'
+import { pickFaviconCandidate, resolveFaviconDataUrl } from '../studio-browser-favicon'
 import { setBrowserCommandSender } from '../studio-playwright/renderer-bridge'
 import { answerBrowserPrompt, pendingBrowserPrompts, setBrowserPromptSender } from '../studio-browser-permissions'
 import {
@@ -350,9 +351,13 @@ function watchGuestState(guest: WebContents, conversationId: string, instanceId:
   const facts = { faviconUrl: '', loading: false }
   chromeFacts.set(guest, facts)
   const push = (): void => pushGuestState(guest, conversationId, instanceId)
+  // Bumped on every navigation and favicon report, so a slow icon fetch that
+  // resolves after the page moved on cannot label the new page.
+  let faviconSeq = 0
   guest.on('did-navigate', () => {
     // A new document has no favicon until it reports one; carrying the old
     // one over would label a page with the previous site's icon.
+    faviconSeq++
     facts.faviconUrl = ''
     push()
   })
@@ -371,8 +376,12 @@ function watchGuestState(guest: WebContents, conversationId: string, instanceId:
     push()
   })
   guest.on('page-favicon-updated', (_event, favicons) => {
-    facts.faviconUrl = favicons.find((candidate) => candidate.startsWith('https:') || candidate.startsWith('http:') || candidate.startsWith('data:')) ?? ''
-    push()
+    const seq = ++faviconSeq
+    void resolveFaviconDataUrl(guest.session, pickFaviconCandidate(favicons)).then((dataUrl) => {
+      if (seq !== faviconSeq || guest.isDestroyed()) return
+      facts.faviconUrl = dataUrl
+      push()
+    })
   })
   guest.on('found-in-page', (_event, result) => {
     const win = resolveStudioWindow()

@@ -70,7 +70,9 @@ function parseTab(raw: unknown): SurfaceTab | null {
       sessionMode: v.sessionMode === 'isolated' ? 'isolated' : 'shared',
       ...(emulation ? { emulation } : {}),
       ...(zoomLevel !== null ? { zoomLevel } : {}),
-      ...(typeof v.faviconUrl === 'string' && v.faviconUrl ? { faviconUrl: v.faviconUrl } : {}),
+      // Only a `data:` icon can render under the Studio CSP; a stored network
+      // URL would restore as a broken image until the page reported again.
+      ...(typeof v.faviconUrl === 'string' && v.faviconUrl.startsWith('data:') ? { faviconUrl: v.faviconUrl } : {}),
     }
   }
   if (v.kind === 'terminal') {

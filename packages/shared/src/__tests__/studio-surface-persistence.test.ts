@@ -38,6 +38,22 @@ describe('surface persistence', () => {
     })
   })
 
+  it('keeps a data favicon and drops a network one the Studio CSP cannot load', () => {
+    const icon = 'data:image/png;base64,AAAA'
+    const parsed = parseSurfacePersisted({
+      version: 1,
+      tabs: [
+        { kind: 'browser', instanceId: 'a', url: 'https://example.org', title: 'A', mode: 'browse', faviconUrl: icon },
+        { kind: 'browser', instanceId: 'b', url: 'https://example.org', title: 'B', mode: 'browse', faviconUrl: 'https://example.org/favicon.ico' },
+      ],
+      activeTabId: 'browser:a',
+    })
+    const tabs = parsed && 'tabs' in parsed ? parsed.tabs : []
+
+    expect(tabs[0]).toMatchObject({ instanceId: 'a', faviconUrl: icon })
+    expect(tabs[1]).not.toHaveProperty('faviconUrl')
+  })
+
   it('round-trips conversation records and global pins', () => {
     const persisted = serializeSurface(['diff', 'plan'], null, { alpha: conversation })
     const parsed = parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))
