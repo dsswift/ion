@@ -29,7 +29,7 @@ import (
 // eternal park observed in production.
 func TestDeliverTaskResult_RevivesTaskOnlyPark(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-1", "shell-agent", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("disp-1", "shell-agent", func(string) {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-1", reviveCh, nil, []string{"bash-1", "bash-2"}, nil) {
@@ -81,7 +81,7 @@ func TestDeliverTaskResult_RevivesTaskOnlyPark(t *testing.T) {
 // the child arm below signals.
 func TestDeliverTaskResult_MixedWaitSetWaitsForBothHalves(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-2", "lead", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("disp-2", "lead", func(string) {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-2", reviveCh, []string{"child-1"}, []string{"bash-9"}, nil) {
@@ -112,7 +112,7 @@ func TestDeliverTaskResult_MixedWaitSetWaitsForBothHalves(t *testing.T) {
 // background command outstanding.
 func TestDeliverTaskResult_ChildDoesNotReviveWhileTaskOutstanding(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-3", "lead", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("disp-3", "lead", func(string) {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-3", reviveCh, []string{"child-1"}, []string{"bash-9"}, nil) {
@@ -148,7 +148,7 @@ func TestDeliverTaskResult_ChildDoesNotReviveWhileTaskOutstanding(t *testing.T) 
 // SetSuspendedStateWithWaitingOn and this parks on a dead task id.
 func TestDeliverTaskResult_SettledBeforeArmingPrunesPark(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-4", "shell-agent", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("disp-4", "shell-agent", func(string) {}, nil, "sess", "", 1)
 
 	owner, revived := r.DeliverTaskResult("bash-early", TaskResultRecord{Status: "completed", Payload: "raced the arming"})
 	if owner != "" || revived {

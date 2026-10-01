@@ -28,7 +28,7 @@ import (
 // dispatch is parked on drains its wait set and signals revive.
 func TestDeliverPollResultRevivesParkedDispatch(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-poll-1", "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("disp-poll-1", "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-poll-1", reviveCh, nil, nil, []string{"poll-1"}) {
@@ -54,7 +54,7 @@ func TestDeliverPollResultRevivesParkedDispatch(t *testing.T) {
 // through to its root delivery paths, exactly as before.
 func TestDeliverPollResultIgnoresUnawaitedPoll(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-poll-2", "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("disp-poll-2", "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	owner, revived := r.DeliverPollResult("poll-nobody-awaits", PollResultRecord{Verdict: "satisfied", Evidence: "test evidence"})
 
@@ -67,7 +67,7 @@ func TestDeliverPollResultIgnoresUnawaitedPoll(t *testing.T) {
 // matching the child-dispatch rule.
 func TestDeliverPollResultWaitsForEveryPoll(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-poll-3", "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("disp-poll-3", "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-poll-3", reviveCh, nil, nil, []string{"poll-a", "poll-b"}) {
@@ -92,7 +92,7 @@ func TestDeliverPollResultWaitsForEveryPoll(t *testing.T) {
 // peer of tasks and children rather than a set the park silently ignores.
 func TestPollDoesNotReviveWhileTasksOutstanding(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-poll-4", "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("disp-poll-4", "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn("disp-poll-4", reviveCh, nil, []string{"bash-1"}, []string{"poll-x"}) {
@@ -114,7 +114,7 @@ func TestPollDoesNotReviveWhileTasksOutstanding(t *testing.T) {
 // for", so a poll-only park must name its poll.
 func TestPollOnlyParkRecordsWaitSet(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp-poll-5", "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("disp-poll-5", "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	if !r.SetSuspendedStateWithWaitingOn("disp-poll-5", make(chan struct{}, 1), nil, nil, []string{"poll-only"}) {
 		t.Fatal("park refused for a poll-only wait set")
@@ -152,7 +152,7 @@ func TestPollOnlyParkRecordsWaitSet(t *testing.T) {
 func TestChildCompletionDoesNotReviveWhilePollsOutstanding(t *testing.T) {
 	r := NewDispatchRegistry()
 	const parent = "dispatch-agent-1"
-	r.RegisterWithID(parent, "agent-1", func() {}, nil, "sess-1", "", 1)
+	r.RegisterWithID(parent, "agent-1", func(string) {}, nil, "sess-1", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn(parent, reviveCh, nil, nil, []string{"poll-1"}) {
@@ -198,7 +198,7 @@ func TestChildCompletionDoesNotReviveWhilePollsOutstanding(t *testing.T) {
 func TestPollRevivePayloadReachesTheRevivedRun(t *testing.T) {
 	r := NewDispatchRegistry()
 	const parent = "dispatch-agent-1"
-	r.RegisterWithID(parent, "agent-1", func() {}, nil, "sess-1", "", 1)
+	r.RegisterWithID(parent, "agent-1", func(string) {}, nil, "sess-1", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	if !r.SetSuspendedStateWithWaitingOn(parent, reviveCh, nil, nil, []string{"poll-1"}) {

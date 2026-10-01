@@ -115,6 +115,19 @@ export interface RegistryEntry {
    * operator nothing about the work, which is what this field fixes.
    */
   title?: string;
+  /**
+   * True while no conversation has sent its first prompt in this worktree.
+   *
+   * Only that first prompt may name the worktree automatically, and it may
+   * decline to (a slash command names nothing). So "has no title" cannot stand
+   * in for "has not been prompted in yet": the fact is recorded when the
+   * worktree is registered without a name and cleared by the first prompt,
+   * whether or not that prompt left a title behind.
+   *
+   * Absent means the window is closed, which is also how an entry written
+   * before this field existed reads: its first prompt is long gone.
+   */
+  awaitingFirstPrompt?: true;
   createdAt: number;
   /**
    * When this worktree's commits were landed into its source branch.
@@ -225,6 +238,10 @@ export function saveRegistry(entries: RegistryEntry[]): boolean {
  * tab — passes nothing and is named later by its first prompt. Because a
  * stored title always wins, a seed can never overwrite a name the worktree
  * already carries.
+ *
+ * A NEW registration that arrives without a name is marked
+ * `awaitingFirstPrompt`. A re-registration keeps whatever the previous entry
+ * recorded, so re-attaching a worktree never reopens its naming window.
  */
 export function registerWorktree(args: {
   worktreePath: string;
@@ -259,6 +276,11 @@ export function registerWorktree(args: {
     sourceBranch: args.sourceBranch,
     baseSha: args.baseSha ?? previous?.baseSha,
     title: previous?.title ?? seeded,
+    awaitingFirstPrompt: previous
+      ? previous.awaitingFirstPrompt
+      : seeded
+        ? undefined
+        : true,
     landedAt: previous?.landedAt,
     stage: previous?.stage,
     createdAt: Date.now(),
@@ -342,6 +364,8 @@ export function setWorktreeTitle(
   if (existing) {
     const previous = existing.title;
     existing.title = title;
+    // A named worktree is no longer waiting for a prompt to name it.
+    delete existing.awaitingFirstPrompt;
     const saved = saveRegistry(entries);
     if (saved) {
       invalidateWorktreeInventoryCache("worktree titled");
@@ -557,6 +581,7 @@ export function registeredRepoPaths(): string[] {
 }
 
 export {
+  closeWorktreeTitleSeed,
   lookupSourceBranch,
   lookupWorktreeBase,
   lookupWorktreeLandedAt,

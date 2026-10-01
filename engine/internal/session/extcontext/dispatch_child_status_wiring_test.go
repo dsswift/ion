@@ -57,7 +57,7 @@ func TestDispatchAgent_WiresAgentStatusGetterForChild(t *testing.T) {
 	// Prove it is a live view of the registry rather than merely non-nil: a
 	// getter wired to the wrong registry (or a captured empty snapshot) would
 	// satisfy a nil check while still reporting nothing.
-	registry.RegisterWithID("dispatch-visible", "grandchild", func() {}, nil, "sess-1", "", 2)
+	registry.RegisterWithID("dispatch-visible", "grandchild", func(string) {}, nil, "sess-1", "", 2)
 	entries := cfg.AgentStatus()
 	found := false
 	for _, e := range entries {

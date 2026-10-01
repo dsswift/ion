@@ -55,6 +55,7 @@ export {
   lookupWorktreeStage,
   lookupWorktreeLandedAt,
   lookupWorktreeRegistration,
+  closeWorktreeTitleSeed,
   unregisterWorktree,
   lookupSourceBranch,
   lookupWorktreeBase,

@@ -211,7 +211,7 @@ func (r *DispatchRegistry) executeRecall(recall *recallSet, reason string) {
 		descendant := recall.descendants[index]
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name, "reason": reason})
 		if descendant.Cancel != nil {
-			descendant.Cancel()
+			descendant.Cancel(reason)
 		} else {
 			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: descendant has nil cancel func", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name})
 		}
@@ -219,8 +219,19 @@ func (r *DispatchRegistry) executeRecall(recall *recallSet, reason string) {
 
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"dispatch_id": recall.targetID, "agent_name": recall.target.Name, "session_id": recall.target.SessionID, "reason": reason, "descendant_count": len(recall.descendants), "registry_count": recall.remaining})
 	if recall.target.Cancel != nil {
-		recall.target.Cancel()
+		recall.target.Cancel(reason)
 	} else {
 		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": recall.targetID, "model": recall.target.Name})
 	}
+}
+
+// defaultRecallReason names a recall whose recaller gave no reason.
+const defaultRecallReason = "recall_agent"
+
+// recallReasonOrDefault returns reason, or defaultRecallReason when it is empty.
+func recallReasonOrDefault(reason string) string {
+	if reason == "" {
+		return defaultRecallReason
+	}
+	return reason
 }

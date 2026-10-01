@@ -8,6 +8,7 @@
  * The decision table these tests pin:
  *   - registered worktree, no title  → persist, announce
  *   - registered worktree, has title → REFUSED, stored title untouched
+ *   - no title, but already prompted in → REFUSED, stays unnamed
  *   - has title, and the seed names it as the one it replaces → swapped
  *   - unregistered directory         → REFUSED
  *   - empty/whitespace seed          → REFUSED
@@ -26,7 +27,7 @@ vi.mock('../../worktree/title-announce', () => ({ announceWorktreeTitle: deps.an
 vi.mock('../../logger', () => ({ log: vi.fn(), trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 import { lookupWorktreeTitle, registerWorktree, setWorktreeTitle } from '../../worktree/inventory'
-import { gitWorktreeSeedTitle, gitWorktreeSetTitle } from '../host-api-git'
+import { gitWorktreeCloseTitleSeed, gitWorktreeSeedTitle, gitWorktreeSetTitle } from '../host-api-git'
 
 const REPO = '/Users/dev/src/ion'
 const WT = '/Users/dev/.ion/worktrees/ion-a3f1'
@@ -82,6 +83,24 @@ describe('seed-title decision', () => {
     await gitWorktreeSetTitle({ worktreePath: WT, repoPath: REPO, title: 'Renamed by hand' })
     expect(await gitWorktreeSeedTitle(WT, 'Fix the token expiry check', 'the auth middleware rejects valid tok...')).toEqual({ ok: false, reason: 'already-titled', title: 'Renamed by hand' })
     expect(lookupWorktreeTitle(WT)).toBe('Renamed by hand')
+  })
+
+  // The first prompt may name nothing (a slash command). The worktree then
+  // stays unnamed: a later conversation is not its first.
+  it('refuses a seed once the first prompt left the worktree unnamed', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect(await gitWorktreeCloseTitleSeed(WT)).toEqual({ closed: true })
+    expect(await gitWorktreeSeedTitle(WT, 'A later conversation about something else')).toEqual({ ok: false, reason: 'not-first-prompt' })
+    expect(lookupWorktreeTitle(WT)).toBeNull()
+    expect(deps.announceWorktreeTitle).not.toHaveBeenCalled()
+    expect(await gitWorktreeCloseTitleSeed(WT)).toEqual({ closed: false })
+  })
+
+  it('keeps the naming window closed when the worktree is registered again', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    await gitWorktreeCloseTitleSeed(WT)
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect((await gitWorktreeSeedTitle(WT, 'A later conversation')).reason).toBe('not-first-prompt')
   })
 
   it('refuses a seed for an ordinary project directory', async () => {

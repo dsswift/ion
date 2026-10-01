@@ -12,7 +12,7 @@ import (
 // assertion.
 func TestDispatchRegistry_NotifyChildComplete_SignalsWhenSetEmpty(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("parent", "lead", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("parent", "lead", func(string) {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	r.SetSuspendedState("parent", reviveCh, []string{"child-1", "child-2"})
@@ -46,7 +46,7 @@ func TestDispatchRegistry_NotifyChildComplete_SignalsWhenSetEmpty(t *testing.T) 
 // suspend — revives on the next sendPrompt, regardless of child completion).
 func TestDispatchRegistry_SignalReviveForSession_BareSuspend(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp", "agent", func() {}, nil, "my-session", "", 1)
+	r.RegisterWithID("disp", "agent", func(string) {}, nil, "my-session", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	r.SetSuspendedState("disp", reviveCh, nil) // bare suspend: no pending children
@@ -70,7 +70,7 @@ func TestDispatchRegistry_SignalReviveForSession_BareSuspend(t *testing.T) {
 // causes this test to fail.
 func TestDispatchRegistry_SignalReviveForSession_DoesNotSignalWithPendingChildren(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("disp2", "agent", func() {}, nil, "my-session2", "", 1)
+	r.RegisterWithID("disp2", "agent", func(string) {}, nil, "my-session2", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	r.SetSuspendedState("disp2", reviveCh, []string{"child-1"}) // suspendUntilAll
@@ -91,7 +91,7 @@ func TestDispatchRegistry_SignalReviveForSession_DoesNotSignalWithPendingChildre
 // are nil, and subsequent SignalReviveForSession is a no-op.
 func TestDispatchRegistry_SetClearSuspendedState_Roundtrip(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("d3", "a", func() {}, nil, "sess3", "", 1)
+	r.RegisterWithID("d3", "a", func(string) {}, nil, "sess3", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
 	r.SetSuspendedState("d3", reviveCh, nil)

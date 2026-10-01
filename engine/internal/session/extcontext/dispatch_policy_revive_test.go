@@ -38,11 +38,11 @@ func TestEligibility_PolicyAllowlist_EmptyDeniesAll(t *testing.T) {
 func TestEligibility_PolicyAllowlist_ReportedChainBlocked(t *testing.T) {
 	r := NewDispatchRegistry()
 	// dev-lead at depth 1 with ios-dev as its only child.
-	r.RegisterWithID("dispatch-dev-lead-goat", "dev-lead", func() {}, nil, "elig-test-session", "", 1)
+	r.RegisterWithID("dispatch-dev-lead-goat", "dev-lead", func(string) {}, nil, "elig-test-session", "", 1)
 	r.SetAllowedSubAgents("dispatch-dev-lead-goat", []string{"ios-dev"})
 	r.SetSubAgentPolicy("dispatch-dev-lead-goat", "allowlist")
 	// ios-dev at depth 2, a leaf (empty allowlist) under the same policy.
-	r.RegisterWithID("dispatch-ios-dev-goat", "ios-dev", func() {}, nil, "elig-test-session", "dispatch-dev-lead-goat", 2)
+	r.RegisterWithID("dispatch-ios-dev-goat", "ios-dev", func(string) {}, nil, "elig-test-session", "dispatch-dev-lead-goat", 2)
 	r.SetAllowedSubAgents("dispatch-ios-dev-goat", nil)
 	r.SetSubAgentPolicy("dispatch-ios-dev-goat", "allowlist")
 	sa := &eligibilityTestAccessor{}
@@ -103,7 +103,7 @@ func TestDispatchRegistry_SubAgentPolicy_SurvivesRegisterUpgrade(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.Reserve("d-pol", "agent", "", 1)
 	r.SetSubAgentPolicy("d-pol", "allowlist")
-	r.RegisterWithID("d-pol", "agent", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("d-pol", "agent", func(string) {}, nil, "sess", "", 1)
 
 	policy, ok := r.SubAgentPolicyForID("d-pol")
 	if !ok || policy != "allowlist" {
@@ -117,8 +117,8 @@ func TestDispatchRegistry_SubAgentPolicy_SurvivesRegisterUpgrade(t *testing.T) {
 // wakes exactly one — red on the second channel's assertion.
 func TestDispatchRegistry_SignalReviveForSession_WakesAllBareSuspends(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("d-multi-1", "agent-a", func() {}, nil, "multi-sess", "", 1)
-	r.RegisterWithID("d-multi-2", "agent-b", func() {}, nil, "multi-sess", "", 1)
+	r.RegisterWithID("d-multi-1", "agent-a", func(string) {}, nil, "multi-sess", "", 1)
+	r.RegisterWithID("d-multi-2", "agent-b", func(string) {}, nil, "multi-sess", "", 1)
 
 	ch1 := make(chan struct{}, 1)
 	ch2 := make(chan struct{}, 1)
@@ -150,8 +150,8 @@ func TestDispatchRegistry_SignalReviveForSession_SkipsAwaitedWork(t *testing.T) 
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := NewDispatchRegistry()
-			r.RegisterWithID("d-bare", "agent-a", func() {}, nil, "mixed-sess", "", 1)
-			r.RegisterWithID("d-waiting", "agent-b", func() {}, nil, "mixed-sess", "", 1)
+			r.RegisterWithID("d-bare", "agent-a", func(string) {}, nil, "mixed-sess", "", 1)
+			r.RegisterWithID("d-waiting", "agent-b", func(string) {}, nil, "mixed-sess", "", 1)
 
 			bareCh := make(chan struct{}, 1)
 			waitingCh := make(chan struct{}, 1)
@@ -181,8 +181,8 @@ func TestDispatchRegistry_SignalReviveForSession_SkipsAwaitedWork(t *testing.T) 
 // LastActivityMs; an active entry stays "running".
 func TestDispatchRegistry_Snapshot_SuspendedStatusAndActivity(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("d-snap-run", "worker", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("d-snap-park", "lead", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("d-snap-run", "worker", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("d-snap-park", "lead", func(string) {}, nil, "sess", "", 1)
 	r.SetChildConvID("d-snap-run", "conv-worker-1")
 	r.UpdateActivity("d-snap-run", 7, "Using Bash...")
 	r.SetSuspendedState("d-snap-park", make(chan struct{}, 1), []string{"kid-1", "kid-2"})

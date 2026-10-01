@@ -74,7 +74,7 @@ export interface InitEvent {
   permissionMode: string;
   agents: string[];
   skills: string[];
-  plugins: string[];
+  plugins: Array<string | { name: string; path?: string; source?: string }>;
   claude_code_version: string;
   fast_mode_state: string;
   uuid: string;

@@ -98,6 +98,8 @@ func buildSurfaceManifest() surfaceManifest {
 	m.DispatchTypes = map[string][]string{
 		"DispatchAgentOpts":   jsonFieldNamesOf(reflect.TypeOf(DispatchAgentOpts{})),
 		"DispatchAgentResult": jsonFieldNamesOf(reflect.TypeOf(DispatchAgentResult{})),
+		"DispatchError":       jsonFieldNamesOf(reflect.TypeOf(DispatchError{})),
+		"RecallInfo":          jsonFieldNamesOf(reflect.TypeOf(RecallInfo{})),
 		"ContextPolicy":       jsonFieldNamesOf(reflect.TypeOf(ContextPolicy{})),
 		"SendPromptOpts":      jsonFieldNamesOf(reflect.TypeOf(SendPromptOpts{})),
 	}

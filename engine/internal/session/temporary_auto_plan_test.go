@@ -60,7 +60,7 @@ func TestTemporaryAutoPlanFailureDoesNotPropose(t *testing.T) {
 
 func TestTemporaryAutoPlanWaitsForBackgroundWorkThenProposes(t *testing.T) {
 	registry := extcontext.NewDispatchRegistry()
-	registry.Register("agent-1", func() {}, nil, "tab")
+	registry.Register("agent-1", func(string) {}, nil, "tab")
 	workflow := &temporaryAutoPlanWorkflow{runID: "root-run", planFile: "/tmp/plan.md"}
 	s := &engineSession{
 		key: "tab", planMode: true, conversationID: "conv",

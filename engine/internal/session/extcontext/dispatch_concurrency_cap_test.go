@@ -28,10 +28,10 @@ func TestCountLiveByNameUnderParent_ScopesToNameAndParent(t *testing.T) {
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
 	// Two dispatches of the same advisor, under two DIFFERENT parents.
-	r.RegisterWithID("d-adv-1", "moonshot", func() {}, child, "s", "parent-a", 2)
-	r.RegisterWithID("d-adv-2", "moonshot", func() {}, child, "s", "parent-b", 2)
+	r.RegisterWithID("d-adv-1", "moonshot", func(string) {}, child, "s", "parent-a", 2)
+	r.RegisterWithID("d-adv-2", "moonshot", func(string) {}, child, "s", "parent-b", 2)
 	// A second dispatch of a different agent under parent-a.
-	r.RegisterWithID("d-other", "code-engineer", func() {}, child, "s", "parent-a", 2)
+	r.RegisterWithID("d-other", "code-engineer", func(string) {}, child, "s", "parent-a", 2)
 
 	if got := r.CountLiveByNameUnderParent("moonshot", "parent-a"); got != 1 {
 		t.Errorf("count(moonshot, parent-a) = %d, want 1", got)
@@ -55,8 +55,8 @@ func TestCountLiveByNameUnderParent_CountsOrchestratorParent(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("d-lead", "dev-lead", func() {}, child, "s", "", 1)
-	r.RegisterWithID("d-nested", "dev-lead", func() {}, child, "s", "some-parent", 2)
+	r.RegisterWithID("d-lead", "dev-lead", func(string) {}, child, "s", "", 1)
+	r.RegisterWithID("d-nested", "dev-lead", func(string) {}, child, "s", "some-parent", 2)
 
 	if got := r.CountLiveByNameUnderParent("dev-lead", ""); got != 1 {
 		t.Errorf("count under orchestrator = %d, want 1 (must not include the nested one)", got)
@@ -82,7 +82,7 @@ func TestCountLiveByNameUnderParent_CountsReservations(t *testing.T) {
 func TestCountLiveByNameUnderParent_IsCaseInsensitive(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	r.RegisterWithID("d-1", "Dev-Lead", func() {}, child, "s", "", 1)
+	r.RegisterWithID("d-1", "Dev-Lead", func(string) {}, child, "s", "", 1)
 
 	if got := r.CountLiveByNameUnderParent("dev-lead", ""); got != 1 {
 		t.Errorf("case-insensitive count = %d, want 1", got)
@@ -95,7 +95,7 @@ func TestCountLiveByNameUnderParent_IsCaseInsensitive(t *testing.T) {
 func TestCountLiveByNameUnderParent_DropsOnDeregister(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	r.RegisterWithID("d-1", "secret-service", func() {}, child, "s", "", 1)
+	r.RegisterWithID("d-1", "secret-service", func(string) {}, child, "s", "", 1)
 
 	if got := r.CountLiveByNameUnderParent("secret-service", ""); got != 1 {
 		t.Fatalf("pre-deregister count = %d, want 1", got)
@@ -113,8 +113,8 @@ func TestCountLiveByNameUnderParent_DropsOnDeregister(t *testing.T) {
 func TestLiveIDsByNameUnderParent_NamesTheHolders(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	r.RegisterWithID("d-bbb", "press-secretary", func() {}, child, "s", "", 1)
-	r.RegisterWithID("d-aaa", "press-secretary", func() {}, child, "s", "", 1)
+	r.RegisterWithID("d-bbb", "press-secretary", func(string) {}, child, "s", "", 1)
+	r.RegisterWithID("d-aaa", "press-secretary", func(string) {}, child, "s", "", 1)
 
 	got := r.LiveIDsByNameUnderParent("press-secretary", "")
 	if len(got) != 2 {
@@ -134,7 +134,7 @@ func TestCheckConcurrencyCap_NoCapMeansUnlimited(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	for _, id := range []string{"d1", "d2", "d3"} {
-		r.RegisterWithID(id, "code-engineer", func() {}, child, "s", "lead-1", 2)
+		r.RegisterWithID(id, "code-engineer", func(string) {}, child, "s", "lead-1", 2)
 	}
 	sa := &bumpCountingAccessor{}
 
@@ -152,13 +152,13 @@ func TestCheckConcurrencyCap_AllowsUpToTheLimit(t *testing.T) {
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	sa := &bumpCountingAccessor{}
 
-	r.RegisterWithID("d1", "code-engineer", func() {}, child, "s", "lead-1", 2)
-	r.RegisterWithID("d2", "code-engineer", func() {}, child, "s", "lead-1", 2)
+	r.RegisterWithID("d1", "code-engineer", func(string) {}, child, "s", "lead-1", 2)
+	r.RegisterWithID("d2", "code-engineer", func(string) {}, child, "s", "lead-1", 2)
 
 	if err := checkConcurrencyCap(sa, r, "lead-1", "code-engineer", 3); err != nil {
 		t.Errorf("2 live under a cap of 3 must be allowed, got %v", err)
 	}
-	r.RegisterWithID("d3", "code-engineer", func() {}, child, "s", "lead-1", 2)
+	r.RegisterWithID("d3", "code-engineer", func(string) {}, child, "s", "lead-1", 2)
 	if err := checkConcurrencyCap(sa, r, "lead-1", "code-engineer", 3); err == nil {
 		t.Error("3 live under a cap of 3 must be refused")
 	}
@@ -171,7 +171,7 @@ func TestCheckConcurrencyCap_SingletonRefusesSecondUnderSameParent(t *testing.T)
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	sa := &bumpCountingAccessor{}
 
-	r.RegisterWithID("d1", "career-manager", func() {}, child, "s", "", 1)
+	r.RegisterWithID("d1", "career-manager", func(string) {}, child, "s", "", 1)
 
 	err := checkConcurrencyCap(sa, r, "", "career-manager", 1)
 	if err == nil {
@@ -195,7 +195,7 @@ func TestCheckConcurrencyCap_SingletonAllowsOnePerParent(t *testing.T) {
 	sa := &bumpCountingAccessor{}
 
 	// dev-lead already holds one moonshot dispatch.
-	r.RegisterWithID("d-dev-moonshot", "moonshot", func() {}, child, "s", "dev-lead-1", 2)
+	r.RegisterWithID("d-dev-moonshot", "moonshot", func(string) {}, child, "s", "dev-lead-1", 2)
 
 	// The reliability engineer asking for its own moonshot must be allowed.
 	if err := checkConcurrencyCap(sa, r, "reliability-1", "moonshot", 1); err != nil {
@@ -230,7 +230,7 @@ func TestDispatchAgent_RefusesBeyondMaxConcurrentPerName(t *testing.T) {
 
 	// Occupy the single slot with a live dispatch under the orchestrator.
 	live := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	registry.RegisterWithID("d-held", "career-manager", func() {}, live, "s", "", 1)
+	registry.RegisterWithID("d-held", "career-manager", func(string) {}, live, "s", "", 1)
 
 	before := registry.Count()
 	_, err := dispatch(extension.DispatchAgentOpts{
@@ -260,7 +260,7 @@ func TestDispatchAgent_AllowsParallelWhenUncapped(t *testing.T) {
 	dispatch := BuildDispatchAgentFunc(accessor, registry, 0, "")
 
 	live := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	registry.RegisterWithID("d-held", "code-engineer", func() {}, live, "s", "", 1)
+	registry.RegisterWithID("d-held", "code-engineer", func(string) {}, live, "s", "", 1)
 
 	if _, err := dispatch(extension.DispatchAgentOpts{
 		WaitForCompletion: true,

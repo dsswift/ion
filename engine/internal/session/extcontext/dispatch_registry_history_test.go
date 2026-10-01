@@ -22,8 +22,8 @@ func historyIDs(entries []DispatchTerminalEntry) []string {
 // reason, completion time, and lineage.
 func TestDispatchHistory_DeregisterRetainsTerminalEntry(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("dispatch-parent", "lead", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("dispatch-child", "worker", func() {}, nil, "sess", "dispatch-parent", 2)
+	r.RegisterWithID("dispatch-parent", "lead", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("dispatch-child", "worker", func(string) {}, nil, "sess", "dispatch-parent", 2)
 	r.SetChildConvID("dispatch-child", "conv-child")
 	r.UpdateActivity("dispatch-child", 3, "Using Bash...")
 
@@ -64,7 +64,7 @@ func TestDispatchHistory_CountBoundEvictsOldest(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.SetHistoryLimits(&types.DispatchHistoryConfig{MaxEntries: 2})
 	for _, id := range []string{"d-1", "d-2", "d-3"} {
-		r.RegisterWithID(id, "agent", func() {}, nil, "sess", "", 1)
+		r.RegisterWithID(id, "agent", func(string) {}, nil, "sess", "", 1)
 		r.Deregister(id, DispatchOutcome{Status: DispatchStatusDone})
 	}
 	if got, want := historyIDs(r.History()), []string{"d-2", "d-3"}; !slices.Equal(got, want) {
@@ -84,7 +84,7 @@ func TestDispatchHistory_AgeBoundEvictsOnRead(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.SetHistoryLimits(&types.DispatchHistoryConfig{MaxAgeMs: 60_000})
 	for _, id := range []string{"old", "fresh"} {
-		r.RegisterWithID(id, "agent", func() {}, nil, "sess", "", 1)
+		r.RegisterWithID(id, "agent", func(string) {}, nil, "sess", "", 1)
 		r.Deregister(id, DispatchOutcome{Status: DispatchStatusDone})
 	}
 	r.mu.Lock()
@@ -100,7 +100,7 @@ func TestDispatchHistory_AgeBoundEvictsOnRead(t *testing.T) {
 func TestDispatchHistory_NegativeMaxEntriesDisablesRetention(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.SetHistoryLimits(&types.DispatchHistoryConfig{MaxEntries: -1})
-	r.RegisterWithID("d-1", "agent", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("d-1", "agent", func(string) {}, nil, "sess", "", 1)
 	r.Deregister("d-1", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.History(); len(got) != 0 {
 		t.Fatalf("history = %+v, want nothing retained", got)
@@ -112,9 +112,9 @@ func TestDispatchHistory_NegativeMaxEntriesDisablesRetention(t *testing.T) {
 // recall time, and that the dispatch's later Deregister does not overwrite it.
 func TestDispatchHistory_RecallCascadeRetainsCancelled(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("parent", "lead", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("child", "worker", func() {}, nil, "sess", "parent", 2)
-	r.RegisterWithID("bystander", "worker", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("parent", "lead", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("child", "worker", func(string) {}, nil, "sess", "parent", 2)
+	r.RegisterWithID("bystander", "worker", func(string) {}, nil, "sess", "", 1)
 
 	if !r.RecallByID("parent", "timeout guard") {
 		t.Fatal("RecallByID(parent) = false")
@@ -137,7 +137,7 @@ func TestDispatchHistory_RecallCascadeRetainsCancelled(t *testing.T) {
 // do not outlive them.
 func TestDispatchHistory_RecallAllRetainsCancelledAndDropsAliases(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("d-1", "agent", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("d-1", "agent", func(string) {}, nil, "sess", "", 1)
 	r.RegisterAlias("local-1", "d-1")
 
 	if n := r.RecallAll("session stopped"); n != 1 {
@@ -160,11 +160,11 @@ func TestDispatchHistory_RecallAllRetainsCancelledAndDropsAliases(t *testing.T) 
 // parent also finished, and never itself, a sibling, or another branch.
 func TestDispatchHistory_OwnershipMatchesLiveRule(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("owner", "lead", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("child", "worker", func() {}, nil, "sess", "owner", 2)
-	r.RegisterWithID("grandchild", "helper", func() {}, nil, "sess", "child", 3)
-	r.RegisterWithID("sibling", "worker", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("nephew", "helper", func() {}, nil, "sess", "sibling", 2)
+	r.RegisterWithID("owner", "lead", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("child", "worker", func(string) {}, nil, "sess", "owner", 2)
+	r.RegisterWithID("grandchild", "helper", func(string) {}, nil, "sess", "child", 3)
+	r.RegisterWithID("sibling", "worker", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("nephew", "helper", func(string) {}, nil, "sess", "sibling", 2)
 
 	done := DispatchOutcome{Status: DispatchStatusDone}
 	r.Deregister("grandchild", done)
@@ -191,9 +191,9 @@ func TestDispatchHistory_OwnershipMatchesLiveRule(t *testing.T) {
 func TestDispatchHistory_MissingLineageFailsClosed(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.SetHistoryLimits(&types.DispatchHistoryConfig{MaxEntries: 1})
-	r.RegisterWithID("owner", "lead", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("child", "worker", func() {}, nil, "sess", "owner", 2)
-	r.RegisterWithID("grandchild", "helper", func() {}, nil, "sess", "child", 3)
+	r.RegisterWithID("owner", "lead", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("child", "worker", func(string) {}, nil, "sess", "owner", 2)
+	r.RegisterWithID("grandchild", "helper", func(string) {}, nil, "sess", "child", 3)
 	done := DispatchOutcome{Status: DispatchStatusDone}
 	r.Deregister("child", done)
 	r.Deregister("grandchild", done) // evicts child

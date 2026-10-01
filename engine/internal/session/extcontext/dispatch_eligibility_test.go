@@ -115,7 +115,7 @@ func (a *eligibilityTestAccessor) ConversationEventsTelemetry() *telemetry.Colle
 // registerDispatcher records a depth-1 dispatch named name with id in the
 // registry so NameForID resolves the dispatcher's own name in the guard.
 func registerDispatcher(r *DispatchRegistry, id, name string) {
-	r.RegisterWithID(id, name, func() {}, nil, "elig-test-session", "", 1)
+	r.RegisterWithID(id, name, func(string) {}, nil, "elig-test-session", "", 1)
 }
 
 // registerDispatcherWithAllowlist records a dispatcher and its carry-forward

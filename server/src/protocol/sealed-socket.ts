@@ -55,6 +55,18 @@ export interface EnvelopeCarrier {
  * a vanished peer.
  */
 export function relayCarrier(relay: RelayClient): EnvelopeCarrier {
+  // The channel outlives this carrier, so what the carrier hung on it has to
+  // come off when its socket ends. Left on, the socket of an ended Connection
+  // kept opening every frame the channel carried: a hello reached the ended
+  // Connection as well as the live one, and the ended one displaced the live.
+  const attached: Array<[event: string, listener: (...args: unknown[]) => void]> = []
+  const attach = (event: string, listener: (...args: unknown[]) => void): void => {
+    relay.on(event, listener)
+    attached.push([event, listener])
+  }
+  const detach = (): void => {
+    for (const [event, listener] of attached.splice(0)) relay.off(event, listener)
+  }
   return {
     kind: 'relay',
     sendEnvelope(text, cb) {
@@ -64,11 +76,13 @@ export function relayCarrier(relay: RelayClient): EnvelopeCarrier {
         cb?.(err instanceof Error ? err : new Error(String(err)))
       }
     },
-    onEnvelope: (listener) => { relay.on('message', (message: unknown) => listener(JSON.stringify(message))) },
-    onClosed: (listener) => { relay.on('disconnected', () => listener(1006, 'relay channel disconnected')) },
+    onEnvelope: (listener) => { attach('message', (message) => listener(JSON.stringify(message))) },
+    onClosed: (listener) => { attach('disconnected', () => listener(1006, 'relay channel disconnected')) },
     onError: () => { /* the RelayClient logs and reconnects on its own errors */ },
-    close: () => { /* the channel belongs to the relay listener, not to this socket */ },
-    terminate: () => { /* as above */ },
+    // The channel belongs to the relay listener, not to this socket: ending
+    // the socket leaves the channel open and only stops listening to it.
+    close: detach,
+    terminate: detach,
     ping: (onPong) => queueMicrotask(onPong),
   }
 }
@@ -113,6 +127,8 @@ export class SealedSocket extends EventEmitter implements ConnectionSocket {
   }
 
   private onEnvelope(text: string): void {
+    // A closed socket delivers nothing, whatever its carrier still hears.
+    if (this.closed) return
     const opened = openRelayFrame(text, this.sharedSecret)
     if (!opened) {
       warn('frame dropped: not an envelope for this client, or failed to open', { client_id: this.clientId, carrier: this.carrier.kind })

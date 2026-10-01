@@ -396,6 +396,8 @@ res, err := ctx.ProtectedOperation(c, "publish-metric", map[string]any{"value": 
 
 On an asynchronous dispatch a declined outcome arrives through `OnError` rather than `OnComplete`, because its exit code is non-zero; read `DispatchError.ExitCode` to tell `3` from a genuine failure.
 
+`DispatchAgentResult`, `DispatchError`, and `RecallInfo` each carry `ChildConversationID`: the conversation the child wrote to disk. It is the same value the live dispatch entry exposes, and it is set before the callback runs. It covers completion, failure, a recall by any cause (including a timeout or engine shutdown), and a recovered panic. It is empty when the dispatch ended before its child conversation existed.
+
 ```go
 requireWork := true
 result, err := ctx.DispatchAgent(c, ion.DispatchAgentOpts{

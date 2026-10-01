@@ -239,3 +239,27 @@ func mustMarshal(v any) []byte {
 	data, _ := json.Marshal(v) //nolint:errcheck // test helper
 	return data
 }
+
+// TestChildConversationID_OnTerminalOutcomes pins the issue #380 wire field on
+// all three terminal outcome types: present as childConversationId when set,
+// omitted when the dispatch ended before a child conversation existed.
+//
+// Revert-red: removing the field (or its omitempty) from any of the three
+// types fails the matching assertion.
+func TestChildConversationID_OnTerminalOutcomes(t *testing.T) {
+	outcomes := map[string][2]any{
+		"DispatchAgentResult": {DispatchAgentResult{ChildConversationID: "conv-1"}, DispatchAgentResult{}},
+		"DispatchError":       {DispatchError{ChildConversationID: "conv-1"}, DispatchError{}},
+		"RecallInfo":          {RecallInfo{ChildConversationID: "conv-1"}, RecallInfo{}},
+	}
+	for name, pair := range outcomes {
+		set, _ := json.Marshal(pair[0])
+		if !strings.Contains(string(set), `"childConversationId":"conv-1"`) {
+			t.Errorf("%s JSON missing childConversationId: %s", name, set)
+		}
+		unset, _ := json.Marshal(pair[1])
+		if strings.Contains(string(unset), "childConversationId") {
+			t.Errorf("%s JSON should omit an empty childConversationId: %s", name, unset)
+		}
+	}
+}

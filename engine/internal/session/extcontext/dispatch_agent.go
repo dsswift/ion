@@ -1368,6 +1368,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				CacheReadInputTokens:     totalCacheReadTokens,
 				CacheCreationInputTokens: totalCacheCreationTokens,
 				SessionID:                childSessionID,
+				ChildConversationID:      childSessionID,
 				PlanFilePath:             childPlanFilePath,
 				PlanExited:               childPlanExited,
 				Depth:                    childDepth,
@@ -1588,8 +1589,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
-			registerDispatch(registry, agentID, opts.Name, func() {
-				recallReason = "recall_agent"
+			registerDispatch(registry, agentID, opts.Name, func(reason string) {
+				recallReason = recallReasonOrDefault(reason)
 				cancelFn()
 			}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 
@@ -1631,13 +1632,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							childDepth, currentDispatchId, childToolServer,
 							func(result extension.DispatchAgentResult) {
 								if opts.OnError != nil {
-									opts.OnError(extension.DispatchError{
-										Name:       opts.Name,
-										DispatchID: result.DispatchID,
-										Message:    result.Output,
-										ExitCode:   result.ExitCode,
-										Elapsed:    result.Elapsed,
-									})
+									opts.OnError(terminalDispatchError(result))
 								}
 							},
 						)
@@ -1667,28 +1662,17 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 				// Callbacks observe terminal state only. Isolate failures so a
 				// callback cannot re-panic this goroutine after owner delivery.
+				logTerminalOutcome(key, *result, recalled.Load(), recallReason)
 				if recalled.Load() {
 					invokeDispatchCallback(func() {
 						if opts.OnRecall != nil {
-							opts.OnRecall(extension.RecallInfo{
-								Name:       opts.Name,
-								DispatchID: agentID,
-								Reason:     recallReason,
-								Elapsed:    result.Elapsed,
-								ToolCount:  toolCount,
-							})
+							opts.OnRecall(terminalRecallInfo(*result, recallReason))
 						}
 					}, key, agentID, "recall")
 				} else if childErr != nil || result.ExitCode != 0 {
 					invokeDispatchCallback(func() {
 						if opts.OnError != nil {
-							opts.OnError(extension.DispatchError{
-								Name:       opts.Name,
-								DispatchID: agentID,
-								Message:    result.Output,
-								ExitCode:   result.ExitCode,
-								Elapsed:    result.Elapsed,
-							})
+							opts.OnError(terminalDispatchError(*result))
 						}
 					}, key, agentID, "error")
 				} else {
@@ -1714,8 +1698,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// Foreground (synchronous) dispatch.
 		// Register in the dispatch registry so foreground dispatches are
 		// recallable, counted, and steerable, matching background behavior.
-		registerDispatch(registry, agentID, opts.Name, func() {
-			recallReason = "recall_agent"
+		registerDispatch(registry, agentID, opts.Name, func(reason string) {
+			recallReason = recallReasonOrDefault(reason)
 			cancelFn()
 		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 

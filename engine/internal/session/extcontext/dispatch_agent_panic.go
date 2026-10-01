@@ -34,23 +34,29 @@ func recoverBackgroundDispatchPanic(
 		toolServer.Stop()
 	}
 
+	// The child may have initialized its conversation before the panic. The
+	// registry entry is the lock-guarded record of it; read it before the
+	// Deregister below removes the entry.
+	childConvID := registry.ChildConvIDForID(agentID)
+
 	sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
 		if state.Metadata == nil {
 			state.Metadata = map[string]interface{}{}
 		}
 		state.Status = "error"
 		state.Metadata["lastWork"] = panicMessage
-		agents.UpdateDispatchEntry(state.Metadata, agentID, state.Status, 0, "")
+		agents.UpdateDispatchEntry(state.Metadata, agentID, state.Status, 0, childConvID)
 	})
 	sa.EmitAgentSnapshot("dispatch_panic")
 
 	result := extension.DispatchAgentResult{
-		Name:             opts.Name,
-		DispatchID:       agentID,
-		Output:           panicMessage,
-		ExitCode:         1,
-		Depth:            childDepth,
-		ParentDispatchId: parentDispatchID,
+		Name:                opts.Name,
+		DispatchID:          agentID,
+		Output:              panicMessage,
+		ExitCode:            1,
+		Depth:               childDepth,
+		ParentDispatchId:    parentDispatchID,
+		ChildConversationID: childConvID,
 	}
 
 	if !opts.Detached && registry != nil && parentDispatchID != "" {
@@ -99,6 +105,7 @@ func recoverBackgroundDispatchPanic(
 // engine-owned parent/root delivery. A callback panic is logged, not allowed to
 // re-panic the dispatch goroutine after recovery.
 func invokePanicTerminalCallback(callback func(extension.DispatchAgentResult), result extension.DispatchAgentResult, sessionKey, dispatchID string) {
+	logTerminalOutcome(sessionKey, result, false, "")
 	if callback == nil {
 		return
 	}

@@ -324,7 +324,7 @@ func TestDispatch_NotifyChildComplete_FiresOnErrorPath(t *testing.T) {
 	registry := NewDispatchRegistry()
 
 	// A suspended parent awaiting exactly this child.
-	registry.RegisterWithID("parent-disp", "lead", func() {}, nil, "sess", "", 1)
+	registry.RegisterWithID("parent-disp", "lead", func(string) {}, nil, "sess", "", 1)
 	reviveCh := make(chan struct{}, 1)
 
 	// Hold child exit until parent has armed its pending-child state. Without
@@ -391,7 +391,7 @@ func TestDispatchRegistry_ChildIDsOf_DetachedExcluded(t *testing.T) {
 	}
 
 	// The detached flag must survive the Reserve → RegisterWithID upgrade.
-	r.RegisterWithID("kid-b", "spec-b", func() {}, nil, "sess", "parent", 2)
+	r.RegisterWithID("kid-b", "spec-b", func(string) {}, nil, "sess", "parent", 2)
 	if ids := r.ChildIDsOf("parent"); len(ids) != 1 {
 		t.Errorf("after RegisterWithID upgrade, ChildIDsOf = %v, want [kid-a] — Detached flag lost in upgrade", ids)
 	}
@@ -532,7 +532,7 @@ func TestDispatch_ReviveWithoutResultsUsesReviveInjectionKind(t *testing.T) {
 // false so the caller revives immediately instead of parking forever.
 func TestDispatchRegistry_SetSuspendedState_PrunesCompletedChildren(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("p-race", "lead", func() {}, nil, "sess", "", 1)
+	r.RegisterWithID("p-race", "lead", func(string) {}, nil, "sess", "", 1)
 
 	// child-a completed before the park armed; its result is recorded.
 	r.RecordChildResult("p-race", ChildResultRecord{ChildID: "child-a", Name: "spec-a", Output: "done early", ExitCode: 0})

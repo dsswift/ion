@@ -36,6 +36,8 @@ A release is created **as a draft**. `.github/scripts/hold-built-releases.sh` ru
 
 So a failure in one service's build leaves that service's draft in place and publishes every other service. The draft has all the assets that did upload; rerun the failed jobs from the run page and the publish job runs again. A release is never public with files missing.
 
+A failed build is filed, the same way a failed test is. `build.yml` ends in a `report` job that files an issue per failed job, labelled `ci-failure`, titled `Release build failed on main: <job>`. `release.yml` has its own for the jobs outside the build, titled `Release failed on main: <job>`. A dry run files nothing.
+
 The Windows install smoke test (`scripts/ci/windows-smoke.ps1`) is the one runtime check inside the build lane. Its failure is a product bug found after the installer was built: the installer still uploads, the desktop still publishes, and an issue is filed. A `dry_run` of `build.yml` is the exception: there, a smoke failure fails the job, because surfacing it is what a dry run is for.
 
 ### The test lane

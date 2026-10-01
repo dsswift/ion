@@ -30,7 +30,7 @@ import (
 // its child one level below the caller.
 func TestDepthOfReportsDispatchDepth(t *testing.T) {
 	r := extcontext.NewDispatchRegistry()
-	r.RegisterWithID("disp-depth-2", "agent-1", func() {}, nil, "sess-1", "disp-depth-1", 2)
+	r.RegisterWithID("disp-depth-2", "agent-1", func(string) {}, nil, "sess-1", "disp-depth-1", 2)
 
 	depth, known := r.DepthOf("disp-depth-2")
 	if !known {
@@ -67,17 +67,17 @@ func TestDepthOfUnknownDispatch(t *testing.T) {
 func TestDetachedPollCheckIsNotInParentParkSet(t *testing.T) {
 	r := extcontext.NewDispatchRegistry()
 	const parent = "dispatch-agent-1"
-	r.RegisterWithID(parent, "agent-1", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID(parent, "agent-1", func(string) {}, nil, "sess-1", "", 0)
 
 	// A normal child joins the parent's park set.
-	r.RegisterWithID("dispatch-child", "worker", func() {}, nil, "sess-1", parent, 1)
+	r.RegisterWithID("dispatch-child", "worker", func(string) {}, nil, "sess-1", parent, 1)
 	if got := r.ChildIDsOf(parent); len(got) != 1 || got[0] != "dispatch-child" {
 		t.Fatalf("normal child missing from park set: %v", got)
 	}
 
 	// A poll-check child is parented the same way but detached, so it must not
 	// appear in the park set.
-	r.RegisterWithID("dispatch-poll-check", "poll-check", func() {}, nil, "sess-1", parent, 1)
+	r.RegisterWithID("dispatch-poll-check", "poll-check", func(string) {}, nil, "sess-1", parent, 1)
 	r.MarkDetached("dispatch-poll-check")
 
 	for _, id := range r.ChildIDsOf(parent) {
@@ -149,7 +149,7 @@ func TestPollDriverParentsCheckToItsOwner(t *testing.T) {
 func TestPollCheckDepthStaysUnderCap(t *testing.T) {
 	r := extcontext.NewDispatchRegistry()
 	// A depth-1 agent -- the common case, an agent dispatched by the root.
-	r.RegisterWithID("dispatch-agent-1", "agent-1", func() {}, nil, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-agent-1", "agent-1", func(string) {}, nil, "sess-1", "", 1)
 
 	depth, known := r.DepthOf("dispatch-agent-1")
 	if !known {

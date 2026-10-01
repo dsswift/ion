@@ -83,6 +83,11 @@ export function gitWorktreeSeedTitle(..._args: any[]): Promise<never> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function gitWorktreeCloseTitleSeed(..._args: any[]): Promise<never> {
+  return reject('gitWorktreeCloseTitleSeed')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function gitWorktreeSetStage(..._args: any[]): Promise<never> {
   return reject('gitWorktreeSetStage')
 }

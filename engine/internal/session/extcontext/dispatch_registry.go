@@ -165,9 +165,10 @@ type activeDispatch struct {
 	// of the same agent share this name but have distinct IDs.
 	Name string
 
-	// Cancel stops the background dispatch. Calling Cancel on an already-
-	// cancelled dispatch is a no-op (the function must be idempotent).
-	Cancel func()
+	// Cancel stops the background dispatch and receives the recaller's
+	// reason, "" when none was given. Calling Cancel on an already-cancelled
+	// dispatch is a no-op (the function must be idempotent).
+	Cancel func(reason string)
 
 	// Child is the RunBackend that owns the background agent's run loop.
 	// Callers may inspect Child.IsRunning or attach additional event
@@ -320,7 +321,7 @@ func NewDispatchRegistry() *DispatchRegistry {
 // Register records an active background dispatch using the agent name as
 // both ID and key. This is the backward-compatible path for callers that
 // do not produce dispatch-specific IDs.
-func (r *DispatchRegistry) Register(name string, cancel func(), child backend.RunBackend, sessionID string) {
+func (r *DispatchRegistry) Register(name string, cancel func(reason string), child backend.RunBackend, sessionID string) {
 	r.RegisterWithID(name, name, cancel, child, sessionID, "", 0)
 }
 
@@ -346,7 +347,7 @@ func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
 	r.dispatches[id] = &activeDispatch{
 		ID:        id,
 		Name:      name,
-		Cancel:    func() {},
+		Cancel:    func(string) {},
 		ParentID:  parentID,
 		Depth:     depth,
 		StartedAt: time.Now(),
@@ -360,7 +361,7 @@ func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
 // dispatch ID. This is the primary registration path for parallel-safe
 // dispatches where each instance has a collision-safe agentID.
 // parentID and depth record the dispatch's position in the nesting tree.
-func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child backend.RunBackend, sessionID string, parentID string, depth int) {
+func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(reason string), child backend.RunBackend, sessionID string, parentID string, depth int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -604,7 +605,7 @@ func (r *DispatchRegistry) RecallAll(reason string) int {
 	for _, d := range snapshot {
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallall: cancelling", map[string]any{"run_id": d.ID, "model": d.Name, "session_id": d.SessionID, "reason": reason})
 		if d.Cancel != nil {
-			d.Cancel()
+			d.Cancel(reason)
 		} else {
 			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallall: has nil cancel func, dispatch leaked", map[string]any{"run_id": d.ID, "model": d.Name})
 		}
@@ -679,6 +680,22 @@ func (r *DispatchRegistry) SetChildConvID(id, convID string) {
 	}
 	d.ChildConvID = convID
 	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setchildconvid", map[string]any{"dispatch_id": id, "conversation_id": convID})
+}
+
+// ChildConvIDForID returns the child conversation ID recorded for a live
+// dispatch, or "" when the dispatch is unknown or its child has not yet
+// initialized a conversation. Safe on a nil registry.
+func (r *DispatchRegistry) ChildConvIDForID(id string) string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.dispatches[id]
+	if !ok {
+		return ""
+	}
+	return d.ChildConvID
 }
 
 // LiveConvIDs returns the child conversation IDs of all currently active

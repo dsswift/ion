@@ -133,3 +133,17 @@ jobs:
     with:
       release_report: ${{ needs.release.outputs.release_report }}
     secrets: inherit
+
+  # The jobs of this file, as issues. The build jobs file their own from
+  # inside build.yml, by name; listing `build` here would file the same
+  # failure a second time under a title that says less.
+  report:
+    needs: [release, notify]
+    if: always() && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: File failures and flakes as issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Release failed on main" '${{ toJSON(needs) }}' "The release for this push did not finish."

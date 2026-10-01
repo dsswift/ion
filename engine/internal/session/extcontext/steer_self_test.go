@@ -239,7 +239,7 @@ func TestSteerSelf_DepthN_LiveChildRun_Steers(t *testing.T) {
 
 	// Register this depth-1 dispatch's own child run as steerable + live.
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	registry.RegisterWithID("dispatch-self-abc", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.RegisterWithID("dispatch-self-abc", "depth1-agent", func(string) {}, child, "sess", "", 1)
 	registry.SetChildRunID("dispatch-self-abc", "sess-dispatch-self-abc")
 
 	acc := &steerSelfAccessor{mainLoopLive: true} // would steer main loop if depth-0 path taken
@@ -278,7 +278,7 @@ func TestSteerSelf_DepthN_LiveChildRun_Steers(t *testing.T) {
 func TestSteerSelf_DepthN_IdleChildRun_Sends(t *testing.T) {
 	registry := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultNoRun}
-	registry.RegisterWithID("dispatch-self-xyz", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.RegisterWithID("dispatch-self-xyz", "depth1-agent", func(string) {}, child, "sess", "", 1)
 	registry.SetChildRunID("dispatch-self-xyz", "sess-dispatch-self-xyz")
 
 	acc := &steerSelfAccessor{}
@@ -372,7 +372,7 @@ func TestSteerSelfWithKind_Depth0_LiveRun_CarriesKindToSteer(t *testing.T) {
 func TestSteerSelfWithKind_DepthN_IdleChild_CarriesKindToSendPrompt(t *testing.T) {
 	registry := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultNoRun}
-	registry.RegisterWithID("dispatch-kind-1", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.RegisterWithID("dispatch-kind-1", "depth1-agent", func(string) {}, child, "sess", "", 1)
 	registry.SetChildRunID("dispatch-kind-1", "sess-dispatch-kind-1")
 
 	acc := &steerSelfAccessor{}
@@ -396,7 +396,7 @@ func TestSteerSelfWithKind_DepthN_IdleChild_CarriesKindToSendPrompt(t *testing.T
 func TestSteerSelfWithKind_DepthN_LiveChild_CarriesKindToRegistry(t *testing.T) {
 	registry := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	registry.RegisterWithID("dispatch-kind-2", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.RegisterWithID("dispatch-kind-2", "depth1-agent", func(string) {}, child, "sess", "", 1)
 	registry.SetChildRunID("dispatch-kind-2", "sess-dispatch-kind-2")
 
 	acc := &steerSelfAccessor{}
@@ -467,7 +467,7 @@ func TestSteerSelf_DegradedDeliveryIsMarkedDegraded(t *testing.T) {
 	t.Run("depth N, idle child run", func(t *testing.T) {
 		registry := NewDispatchRegistry()
 		child := &mockSteerableBackend{result: backend.SteerResultNoRun}
-		registry.RegisterWithID("dispatch-degraded-1", "depth1-agent", func() {}, child, "sess", "", 1)
+		registry.RegisterWithID("dispatch-degraded-1", "depth1-agent", func(string) {}, child, "sess", "", 1)
 		registry.SetChildRunID("dispatch-degraded-1", "sess-dispatch-degraded-1")
 
 		acc := &steerSelfAccessor{}
@@ -495,7 +495,7 @@ func TestSteerSelf_DegradedDeliveryIsMarkedDegraded(t *testing.T) {
 func TestSteerSelf_DepthN_ChannelFullIsNotDegraded(t *testing.T) {
 	registry := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultChannelFull}
-	registry.RegisterWithID("dispatch-full-1", "depth1-agent", func() {}, child, "sess", "", 1)
+	registry.RegisterWithID("dispatch-full-1", "depth1-agent", func(string) {}, child, "sess", "", 1)
 	registry.SetChildRunID("dispatch-full-1", "sess-dispatch-full-1")
 
 	acc := &steerSelfAccessor{}

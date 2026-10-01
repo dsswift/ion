@@ -22,7 +22,7 @@ import (
 // without a real child backend.
 func registerTestDispatch(s *engineSession, id, name string) *bool {
 	cancelled := false
-	s.dispatchRegistry.RegisterWithID(id, name, func() { cancelled = true }, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID(id, name, func(string) { cancelled = true }, nil, s.key, "", 1)
 	return &cancelled
 }
 
@@ -324,10 +324,10 @@ func TestAbortDispatch_RecallsTargetAndCascadesLeavingSiblings(t *testing.T) {
 	targetCancelled := false
 	childCancelled := false
 	siblingCancelled := false
-	s.dispatchRegistry.RegisterWithID("target", "dev-lead", func() { targetCancelled = true }, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID("target", "dev-lead", func(string) { targetCancelled = true }, nil, s.key, "", 1)
 	// Child of target: parentID wires the cascade.
-	s.dispatchRegistry.RegisterWithID("child", "specialist", func() { childCancelled = true }, nil, s.key, "target", 2)
-	s.dispatchRegistry.RegisterWithID("sibling", "reviewer", func() { siblingCancelled = true }, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID("child", "specialist", func(string) { childCancelled = true }, nil, s.key, "target", 2)
+	s.dispatchRegistry.RegisterWithID("sibling", "reviewer", func(string) { siblingCancelled = true }, nil, s.key, "", 1)
 
 	if !m.AbortDispatch("dispatch-abort", "target", "user abort (dispatch)") {
 		t.Fatal("AbortDispatch returned false for a live dispatch")
@@ -357,7 +357,7 @@ func TestAbortDispatch_RecallsTargetAndCascadesLeavingSiblings(t *testing.T) {
 // error or a panic.
 func TestAbortDispatch_UnknownIDReturnsFalse(t *testing.T) {
 	m, s := newDispatchAbortSession("dispatch-miss")
-	s.dispatchRegistry.RegisterWithID("live", "dev-lead", func() {}, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID("live", "dev-lead", func(string) {}, nil, s.key, "", 1)
 
 	if m.AbortDispatch("dispatch-miss", "already-finished", "user abort (dispatch)") {
 		t.Error("expected false for an unknown dispatch id")
@@ -390,7 +390,7 @@ func TestAbortAllDescendants_RecallsDispatchesWithZeroHandles(t *testing.T) {
 	m, s := newDispatchAbortSession("zero-handles")
 
 	recalled := false
-	s.dispatchRegistry.RegisterWithID("d1", "researcher", func() { recalled = true }, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID("d1", "researcher", func(string) { recalled = true }, nil, s.key, "", 1)
 
 	// No agent handles registered at all — the engine-native dispatch case.
 	if s.agents.HandleCount() != 0 {
@@ -413,7 +413,7 @@ func TestAbortAllDescendants_RecallsDispatchesWithZeroHandles(t *testing.T) {
 func TestAbortAgentCompatibilityEmptySubtreeReapsDispatches(t *testing.T) {
 	m, s := newDispatchAbortSession("compat-subtree")
 	cancelled := false
-	s.dispatchRegistry.RegisterWithID("legacy-child", "worker", func() { cancelled = true }, nil, s.key, "", 1)
+	s.dispatchRegistry.RegisterWithID("legacy-child", "worker", func(string) { cancelled = true }, nil, s.key, "", 1)
 
 	m.AbortAgent("compat-subtree", "", true)
 	if !cancelled {

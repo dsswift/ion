@@ -1013,3 +1013,30 @@ jobs:
           TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="relay") | .tag_name')
           gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
           echo "published $TAG"
+
+  # The lane's outcome, as issues. Every job above feeds this, so a build or
+  # publish failure is filed instead of sitting on a red run nobody opened. A
+  # dry run files nothing: its red job is the answer the operator asked for.
+  report:
+    needs:
+      - build-engine
+      - engine-checksums
+      - build-engine-image
+      - build-studio-server
+      - studio-server-checksums
+      - build-relay
+      - build-desktop
+      - build-desktop-windows
+      - build-server
+      - publish-engine
+      - publish-server
+      - publish-desktop
+      - publish-relay
+    if: always() && !inputs.dry_run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: File failures and flakes as issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Release build failed on main" '${{ toJSON(needs) }}' "Its release stays a draft until this job passes."

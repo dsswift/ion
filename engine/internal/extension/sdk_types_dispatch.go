@@ -386,6 +386,13 @@ type DispatchAgentResult struct {
 	CacheCreationInputTokens int    `json:"cacheCreationInputTokens,omitempty"`
 	SessionID                string `json:"sessionId,omitempty"`
 
+	// ChildConversationID is the durable conversation the child run wrote,
+	// the same value as the live dispatch entry's ChildConversationID. Set on
+	// every terminal result whose child initialized a conversation; empty on
+	// the asynchronous stub and when the dispatch ended before one existed.
+	// DispatchError and RecallInfo carry the same value for the same dispatch.
+	ChildConversationID string `json:"childConversationId,omitempty"`
+
 	// PlanFilePath is the absolute path of the plan file written by the
 	// child session. Non-empty only when the child was in plan mode and
 	// wrote a plan (regardless of whether it called ExitPlanMode).
@@ -418,6 +425,9 @@ type DispatchError struct {
 	Message    string  `json:"message"`
 	ExitCode   int     `json:"exitCode"`
 	Elapsed    float64 `json:"elapsed"`
+	// ChildConversationID is the durable conversation the failed child wrote.
+	// Empty when the dispatch failed before its child conversation existed.
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // RecallInfo describes a recalled (cancelled) background dispatch.
@@ -428,6 +438,10 @@ type RecallInfo struct {
 	Reason     string  `json:"reason"`
 	Elapsed    float64 `json:"elapsed"`
 	ToolCount  int     `json:"toolCount"`
+	// ChildConversationID is the durable conversation the recalled child
+	// wrote, holding whatever it did before the recall. Empty when the
+	// dispatch was recalled before its child conversation existed.
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // RecallAgentOpts configures the published name-addressed recall operation.

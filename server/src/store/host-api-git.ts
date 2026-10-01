@@ -10,6 +10,7 @@ import {
   syncWorktreeFromSource,
 } from '../worktree/integrate'
 import {
+  closeWorktreeTitleSeed,
   lookupWorktreeRegistration,
   registerWorktree,
   setWorktreeStage,
@@ -153,6 +154,10 @@ export async function gitWorktreeSetTitle(args: { worktreePath: string; repoPath
  * Stamp a worktree with its conversation's name, without overriding a name it
  * already has.
  *
+ * Only the first prompt sent in a worktree may name it. A worktree that has
+ * already been prompted in is refused even when it has no name, so a later
+ * conversation never names a worktree the first one left alone.
+ *
  * `replaces` is the one exception: the name this same conversation stamped a
  * moment ago (its placeholder, taken from the prompt). The stored title is
  * swapped only while it still equals that string, so a generated title can
@@ -168,9 +173,22 @@ export async function gitWorktreeSeedTitle(worktreePath: string, title: string, 
   if (registration.title && registration.title !== replaces?.trim()) {
     return { ok: false, reason: 'already-titled' as const, title: registration.title }
   }
+  if (!registration.title && !registration.awaitingFirstPrompt) {
+    return { ok: false, reason: 'not-first-prompt' as const }
+  }
   if (!setWorktreeTitle(worktreePath, trimmed)) return { ok: false, reason: 'persist-failed' as const }
   await announceWorktreeTitle(registration.repoPath, worktreePath, trimmed)
   return { ok: true, title: trimmed }
+}
+
+/**
+ * Record that a worktree's first prompt was sent without naming it, so no later
+ * conversation names it either. `closed` is false when there was nothing to
+ * close: not a registered worktree, or already prompted in.
+ */
+export function gitWorktreeCloseTitleSeed(worktreePath: string) {
+  if (!worktreePath || !isValidProjectPath(worktreePath)) return Promise.resolve({ closed: false })
+  return Promise.resolve({ closed: closeWorktreeTitleSeed(worktreePath) })
 }
 
 export function gitWorktreeSetStage(args: { worktreePath: string; repoPath?: string; stage: import('@ion/shared/types-git').WorkStage | null }) {

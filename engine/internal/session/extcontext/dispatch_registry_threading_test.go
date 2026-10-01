@@ -47,7 +47,7 @@ func TestDispatchRegistryThreading_Depth2Registration(t *testing.T) {
 	registry.RegisterWithID(
 		depth1AgentID,
 		depth1Name,
-		func() {},               // cancel noop
+		func(string) {},         // cancel noop
 		backend.NewApiBackend(), // child backend placeholder
 		"session-root",
 		"", // parentID: root has no parent dispatch
@@ -62,7 +62,7 @@ func TestDispatchRegistryThreading_Depth2Registration(t *testing.T) {
 	registry.RegisterWithID(
 		depth2AgentID,
 		depth2Name,
-		func() {},
+		func(string) {},
 		backend.NewApiBackend(),
 		"session-root",
 		depth1AgentID, // parentID: depth-2 is a child of depth-1
@@ -104,7 +104,7 @@ func TestDispatchRegistryThreading_Depth2ActiveNamesExcludesUnregistered(t *test
 	registry.RegisterWithID(
 		"dispatch-worker-111-aaa",
 		"worker",
-		func() {},
+		func(string) {},
 		backend.NewApiBackend(),
 		"session-root",
 		"",

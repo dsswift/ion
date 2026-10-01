@@ -25,7 +25,7 @@ func controlTree(t *testing.T) (*DispatchRegistry, map[string]*mockSteerableBack
 		if d.parent != "" {
 			depth = 2
 		}
-		r.RegisterWithID(d.id, d.name, func() {}, child, "sess", d.parent, depth)
+		r.RegisterWithID(d.id, d.name, func(string) {}, child, "sess", d.parent, depth)
 		r.SetChildRunID(d.id, "run-"+d.id)
 	}
 	return r, children
@@ -82,7 +82,7 @@ func TestSteerOwnedByName_SearchesOwnedScope(t *testing.T) {
 	r, children := controlTree(t)
 	// b gets its own "worker" child: same name as a1, different branch.
 	bChild := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	r.RegisterWithID("b1", "worker", func() {}, bChild, "sess", "b", 2)
+	r.RegisterWithID("b1", "worker", func(string) {}, bChild, "sess", "b", 2)
 	r.SetChildRunID("b1", "run-b1")
 
 	if got := r.SteerOwnedByName("a", "worker", "msg"); got.Outcome != SteerOutcomeDelivered || !children["a1"].called || bChild.called {
@@ -120,9 +120,9 @@ func TestRecallOwnedByID_CompletedAndUnauthorized(t *testing.T) {
 // to fail closed on the missing link.
 func TestOwnership_WalksThroughFinishedParent(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("a", "lead", func() {}, nil, "sess", "", 1)
-	r.RegisterWithID("a1", "worker", func() {}, nil, "sess", "a", 2)
-	r.RegisterWithID("a2", "helper", func() {}, nil, "sess", "a1", 3)
+	r.RegisterWithID("a", "lead", func(string) {}, nil, "sess", "", 1)
+	r.RegisterWithID("a1", "worker", func(string) {}, nil, "sess", "a", 2)
+	r.RegisterWithID("a2", "helper", func(string) {}, nil, "sess", "a1", 3)
 	r.Deregister("a1", DispatchOutcome{Status: DispatchStatusDone})
 
 	if owned, found := r.OwnsDispatch("a", "a2"); !found || !owned {
@@ -139,7 +139,7 @@ func TestOwnership_WalksThroughFinishedParent(t *testing.T) {
 // holds live answers unauthorized and reports both registries.
 func TestControl_CrossRegistryIsUnauthorizedAndReported(t *testing.T) {
 	holder := NewDispatchRegistry()
-	holder.RegisterWithID("held-1", "worker", func() {}, nil, "other-session", "", 1)
+	holder.RegisterWithID("held-1", "worker", func(string) {}, nil, "other-session", "", 1)
 	holder.RegisterAlias("local-held", "held-1")
 	t.Cleanup(func() { holder.RecallAll("test cleanup") })
 
@@ -190,10 +190,10 @@ func TestTerminalObserver_ReceivesEveryRetirement(t *testing.T) {
 			seen = append(seen, e.DispatchID+":"+e.Status)
 		}
 	})
-	r.RegisterWithID("done-1", "w", func() {}, nil, "s", "", 1)
-	r.RegisterWithID("recalled-1", "w", func() {}, nil, "s", "", 1)
-	r.RegisterWithID("recalled-1a", "w", func() {}, nil, "s", "recalled-1", 2)
-	r.RegisterWithID("torn-down-1", "w", func() {}, nil, "s", "", 1)
+	r.RegisterWithID("done-1", "w", func(string) {}, nil, "s", "", 1)
+	r.RegisterWithID("recalled-1", "w", func(string) {}, nil, "s", "", 1)
+	r.RegisterWithID("recalled-1a", "w", func(string) {}, nil, "s", "recalled-1", 2)
+	r.RegisterWithID("torn-down-1", "w", func(string) {}, nil, "s", "", 1)
 
 	r.Deregister("done-1", DispatchOutcome{Status: DispatchStatusDone})
 	r.RecallByID("recalled-1", "stop")
@@ -209,7 +209,7 @@ func TestTerminalObserver_ReceivesEveryRetirement(t *testing.T) {
 // completion order, a retained ID is not duplicated, and the bound applies.
 func TestSeedHistory_OrdersAndDedupes(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("live-done", "w", func() {}, nil, "s", "", 1)
+	r.RegisterWithID("live-done", "w", func(string) {}, nil, "s", "", 1)
 	r.Deregister("live-done", DispatchOutcome{Status: DispatchStatusDone})
 
 	now := time.Now()

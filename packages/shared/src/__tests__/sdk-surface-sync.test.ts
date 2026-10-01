@@ -261,6 +261,8 @@ function extractWireFields(filePath: string, wanted: Set<string>): Record<string
 const DISPATCH_WIRE_TYPES = [
   "DispatchAgentOpts",
   "DispatchAgentResult",
+  "DispatchError",
+  "RecallInfo",
   "ContextPolicy",
   "SendPromptOpts",
 ] as const;

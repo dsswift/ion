@@ -30,7 +30,7 @@ func TestDispatchRegistry_SteerByID_ResolvesConsumerAlias(t *testing.T) {
 	const canonical = "dispatch-dev-lead-1787795586440-6f8e281ecd70"
 	const consumerID = "local-1787795586436-47f66a"
 
-	r.RegisterWithID(canonical, "dev-lead", func() {}, child, "sess-1", "", 1)
+	r.RegisterWithID(canonical, "dev-lead", func(string) {}, child, "sess-1", "", 1)
 	r.SetChildRunID(canonical, "sess-1-"+canonical)
 	r.RegisterAlias(consumerID, canonical)
 
@@ -62,7 +62,7 @@ func TestDispatchRegistry_Alias_DroppedOnDeregister(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-a", "agent", func() {}, child, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-a", "agent", func(string) {}, child, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-a", "run-a")
 	r.RegisterAlias("local-1", "dispatch-a")
 
@@ -86,9 +86,9 @@ func TestDispatchRegistry_Alias_NeverRebinds(t *testing.T) {
 	first := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	second := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-first", "agent", func() {}, first, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-first", "agent", func(string) {}, first, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-first", "run-first")
-	r.RegisterWithID("dispatch-second", "agent", func() {}, second, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-second", "agent", func(string) {}, second, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-second", "run-second")
 
 	r.RegisterAlias("dup", "dispatch-first")
@@ -113,9 +113,9 @@ func TestDispatchRegistry_Alias_NeverShadowsCanonicalID(t *testing.T) {
 	real := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	other := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-real", "agent", func() {}, real, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-real", "agent", func(string) {}, real, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-real", "run-real")
-	r.RegisterWithID("dispatch-other", "agent", func() {}, other, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-other", "agent", func(string) {}, other, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-other", "run-other")
 
 	// A pathological alias pointing an existing canonical id elsewhere.
@@ -157,7 +157,7 @@ func TestDispatchRegistry_SteerByID_ReservedReportsNoRun(t *testing.T) {
 func TestDispatchRegistry_SteerByID_RegisteredWithoutChildRunIDReportsNoRun(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
-	r.RegisterWithID("dispatch-nochild", "agent", func() {}, child, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-nochild", "agent", func(string) {}, child, "sess-1", "", 1)
 	// SetChildRunID deliberately not called.
 
 	if got := r.SteerByID("dispatch-nochild", "early"); got != SteerOutcomeNoRun {
@@ -184,7 +184,7 @@ func TestDispatchRegistry_RecallByID_ResolvesConsumerAlias(t *testing.T) {
 	cancelled := false
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-real", "agent", func() { cancelled = true }, child, "sess-1", "", 1)
+	r.RegisterWithID("dispatch-real", "agent", func(string) { cancelled = true }, child, "sess-1", "", 1)
 	r.SetChildRunID("dispatch-real", "run-real")
 	r.RegisterAlias("local-42", "dispatch-real")
 

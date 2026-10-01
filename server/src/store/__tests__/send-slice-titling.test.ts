@@ -79,6 +79,7 @@ const mockGenerateTitle = vi.fn(async (..._a: any[]) => '')
 const mockSaveSessionLabel = vi.fn(async (..._a: any[]) => {})
 const mockTabMetaChanged = vi.fn()
 const mockWorktreeSeedTitle = vi.fn(async (..._a: any[]) => ({ ok: false, reason: 'not-a-worktree' as const }))
+const mockWorktreeCloseTitleSeed = vi.fn(async (..._a: any[]) => ({ closed: true }))
 
 vi.mock('../host-api', () => ({
   echoUserTurnToStudio: vi.fn(),
@@ -89,6 +90,7 @@ vi.mock('../host-api', () => ({
   saveSessionLabel: (...args: any[]) => mockSaveSessionLabel(...args),
   tabMetaChanged: (...args: any[]) => mockTabMetaChanged(...args),
   gitWorktreeSeedTitle: (...args: any[]) => mockWorktreeSeedTitle(...args),
+  gitWorktreeCloseTitleSeed: (...args: any[]) => mockWorktreeCloseTitleSeed(...args),
   cancelBash: vi.fn(),
   engineAbort: vi.fn(),
   closeTab: vi.fn(),
@@ -355,7 +357,9 @@ describe('send-slice — worktree seeding', () => {
   /**
    * A slash command is an OPERATION, not a description of the work. It never
    * names anything: the tab keeps the literal command it was given at send time,
-   * and the worktree stays on its slug until a real prompt arrives.
+   * and the worktree stays on its slug. It was still the worktree's first
+   * prompt, so it is recorded as sent and no later conversation names the
+   * worktree in its place.
    */
   it('seeds nothing for a slash command, which is an operation not a description', async () => {
     const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
@@ -365,6 +369,7 @@ describe('send-slice — worktree seeding', () => {
 
     expect(mockGenerateTitle).not.toHaveBeenCalled()
     expect(mockWorktreeSeedTitle).not.toHaveBeenCalled()
+    expect(mockWorktreeCloseTitleSeed).toHaveBeenCalledWith('/wt/ion-a3f1')
   })
 
   /**

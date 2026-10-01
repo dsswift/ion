@@ -225,28 +225,46 @@ type DispatchAgentResult struct {
 	CacheReadInputTokens     int    `json:"cacheReadInputTokens,omitempty"`
 	CacheCreationInputTokens int    `json:"cacheCreationInputTokens,omitempty"`
 	SessionID                string `json:"sessionId,omitempty"`
-	PlanFilePath             string `json:"planFilePath,omitempty"`
-	PlanExited               bool   `json:"planExited,omitempty"`
-	Depth                    int    `json:"depth,omitempty"`
-	ParentDispatchID         string `json:"parentDispatchId,omitempty"`
+	// ChildConversationID is the durable conversation the child wrote. Set on
+	// terminal results whose child initialized a conversation; empty on the
+	// asynchronous stub and when the dispatch ended before one existed.
+	// DispatchError and RecallInfo carry the same value for the same dispatch.
+	ChildConversationID string `json:"childConversationId,omitempty"`
+	PlanFilePath        string `json:"planFilePath,omitempty"`
+	PlanExited          bool   `json:"planExited,omitempty"`
+	Depth               int    `json:"depth,omitempty"`
+	ParentDispatchID    string `json:"parentDispatchId,omitempty"`
 }
 
 // DispatchError is a failed asynchronous dispatch.
 type DispatchError struct {
-	Name       string  `json:"name"`
+	Name string `json:"name"`
+	// CallbackID is echoed from the request. Empty unless the caller supplied
+	// one; this SDK's own routing does not use it.
+	CallbackID string  `json:"callbackId,omitempty"`
 	DispatchID string  `json:"dispatchId,omitempty"`
 	Message    string  `json:"message"`
 	ExitCode   int     `json:"exitCode"`
 	Elapsed    float64 `json:"elapsed"`
+	// ChildConversationID is the durable conversation the failed child wrote.
+	// Empty when the dispatch failed before its child conversation existed.
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // RecallInfo describes a cancelled asynchronous dispatch.
 type RecallInfo struct {
-	Name       string  `json:"name"`
+	Name string `json:"name"`
+	// CallbackID is echoed from the request. Empty unless the caller supplied
+	// one; this SDK's own routing does not use it.
+	CallbackID string  `json:"callbackId,omitempty"`
 	DispatchID string  `json:"dispatchId,omitempty"`
 	Reason     string  `json:"reason"`
 	Elapsed    float64 `json:"elapsed"`
 	ToolCount  int     `json:"toolCount"`
+	// ChildConversationID is the durable conversation the recalled child
+	// wrote, holding whatever it did before the recall. Empty when the
+	// dispatch was recalled before its child conversation existed.
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // SteerDispatchResult reports whether a steer message reached its target.

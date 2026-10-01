@@ -1,7 +1,7 @@
 import { conversationPreferencesFor } from '../conversation-preferences-read'
 import { parseSlash } from '../../slash-parse'
 import { rDebug, rWarn } from '../rendererLogger'
-import { generateTitle, gitWorktreeSeedTitle } from '../host-api'
+import { generateTitle, gitWorktreeCloseTitleSeed, gitWorktreeSeedTitle } from '../host-api'
 
 /**
  * The two placeholder titles a tab can carry before anything has named it.
@@ -47,7 +47,8 @@ export function isPlaceholderTitle(title: string): boolean {
  *     work: the tab title was already set to the literal command at send time,
  *     and preserving it means the user sees exactly which command was invoked
  *     rather than an LLM interpretation of it. A worktree whose first prompt is
- *     `/align` is not named by it. parseSlash is the canonical slash parser; we
+ *     `/align` is not named by it, and stays unnamed: that prompt was still
+ *     the worktree's first, so it is recorded as sent. parseSlash is the canonical slash parser; we
  *     trim first because parseSlash requires the text to start with `/` and
  *     does not trim, and "the first part of the prompt is a slash command"
  *     should tolerate stray leading whitespace.
@@ -61,10 +62,10 @@ export function isPlaceholderTitle(title: string): boolean {
  *
  * ── "First PROMPT wins, not first tab." ─────────────────────────────────────
  * Several conversations routinely share one worktree, and each of their first
- * sends reaches this helper. A seed is refused for a worktree that already has
- * a title, so whichever conversation prompts first names it and every later one
- * is a logged no-op — the worktree's topic does not change because someone
- * opened a second tab in it to chase a bug. The same refusal protects a name
+ * sends reaches this helper. Only the first of them may name the worktree, and
+ * every later one is a logged no-op — the worktree's topic does not change
+ * because someone opened a second tab in it to chase a bug. That holds whether
+ * or not the first prompt left a name behind. The same refusal protects a name
  * the operator typed.
  *
  * This is fire-and-forget: no async call is awaited. On any failure we keep
@@ -84,6 +85,7 @@ export function maybeSendTimeTitle(
   const slash = parseSlash(text.trim())
   if (slash) {
     rDebug('event.title', 'slash command, skipping titling for tab and worktree', { tab_id: tabId.slice(0, 8), command: slash.command })
+    closeWorktreeTitleSeed(workingDirectory)
     return
   }
 
@@ -143,6 +145,22 @@ export function seedWorktreeTitle(workingDirectory: string, title: string, repla
     }
   }).catch((err) => {
     rWarn('event.title', 'worktree seed call failed', { dir: workingDirectory, error: String(err) })
+  })
+}
+
+/**
+ * Record that a worktree's first prompt named nothing, so that no later
+ * conversation names the worktree in its place.
+ */
+function closeWorktreeTitleSeed(workingDirectory: string): void {
+  if (!workingDirectory || workingDirectory === '~') {
+    return
+  }
+
+  gitWorktreeCloseTitleSeed(workingDirectory).then((result) => {
+    rDebug('event.title', result.closed ? 'worktree left unnamed by its first prompt' : 'no worktree naming to close', { dir: workingDirectory })
+  }).catch((err) => {
+    rWarn('event.title', 'worktree seed close failed', { dir: workingDirectory, error: String(err) })
   })
 }
 

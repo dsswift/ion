@@ -70,8 +70,8 @@ func requireRecallDispatchIDs(t *testing.T, entries []map[string]any, want ...st
 func TestDispatchRegistryRecallLogsCanonicalDispatchID(t *testing.T) {
 	snapshot := captureRecallLogFields(t)
 	r := NewDispatchRegistry()
-	r.RegisterWithID("parent-id", "parent", func() {}, nil, "session", "", 1)
-	r.RegisterWithID("child-id", "child", func() {}, nil, "session", "parent-id", 2)
+	r.RegisterWithID("parent-id", "parent", func(string) {}, nil, "session", "", 1)
+	r.RegisterWithID("child-id", "child", func(string) {}, nil, "session", "parent-id", 2)
 
 	if got := r.RecallOwnedByName("", "parent", "test"); got.Outcome != RecallOutcomeRecalled {
 		t.Fatalf("RecallOwnedByName = %+v, want recalled", got)
@@ -87,8 +87,8 @@ func TestDispatchRegistryRecallLogsCanonicalDispatchID(t *testing.T) {
 func TestDispatchRegistryRecallByIDLogsCanonicalDispatchID(t *testing.T) {
 	snapshot := captureRecallLogFields(t)
 	r := NewDispatchRegistry()
-	r.RegisterWithID("parent-id", "parent", func() {}, nil, "session", "", 1)
-	r.RegisterWithID("child-id", "child", func() {}, nil, "session", "parent-id", 2)
+	r.RegisterWithID("parent-id", "parent", func(string) {}, nil, "session", "", 1)
+	r.RegisterWithID("child-id", "child", func(string) {}, nil, "session", "parent-id", 2)
 
 	if !r.RecallByID("parent-id", "test") {
 		t.Fatal("RecallByID returned false")
