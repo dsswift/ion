@@ -67,6 +67,7 @@ import { resolveStudioResponsiveLayout } from '../responsive-layout'
 import { useResourceBootstrap } from "../hooks/useResourceBootstrap";
 import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
+import { ProviderSubscriptionPrompt } from "./ProviderSubscriptionPrompt";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
 import { RemoteDirectoryPicker } from "../components/RemoteDirectoryPicker";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -527,6 +528,7 @@ export function StudioShell(): React.JSX.Element {
         />
         <ScratchCloseDialog />
         <DeepLinkConfirmDialog />
+        <ProviderSubscriptionPrompt />
         <RemoteDirectoryPicker />
         <SavePathPromptHost />
         <UpdateDialog />

@@ -43,7 +43,7 @@ describe('ProviderSubscriptionGroup', () => {
       ok: true, subscription: { state: 'applied', provider: 'gateway', options, selected: options[1], source: 'lookup' },
     })
     await h.render(<ProviderSubscriptionGroup />)
-    expect(text()).toContain('Choose the one to use')
+    expect(text()).toContain('Choose the subscription your account uses')
     // The row names the provider the key configures, by its display name.
     expect(text()).toContain('Corporate Gateway subscription')
 

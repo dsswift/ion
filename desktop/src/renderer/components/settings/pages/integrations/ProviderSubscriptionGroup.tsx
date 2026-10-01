@@ -11,15 +11,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { ArrowClockwise, Check } from '@phosphor-icons/react'
 import type { ProviderSubscriptionStatus } from '@ion/shared/types-engine-event'
-import type { ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
+import { subscriptionProviderName, type ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
 import { useSettingsShell } from '../../settings-shell'
 import { Button, FormGroup, FormRow, Inline, Select } from '../../kit'
 import { rError, rInfo, rWarn } from '../../../../rendererLogger'
-
-/** The provider the key configures, as the model picker names it. */
-export function providerName(status: ProviderSubscriptionStatus): string {
-  return status.providerDisplayName || status.provider || 'Provider'
-}
 
 /** What the row says for each state. The row's label names the provider. */
 function describeState(status: ProviderSubscriptionStatus): string {
@@ -31,7 +26,7 @@ function describeState(status: ProviderSubscriptionStatus): string {
     case 'applied':
       return `Using ${status.selected?.label ?? 'your subscription'}.`
     case 'selection_required':
-      return 'Your account has several subscriptions. Choose the one to use.'
+      return 'Choose the subscription your account uses.'
     case 'none':
       return 'Your account has no subscription. Contact your administrator for access.'
     case 'failed':
@@ -101,7 +96,7 @@ export function ProviderSubscriptionGroup(): React.JSX.Element | null {
 
   return (
     <FormGroup title="Provider subscription" anchor="provider-subscription">
-      <FormRow label={`${providerName(status)} subscription`} description={describeState(status)} warning={warning}>
+      <FormRow label={`${subscriptionProviderName(status)} subscription`} description={describeState(status)} warning={warning}>
         <Inline>
           {canChoose && (
             <Select aria-label="Subscription" width={200} value={choice} disabled={busy} onChange={(e) => setChoice(e.target.value)}>
