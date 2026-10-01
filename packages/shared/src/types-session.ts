@@ -270,7 +270,7 @@ export interface TabState {
   /** True while waiting for the user to pick a source branch in the BranchPickerDialog */
   pendingWorktreeSetup: boolean;
   /** Set by `transfer.export`, read by `prompt-acceptance.ts` to refuse prompts. See PersistedTab.sealPending. */
-  sealPending?: { targetEnvironmentId: string; since: number } | null;
+  sealPending?: { targetEnvironmentId: string; since: number; carriesWorktree?: boolean } | null;
   /**
    * Absolute context-window occupancy in tokens for the tab's active
    * conversation instance, mirrored from `statusFields.contextTokens`.
