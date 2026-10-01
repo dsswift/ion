@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -142,10 +143,11 @@ func (d *Deployer) prepareArtifacts(ctx context.Context, p *Prepared, stamp stri
 			go func(key string, b BuildPlan) {
 				defer wg.Done()
 				d.emitFor(p.Targets, key, StageBuilding, "building on "+b.Builder.Name)
+				report := func(detail string) { d.emitFor(p.Targets, key, StageBuilding, detail) }
 				var a artifact
-				a.err = d.withLog("build-"+strings.ReplaceAll(key, "/", "-")+"-on-"+b.Builder.Name, stamp, func(log io.Writer) error {
+				a.err = d.withLog("build-"+strings.ReplaceAll(key, "/", "-")+"-on-"+b.Builder.Name, stamp, report, func(log io.Writer) error {
 					var err error
-					a, err = d.buildOnHost(ctx, b, p.Request.Checkout, log)
+					a, err = d.buildOnHost(ctx, b, p.Request.Checkout, log, report)
 					return err
 				})
 				set(key, a)
@@ -161,6 +163,7 @@ func (d *Deployer) prepareArtifacts(ctx context.Context, p *Prepared, stamp stri
 func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, stamp string) artifact {
 	req := p.Request
 	given := req.Artifact
+	report := func(detail string) { d.emitFor(p.Targets, key, StageBuilding, detail) }
 	switch {
 	case given != "":
 		if t.Component == ComponentServer {
@@ -182,7 +185,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 		return d.Artifacts.existingBuild(req.Checkout, t, key)
 	case t.Component == ComponentServer:
 		d.emitFor(p.Targets, key, StageBuilding, "packaging the Studio Server bundle for "+t.GOOS+"/"+t.GOARCH)
-		if err := d.withLog("build-server-"+t.GOOS+"-"+t.GOARCH, stamp, func(log io.Writer) error {
+		if err := d.withLog("build-server-"+t.GOOS+"-"+t.GOARCH, stamp, report, func(log io.Writer) error {
 			return d.Artifacts.BuildServer(ctx, req.Checkout, t.GOOS, t.GOARCH, log)
 		}); err != nil {
 			return artifact{err: fmt.Errorf("the %s/%s bundle did not build: %w", t.GOOS, t.GOARCH, err)}
@@ -191,7 +194,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 	case t.GOOS == "windows":
 		d.emitFor(p.Targets, key, StageBuilding, "building the Windows desktop installer (make.ps1 installer)")
 		var exe string
-		err := d.withLog("build-desktop-windows-"+t.GOARCH, stamp, func(log io.Writer) error {
+		err := d.withLog("build-desktop-windows-"+t.GOARCH, stamp, report, func(log io.Writer) error {
 			var buildErr error
 			exe, buildErr = d.Artifacts.BuildWindowsDesktop(ctx, req.Checkout, t.GOARCH, log)
 			return buildErr
@@ -200,7 +203,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 	default:
 		d.emitFor(p.Targets, key, StageBuilding, "building the desktop installer (make desktop-pkg)")
 		var pkg string
-		err := d.withLog("build-desktop", stamp, func(log io.Writer) error {
+		err := d.withLog("build-desktop", stamp, report, func(log io.Writer) error {
 			var buildErr error
 			pkg, buildErr = d.Artifacts.BuildDesktop(ctx, req.Checkout, log)
 			return buildErr
@@ -217,14 +220,31 @@ func (d *Deployer) emitFor(targets []Target, key, stage, detail string) {
 	}
 }
 
-// withLog runs fn with a log file for a build step.
-func (d *Deployer) withLog(name, stamp string, fn func(io.Writer) error) error {
+// withLog runs fn with a log file for a build step. Every line of the log
+// carries the time and the time since the step began, and report hears a
+// heartbeat while the step runs, so a slow build and a hung one look
+// different.
+func (d *Deployer) withLog(name, stamp string, report func(detail string), fn func(io.Writer) error) error {
 	f, err := os.OpenFile(d.logPath(name, stamp), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // log file; the step's own error is the one reported
-	return fn(d.echoed(f, name))
+	sw := newStampWriter(d.echoed(f, name))
+	defer heartbeat(name, "", sw, true, report)()
+	started := time.Now()
+	err = fn(sw)
+	fields := map[string]any{"step": name, "seconds": int(time.Since(started).Seconds()), "ok": err == nil}
+	if err != nil {
+		fields["error"] = err.Error()
+	}
+	utils.LogWithFields(utils.LevelInfo, logTag, "deploy build step finished", fields)
+	if err != nil {
+		sw.note(fmt.Sprintf("failed after %s: %v", formatElapsed(time.Since(started)), err))
+	} else {
+		sw.note("finished in " + formatElapsed(time.Since(started)))
+	}
+	return err
 }
 
 // echoed copies a log to Echo too, each line prefixed with its source.
@@ -273,6 +293,25 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 	}
 	defer logFile.Close() //nolint:errcheck // log file; the deploy's own error is the one reported
 	d.emit(h.Name, StageDeploying, "")
+	started := time.Now()
+	sw := newStampWriter(d.echoed(logFile, h.Name))
+	var step atomic.Value
+	stopBeat := heartbeat("deploy to "+h.Name, h.Name, nil, false, func(string) {
+		cur, ok := step.Load().(string)
+		if !ok {
+			cur = "starting"
+		}
+		d.emit(h.Name, StageDeploying, fmt.Sprintf("%s (%s)", cur, formatElapsed(time.Since(started))))
+	})
+	defer stopBeat()
+	defer func() {
+		fields := map[string]any{"fleet_host": h.Name, "seconds": int(time.Since(started).Seconds()), "ok": res.OK}
+		if res.Error != "" {
+			fields["error"] = res.Error
+		}
+		utils.LogWithFields(utils.LevelInfo, logTag, "deploy host finished", fields)
+		sw.note(fmt.Sprintf("deploy to %s took %s", h.Name, formatElapsed(time.Since(started))))
+	}()
 
 	if t.Component == ComponentServer && p.Request.Source == SourceRelease {
 		out, err := runIon(ctx, d.Runner, h, []string{"studio", "update", "--yes"}, nil)
@@ -284,7 +323,7 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 		d.emit(h.Name, StageDone, "updated to "+p.Latest.Server)
 		return res
 	}
-	w := d.echoed(logFile, h.Name)
+	w := io.Writer(sw)
 	art := arts[artifactKey(t)]
 	if art.err != nil {
 		return fail(art.err)
@@ -292,6 +331,10 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 	opts, err := d.installOptions(p, t, keys, keyErrs, interactive)
 	if err != nil {
 		return fail(err)
+	}
+	opts.OnStep = func(s string) {
+		step.Store(s)
+		d.emit(h.Name, StageDeploying, s)
 	}
 	r := terminalRunner{Runner: d.Runner, exec: d.exec}
 	var rec Receipt

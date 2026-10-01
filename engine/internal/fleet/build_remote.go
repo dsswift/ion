@@ -272,9 +272,9 @@ echo "ARTIFACT=$PKG"
 
 // buildOnHost ships the checkout to the builder, builds there, and fetches
 // the artifact into the local artifacts folder.
-func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string, w io.Writer) (artifact, error) {
+func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string, w io.Writer, report func(step string)) (artifact, error) {
 	h := *b.Builder
-	log := installLog{w: w, host: h.Name}
+	log := newInstallLog(w, h.Name, InstallOptions{OnStep: report})
 	stamp, archive, err := d.checkoutArchive(ctx, checkout)
 	if err != nil {
 		return artifact{}, err

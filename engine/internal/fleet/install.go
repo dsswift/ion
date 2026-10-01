@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -33,6 +34,8 @@ type InstallOptions struct {
 	// Pair mints a pairing link with this label once the host's server is
 	// up; empty mints none.
 	Pair string
+	// OnStep hears each step as it starts, for a live view.
+	OnStep func(step string)
 
 	// Relay puts the host on this relay; RelayOIDC when the relay signs the
 	// host's operator in, else RelayKey is its pre-shared key. The key only
@@ -69,14 +72,38 @@ type Receipt struct {
 // installLog is one install's log: the steps a person reads, and the
 // structured log line for each.
 type installLog struct {
-	w    io.Writer
-	host string
+	w      io.Writer
+	host   string
+	onStep func(string)
+	// prev is the step in progress, shared by every copy of the log, so each
+	// step's log line says how long the one before it took.
+	prev *stepMark
+}
+
+type stepMark struct {
+	name string
+	at   time.Time
+}
+
+func newInstallLog(w io.Writer, host string, o InstallOptions) installLog {
+	return installLog{w: w, host: host, onStep: o.OnStep, prev: &stepMark{}}
 }
 
 func (l installLog) step(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(l.w, "\n==> %s\n", msg) //nolint:errcheck // a log file; the install's own result is what is reported
-	utils.LogWithFields(utils.LevelInfo, logTag, "install step", map[string]any{"fleet_host": l.host, "step": msg})
+	fields := map[string]any{"fleet_host": l.host, "step": msg}
+	if l.prev != nil {
+		if l.prev.name != "" {
+			fields["previous_step"] = l.prev.name
+			fields["previous_step_seconds"] = int(time.Since(l.prev.at).Seconds())
+		}
+		l.prev.name, l.prev.at = msg, time.Now()
+	}
+	utils.LogWithFields(utils.LevelInfo, logTag, "install step", fields)
+	if l.onStep != nil {
+		l.onStep(msg)
+	}
 }
 
 func (l installLog) note(format string, args ...any) {
