@@ -31,6 +31,7 @@ import { ComposerStopButton } from './composer/ComposerStopButton'
 import { InputLockNotice } from './InputLockNotice'
 import { ContextCapacityNotice } from './ContextCapacityNotice'
 import { ImageModelNotice } from './ImageModelNotice'
+import { ManagedModeNotice } from './ManagedModeNotice'
 import { usePresenceStore, drivingSubjectFor } from '../stores/presence-store'
 import { INPUT_MAX_HEIGHT, INPUT_MIN_HEIGHT } from './input-bar-layout'
 import { ComposerEditor, type ComposerEditorHandle } from './composer/ComposerEditor'
@@ -498,6 +499,8 @@ export function InputBar() {
           onPick={mentions.pick}
         />
       )}
+
+      <ManagedModeNotice colors={colors} />
 
       <ImageModelNotice visible={isImageModel} border={colors.containerBorder} text={colors.textTertiary} hasAttachments={hasAttachments} />
 

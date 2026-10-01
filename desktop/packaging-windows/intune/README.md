@@ -37,12 +37,20 @@ because ARM64 is a developer build rather than a deployment target.
 
 | Setting | Value |
 |---------|-------|
-| Install command | `Ion-Setup-<version>-x64.exe /S /allusers` |
+| Install command | `Ion-Setup-<version>-x64.exe /S /allusers /managed` |
 | Uninstall command | `"%ProgramFiles%\Ion\Uninstall Ion.exe" /allusers /S` |
 | Install behavior | System |
 | Device restart behavior | No specific action |
-| Return codes | `0` = Success, `2` = Failed, `3` = Failed. See below. |
+| Return codes | `0` = Success, `2`, `3`, `4`, `5` = Failed. See below. |
 | Detection rule | Use a custom detection script; upload the stamped `Detect-Ion.ps1`. Run as 32-bit: **No**. Enforce script signature check: **No**. |
+
+`/managed` marks the device as managed by writing
+`%ProgramData%\Ion\managed.json` once that directory has been restricted to
+administrators. A managed engine ignores `ION_ENTERPRISE_CONFIG` and locks,
+rather than running unrestricted, when no enterprise policy is found. The
+marker is independent of the policy package, so a device whose policy never
+arrived or was later removed is still treated as managed. Uninstall leaves it
+in place, and an upgrade that omits the switch leaves an existing marker alone.
 
 `/S` is silent. `/allusers` is redundant now that the installer is built
 per-machine only (`build.nsis.perMachine`), but it is kept in the documented
@@ -71,9 +79,11 @@ command version-independent.
 | `0` | Installed. |
 | `2` | NSIS aborted before installing anything. Almost always the single-instance guard: the installer takes a named mutex on its GUID and aborts immediately if one already exists. A previous installer process still running -- including one hung from an earlier attempt -- makes every later silent install return `2` in under a second, without touching the disk. |
 | `3` | The application files did not unpack, so nothing was installed. The installer checks that its own executable is present before writing registry keys or shortcuts, and stops rather than reporting success. |
+| `4` | `%ProgramData%\Ion` could not be created or restricted to administrators, so machine policy would have been writable by standard users. |
+| `5` | `/managed` was given and the managed-mode marker could not be written. |
 
-Map `2` and `3` to **Failed** in the Win32 app's return-code table. Both mean
-nothing was installed, and both are worth retrying only after reading the log.
+Map `2`, `3`, `4` and `5` to **Failed** in the Win32 app's return-code table.
+All of them are worth retrying only after reading the log.
 
 ### Reading the install log
 
