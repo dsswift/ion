@@ -18,8 +18,7 @@
   "logging": {
     "egressTargets": ["otel"],
     "egressOtel": {
-      "enabled": true,
-      "endpoint": "https://ion-telemetry.sprague.house"
+      "enabled": true
     },
     "egressShipSources": ["engine", "telemetry"],
     "egressClientShipSources": [],
