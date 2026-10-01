@@ -228,23 +228,32 @@ describe('connectEnvironment route selection', () => {
   })
 
   /**
-   * The relay binds a channel to the first account on it. A desktop signed in
-   * to its personal tenant once joined a work server's channel while the
-   * server was away; it must never try, because a join from the wrong tenant
-   * is refused at best and locks the server out of its own channel at worst.
+   * A work server and a personal desktop: the server announces the identity
+   * the desktop paired with, and the relay admits it. The desktop once
+   * refused before asking, which left a paired server unreachable from any
+   * other network. The relay decides; a join it does not admit claims nothing.
    */
-  it('never joins a relay channel from a different tenant than the server joins it with', async () => {
+  it('joins a relay channel from a different tenant than the server joins it with, as its own tenant', async () => {
     const HOME = 'https://login.example.org/home-tenant/v2.0'
     const WORK = 'https://login.example.org/work-tenant/v2.0'
     saveCredential('env-r', 'paired', encodePairedSecret({ clientId: 'c-r', sharedSecret: secret, relays: [{ url: 'wss://relay.example', auth: { mode: 'relay-oidc', issuer: WORK } }] }))
-    globalThis.fetch = (async () => { throw new Error('ECONNREFUSED') }) as typeof fetch
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input) !== 'https://relay.example/v1/auth/config') throw new Error('ECONNREFUSED')
+      return new Response(JSON.stringify({
+        oidc: true, psk: false, issuer: WORK, audience: 'api://work-app', requiredScope: 'Relay.Access',
+        issuers: [{ issuer: WORK, audience: 'api://work-app', requiredScope: 'Relay.Access' }, { issuer: HOME, audience: 'api://home-app', requiredScope: 'Relay.Access' }],
+      }), { status: 200 })
+    }) as typeof fetch
     vi.mocked(broker.sendAction).mockClear()
     vi.mocked(broker.sendAction).mockImplementation(async (_env: string, action: string) =>
       action === 'oidc.identity' ? { issuer: HOME, subject: 'oid-home' } : { accessToken: 'minted-oidc-token' })
 
     await connectEnvironment('env-r', 'Lab', target)
-    await expect(vi.mocked(broker.connect).mock.calls[0][0].open()).rejects.toThrow(/signed in to https:\/\/login\.example\.org\/home-tenant/)
-    expect(broker.sendAction).not.toHaveBeenCalledWith('local', 'oidc.token', expect.anything())
+    const attempt = await vi.mocked(broker.connect).mock.calls[0][0].open()
+
+    expect(broker.sendAction).toHaveBeenCalledWith('local', 'oidc.token', [{ scope: 'api://home-app/Relay.Access', audience: undefined }])
+    expect(attempt.transport).toBe('relay')
+    attempt.socket.close()
     vi.mocked(broker.sendAction).mockImplementation(async () => ({ accessToken: 'minted-oidc-token' }))
   })
 
@@ -291,5 +300,31 @@ describe('connectEnvironment route selection', () => {
     await connectEnvironment('env-r', 'Lab', target)
     expect((await vi.mocked(broker.connect).mock.calls[0][0].open()).transport).toBe('tcp')
     expect(calls).toEqual(['http://lab.example.org:7331/auth/config'])
+  })
+})
+
+describe('RelayStudioSocket: a join the relay refuses', () => {
+  const refusedWith = async (status: number): Promise<Error> => {
+    const relay = new WebSocketServer({ port: 0, host: '127.0.0.1', verifyClient: (_info, done) => done(false, status, 'refused') })
+    await new Promise<void>((resolve) => relay.once('listening', resolve))
+    const url = `ws://127.0.0.1:${(relay.address() as AddressInfo).port}`
+    try {
+      const socket = new RelayStudioSocket(url, 'ab'.repeat(16), Buffer.alloc(32, 7), 'token')
+      return await new Promise<Error>((resolve) => socket.once('error', resolve))
+    } finally {
+      relay.close()
+    }
+  }
+
+  it('says a 403 is the channel not admitting this account, and what admits it', async () => {
+    const err = await refusedWith(403)
+    expect(err.message).toMatch(/HTTP 403/)
+    expect(err.message).toMatch(/does not admit the account this desktop is signed in to/)
+    expect(err.message).toMatch(/sign in to the server's tenant, or pair again/)
+  })
+
+  it('reports any other status bare', async () => {
+    const err = await refusedWith(401)
+    expect(err.message).toMatch(/refused the channel join: HTTP 401$/)
   })
 })
