@@ -442,6 +442,7 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   // File explorer / editor (window-local workbench state).
   toggleFileExplorer: "per-window UI",
   collapseAllExplorer: "converges via the main-owned explorer-state funnel",
+  collapseAllExplorerRoots: "converges via the main-owned explorer-state funnel",
   setExplorerRootCollapsed: "converges via the main-owned explorer-state funnel",
   // Explorer tree state is no longer per-window: main owns the snapshot and
   // every window publishes to it through the explorer-state funnel, which

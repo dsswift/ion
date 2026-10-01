@@ -402,6 +402,7 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   ) => void;
   setFileExplorerSelected: (dir: string, path: string | null) => void;
   collapseAllExplorer: (dir: string) => void;
+  collapseAllExplorerRoots: (roots: string[]) => void;
   /**
    * Replace explorer tree state with the main-owned snapshot (boot hydration
    * and changes made in the other window).
