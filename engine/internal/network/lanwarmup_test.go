@@ -13,14 +13,14 @@ func TestParseRouteGateway(t *testing.T) {
 	out := `   route to: default
 destination: default
        mask: default
-    gateway: 192.168.86.1
+    gateway: 192.168.1.1
   interface: en0
       flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>
  recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu     expire
        0         0         0         0         0         0      1500         0
 `
-	if got := parseRouteGateway(out); got != "192.168.86.1" {
-		t.Fatalf("parseRouteGateway = %q, want 192.168.86.1", got)
+	if got := parseRouteGateway(out); got != "192.168.1.1" {
+		t.Fatalf("parseRouteGateway = %q, want 192.168.1.1", got)
 	}
 }
 

@@ -124,14 +124,14 @@ func (f *fakeRelay) serveStudio(ctx context.Context, conn *websocket.Conn, secre
 			f.mu.Lock()
 			f.hello = msg
 			f.mu.Unlock()
-			send(map[string]any{"type": "studio_welcome", "protocolVersion": 1, "environmentId": "env-1", "label": "oscar", "platform": "darwin",
+			send(map[string]any{"type": "studio_welcome", "protocolVersion": 1, "environmentId": "env-1", "label": "devbox", "platform": "darwin",
 				"serverVersion": "0.2.0", "engineVersion": "1.90.0", "scopes": []string{"conversations:read"},
 				"relays": []map[string]any{{"url": "wss://relay.example.org", "auth": map[string]any{"mode": "relay-oidc"}}}})
 		case "studio_action":
 			var value any
 			switch msg["action"] {
 			case "environment.server.info":
-				value = map[string]any{"serverVersion": "0.2.0", "engineVersion": "1.90.0", "hostname": "oscar", "platform": "darwin", "arch": "x64",
+				value = map[string]any{"serverVersion": "0.2.0", "engineVersion": "1.90.0", "hostname": "devbox", "platform": "darwin", "arch": "x64",
 					"bundle":           map[string]any{"root": "/r", "version": map[string]any{"server": "0.2.0", "engine": "1.89.0", "node": "v22"}},
 					"engineMinVersion": "0.0.0", "engineMeetsMin": true, "runningConversations": 3, "hostApp": nil,
 					"formats": []map[string]any{{"id": "transfer-archive", "owner": "server", "version": "3", "rule": "exact", "meaning": "m"}}}
@@ -181,7 +181,7 @@ func TestPairOverRelay_ThenReadStatus(t *testing.T) {
 		t.Errorf("hello = %v", hello)
 	}
 	r := st.Report()
-	if r.Hostname != "oscar" || r.Kind != "server" || !r.Engine.Running || !r.Engine.PendingRestart || r.Engine.InstalledVersion != "1.89.0" {
+	if r.Hostname != "devbox" || r.Kind != "server" || !r.Engine.Running || !r.Engine.PendingRestart || r.Engine.InstalledVersion != "1.89.0" {
 		t.Errorf("report = %+v", r)
 	}
 	if r.RunningConversations == nil || *r.RunningConversations != 3 || r.Metrics == nil || r.Metrics.IonCPUPercent != 7.5 {
@@ -246,11 +246,11 @@ func TestRelayBearer_RelayOIDC(t *testing.T) {
 
 func TestParsePairingLink(t *testing.T) {
 	code, channel := strings.Repeat("0", 32), strings.Repeat("f", 32)
-	l, err := ParsePairingLink("ion-studio://pair?code=" + code + "&url=http%3A%2F%2Foscar.local%3A7331%2F&env=oscar&relay=wss%3A%2F%2Frelay.example.org&channel=" + channel + "&relayKey=k")
+	l, err := ParsePairingLink("ion-studio://pair?code=" + code + "&url=http%3A%2F%2Fdevbox.local%3A7331%2F&env=devbox&relay=wss%3A%2F%2Frelay.example.org&channel=" + channel + "&relayKey=k")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Code != code || l.URL != "http://oscar.local:7331" || l.Label != "oscar" || l.Relay == nil || l.Relay.Channel != channel || l.Relay.Key != "k" {
+	if l.Code != code || l.URL != "http://devbox.local:7331" || l.Label != "devbox" || l.Relay == nil || l.Relay.Channel != channel || l.Relay.Key != "k" {
 		t.Errorf("link = %+v relay=%+v", l, l.Relay)
 	}
 	for _, bad := range []string{"https://example.org", "ion-studio://pair?code=zz&url=http://h", "ion-studio://pair?code=" + code} {

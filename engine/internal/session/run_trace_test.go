@@ -80,7 +80,7 @@ func TestEmitRunSpanLockedRecordsRunSpan(t *testing.T) {
 // every other span in the same run about who caused it.
 func TestEmitRunSpanLockedStampsPrincipalIdentity(t *testing.T) {
 	collector := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	s := &engineSession{telemetry: collector, conversationID: "conv-1", principal: &types.SessionPrincipal{Subject: "local:jsprague", DisplayName: "jsprague"}}
+	s := &engineSession{telemetry: collector, conversationID: "conv-1", principal: &types.SessionPrincipal{Subject: "local:jdoe", DisplayName: "jdoe"}}
 	traceID, span := newRunTrace("k", "run-1", nil)
 	s.setRunIdentity("run-1", traceID)
 	s.setRunSpan(span)
@@ -92,11 +92,11 @@ func TestEmitRunSpanLockedStampsPrincipalIdentity(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("events = %+v", events)
 	}
-	if got := events[0].User; got != "jsprague" {
-		t.Errorf("run.execute User = %q, want the session principal's attribution %q", got, "jsprague")
+	if got := events[0].User; got != "jdoe" {
+		t.Errorf("run.execute User = %q, want the session principal's attribution %q", got, "jdoe")
 	}
-	if got, _ := events[0].Context["principal_identity"].(string); got != "jsprague" {
-		t.Errorf(`run.execute Context["principal_identity"] = %q, want "jsprague"`, got)
+	if got, _ := events[0].Context["principal_identity"].(string); got != "jdoe" {
+		t.Errorf(`run.execute Context["principal_identity"] = %q, want "jdoe"`, got)
 	}
 }
 

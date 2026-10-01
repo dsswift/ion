@@ -26,7 +26,7 @@ func TestCacheSavingsTelemetry(t *testing.T) {
 		CacheReadInputTokens:     intPtr(10000),
 		CacheCreationInputTokens: intPtr(2000),
 	}
-	emitCacheSavings(col, "cache-savings-model", usage, "sess-cache", "", "", "", "", "", "jsprague")
+	emitCacheSavings(col, "cache-savings-model", usage, "sess-cache", "", "", "", "", "", "jdoe")
 
 	events := col.BufferedEvents()
 	var found *telemetry.Event
@@ -67,8 +67,8 @@ func TestCacheSavingsTelemetry(t *testing.T) {
 	// principal's identity like its sibling run.execute/run.complete/
 	// llm.call spans, not silently fall back to the process-wide operator
 	// identity.
-	if found.User != "jsprague" {
-		t.Errorf("cache.savings User = %q, want the passed principal identity %q", found.User, "jsprague")
+	if found.User != "jdoe" {
+		t.Errorf("cache.savings User = %q, want the passed principal identity %q", found.User, "jdoe")
 	}
 }
 

@@ -367,7 +367,7 @@ func TestLandedWorktreeRefusesWriteInsideOwnWorktree(t *testing.T) {
 func TestMovedWorktreeRefusesWritesAndNamesTheEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	writeWorktreeRegistry(t, dir, []WorktreeEntry{
-		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine", TransferredTo: &WorktreeTransfer{EnvironmentID: "env-oscar", At: 1700000500000}},
+		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine", TransferredTo: &WorktreeTransfer{EnvironmentID: "env-devbox", At: 1700000500000}},
 		{WorktreePath: sibling, RepoPath: repoPath},
 	})
 	c := NewCheckerAt(dir)
@@ -377,7 +377,7 @@ func TestMovedWorktreeRefusesWritesAndNamesTheEnvironment(t *testing.T) {
 		if r == nil || r.Kind != RefusalMovedWorktree {
 			t.Fatalf("%s in a moved worktree must be refused as moved_worktree, got %+v", tool, r)
 		}
-		if !contains(r.Reason, "env-oscar") || !contains(r.Reason, "sealed") {
+		if !contains(r.Reason, "env-devbox") || !contains(r.Reason, "sealed") {
 			t.Errorf("reason must name the environment and say sealed: %s", r.Reason)
 		}
 	}

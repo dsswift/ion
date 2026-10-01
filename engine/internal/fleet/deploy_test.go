@@ -244,7 +244,7 @@ func TestDeploy_PasswordSudoWithoutAskSudoNamesTheFleetRemedy(t *testing.T) {
 
 func TestDeploy_RelayKeyTravelsOnStdinOnly(t *testing.T) {
 	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "g", SSH: "g", Kind: KindServer, Profile: "home"}},
-		Profiles: map[string]Profile{"home": {Relay: "wss://relay.example.org", RelayKeyCommand: "echo the-secret", Args: []string{"--label", "oscar"}}}}
+		Profiles: map[string]Profile{"home": {Relay: "wss://relay.example.org", RelayKeyCommand: "echo the-secret", Args: []string{"--label", "devbox"}}}}
 	f, d := newDeployFixture(t, cfg)
 	p, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
 	if err != nil {
@@ -258,7 +258,7 @@ func TestDeploy_RelayKeyTravelsOnStdinOnly(t *testing.T) {
 	if strings.Contains(scripts, "the-secret") || !strings.Contains(scripts, "'studio' 'relay' 'set' 'wss://relay.example.org' '--key-stdin'") {
 		t.Errorf("scripts:\n%s", scripts)
 	}
-	if !strings.Contains(scripts, "ION_STUDIO_INSTALL_ARGS='--label oscar'") {
+	if !strings.Contains(scripts, "ION_STUDIO_INSTALL_ARGS='--label devbox'") {
 		t.Errorf("the profile's args must reach the installer:\n%s", scripts)
 	}
 	f.runner.mu.Lock()
@@ -395,12 +395,12 @@ func TestComputePreflight(t *testing.T) {
 	}
 	statuses := []HostStatus{
 		hostWith("mac", true, transfer("3"), wire("2"), store("2")),
-		hostWith("oscar", false, transfer("3"), wire("2"), store("2")),
+		hostWith("devbox", false, transfer("3"), wire("2"), store("2")),
 		hostWith("pi", false, transfer("2"), wire("2"), store("2")),
 	}
-	// oscar moves to transfer 4, studio wire 4, and a lower stored format; pi to transfer 3.
+	// devbox moves to transfer 4, studio wire 4, and a lower stored format; pi to transfer 3.
 	pf := ComputePreflight(statuses, map[string][]compat.Format{
-		"oscar": {transfer("4"), wire("4"), store("1")},
+		"devbox": {transfer("4"), wire("4"), store("1")},
 		"pi":     {transfer("3"), wire("2"), store("2")},
 		"other":  nil,
 	})
@@ -412,13 +412,13 @@ func TestComputePreflight(t *testing.T) {
 		}
 		return false
 	}
-	if !has(TransferFormat, "mac", "oscar", true) || !has(TransferFormat, "mac", "pi", false) {
+	if !has(TransferFormat, "mac", "devbox", true) || !has(TransferFormat, "mac", "pi", false) {
 		t.Errorf("transfer changes = %+v", pf.Changes)
 	}
-	if !has(StudioWireFormat, "mac", "oscar", true) {
-		t.Errorf("the mac's desktop drops out of oscar's studio wire window: %+v", pf.Changes)
+	if !has(StudioWireFormat, "mac", "devbox", true) {
+		t.Errorf("the mac's desktop drops out of devbox's studio wire window: %+v", pf.Changes)
 	}
-	if len(pf.Downgrades) != 1 || pf.Downgrades[0].Host != "oscar" || !pf.Blocks() {
+	if len(pf.Downgrades) != 1 || pf.Downgrades[0].Host != "devbox" || !pf.Blocks() {
 		t.Errorf("downgrades = %+v", pf.Downgrades)
 	}
 	unknown := ComputePreflight(statuses, map[string][]compat.Format{"pi": nil})
@@ -435,7 +435,7 @@ func TestComputePreflight(t *testing.T) {
 	if lines := (Preflight{Compared: 2}).Lines(); len(lines) != 1 || !strings.Contains(lines[0], "unchanged") {
 		t.Errorf("an unchanged fleet must say so plainly: %v", lines)
 	}
-	if lines := strings.Join(pf.Lines(), "\n"); !strings.Contains(lines, "mac can no longer send conversations to oscar") || !strings.Contains(lines, "BLOCKED: this would move oscar's stored conversation-file back from version 2 to 1") {
+	if lines := strings.Join(pf.Lines(), "\n"); !strings.Contains(lines, "mac can no longer send conversations to devbox") || !strings.Contains(lines, "BLOCKED: this would move devbox's stored conversation-file back from version 2 to 1") {
 		t.Errorf("lines =\n%s", lines)
 	}
 }
@@ -443,9 +443,9 @@ func TestComputePreflight(t *testing.T) {
 func TestComputePreflight_NamesOnlyTargetsItCannotRead(t *testing.T) {
 	transfer := compat.Format{ID: "transfer-archive", Owner: "server", Version: "3", Rule: compat.RuleExact}
 	down := HostStatus{Host: Host{Name: "win"}, Via: ViaNone, Error: "ssh: unreachable"}
-	statuses := []HostStatus{hostWith("mac", true, transfer), hostWith("oscar", false, transfer), down}
+	statuses := []HostStatus{hostWith("mac", true, transfer), hostWith("devbox", false, transfer), down}
 
-	pf := ComputePreflight(statuses, map[string][]compat.Format{"oscar": {transfer}})
+	pf := ComputePreflight(statuses, map[string][]compat.Format{"devbox": {transfer}})
 	if lines := strings.Join(pf.Lines(), "\n"); len(pf.Unreadable) != 0 || strings.Contains(lines, "win") {
 		t.Errorf("a down host outside the deploy must not be named:\n%s", lines)
 	}

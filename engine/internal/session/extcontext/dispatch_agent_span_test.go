@@ -192,7 +192,7 @@ func TestDispatchAgentSpanUserAttributionCarried(t *testing.T) {
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	acc := &principalTestAccessor{
 		depthTestAccessor: depthTestAccessor{telem: col},
-		principal:         &types.SessionPrincipal{Subject: "entra-oid-123", DisplayName: "JSprague@dciartform.com"},
+		principal:         &types.SessionPrincipal{Subject: "entra-oid-123", DisplayName: "JDoe@example.com"},
 	}
 	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
 	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
@@ -212,8 +212,8 @@ func TestDispatchAgentSpanUserAttributionCarried(t *testing.T) {
 	if found == nil {
 		t.Fatal("expected a dispatch.agent span event")
 	}
-	if found.User != "JSprague@dciartform.com" {
-		t.Errorf("User = %q, want %q", found.User, "JSprague@dciartform.com")
+	if found.User != "JDoe@example.com" {
+		t.Errorf("User = %q, want %q", found.User, "JDoe@example.com")
 	}
 }
 
