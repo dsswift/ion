@@ -15,6 +15,8 @@
 // without requiring TS/Swift mirror changes.
 package types
 
+import "encoding/json"
+
 // InitEvent is emitted once at the start of an engine session.
 type InitEvent struct {
 	Type              string          `json:"type"`
@@ -27,10 +29,34 @@ type InitEvent struct {
 	PermissionMode    string          `json:"permissionMode"`
 	Agents            []string        `json:"agents"`
 	Skills            []string        `json:"skills"`
-	Plugins           []string        `json:"plugins"`
+	Plugins           []InitPlugin    `json:"plugins"`
 	ClaudeCodeVersion string          `json:"claude_code_version"`
 	FastModeState     string          `json:"fast_mode_state"`
 	UUID              string          `json:"uuid"`
+}
+
+// InitPlugin names a plugin the CLI loaded. The CLI has reported plugins both
+// as bare name strings and as objects, so UnmarshalJSON accepts either.
+type InitPlugin struct {
+	Name   string `json:"name"`
+	Path   string `json:"path,omitempty"`
+	Source string `json:"source,omitempty"`
+}
+
+// UnmarshalJSON accepts a bare name string or a plugin object.
+func (p *InitPlugin) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		*p = InitPlugin{Name: name}
+		return nil
+	}
+	type plain InitPlugin
+	var obj plain
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	*p = InitPlugin(obj)
+	return nil
 }
 
 // McpServerInfo describes an MCP server and its connection status.

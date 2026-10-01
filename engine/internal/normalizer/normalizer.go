@@ -4,10 +4,20 @@ package normalizer
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// logDecodeFailure records a CLI stream line the normalizer could not decode
+// and therefore dropped.
+func logDecodeFailure(kind string, err error) {
+	utils.LogWithFields(utils.LevelWarn, "normalizer", "dropping undecodable cli stream line", map[string]any{
+		"kind": kind, "error": err.Error(),
+	})
+}
 
 // Normalize parses a raw JSON event and returns zero or more NormalizedEvents.
 func Normalize(raw json.RawMessage) []types.NormalizedEvent {
@@ -16,6 +26,7 @@ func Normalize(raw json.RawMessage) []types.NormalizedEvent {
 		Subtype string `json:"subtype"`
 	}
 	if err := json.Unmarshal(raw, &peek); err != nil {
+		logDecodeFailure("envelope", err)
 		return nil
 	}
 
@@ -47,9 +58,19 @@ func normalizeSystem(raw json.RawMessage, subtype string) []types.NormalizedEven
 		return nil
 	}
 
+	// A field whose type drifted in the CLI's stream must not cost the run its
+	// session identity. encoding/json keeps decoding past a type mismatch and
+	// fills every other field, so only a malformed line drops the event.
 	var init types.InitEvent
 	if err := json.Unmarshal(raw, &init); err != nil {
-		return nil
+		var typeErr *json.UnmarshalTypeError
+		if !errors.As(err, &typeErr) {
+			logDecodeFailure("system/init", err)
+			return nil
+		}
+		utils.LogWithFields(utils.LevelWarn, "normalizer", "init event field has an unexpected type; keeping the fields that decoded", map[string]any{
+			"field": typeErr.Field, "error": err.Error(), "session_id": init.SessionID,
+		})
 	}
 
 	var mcpServers []types.McpServerInfo
@@ -72,6 +93,7 @@ func normalizeSystem(raw json.RawMessage, subtype string) []types.NormalizedEven
 func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 	var se types.StreamEvent
 	if err := json.Unmarshal(raw, &se); err != nil {
+		logDecodeFailure("stream_event", err)
 		return nil
 	}
 
@@ -148,6 +170,7 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 func normalizeAssistant(raw json.RawMessage) []types.NormalizedEvent {
 	var ae types.AssistantEvent
 	if err := json.Unmarshal(raw, &ae); err != nil {
+		logDecodeFailure("assistant", err)
 		return nil
 	}
 
@@ -161,6 +184,7 @@ func normalizeAssistant(raw json.RawMessage) []types.NormalizedEvent {
 func normalizeResult(raw json.RawMessage, subtype string) []types.NormalizedEvent {
 	var re types.ResultEvent
 	if err := json.Unmarshal(raw, &re); err != nil {
+		logDecodeFailure("result", err)
 		return nil
 	}
 
@@ -196,6 +220,7 @@ func normalizeResult(raw json.RawMessage, subtype string) []types.NormalizedEven
 func normalizeRateLimit(raw json.RawMessage) []types.NormalizedEvent {
 	var rle types.RateLimitEvent
 	if err := json.Unmarshal(raw, &rle); err != nil {
+		logDecodeFailure("rate_limit_event", err)
 		return nil
 	}
 
@@ -211,6 +236,7 @@ func normalizeRateLimit(raw json.RawMessage) []types.NormalizedEvent {
 func normalizePermissionRequest(raw json.RawMessage) []types.NormalizedEvent {
 	var pe types.PermissionEvent
 	if err := json.Unmarshal(raw, &pe); err != nil {
+		logDecodeFailure("permission_request", err)
 		return nil
 	}
 
@@ -235,6 +261,7 @@ func normalizeUser(raw json.RawMessage) []types.NormalizedEvent {
 		} `json:"message"`
 	}
 	if err := json.Unmarshal(raw, &ue); err != nil {
+		logDecodeFailure("user", err)
 		return nil
 	}
 
