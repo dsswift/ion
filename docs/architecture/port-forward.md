@@ -37,7 +37,7 @@ The local listener takes the remote port's own number when it is free on both lo
 
 ## In Studio
 
-- The **Ports** canvas tab lists what is listening on the active conversation's Environment: first the listeners its own Terminals own, then everything else on that host. Each row forwards, stops, or opens in a Studio Browser tab. A port can also be typed in.
+- The **Ports** canvas tab lists what is listening on the active conversation's Environment: first the listeners its own Terminals own, then everything else on that host. Each row forwards, stops, or opens in a Studio Browser tab. Open uses the scheme of the port's confirmed Web Application URL, and HTTPS when there is none. A port can also be typed in.
 - The Globe action on a [Web Application](terminal-application-discovery.md) forwards the application's port first when the conversation is on another Environment, then opens it at the local address.
 
 A browser Studio client cannot listen on its machine, so it has no Ports tab. iOS has no equivalent.
