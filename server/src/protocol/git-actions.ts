@@ -129,7 +129,7 @@ const SUBSCRIPTION_ACTIONS: Record<string, GitActionSpec> = {
         return { ok: false, error: { code: 'git_action_failed', message: 'directory is required' } }
       }
       try {
-        const snapshot = subscribeGit(
+        const snapshot = await subscribeGit(
           { id: conn.id, send: (event) => conn.send({ type: 'studio_event', channel: IPC.GIT_EVENT, payload: event }) },
           directory,
         )

@@ -34,18 +34,31 @@ function keyFor(subscriberId: string, repoPath: string): string {
   return `${subscriberId}::${repoPath}`
 }
 
-/** Subscribe `subscriber` to `repoPath`, returning the current snapshot. Idempotent per pair. */
-export function subscribeGit(subscriber: GitSubscriber, repoPath: string): RepoSnapshot | null {
+/**
+ * Subscribe `subscriber` to `repoPath`, returning the repository's snapshot.
+ * Idempotent per pair.
+ *
+ * Resolves only after the repository's first read has finished. A freshly
+ * retained repository has no snapshot yet, and that read lands as deltas
+ * that never carry `isGitRepo`, so answering early left the subscriber
+ * believing the directory was not a repository.
+ */
+export async function subscribeGit(subscriber: GitSubscriber, repoPath: string): Promise<RepoSnapshot | null> {
   const key = keyFor(subscriber.id, repoPath)
   const existing = subscriptions.get(key)
-  if (existing) return existing.repo.snapshot
+  if (existing) {
+    await existing.repo.waitForReady()
+    return existing.repo.snapshot
+  }
 
   const repo = repositoryManager.retain(repoPath)
   const listener = (event: GitEvent): void => subscriber.send(event)
   repo.on('event', listener)
   subscriptions.set(key, { repo, listener })
-  log('subscribed', { subscriber: subscriber.id, path: repoPath })
-  return repo.snapshot
+  await repo.waitForReady()
+  const snapshot = repo.snapshot
+  log('subscribed', { subscriber: subscriber.id, path: repoPath, has_snapshot: snapshot !== null, is_git_repo: snapshot?.isGitRepo ?? null })
+  return snapshot
 }
 
 export function unsubscribeGit(subscriberId: string, repoPath: string): void {
