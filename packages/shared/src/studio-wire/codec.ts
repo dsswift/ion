@@ -11,7 +11,8 @@
  * length, the UTF-8 key bytes, then the raw payload — never base64 (the
  * whole point of a binary frame is to avoid the ~33% base64 blow-up on
  * terminal output). The "key" is the terminal identity (`tabId:instanceId`)
- * for `TERMINAL_DATA`/`TERMINAL_RESIZE`; a file-transfer id for `FILE_CHUNK`.
+ * for `TERMINAL_DATA`/`TERMINAL_RESIZE`; a file-transfer id for `FILE_CHUNK`
+ * and `FILE_END`; a Port Forward stream id for the `PORT_*` channels.
  */
 import { BinaryChannel, isBinaryChannel } from './channels'
 import type { StudioFrame, StudioFrameType } from './types'

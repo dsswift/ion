@@ -138,6 +138,15 @@ describe('studio-wire codec: binary frames', () => {
     expect(decoded.payload.length).toBe(0)
   })
 
+  it('round-trips every Port Forward channel', () => {
+    for (const channel of [BinaryChannel.PORT_DATA, BinaryChannel.PORT_END, BinaryChannel.PORT_CREDIT]) {
+      const decoded = decodeBinary(encodeBinary(channel, 'stream-1', new Uint8Array([7])))
+      expect(decoded.channel).toBe(channel)
+      expect(decoded.key).toBe('stream-1')
+      expect(Array.from(decoded.payload)).toEqual([7])
+    }
+  })
+
   it('throws WireError on a frame shorter than the header', () => {
     expect(() => decodeBinary(new Uint8Array([0x01, 0x00]))).toThrow(WireError)
   })
