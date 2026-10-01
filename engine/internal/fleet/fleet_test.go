@@ -29,14 +29,14 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 		t.Fatalf("a missing fleet file is an empty fleet: %+v %v", empty, err)
 	}
 	c := Config{
-		Hosts:    []Host{{Name: "grover", SSH: "user@grover.local", Kind: KindServer, Profile: "home"}, {Name: "mac", SSH: "local", Kind: KindDesktop}},
+		Hosts:    []Host{{Name: "oscar", SSH: "user@oscar.local", Kind: KindServer, Profile: "home"}, {Name: "mac", SSH: "local", Kind: KindDesktop}},
 		Profiles: map[string]Profile{"home": {Relay: "wss://relay.example.org", RelayKeyCommand: "echo k"}},
 	}
 	if err := Save(path, c); err != nil {
 		t.Fatal(err)
 	}
 	back, err := Load(path)
-	if err != nil || len(back.Hosts) != 2 || back.Hosts[0].Name != "grover" || back.ProfileOf(back.Hosts[0]).Relay != "wss://relay.example.org" {
+	if err != nil || len(back.Hosts) != 2 || back.Hosts[0].Name != "oscar" || back.ProfileOf(back.Hosts[0]).Relay != "wss://relay.example.org" {
 		t.Fatalf("round trip = %+v %v", back, err)
 	}
 	// Windows file modes carry only read-only; the profile's ACL keeps it private.
@@ -64,21 +64,21 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 
 func TestPairings_RoundTrip(t *testing.T) {
 	p := OpenPairings(t.TempDir())
-	if _, ok, err := p.Get("grover"); ok || err != nil {
+	if _, ok, err := p.Get("oscar"); ok || err != nil {
 		t.Fatalf("an empty store has no pairing: ok=%v err=%v", ok, err)
 	}
 	want := studioclient.Pairing{ClientID: "c1", SharedSecret: bytes.Repeat([]byte{7}, 32), Relays: []studioclient.Relay{{URL: "wss://r", Auth: studioclient.RelayAuth{Mode: "psk", Key: "k"}}}}
-	if err := p.Put("grover", want); err != nil {
+	if err := p.Put("oscar", want); err != nil {
 		t.Fatal(err)
 	}
-	got, ok, err := p.Get("grover")
+	got, ok, err := p.Get("oscar")
 	if err != nil || !ok || got.ClientID != "c1" || !bytes.Equal(got.SharedSecret, want.SharedSecret) || got.Relays[0].Auth.Key != "k" {
 		t.Fatalf("got %+v ok=%v err=%v", got, ok, err)
 	}
-	if err := p.Delete("grover"); err != nil {
+	if err := p.Delete("oscar"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := p.Get("grover"); ok { //nolint:errcheck // absence is the assertion
+	if _, ok, _ := p.Get("oscar"); ok { //nolint:errcheck // absence is the assertion
 		t.Error("a deleted pairing must be gone")
 	}
 }
