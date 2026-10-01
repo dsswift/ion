@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
-import { applySubjectMoves } from '../subject-moves'
+import { applySubjectMoves, foldLocalConnectionSubjects } from '../subject-moves'
 import { _resetCredentialsStoreForTest, credentialsStore } from '../../auth/credentials-store'
 import { _resetGitCredentialStoreForTest, gitCredentialStore } from '../../git/identity/credential-store'
 import { _resetPrincipalRegistryForTest, lookupPrincipal, registerPrincipal } from '../principal-registry'
@@ -68,6 +68,45 @@ describe('applySubjectMoves', () => {
     applySubjectMoves(dir, [{ from: OLD, to: NEW }])
     const [second] = applySubjectMoves(dir, [{ from: OLD, to: NEW }])
     expect(second).toMatchObject({ pairings: [], gitHosts: [], principalDirs: [], tabs: 0, terminals: 0, settings: false })
+  })
+})
+
+describe('foldLocalConnectionSubjects', () => {
+  const HOST = 'local:owner'
+  const SIGNED_IN = 'sign-in-subject'
+
+  function seed(): void {
+    registerPrincipal({ subject: HOST, displayName: 'owner', provider: 'os', kind: 'local', username: 'owner' })
+    registerPrincipal({ subject: SIGNED_IN, displayName: 'person@example.com', provider: 'entra', kind: 'operator' })
+    gitCredentialStore().set({ subject: SIGNED_IN, host: 'github.com', source: 'user', kind: 'ssh', privateKey: 'k', publicKey: 'p' })
+    writeFileSync(join(dir, 'tabs.json'), JSON.stringify({ tabs: [{ id: 't1', principalSubject: SIGNED_IN }, { id: 't2', principalSubject: HOST }], settledHistory: [] }))
+    replaceOverlay(HOST, { preferredModel: 'model-a' })
+    replaceOverlay(SIGNED_IN, { studioSurface: 'workbench' })
+  }
+
+  it('brings what a local connection stored under a sign-in subject back to the host subject', () => {
+    seed()
+
+    const [result] = foldLocalConnectionSubjects(dir, HOST, false)
+
+    expect(result).toMatchObject({ from: SIGNED_IN, to: HOST, gitHosts: ['github.com'], principals: [SIGNED_IN], tabs: 1, settings: true })
+    expect(lookupPrincipal(SIGNED_IN)).toBeUndefined()
+    expect(lookupPrincipal(HOST)).toMatchObject({ subject: HOST, kind: 'local', displayName: 'owner' })
+    expect(gitCredentialStore().privateKeyFor(HOST, 'github.com')).toBe('k')
+    const tabs = JSON.parse(readFileSync(join(dir, 'tabs.json'), 'utf-8')) as { tabs: Array<{ principalSubject: string }> }
+    expect(tabs.tabs.map((t) => t.principalSubject)).toEqual([HOST, HOST])
+    const overlays = listOverlays()
+    expect(overlays.find((o) => o.subject === SIGNED_IN)).toBeUndefined()
+    expect(overlays.find((o) => o.subject === HOST)?.settings).toEqual({ preferredModel: 'model-a', studioSurface: 'workbench' })
+    expect(foldLocalConnectionSubjects(dir, HOST, false)).toEqual([])
+  })
+
+  it('leaves an operator alone when oidc is configured, where it may be another person', () => {
+    seed()
+
+    expect(foldLocalConnectionSubjects(dir, HOST, true)).toEqual([])
+    expect(lookupPrincipal(SIGNED_IN)).toBeDefined()
+    expect(listOverlays().find((o) => o.subject === SIGNED_IN)?.settings).toEqual({ studioSurface: 'workbench' })
   })
 })
 

@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../engine/engine-bridge-fs', () => ({
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: true, data: { version: '1.2.3' } })),
 }))
-vi.mock('../../oauth/entra-flow', () => ({ getSignedInIdentityIfEngineConnected: vi.fn().mockResolvedValue(null) }))
 
 import type { EnterprisePolicy } from '@ion/shared/types-engine'
 import { publishEnterprisePolicy } from '../../enterprise-policy-publish'

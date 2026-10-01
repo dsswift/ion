@@ -1,12 +1,12 @@
-import { userInfo } from 'os'
-import { warn as _warn, log as _log } from '../logger'
-import type { SessionPrincipal } from '@ion/shared/types-engine'
+import { userInfo } from "os";
+import { warn as _warn, log as _log } from "../logger";
+import type { SessionPrincipal } from "@ion/shared/types-engine";
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
-  _warn('local-principal', msg, fields)
+  _warn("local-principal", msg, fields);
 }
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('local-principal', msg, fields)
+  _log("local-principal", msg, fields);
 }
 
 /**
@@ -23,39 +23,43 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  * else in this codebase does today.
  */
 export function localPrincipal(): SessionPrincipal {
-  let username: string
+  let username: string;
   try {
-    username = userInfo().username
+    username = userInfo().username;
   } catch (err) {
-    warn('os.userInfo() failed; falling back to uid-derived subject', { error: String(err) })
-    const getuid = (process as { getuid?: () => number }).getuid
-    if (typeof getuid === 'function') {
+    warn("os.userInfo() failed; falling back to uid-derived subject", {
+      error: String(err),
+    });
+    const getuid = (process as { getuid?: () => number }).getuid;
+    if (typeof getuid === "function") {
       try {
-        const uid = getuid()
+        const uid = getuid();
         return {
           subject: `local:uid-${uid}`,
-          provider: 'os',
-          kind: 'local',
+          provider: "os",
+          kind: "local",
           displayName: `uid-${uid}`,
-        }
+        };
       } catch (uidErr) {
-        warn('process.getuid() failed; falling back to unknown subject', { error: String(uidErr) })
+        warn("process.getuid() failed; falling back to unknown subject", {
+          error: String(uidErr),
+        });
       }
     }
     return {
-      subject: 'local:unknown',
-      provider: 'os',
-      kind: 'local',
-      displayName: 'unknown',
-    }
+      subject: "local:unknown",
+      provider: "os",
+      kind: "local",
+      displayName: "unknown",
+    };
   }
   return {
     subject: `local:${username}`,
-    provider: 'os',
-    kind: 'local',
+    provider: "os",
+    kind: "local",
     username,
     displayName: username,
-  }
+  };
 }
 
 /**
@@ -96,25 +100,33 @@ export function localPrincipal(): SessionPrincipal {
  */
 export async function resolveLocalConnectionPrincipal(): Promise<SessionPrincipal> {
   try {
-    const [{ getSignedInIdentityIfEngineConnected }, { providerFromIssuer }] = await Promise.all([
-      import('../oauth/entra-flow'),
-      import('../auth/bearer'),
-    ])
-    const identity = await getSignedInIdentityIfEngineConnected()
+    const [{ getSignedInIdentityIfEngineConnected }, { providerFromIssuer }] =
+      await Promise.all([
+        import("../oauth/entra-flow"),
+        import("../auth/bearer"),
+      ]);
+    const identity = await getSignedInIdentityIfEngineConnected();
     if (identity && identity.oid && identity.user) {
-      log('local connection: using signed-in engine identity', { subject: identity.oid })
+      log("local connection: using signed-in engine identity", {
+        subject: identity.oid,
+      });
       return {
         subject: identity.oid,
-        provider: identity.issuer ? providerFromIssuer(identity.issuer) : 'entra',
-        kind: 'operator',
+        provider: identity.issuer
+          ? providerFromIssuer(identity.issuer)
+          : "entra",
+        kind: "operator",
         username: identity.username || undefined,
         displayName: identity.user,
-      }
+      };
     }
   } catch (err) {
-    warn('local connection: signed-in identity check failed; falling back to OS username', { error: String(err) })
+    warn(
+      "local connection: signed-in identity check failed; falling back to OS username",
+      { error: String(err) },
+    );
   }
-  return localPrincipal()
+  return localPrincipal();
 }
 
 /**
@@ -129,18 +141,29 @@ export async function resolveLocalConnectionPrincipal(): Promise<SessionPrincipa
  *
  * Any other principal, or no signed-in identity, is returned unchanged.
  */
-export async function withSignedInAttribution(principal: SessionPrincipal): Promise<SessionPrincipal> {
-  if (principal.kind !== 'local') return principal
+export async function withSignedInAttribution(
+  principal: SessionPrincipal,
+): Promise<SessionPrincipal> {
+  if (principal.kind !== "local") return principal;
   try {
-    const { getSignedInIdentityIfEngineConnected } = await import('../oauth/entra-flow')
-    const identity = await getSignedInIdentityIfEngineConnected()
+    const { getSignedInIdentityIfEngineConnected } =
+      await import("../oauth/entra-flow");
+    const identity = await getSignedInIdentityIfEngineConnected();
     if (identity?.user) {
-      log('local principal: attributing to signed-in engine identity', { subject: principal.subject })
-      return { ...principal, attribution: identity.user }
+      log("local principal: attributing to signed-in engine identity", {
+        subject: principal.subject,
+      });
+      return { ...principal, attribution: identity.user };
     }
-    log('local principal: no signed-in engine identity; attribution stays the OS username', { subject: principal.subject })
+    log(
+      "local principal: no signed-in engine identity; attribution stays the OS username",
+      { subject: principal.subject },
+    );
   } catch (err) {
-    warn('local principal: signed-in identity check failed; attribution stays the OS username', { subject: principal.subject, error: String(err) })
+    warn(
+      "local principal: signed-in identity check failed; attribution stays the OS username",
+      { subject: principal.subject, error: String(err) },
+    );
   }
-  return principal
+  return principal;
 }

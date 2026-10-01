@@ -12,7 +12,7 @@ import { candidateNonces } from './nonce'
 import type { CredentialsStore } from './credentials-store'
 import type { AuthResult } from '../protocol/hello'
 import { isSharedTenancy } from '../config/current'
-import { resolveLocalConnectionPrincipal } from '../identity/local-principal'
+import { localPrincipal } from '../identity/local-principal'
 import { isDeviceSubject } from '../identity/paired-subject'
 import { lookupPrincipal } from '../identity/principal-registry'
 import type { StudioPrincipalSummary } from '@ion/shared/studio-wire/types'
@@ -44,14 +44,12 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * `principal-registry.ts` (last-authenticated-device wins) and corrupting
  * every other session that resolves its principal from that registry.
  */
-export async function pairedPrincipal(record: Pick<CredentialClientRecord, 'subject' | 'label' | 'clientId'>): Promise<StudioPrincipalSummary> {
+export function pairedPrincipal(record: Pick<CredentialClientRecord, 'subject' | 'label' | 'clientId'>): StudioPrincipalSummary {
   if (isSharedTenancy()) {
-    // Same precedence as the host's own local connection (hello.ts's
-    // LocalOnlyAuthPolicy): the signed-in Entra identity when one exists,
-    // else the OS username. A paired phone and the desktop it is paired to
-    // are the same person on two devices -- both must fold to the same
-    // canonical value, not one to Entra and the other to the OS username.
-    const host = await resolveLocalConnectionPrincipal()
+    // The same principal the host's own local connection gets. A paired
+    // phone and the desktop it is paired to are the same person on two
+    // devices, so both resolve to one subject.
+    const host = localPrincipal()
     log('shared-tenancy install: acts as the host identity', { client_id: record.clientId, stored_subject: record.subject, device_shaped: isDeviceSubject(record.subject), subject: host.subject })
     return { subject: host.subject, displayName: host.displayName ?? host.subject, provider: host.provider, kind: host.kind, username: host.username }
   }
@@ -102,7 +100,7 @@ export async function verifyPaired(credential: PairedCredential, store: Credenti
   }
 
   store.touch(credential.clientId)
-  const principal = await pairedPrincipal(record)
+  const principal = pairedPrincipal(record)
   log('paired auth accepted', { client_id: credential.clientId, subject: principal.subject, scope_count: record.scopes.length })
   return { ok: true, principal, scopes: record.scopes }
 }
@@ -126,7 +124,7 @@ export async function acceptPreVerifiedPaired(clientId: string, store: Credentia
     return { ok: false, reason: 'credential_revoked' }
   }
   store.touch(clientId)
-  const principal = await pairedPrincipal(record)
+  const principal = pairedPrincipal(record)
   log('relay paired auth accepted (channel secret is the proof)', { client_id: clientId, subject: principal.subject, scope_count: record.scopes.length })
   return { ok: true, principal, scopes: record.scopes }
 }

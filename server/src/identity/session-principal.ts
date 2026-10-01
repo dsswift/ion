@@ -6,8 +6,7 @@
  *
  * The two shapes are almost identical, but `provider`/`kind` are REQUIRED on
  * `SessionPrincipal` and optional on `StudioPrincipalSummary`. `hello.ts`'s
- * `LocalOnlyAuthPolicy` always fills both explicitly now (the engine's
- * signed-in Entra identity when one exists, else `local-principal.ts`'s own
+ * `LocalOnlyAuthPolicy` always fills both explicitly (`local-principal.ts`'s
  * `{provider: 'os', kind: 'local'}` shape) -- but `auth/paired.ts`'s
  * pre-Entra pairing summaries still omit them, so this function's `?? 'os'`
  * / `?? 'local'` defaults remain the fallback for that door, matching

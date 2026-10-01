@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -8,13 +8,6 @@ import { setCurrentServerConfig, isSharedTenancy, sharedTenancyIsExplicit, noteE
 import { tabVisibleTo } from '../../protocol/tabs-index'
 import { pairedPrincipal } from '../../auth/paired'
 import { userInfo } from 'os'
-
-// The shared-tenancy fold now checks the engine's signed-in Entra identity
-// before falling back to the OS username (resolveLocalConnectionPrincipal).
-// This suite exercises profile/tenancy behavior, not identity precedence, so
-// the engine round trip is mocked to "nobody signed in" -- see
-// server/src/protocol/__tests__/hello.test.ts for the precedence test.
-vi.mock('../../oauth/entra-flow', () => ({ getSignedInIdentityIfEngineConnected: vi.fn().mockResolvedValue(null) }))
 
 let dir: string
 let original: string | undefined
@@ -48,7 +41,7 @@ describe('install profile', () => {
     expect(isSharedTenancy()).toBe(true)
     expect(sharedTenancyIsExplicit()).toBe(false)
     expect(tabVisibleTo(ownersTab, pairedDevice)).toBe(true)
-    const principal = await pairedPrincipal({ clientId: 'c1', subject: 'paired:laptop-2', label: 'laptop 2' })
+    const principal = pairedPrincipal({ clientId: 'c1', subject: 'paired:laptop-2', label: 'laptop 2' })
     expect(principal.subject).toBe(`local:${userInfo().username}`)
   })
 
