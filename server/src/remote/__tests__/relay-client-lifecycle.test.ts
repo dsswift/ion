@@ -393,6 +393,61 @@ describe('token-expired escalation', () => {
     client.disconnect()
   })
 
+  it('never escalates when each token expires after a full session', async () => {
+    const client = new RelayClient({
+      relayUrl: 'ws://relay.test',
+      apiKey: 'key',
+      channelId: 'ch1',
+    })
+
+    const failedSpy = vi.fn()
+    client.on('failed', failedSpy)
+
+    client.connect()
+
+    // An hour-long token expiring on schedule, more times than the escalation threshold.
+    for (let i = 0; i < 8; i++) {
+      const ws = mockInstances[mockInstances.length - 1]
+      ws.fireOpen()
+      // The clock moves, not the timers: the mock socket answers no liveness ping.
+      vi.setSystemTime(Date.now() + 60 * 60 * 1000)
+      ws.fireClose(4401, 'token_expired')
+      expect((client as any).tokenExpiredCount).toBe(0)
+      await vi.advanceTimersByTimeAsync(60000)
+    }
+
+    expect(failedSpy).not.toHaveBeenCalled()
+    expect((client as any).permanentFailure).toBeNull()
+
+    client.disconnect()
+  })
+
+  it('a full session clears the count left by earlier short-lived ones', async () => {
+    const client = new RelayClient({
+      relayUrl: 'ws://relay.test',
+      apiKey: 'key',
+      channelId: 'ch1',
+    })
+
+    client.connect()
+
+    for (let i = 0; i < 3; i++) {
+      const ws = mockInstances[mockInstances.length - 1]
+      ws.fireOpen()
+      ws.fireClose(4401, 'token_expired')
+      await vi.advanceTimersByTimeAsync(60000)
+    }
+    expect((client as any).tokenExpiredCount).toBe(3)
+
+    const ws = mockInstances[mockInstances.length - 1]
+    ws.fireOpen()
+    vi.setSystemTime(Date.now() + 60 * 60 * 1000)
+    ws.fireClose(4401, 'token_expired')
+    expect((client as any).tokenExpiredCount).toBe(0)
+
+    client.disconnect()
+  })
+
   it('retry() clears token-expired escalation', async () => {
     const client = new RelayClient({
       relayUrl: 'ws://relay.test',

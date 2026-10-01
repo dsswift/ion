@@ -36,6 +36,14 @@ const BACKOFF_BASE = 1000
 const BACKOFF_MAX = 30000
 const JITTER_MAX = 1000
 const TOKEN_EXPIRED_ESCALATE_AFTER = 5
+/**
+ * How long a session must have stayed open for its 4401 to be an ordinary
+ * expiry. The relay validates the token at the upgrade and closes with 4401
+ * when that token's lifetime ends, so a session that outlived this was opened
+ * with a fresh token; only one that expired almost at once was opened with a
+ * token the engine served from a stale cache.
+ */
+const TOKEN_FRESH_SESSION_MS = 60_000
 
 /** The `trust` payload of a `relay_announce` frame (manifest C7). */
 export type RelayAnnounceTrust =
@@ -139,13 +147,20 @@ export class RelayClient extends EventEmitter {
   private generation = 0
 
   /**
-   * Consecutive 4401 (token-expired) close codes. When the engine returns a
-   * cached stale token, every reconnect mints the same expired credential and
-   * the relay closes with 4401 again. After TOKEN_EXPIRED_ESCALATE_AFTER
-   * consecutive 4401s, escalate to permanent so the operator sees the failure
-   * instead of a silent retry loop. Reset on any non-4401 close.
+   * Consecutive 4401 (token-expired) closes of sessions that did not last
+   * TOKEN_FRESH_SESSION_MS. When the engine returns a cached stale token,
+   * every reconnect mints the same nearly-expired credential and the relay
+   * closes with 4401 again. After TOKEN_EXPIRED_ESCALATE_AFTER of those in a
+   * row, escalate to permanent so the operator sees the failure instead of a
+   * silent retry loop. Reset on any non-4401 close, and on the 4401 of a
+   * session that lasted: a token expiring on schedule is how every healthy
+   * OIDC session ends, and counting it took a server off the relay for good
+   * after that many token lifetimes.
    */
   private tokenExpiredCount = 0
+
+  /** When the open socket opened, in epoch ms; 0 while there is none. */
+  private openedAt = 0
 
   /**
    * Stops the open socket's liveness check. A socket stranded by a network
@@ -277,6 +292,7 @@ export class RelayClient extends EventEmitter {
       log('connected')
       this._startHeartbeat(ws, gen)
       this._connected = true
+      this.openedAt = Date.now()
       this.reconnectAttempt = 0
       this.permanentFailure = null
       this.unknownFailureCount = 0
@@ -306,6 +322,8 @@ export class RelayClient extends EventEmitter {
         return
       }
       log('relay_client: disconnected', { code, reason: reason?.toString() || '' })
+      const sessionMs = this.openedAt ? Date.now() - this.openedAt : 0
+      this.openedAt = 0
       this._stopHeartbeat()
       this._connected = false
       this.ws = null
@@ -325,7 +343,10 @@ export class RelayClient extends EventEmitter {
         })
       }
 
-      if (code === CLOSE_CODE_TOKEN_EXPIRED) {
+      if (code === CLOSE_CODE_TOKEN_EXPIRED && sessionMs >= TOKEN_FRESH_SESSION_MS) {
+        log('relay_client: token reached its expiry after a full session, reconnecting with a fresh one', { session_ms: sessionMs, cleared_count: this.tokenExpiredCount })
+        this.tokenExpiredCount = 0
+      } else if (code === CLOSE_CODE_TOKEN_EXPIRED) {
         this.tokenExpiredCount++
         if (this.tokenExpiredCount >= TOKEN_EXPIRED_ESCALATE_AFTER) {
           error('relay_client: repeated token expiry, escalating to permanent', {
@@ -338,7 +359,7 @@ export class RelayClient extends EventEmitter {
           }, 'close')
           return
         }
-        log('relay_client: token expired (4401), reconnecting via backoff')
+        log('relay_client: token expired (4401) soon after connecting, reconnecting via backoff', { session_ms: sessionMs, consecutive_4401: this.tokenExpiredCount })
       } else {
         this.tokenExpiredCount = 0
       }
