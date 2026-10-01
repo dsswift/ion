@@ -306,11 +306,11 @@ describe('nextActiveTabId', () => {
   // re-publishing (a running local conversation does so constantly) snapped
   // it back to the local server's active tab.
   it('a local sync does not pull the window off a remote conversation', () => {
-    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerChanged: false, currentTabId: 'grover-1', currentEnvironmentId: 'env-grover' })).toBe('grover-1')
+    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerChanged: false, currentTabId: 'oscar-1', currentEnvironmentId: 'env-oscar' })).toBe('oscar-1')
   })
 
   it('a local sync still follows the local server when it makes a NEW selection', () => {
-    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerActiveTabId: 'local-2', ownerChanged: true, currentTabId: 'grover-1', currentEnvironmentId: 'env-grover' })).toBe('local-2')
+    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerActiveTabId: 'local-2', ownerChanged: true, currentTabId: 'oscar-1', currentEnvironmentId: 'env-oscar' })).toBe('local-2')
   })
 
   it('on a local tab the local owner stays authoritative', () => {
@@ -318,8 +318,8 @@ describe('nextActiveTabId', () => {
   })
 
   it('a remote sync never moves the window, and only fills in when nothing is selected', () => {
-    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: 'grover-9', ownerChanged: false, currentTabId: 'local-1', currentEnvironmentId: 'local', firstTabId: 'local-1' })).toBe('local-1')
-    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: 'grover-9', ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('grover-9')
-    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: null, ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('local-1')
+    expect(nextActiveTabId({ environmentId: 'env-oscar', ownerActiveTabId: 'oscar-9', ownerChanged: false, currentTabId: 'local-1', currentEnvironmentId: 'local', firstTabId: 'local-1' })).toBe('local-1')
+    expect(nextActiveTabId({ environmentId: 'env-oscar', ownerActiveTabId: 'oscar-9', ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('oscar-9')
+    expect(nextActiveTabId({ environmentId: 'env-oscar', ownerActiveTabId: null, ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('local-1')
   })
 })

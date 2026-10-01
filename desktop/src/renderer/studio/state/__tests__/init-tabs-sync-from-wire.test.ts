@@ -43,16 +43,16 @@ describe('initTabsSyncFromWire', () => {
       type: 'studio_snapshot',
       snapshot: { tabs: [tab('a')], settings: {} as never, worktrees: {} as never, terminals: { revision: 0, panes: [], openTabIds: [] } as never, automations: [], engine: {} as never, presence: { entries: [], driving: {} } },
     })
-    frameHandler?.('grover', {
+    frameHandler?.('oscar', {
       type: 'studio_snapshot',
       snapshot: { tabs: [tab('z')], settings: {} as never, worktrees: {} as never, terminals: { revision: 0, panes: [], openTabIds: [] } as never, automations: [], engine: {} as never, presence: { entries: [], driving: {} } },
     })
-    expect(useSessionStore.getState().tabs.map((t) => [t.id, t.environmentId])).toEqual([['a', LOCAL_ENVIRONMENT_ID], ['z', 'grover']])
+    expect(useSessionStore.getState().tabs.map((t) => [t.id, t.environmentId])).toEqual([['a', LOCAL_ENVIRONMENT_ID], ['z', 'oscar']])
     // A later local re-publish touches only the local slice.
     frameHandler?.(LOCAL_ENVIRONMENT_ID, { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [tab('a'), tab('b')] } })
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'b', 'z'])
-    // And grover closing its tab removes only that one.
-    frameHandler?.('grover', { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [] } })
+    // And oscar closing its tab removes only that one.
+    frameHandler?.('oscar', { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [] } })
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'b'])
   })
 

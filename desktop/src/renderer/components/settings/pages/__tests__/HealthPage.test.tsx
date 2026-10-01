@@ -66,7 +66,7 @@ const device: DeviceMetricsSample = {
   processes: [{ pid: 9, type: 'gpu', name: 'gpu-helper', cpuPercent: 1, rssBytes: 50 * 1024 ** 2, gpuPercent: 3 }],
 }
 const local: EnvironmentCatalogEntry = { id: 'local', label: 'This Mac', target: { kind: 'local' } }
-const remote: EnvironmentCatalogEntry = { id: 'env-1', label: 'grover', target: { kind: 'paired', label: 'grover', url: 'http://127.0.0.1:1', credentialRef: 'c', via: 'lan' } }
+const remote: EnvironmentCatalogEntry = { id: 'env-1', label: 'oscar', target: { kind: 'paired', label: 'oscar', url: 'http://127.0.0.1:1', credentialRef: 'c', via: 'lan' } }
 
 let h: Harness
 async function mount(entry: EnvironmentCatalogEntry): Promise<void> {

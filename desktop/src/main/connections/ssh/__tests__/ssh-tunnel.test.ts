@@ -35,7 +35,7 @@ function makeSpawner(): { spawn: SshSpawn; procs: FakeProc[] } {
   return { spawn, procs }
 }
 
-const leg = { destination: 'josh@grover.local', remotePort: 7331 }
+const leg = { destination: 'josh@oscar.local', remotePort: 7331 }
 
 describe('SshTunnelManager', () => {
   it('reserves a port, spawns the forward with -N -L to the remote port, and resolves when the probe answers', async () => {
@@ -49,7 +49,7 @@ describe('SshTunnelManager', () => {
     expect(procs[0].args).toContain('ExitOnForwardFailure=yes')
     expect(procs[0].args).toContain('-L')
     expect(procs[0].args[procs[0].args.indexOf('-L') + 1]).toBe('127.0.0.1:45000:127.0.0.1:7331')
-    expect(procs[0].args.at(-1)).toBe('josh@grover.local')
+    expect(procs[0].args.at(-1)).toBe('josh@oscar.local')
     expect(m.localPortOf('env-1')).toBe(45000)
   })
 
@@ -88,10 +88,10 @@ describe('SshTunnelManager', () => {
   it('stop kills the process, cancels a pending restart, and rekey moves an entry', async () => {
     const { spawn, procs } = makeSpawner()
     const m = new SshTunnelManager({ spawn, reservePort: async () => 45004, probe: async () => true })
-    await m.ensure('ssh:josh@grover.local', leg)
-    m.rekey('ssh:josh@grover.local', 'env-9')
+    await m.ensure('ssh:josh@oscar.local', leg)
+    m.rekey('ssh:josh@oscar.local', 'env-9')
     expect(m.localPortOf('env-9')).toBe(45004)
-    expect(m.localPortOf('ssh:josh@grover.local')).toBeNull()
+    expect(m.localPortOf('ssh:josh@oscar.local')).toBeNull()
     m.stop('env-9')
     expect(procs[0].killed).toBe(true)
     expect(m.localPortOf('env-9')).toBeNull()

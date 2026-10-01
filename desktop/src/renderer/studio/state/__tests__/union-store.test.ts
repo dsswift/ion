@@ -65,7 +65,7 @@ beforeEach(() => {
   stopBodySync = initBodySyncFromWire()
   applyMirrorOverrides()
   deliver(LOCAL_ENVIRONMENT_ID, { type: 'studio_snapshot', snapshot: snapshot(['local-a'], ['local-a']) })
-  deliver('grover', { type: 'studio_snapshot', snapshot: snapshot(['g-1', 'g-2'], ['g-1']) })
+  deliver('oscar', { type: 'studio_snapshot', snapshot: snapshot(['g-1', 'g-2'], ['g-1']) })
   availability.of.clear()
 })
 afterEach(() => {
@@ -77,9 +77,9 @@ afterEach(() => {
 describe('union store', () => {
   it('holds both environments\' tabs at once, each tagged, and keeps the local selection', () => {
     const s = useSessionStore.getState()
-    expect(s.tabs.map((t) => [t.id, t.environmentId])).toEqual([['local-a', LOCAL_ENVIRONMENT_ID], ['g-1', 'grover'], ['g-2', 'grover']])
+    expect(s.tabs.map((t) => [t.id, t.environmentId])).toEqual([['local-a', LOCAL_ENVIRONMENT_ID], ['g-1', 'oscar'], ['g-2', 'oscar']])
     expect(s.activeTabId).toBe('local-a')
-    expect(environmentOfTab('g-2')).toBe('grover')
+    expect(environmentOfTab('g-2')).toBe('oscar')
     expect(activeTabEnvironmentId()).toBe(LOCAL_ENVIRONMENT_ID)
   })
 
@@ -87,14 +87,14 @@ describe('union store', () => {
     const s = useSessionStore.getState()
     expect([...s.terminalPanes.keys()].sort()).toEqual(['g-1', 'local-a'])
     expect([...s.terminalOpenTabIds].sort()).toEqual(['g-1', 'local-a'])
-    deliver('grover', { type: 'studio_event', channel: 'studio:conversation-terminals', payload: { revision: revision + 1, panes: [], openTabIds: [] } })
+    deliver('oscar', { type: 'studio_event', channel: 'studio:conversation-terminals', payload: { revision: revision + 1, panes: [], openTabIds: [] } })
     expect([...useSessionStore.getState().terminalPanes.keys()]).toEqual(['local-a'])
   })
 
   it('routes a forwarded action to the server that owns the tab it names', async () => {
     await store().renameTab('g-1', 'x')
     await store().renameTab('local-a', 'y')
-    expect(wire.actions.map((a) => [a.environmentId, a.name])).toEqual([['grover', 'renameTab'], [LOCAL_ENVIRONMENT_ID, 'renameTab']])
+    expect(wire.actions.map((a) => [a.environmentId, a.name])).toEqual([['oscar', 'renameTab'], [LOCAL_ENVIRONMENT_ID, 'renameTab']])
   })
 
   /**
@@ -105,7 +105,7 @@ describe('union store', () => {
    * later applies an old intent to a conversation that has moved on.
    */
   it('refuses a forwarded action to an environment it cannot reach, and still serves the local one', async () => {
-    availability.of.set('grover', 'reconnecting')
+    availability.of.set('oscar', 'reconnecting')
     expect(await store().renameTab('g-1', 'x')).toBeUndefined()
     expect(wire.actions).toEqual([])
 
@@ -114,8 +114,8 @@ describe('union store', () => {
   })
 
   it('routes a creation to the explicitly chosen environment, and everything else stays put', async () => {
-    await withTargetEnvironment('grover', () => store().createConversationTab('/srv/new', {}))
-    expect(wire.actions).toEqual([{ environmentId: 'grover', name: 'createConversationTab', args: ['/srv/new', {}] }])
+    await withTargetEnvironment('oscar', () => store().createConversationTab('/srv/new', {}))
+    expect(wire.actions).toEqual([{ environmentId: 'oscar', name: 'createConversationTab', args: ['/srv/new', {}] }])
     // No switch happened: the local selection and every tab are still here.
     expect(useSessionStore.getState().activeTabId).toBe('local-a')
     expect(useSessionStore.getState().tabs).toHaveLength(3)
@@ -127,17 +127,17 @@ describe('union store', () => {
     useSessionStore.setState({ activeTabId: 'g-2' } as never)
     // Bounded: an unpaged request answers with the whole transcript in one
     // frame, which a long conversation cannot fit inside the send cap.
-    expect(wire.sent.filter((s) => s.frame.type === 'studio_body_request')).toEqual([{ environmentId: 'grover', frame: { type: 'studio_body_request', tabId: 'g-2', limit: expect.any(Number), instanceId: expect.any(String) } }])
+    expect(wire.sent.filter((s) => s.frame.type === 'studio_body_request')).toEqual([{ environmentId: 'oscar', frame: { type: 'studio_body_request', tabId: 'g-2', limit: expect.any(Number), instanceId: expect.any(String) } }])
   })
 
   it('routes shell calls by what they name: terminal key and tab id to the owner, a path to the active tab\'s server', () => {
-    expect(resolveShellEnvironment([{ key: 'g-1:i1', data: 'x' }])).toBe('grover')
-    expect(resolveShellEnvironment([{ tabId: 'g-2' }])).toBe('grover')
-    expect(resolveShellEnvironment(['g-1'])).toBe('grover')
+    expect(resolveShellEnvironment([{ key: 'g-1:i1', data: 'x' }])).toBe('oscar')
+    expect(resolveShellEnvironment([{ tabId: 'g-2' }])).toBe('oscar')
+    expect(resolveShellEnvironment(['g-1'])).toBe('oscar')
     expect(resolveShellEnvironment([{ directory: '/srv/x' }])).toBe(LOCAL_ENVIRONMENT_ID)
     useSessionStore.setState({ activeTabId: 'g-1' } as never)
-    expect(resolveShellEnvironment([{ directory: '/srv/x' }])).toBe('grover')
-    expect(resolveShellEnvironment(['/srv/x'])).toBe('grover')
+    expect(resolveShellEnvironment([{ directory: '/srv/x' }])).toBe('oscar')
+    expect(resolveShellEnvironment(['/srv/x'])).toBe('oscar')
     expect(resolveShellEnvironment([{ provider: 'anthropic' }])).toBe(LOCAL_ENVIRONMENT_ID)
     expect(resolveShellEnvironment([])).toBe(LOCAL_ENVIRONMENT_ID)
   })
@@ -146,9 +146,9 @@ describe('union store', () => {
     // The local tab stays active: a paste into a remote conversation must
     // still reach that conversation's server, or its agent cannot read it.
     const packed = (verb: string, args: unknown[]): unknown[] => SHELL_INVOKE[verb].pack!(args)
-    expect(resolveShellEnvironment(packed('saveAttachmentData', ['g-1', 'pasted-text-1.txt', 'aGk=']))).toBe('grover')
-    expect(resolveShellEnvironment(packed('attachFileByPath', ['g-1', '/srv/a.txt']))).toBe('grover')
-    expect(resolveShellEnvironment(packed('readFileData', ['g-2', '/srv/a.docx']))).toBe('grover')
+    expect(resolveShellEnvironment(packed('saveAttachmentData', ['g-1', 'pasted-text-1.txt', 'aGk=']))).toBe('oscar')
+    expect(resolveShellEnvironment(packed('attachFileByPath', ['g-1', '/srv/a.txt']))).toBe('oscar')
+    expect(resolveShellEnvironment(packed('readFileData', ['g-2', '/srv/a.docx']))).toBe('oscar')
     expect(resolveShellEnvironment(packed('saveAttachmentData', ['local-a', 'pasted-text-1.txt', 'aGk=']))).toBe(LOCAL_ENVIRONMENT_ID)
   })
 })

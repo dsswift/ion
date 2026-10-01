@@ -56,8 +56,8 @@ describe('browser.tool command handler', () => {
     const broker = fakeBroker()
     installBrowserToolCommandHandler(broker)
     broker.deliver('local', command('c4', { name: 'browser_navigate' }))
-    broker.deliver('grover', command('c5', { name: 'browser_navigate', input: {}, ctx: { sessionKey: 't', cwd: '/r' } }))
-    expect(broker.sent.map((s) => [s.environmentId, (s.frame as { ok?: boolean }).ok])).toEqual([['local', false], ['grover', false]])
+    broker.deliver('oscar', command('c5', { name: 'browser_navigate', input: {}, ctx: { sessionKey: 't', cwd: '/r' } }))
+    expect(broker.sent.map((s) => [s.environmentId, (s.frame as { ok?: boolean }).ok])).toEqual([['local', false], ['oscar', false]])
     expect(bodies.execute).not.toHaveBeenCalled()
   })
 

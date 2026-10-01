@@ -33,10 +33,10 @@ function spawnScript(script: { stdout?: string; stderr?: string; code: number },
 
 describe('parseSshDestination', () => {
   it('accepts host, user@host, host:port, and ssh:// forms', () => {
-    expect(parseSshDestination('grover.local')).toEqual({ destination: 'grover.local' })
-    expect(parseSshDestination('josh@grover.local')).toEqual({ destination: 'josh@grover.local' })
-    expect(parseSshDestination('josh@grover.local:2222')).toEqual({ destination: 'josh@grover.local', port: 2222 })
-    expect(parseSshDestination('ssh://josh@grover.local:2222/')).toEqual({ destination: 'josh@grover.local', port: 2222 })
+    expect(parseSshDestination('oscar.local')).toEqual({ destination: 'oscar.local' })
+    expect(parseSshDestination('josh@oscar.local')).toEqual({ destination: 'josh@oscar.local' })
+    expect(parseSshDestination('josh@oscar.local:2222')).toEqual({ destination: 'josh@oscar.local', port: 2222 })
+    expect(parseSshDestination('ssh://josh@oscar.local:2222/')).toEqual({ destination: 'josh@oscar.local', port: 2222 })
     expect(parseSshDestination('  lab  ')).toEqual({ destination: 'lab' })
   })
 

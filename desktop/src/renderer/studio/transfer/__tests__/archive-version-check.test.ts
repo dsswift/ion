@@ -18,6 +18,6 @@ describe('archiveVersionCheck', () => {
   })
 
   it('blocks a destination older than the source, naming the destination', () => {
-    expect(archiveVersionCheck(description(2), preflight(), 'grover')).toMatchObject({ state: 'blocked', label: 'grover runs an older Ion server' })
+    expect(archiveVersionCheck(description(2), preflight(), 'oscar')).toMatchObject({ state: 'blocked', label: 'oscar runs an older Ion server' })
   })
 })

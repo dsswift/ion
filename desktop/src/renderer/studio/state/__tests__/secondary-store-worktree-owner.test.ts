@@ -27,11 +27,11 @@ const snapshot = (revision: number, repos: string[]): StudioWorktreeSnapshot => 
 describe('environmentOfWorktreeRepo', () => {
   it('names the machine whose inventory has the repository, this machine first on a shared path', () => {
     // The remote snapshot arrives first; local must still win the shared path.
-    hydrateWorktreeFromSync(snapshot(1, ['/Users/me/src/ion', '/home/g/src/tools']), 'grover')
+    hydrateWorktreeFromSync(snapshot(1, ['/Users/me/src/ion', '/home/g/src/tools']), 'oscar')
     hydrateWorktreeFromSync(snapshot(1, ['/Users/me/src/ion']), 'local')
 
     expect(environmentOfWorktreeRepo('/Users/me/src/ion')).toBe('local')
-    expect(environmentOfWorktreeRepo('/home/g/src/tools')).toBe('grover')
+    expect(environmentOfWorktreeRepo('/home/g/src/tools')).toBe('oscar')
     expect(environmentOfWorktreeRepo('/nowhere')).toBeNull()
   })
 })
@@ -44,13 +44,13 @@ describe('environmentOfWorkspacePath', () => {
       ...snapshot(2, ['/home/g/src/tools']),
       inventory: { '/home/g/src/tools': [{ worktreePath, branchName: 'wt/tools-1a2b', sourceBranch: 'main', label: 'tools-1a2b', head: '', lastCommitSubject: '', isDirty: false, unlandedCommitCount: 0, needsSync: false, safeToDiscard: false }] },
       workspaces: { '/home/g/src/bench-only': [{ repoPath: '/home/g/src/bench-only', sourceBranch: 'main', benchPath, benchBranch: 'ion/bench/main', members: [], baseSha: '', lastBuiltAt: 0 }] },
-    }, 'grover')
+    }, 'oscar')
 
-    expect(environmentOfWorkspacePath('/home/g/src/tools')).toBe('grover')
-    expect(environmentOfWorkspacePath('/home/g/src/bench-only')).toBe('grover')
-    expect(environmentOfWorktreeRepo('/home/g/src/bench-only')).toBe('grover')
-    expect(environmentOfWorkspacePath(worktreePath)).toBe('grover')
-    expect(environmentOfWorkspacePath(benchPath)).toBe('grover')
+    expect(environmentOfWorkspacePath('/home/g/src/tools')).toBe('oscar')
+    expect(environmentOfWorkspacePath('/home/g/src/bench-only')).toBe('oscar')
+    expect(environmentOfWorktreeRepo('/home/g/src/bench-only')).toBe('oscar')
+    expect(environmentOfWorkspacePath(worktreePath)).toBe('oscar')
+    expect(environmentOfWorkspacePath(benchPath)).toBe('oscar')
     expect(environmentOfWorkspacePath('/nowhere')).toBeNull()
   })
 })

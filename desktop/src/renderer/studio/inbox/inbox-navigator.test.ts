@@ -246,25 +246,25 @@ describe('buildInboxNavigator: one project per repository across environments', 
   // The same repository cloned on two machines has two paths. Keyed on the
   // path it showed as two projects, and a scope on one hid the other's
   // conversations.
-  const scopeOf = (key: string, env: string): string => ((env === 'local' && key === '/Users/u/src/ion') || (env === 'grover' && key === '/home/g/source/ion') ? 'remote:github.com/o/ion' : key)
+  const scopeOf = (key: string, env: string): string => ((env === 'local' && key === '/Users/u/src/ion') || (env === 'oscar' && key === '/home/g/source/ion') ? 'remote:github.com/o/ion' : key)
   const local = tab('t-local', '/Users/u/src/ion')
-  const remote = tab('t-grover', '/home/g/source/ion', { environmentId: 'grover' })
+  const remote = tab('t-oscar', '/home/g/source/ion', { environmentId: 'oscar' })
   const other = tab('t-notes', '/Users/u/notes')
 
   it('merges both checkouts under one header, local first, and labels the other machine\'s groups', () => {
-    const nodes = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(), { scopeOf, environmentLabel: (id) => (id === 'grover' ? 'grover' : 'This Mac') })
+    const nodes = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(), { scopeOf, environmentLabel: (id) => (id === 'oscar' ? 'oscar' : 'This Mac') })
     expect(nodes.map((n) => [n.project.name, n.scopeKey])).toEqual([['ion', 'remote:github.com/o/ion'], ['notes', '/Users/u/notes']])
     const ion = nodes[0]
     expect(ion.project.key).toBe('/Users/u/src/ion')
     const tabIds = [...ion.flatTabs, ...ion.groups.flatMap((g) => g.tabs)].map((t) => t.id).sort()
-    expect(tabIds).toEqual(['t-grover', 't-local'])
-    expect(ion.groups.map((g) => g.label).filter((l) => l.endsWith('· grover')).length + ion.flatTabs.filter((t) => t.id === 't-grover').length).toBeGreaterThan(0)
+    expect(tabIds).toEqual(['t-oscar', 't-local'])
+    expect(ion.groups.map((g) => g.label).filter((l) => l.endsWith('· oscar')).length + ion.flatTabs.filter((t) => t.id === 't-oscar').length).toBeGreaterThan(0)
   })
 
   it('a scope on the repository shows every machine\'s conversations, and a stale path scope still matches its own checkout', () => {
     const scoped = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(['remote:github.com/o/ion']), { scopeOf })
     expect(scoped).toHaveLength(1)
-    expect([...scoped[0].flatTabs, ...scoped[0].groups.flatMap((g) => g.tabs)].map((t) => t.id).sort()).toEqual(['t-grover', 't-local'])
+    expect([...scoped[0].flatTabs, ...scoped[0].groups.flatMap((g) => g.tabs)].map((t) => t.id).sort()).toEqual(['t-oscar', 't-local'])
     const stale = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(['/Users/u/src/ion']), { scopeOf })
     expect([...stale[0].flatTabs, ...stale[0].groups.flatMap((g) => g.tabs)].map((t) => t.id)).toEqual(['t-local'])
   })
@@ -275,7 +275,7 @@ describe('buildInboxNavigator: one project per repository across environments', 
     const merged = buildInboxNavigator([remote, local], new Map(), new Map(), new Map(), new Set(), { scopeOf })
     expect([merged[0].project.key, merged[0].environmentId]).toEqual(['/Users/u/src/ion', 'local'])
     const onlyRemote = buildInboxNavigator([remote], new Map(), new Map(), new Map(), new Set(), { scopeOf })
-    expect([onlyRemote[0].project.key, onlyRemote[0].environmentId]).toEqual(['/home/g/source/ion', 'grover'])
+    expect([onlyRemote[0].project.key, onlyRemote[0].environmentId]).toEqual(['/home/g/source/ion', 'oscar'])
   })
 
   it('without identities every path is its own project, as before', () => {

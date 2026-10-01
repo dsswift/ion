@@ -33,8 +33,8 @@ import { encodePairedSecret } from '../paired-secret'
 import type { PairedEnvironmentTarget } from '@ion/shared/types-environments'
 
 const target: PairedEnvironmentTarget = {
-  kind: 'paired', label: 'grover', url: 'http://127.0.0.1:7331', credentialRef: 'env-ssh', via: 'ssh', environmentId: 'env-ssh',
-  ssh: { destination: 'josh@grover.local', remotePort: 7331 },
+  kind: 'paired', label: 'oscar', url: 'http://127.0.0.1:7331', credentialRef: 'env-ssh', via: 'ssh', environmentId: 'env-ssh',
+  ssh: { destination: 'josh@oscar.local', remotePort: 7331 },
 }
 
 describe('connectEnvironment via ssh', () => {
@@ -50,7 +50,7 @@ describe('connectEnvironment via ssh', () => {
   })
 
   it('opens the forward, reads /auth/config through it, and dials the local port with a paired credential', async () => {
-    await connectEnvironment('env-ssh', 'grover', target)
+    await connectEnvironment('env-ssh', 'oscar', target)
     const attempt = await vi.mocked(broker.connect).mock.calls[0][0].open()
     expect(sshTunnels.ensure).toHaveBeenCalledWith('env-ssh', target.ssh)
     expect(fetchAuthConfig).toHaveBeenCalledWith('http://127.0.0.1:51234')
@@ -64,7 +64,7 @@ describe('connectEnvironment via ssh', () => {
   // frames, the paired socket is sealed with the pairing's own id and secret.
   it('seals the paired socket once the server advertises sealed tcp', async () => {
     vi.mocked(fetchAuthConfig).mockResolvedValueOnce({ nonce: 'n1', sealedTcp: true })
-    await connectEnvironment('env-ssh', 'grover', target)
+    await connectEnvironment('env-ssh', 'oscar', target)
     await vi.mocked(broker.connect).mock.calls[0][0].open()
     expect(connectSealedTcp).toHaveBeenCalledWith('http://127.0.0.1:51234', 'c1', Buffer.alloc(32, 7))
     expect(connectTcp).not.toHaveBeenCalled()
@@ -74,7 +74,7 @@ describe('connectEnvironment via ssh', () => {
   // keeps retrying, which is what lets an environment recover on its own.
   it('refuses the attempt when the ssh leg is missing', async () => {
     const broken = { ...target, ssh: undefined }
-    await connectEnvironment('env-ssh', 'grover', broken)
+    await connectEnvironment('env-ssh', 'oscar', broken)
     await expect(vi.mocked(broker.connect).mock.calls[0][0].open()).rejects.toThrow(/no ssh leg/)
     expect(sshTunnels.ensure).not.toHaveBeenCalled()
   })

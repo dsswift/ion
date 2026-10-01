@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TabState } from '@ion/shared/types'
 
 vi.mock('../connection/tab-environment', () => ({ tabEnvironmentId: (tab: { environmentId?: string }) => tab.environmentId ?? 'local' }))
-vi.mock('../transfer/environment-label-cache', () => ({ useEnvironmentInfo: (id: string | null) => (id === 'env-grover' ? { label: 'grover', url: 'http://127.0.0.1:7331' } : null) }))
+vi.mock('../transfer/environment-label-cache', () => ({ useEnvironmentInfo: (id: string | null) => (id === 'env-oscar' ? { label: 'oscar', url: 'http://127.0.0.1:7331' } : null) }))
 vi.mock('../../components/git/HoverCard', () => ({ HoverCard: ({ content }: { content: React.ReactNode }) => <div data-testid="card">{content}</div> }))
 
 const { ConversationHoverCard } = await import('./ConversationHoverCard')
@@ -35,10 +35,10 @@ describe('ConversationHoverCard host row', () => {
   }
 
   it('a conversation on another environment names it on the Host row with the remote mark, and has no Environment row', () => {
-    act(() => root.render(<ConversationHoverCard tab={tab({ environmentId: 'env-grover' })} benches={new Map()} inventory={new Map()}><span /></ConversationHoverCard>))
+    act(() => root.render(<ConversationHoverCard tab={tab({ environmentId: 'env-oscar' })} benches={new Map()} inventory={new Map()}><span /></ConversationHoverCard>))
     expect(labels()).not.toContain('Environment')
     const host = valueOf('Host')
-    expect(host?.textContent).toBe('grover')
+    expect(host?.textContent).toBe('oscar')
     const remote = host?.querySelector('[data-testid="hover-card-remote-host"]')
     expect(remote).not.toBeNull()
     expect(remote?.getAttribute('title')).toBe('http://127.0.0.1:7331')

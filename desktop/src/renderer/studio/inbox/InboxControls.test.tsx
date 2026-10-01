@@ -133,11 +133,11 @@ describe('InboxControlButton sizing', () => {
   })
 
   it('shows the label, on one line, once the filter carries information', () => {
-    const host = render(<InboxControlButton icon={<span />} title="Environments: grover" label="grover" onClick={() => {}} />)
+    const host = render(<InboxControlButton icon={<span />} title="Environments: oscar" label="oscar" onClick={() => {}} />)
     const button = host.querySelector('button')!
-    expect(button.textContent).toContain('grover')
+    expect(button.textContent).toContain('oscar')
     expect(button.style.width).toBe('')
-    const label = Array.from(button.querySelectorAll('span')).find((s) => s.textContent === 'grover')!
+    const label = Array.from(button.querySelectorAll('span')).find((s) => s.textContent === 'oscar')!
     expect(label.style.whiteSpace).toBe('nowrap')
     expect(label.style.textOverflow).toBe('ellipsis')
   })

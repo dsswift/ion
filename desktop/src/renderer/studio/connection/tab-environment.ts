@@ -80,8 +80,8 @@ const targetStack: string[] = []
  * Runs `fn` with `environmentId` as the explicit target for every forwarded
  * action and bridged shell call it issues SYNCHRONOUSLY. The store's
  * forwarded actions read their target at the top of the call, before any
- * await, so `withTargetEnvironment('grover', () => store.createConversationTab(dir))`
- * creates the conversation on grover even though the call is async.
+ * await, so `withTargetEnvironment('oscar', () => store.createConversationTab(dir))`
+ * creates the conversation on oscar even though the call is async.
  */
 export function withTargetEnvironment<T>(environmentId: string, fn: () => T): T {
   targetStack.push(environmentId)

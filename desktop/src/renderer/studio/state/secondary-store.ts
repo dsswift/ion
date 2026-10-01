@@ -46,7 +46,7 @@ let applied = false
 
 /**
  * Applied-revision cursors, one per Environment: revisions are minted per
- * server, so grover's revision 3 says nothing about the local server's
+ * server, so oscar's revision 3 says nothing about the local server's
  * revision 40.
  */
 const lastSnapshotRevision = new Map<string, number>()
