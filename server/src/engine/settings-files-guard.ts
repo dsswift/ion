@@ -68,7 +68,8 @@ export type SettingsGuardDecision =
   | { kind: 'ask'; path: string; reason: string }
 
 /**
- * `path` when it is an enterprise config source, else null. These are the
+ * `path` when it is an enterprise config source or the managed-mode marker,
+ * else null. These are the
  * sealed layer: what IT set for this machine, which nothing below it may
  * change. No setting and no approval opens them. The list mirrors the
  * engine's own source order (engine/internal/config/enterprise.go).
@@ -79,10 +80,12 @@ export function enterpriseConfigFile(path: string): string | null {
   if (override && clean === normalize(override)) return clean
   if (clean.startsWith(`${sep}Library${sep}Managed Preferences${sep}`) && clean.endsWith('com.ion.engine.plist')) return clean
   if (clean === normalize('/etc/ion/config.json') || clean.startsWith(normalize('/etc/ion/config.d') + sep)) return clean
+  if (clean === normalize('/etc/ion/managed.json') || clean === normalize('/Library/Application Support/Ion/managed.json')) return clean
   const programData = process.env.ProgramData
   if (programData) {
     const root = join(normalize(programData), 'Ion')
     if (clean === join(root, 'enterprise-config.json') || clean.startsWith(join(root, 'enterprise-config.d') + sep)) return clean
+    if (clean === join(root, 'managed.json')) return clean
   }
   return null
 }

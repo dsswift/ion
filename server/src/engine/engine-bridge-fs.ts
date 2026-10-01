@@ -113,6 +113,9 @@ export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
       has_custom_fields: result.data.policy.customFields !== undefined,
       retention_days: result.data.policy.conversationRetentionDays ?? null,
       max_sessions: result.data.policy.resourceLimits?.maxSessions ?? null,
+      managed: result.data.policy.managedMode?.managed === true,
+      policy_absent: result.data.policy.managedMode?.policyAbsent === true,
+      override_refused: result.data.policy.managedMode?.overrideRefused === true,
     })
     return result.data.policy
   }

@@ -105,7 +105,7 @@ describe('the organization seal', () => {
 describe('enterprise config', () => {
   it('is sealed: refused with the setting on, and refused with an approval in hand', () => {
     settings.value = { allowSettingsEdits: true }
-    for (const path of ['/etc/ion/config.json', '/etc/ion/config.d/10-models.json', '/Library/Managed Preferences/com.ion.engine.plist', '/Library/Managed Preferences/someone/com.ion.engine.plist']) {
+    for (const path of ['/etc/ion/config.json', '/etc/ion/config.d/10-models.json', '/Library/Managed Preferences/com.ion.engine.plist', '/Library/Managed Preferences/someone/com.ion.engine.plist', '/etc/ion/managed.json', '/Library/Application Support/Ion/managed.json']) {
       grantSettingsEdit('tab-1', path)
       const decision = evaluateSettingsGuard(edit(path))
       expect(decision.kind).toBe('deny')

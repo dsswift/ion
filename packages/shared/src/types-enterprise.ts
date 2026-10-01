@@ -41,6 +41,19 @@ export interface ExtensionAllowlistEntry {
 }
 
 /**
+ * How the engine resolved policy on an installation an administrator marked
+ * as managed. Mirrors Go's ManagedModeStatus. The engine stamps it; a policy
+ * source cannot set it.
+ */
+export interface ManagedModeStatus {
+  managed: boolean
+  /** No machine policy resolved. The engine refuses every prompt. */
+  policyAbsent?: boolean
+  /** ION_ENTERPRISE_CONFIG was set and ignored. */
+  overrideRefused?: boolean
+}
+
+/**
  * The full enterprise policy blob from the engine's get_enterprise_policy RPC
  * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
  * Only the fields the desktop consumes are typed here; the blob may carry
@@ -49,6 +62,8 @@ export interface ExtensionAllowlistEntry {
  * user-editable.
  */
 export interface EnterprisePolicy {
+  /** Present only on an installation carrying the managed-mode marker. */
+  managedMode?: ManagedModeStatus
   /** Models the enterprise permits. Empty/absent = no restriction. */
   allowedModels?: string[]
   /** Models the enterprise blocks. */
