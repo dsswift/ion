@@ -256,7 +256,7 @@ This logging work is the first stage of a deliberate progression:
    versioned (telemetry), correlated, and fleet-attributable.
 2. **Enterprise OIDC auth** — populates the reserved `user` field (R20)
    with a real identity from the enterprise identity provider.
-3. **Orion enterprise ingestion infrastructure** — central multi-install
+3. **Enterprise ingestion infrastructure** — central multi-install
    sinks consume the versioned stream (`schema` int + `install_id` + `host`
    + `version` are the dimensions that make this possible).
 4. **Fleet auditability** — with identity attached and ingestion central,
@@ -264,8 +264,8 @@ This logging work is the first stage of a deliberate progression:
    build, at what cost.
 
 The enterprise realization of this progression — the reference architecture
-for central collection, the per-component shipping guide, and the worked
-five-layer enterprise example — is documented at
+for central collection, the per-component shipping guide, and a worked
+five-layer managed-cloud example — is documented at
 [`docs/enterprise/central-log-collection.md`](../../enterprise/central-log-collection.md).
 
 ## References

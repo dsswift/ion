@@ -41,7 +41,7 @@ The index is **live**. Each root is watched, and a changed file re-parses and re
 
 ### 3.2 Multiple roots
 
-Graph View is **enabled by default, for every conversation**. Unlike almost every other Graph View setting, the primary root is not something the operator must configure to get a working graph: it follows the conversation's own project directory. Open a conversation in `cloudops` and the primary root is `cloudops`; open one in a worktree and the primary root is that worktree's directory. There is no opt-in step. The effective corpus is the union of:
+Graph View is **enabled by default, for every conversation**. Unlike almost every other Graph View setting, the primary root is not something the operator must configure to get a working graph: it follows the conversation's own project directory. Open a conversation in `platform` and the primary root is `platform`; open one in a worktree and the primary root is that worktree's directory. There is no opt-in step. The effective corpus is the union of:
 
 - **The primary root**: the working directory of the conversation's active tab. Resolved automatically — no configuration required — unless the project's own `.ion/settings.json` sets `desktop.graphView.corpusRoots`, in which case that explicit list replaces the automatic default for that project.
 - **Zero or more additional roots**: local directories the operator configures in `~/.ion/settings.json` to join every project's graph. They use the same front-matter vocabulary and link conventions as the primary root, so cross-root identity and link resolution stay uniform.
