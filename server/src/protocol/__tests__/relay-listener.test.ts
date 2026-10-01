@@ -258,6 +258,30 @@ describe('startRelayStudioListeners', () => {
     expect(connectionRegistry.findByClientId('client-a')).not.toBe(first)
   })
 
+  // The order a real join arrives in: the server is on the channel first with
+  // a Connection awaiting a hello, then the relay reports the client joining,
+  // then the hello. The Connection the join replaced still heard the channel,
+  // so it answered the hello too and displaced the live one: both were closed,
+  // every action ran twice, and no answer ever left.
+  it('a join that replaces a connection still awaiting its hello leaves one live connection that answers', async () => {
+    const store = credentialsStore()
+    store.add({ clientId: 'client-a', secret, scopes: ['conversations:read'], subject: 'paired:client-a', kind: 'desktop' })
+    handle = startRelayStudioListeners({ relays: [{ url: 'wss://relay.example', psk: 'psk-1' }], listener: listenerOptions() })
+    await settle()
+    const relay = fakeRelays[0]
+    relay.emit('control', { type: 'relay:peer-reconnected' })
+    relay.emit('message', JSON.parse(sealRelayFrame(encodeFrame({ type: 'studio_hello', protocolVersion: PROTOCOL_VERSION, clientId: 'client-a', clientKind: 'desktop', capabilities: [], credential: { kind: 'paired', clientId: 'client-a', proof: 'channel' } }), secret)))
+    await settle()
+
+    const welcomes = relay.sent.map((m) => decodeFrame(openRelayFrame(JSON.stringify(m), secret)!.bytes.toString('utf-8')).type).filter((t) => t === 'studio_welcome')
+    expect(welcomes).toHaveLength(1)
+    const live = connectionRegistry.findByClientId('client-a')
+    expect(live).toBeDefined()
+    expect(live!.isClosed).toBe(false)
+    // One socket listens to the channel, however many joins there have been.
+    expect(relay.listenerCount('message')).toBe(1)
+  })
+
   // A push the relay could not deliver (no push address yet, push not
   // configured, or Apple refused it) comes back as a control notice. It is
   // the server's only sign the push never reached the phone, so it is logged.
