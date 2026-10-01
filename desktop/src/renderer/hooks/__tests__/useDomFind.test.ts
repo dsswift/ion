@@ -21,10 +21,10 @@ describe('findTextRanges', () => {
   })
 
   it('matches across inline runs such as syntax-highlighted tokens', () => {
-    const root = mount('<div><span class="tok">cloudops_</span><span class="tok">grafana</span>.id</div>')
-    const ranges = findTextRanges(root, 'cloudops_grafana.id')
+    const root = mount('<div><span class="tok">platform_</span><span class="tok">grafana</span>.id</div>')
+    const ranges = findTextRanges(root, 'platform_grafana.id')
     expect(ranges).toHaveLength(1)
-    expect(ranges[0].toString()).toBe('cloudops_grafana.id')
+    expect(ranges[0].toString()).toBe('platform_grafana.id')
   })
 
   it('never joins two blocks into one match', () => {

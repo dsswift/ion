@@ -38,7 +38,7 @@
   cannot report "clean" on the strength of a task it could not read.
 
   NOTHING in a user profile is touched. %USERPROFILE%\.ion holds
-  conversations, credentials and settings; ~/orion and ~/.orion hold operator
+  conversations, credentials and settings; ~/atlas and ~/.atlas hold operator
   data; none of it is this script's business, and an uninstall that removed
   any of it would destroy work. The rendered task XML at
   %USERPROFILE%\.ion\ion-engine-task.xml is left behind on purpose for the

@@ -105,7 +105,7 @@ describe('bridged invoke marshalling', () => {
   })
 
   it('sends a workspace search request as the one object the server reads', () => {
-    const request = { roots: ['/data/repos/ion'], query: 'cloudops_grafana_principal_id', caseSensitive: false, wholeWord: true }
+    const request = { roots: ['/data/repos/ion'], query: 'platform_grafana_principal_id', caseSensitive: false, wholeWord: true }
     void host.shell.searchText(request)
     expect(lastAction()).toMatchObject({ action: 'fs.searchText', args: [request] })
   })

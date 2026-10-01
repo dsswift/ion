@@ -150,7 +150,7 @@ import { host } from '../host/host-instance'
  * Rules (applied in order):
  *  1. Falsy name → 'EXT'
  *  2. Strip leading/trailing whitespace.
- *  3. If the stripped name is ≤ 8 chars → return it as-is (e.g. 'COS', 'Orion', 'ion-dev').
+ *  3. If the stripped name is ≤ 8 chars → return it as-is (e.g. 'COS', 'Atlas', 'ion-dev').
  *  4. Split into words, take the first letter of each word, uppercase it,
  *     join, cap at 8 chars (e.g. 'Ion Dev' → 'ID', 'My Long Name X' → 'MLN').
  *  5. Fallback: first 8 chars uppercased.

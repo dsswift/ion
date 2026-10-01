@@ -24,7 +24,7 @@ afterEach(() => { act(() => root.unmount()); host.remove() })
 
 const options = [
   { value: '/Users/Shared/source/personal/ion', label: 'ion', detail: '/Users/Shared/source/personal/ion' },
-  { value: '/Users/josh/orion', label: 'orion', detail: '/Users/josh/orion' },
+  { value: '/Users/josh/atlas', label: 'atlas', detail: '/Users/josh/atlas' },
 ]
 
 function render(props: Partial<React.ComponentProps<typeof TransferSelect>> = {}): { onChange: ReturnType<typeof vi.fn> } {
@@ -46,10 +46,10 @@ describe('TransferSelect', () => {
     act(() => { (host.querySelector('button[aria-label="Lands in"]') as HTMLButtonElement).click() })
 
     const items = Array.from(host.querySelectorAll('[role="menuitemradio"]'))
-    expect(items.map((i) => i.textContent)).toEqual(['ion/Users/Shared/source/personal/ion', 'orion/Users/josh/orion'])
+    expect(items.map((i) => i.textContent)).toEqual(['ion/Users/Shared/source/personal/ion', 'atlas/Users/josh/atlas'])
 
     act(() => { (items[1] as HTMLButtonElement).click() })
-    expect(onChange).toHaveBeenCalledWith('/Users/josh/orion')
+    expect(onChange).toHaveBeenCalledWith('/Users/josh/atlas')
     expect(host.querySelector('[role="menu"]')).toBeNull()
   })
 
@@ -61,7 +61,7 @@ describe('TransferSelect', () => {
   })
 
   it('shows no complaint once a choice is made', () => {
-    render({ value: '/Users/josh/orion', invalid: false, invalidMessage: 'Pick one.' })
+    render({ value: '/Users/josh/atlas', invalid: false, invalidMessage: 'Pick one.' })
     expect(host.querySelector('[role="alert"]')).toBeNull()
   })
 
@@ -70,11 +70,11 @@ describe('TransferSelect', () => {
     render({ options: [
       { value: '/src/ion', label: 'ion' },
       { value: '/notes', label: 'notes', section: 'Other projects' },
-      { value: '/src/orion', label: 'orion', section: 'Other projects' },
+      { value: '/src/atlas', label: 'atlas', section: 'Other projects' },
     ] })
     act(() => { (host.querySelector('button[aria-label="Lands in"]') as HTMLButtonElement).click() })
     const menu = host.querySelector('[role="menu"]')!
     const sequence = Array.from(menu.querySelectorAll('[role="menuitemradio"], [role="presentation"]')).map((el) => el.getAttribute('role') === 'presentation' ? `#${el.textContent}` : el.textContent)
-    expect(sequence).toEqual(['ion', '#Other projects', 'notes', 'orion'])
+    expect(sequence).toEqual(['ion', '#Other projects', 'notes', 'atlas'])
   })
 })

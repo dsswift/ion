@@ -1,29 +1,22 @@
 // @vitest-environment jsdom
 /**
  * conv-image-restore-e2e — end-to-end verification of the #224 image-restore
- * pipeline against the EXACT real conversation 1783802415913-98e41ec70915.
+ * pipeline against a full conversation.
  *
- * Why this test exists: four prior "fixed" claims for #224 shipped without an
- * end-to-end test that drove the real conversation through the real desktop
- * pipeline, so each fix was verified by reading code, not by observing the
- * rendered output. This test closes that gap. It uses two fixtures copied
- * verbatim from the machine's real state:
+ * It uses two fixtures with the shape of a restored conversation:
  *
- *   - conv-1783802415913-engine-history.json — the output of the engine's
- *     load_session_history -> LoadMessages -> flattenEntries path, captured by
- *     running the real Go LoadMessages against the real on-disk conversation
- *     (engine/internal/conversation/dump_fixture_test.go). 71 messages, 7 tool
- *     rows carrying 20 image attachments.
- *   - conv-1783802415913-cached-messages.json — the persisted desktop cache for
- *     tab 91558053-420f-42f9-b113-d93db2231624, copied verbatim from
- *     ~/.ion/tabs-api.json.
+ *   - image-restore-engine-history.json — what the engine returns for
+ *     load_session_history. 71 messages, 7 tool rows carrying 20 image
+ *     attachments.
+ *   - image-restore-cached-messages.json — the persisted desktop cache for the
+ *     same tab.
  *
  * The test drives the real pipeline in order:
  *   1. mergeHistoryAttachments (the reconcile merge) folds engine-history
  *      attachments onto the cached messages by toolId.
- *   2. The merged Message[] is rendered through the REAL Transcript component at
- *      the user's REAL setting (unifiedTurnView: true, from ~/.ion/settings.json)
- *      with the real ToolRow / AgentTurnGroup / InlineMessageImages tree.
+ *   2. The merged Message[] is rendered through the real Transcript component
+ *      in both views (unifiedTurnView true and false) with the real ToolRow /
+ *      AgentTurnGroup / InlineMessageImages tree.
  *   3. The test asserts on the rendered <img> elements — the final user-visible
  *      artifact — not on intermediate store state.
  *
@@ -40,14 +33,14 @@ import type { Message, SessionLoadMessage } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-// ── Fixtures (real conversation data) ──
+// ── Fixtures ──
 
 const FIXTURE_DIR = join(__dirname, 'fixtures')
 const CACHED_MESSAGES = JSON.parse(
-  readFileSync(join(FIXTURE_DIR, 'conv-1783802415913-cached-messages.json'), 'utf8'),
+  readFileSync(join(FIXTURE_DIR, 'image-restore-cached-messages.json'), 'utf8'),
 ) as Array<Record<string, unknown>>
 const ENGINE_HISTORY = JSON.parse(
-  readFileSync(join(FIXTURE_DIR, 'conv-1783802415913-engine-history.json'), 'utf8'),
+  readFileSync(join(FIXTURE_DIR, 'image-restore-engine-history.json'), 'utf8'),
 ) as SessionLoadMessage[]
 
 // The desktop assigns a fresh renderer id to every restored message
@@ -70,7 +63,7 @@ function toRendererMessages(cached: Array<Record<string, unknown>>): Message[] {
 
 // ── Mocks ──
 
-// The user's real setting. Sourced from ~/.ion/settings.json ("unifiedTurnView": true).
+// The default view setting.
 let UNIFIED_TURN_VIEW = true
 
 vi.mock('../../theme', () => ({
@@ -141,7 +134,7 @@ async function renderTranscript(messages: Message[]) {
   }
 }
 
-describe('conv 1783802415913 image restore — end to end', () => {
+describe('conversation image restore — end to end', () => {
   it('fixture sanity: engine history carries 20 image attachments on 7 tool rows', () => {
     const rows = ENGINE_HISTORY.filter((m) => (m.attachments?.length ?? 0) > 0)
     const total = rows.reduce((n, m) => n + (m.attachments?.length ?? 0), 0)
@@ -172,9 +165,9 @@ describe('conv 1783802415913 image restore — end to end', () => {
     expect(derived).toBe(20)
   })
 
-  it('renders the 20 restored images to the DOM at the user real setting (unifiedTurnView: true)', async () => {
+  it('renders the 20 restored images to the DOM in unified view (unifiedTurnView: true)', async () => {
     UNIFIED_TURN_VIEW = true
-    // The real cache already carries the attachments (reconcile persisted them);
+    // The cache already carries the attachments (reconcile persisted them);
     // render exactly what the store holds after restore.
     const messages = toRendererMessages(CACHED_MESSAGES)
     const { container, unmount } = await renderTranscript(messages)

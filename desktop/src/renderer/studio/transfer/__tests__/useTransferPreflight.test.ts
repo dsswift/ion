@@ -238,7 +238,7 @@ describe('useTransferPreflight', () => {
       if (name === 'transfer.describe') return { status: 'idle', worktree: null }
       if (name === 'transfer.preflight') {
         asked.push(args[0] as Record<string, unknown>)
-        return { projectDir: '/Users/Shared/source/personal/ion', projectDirs: ['/Users/Shared/source/personal/ion'], allProjectDirs: ['/Users/Shared/source/personal/ion', '/Users/josh/orion'], sourceDirectoryExists: false, hasSourceBranch: false, knownTips: [], worktreeCopy: null }
+        return { projectDir: '/Users/Shared/source/personal/ion', projectDirs: ['/Users/Shared/source/personal/ion'], allProjectDirs: ['/Users/Shared/source/personal/ion', '/Users/josh/atlas'], sourceDirectoryExists: false, hasSourceBranch: false, knownTips: [], worktreeCopy: null }
       }
       throw new Error(`unexpected ${name}`)
     })
@@ -251,7 +251,7 @@ describe('useTransferPreflight', () => {
     // The match is preselected, never the only choice: every other project
     // is still offered, after it.
     expect(result.destinationMatches).toEqual(['/Users/Shared/source/personal/ion'])
-    expect(result.destinationOthers).toEqual(['/Users/josh/orion'])
+    expect(result.destinationOthers).toEqual(['/Users/josh/atlas'])
   })
 
   // A conversation leaving its worktree resolves its destination like a

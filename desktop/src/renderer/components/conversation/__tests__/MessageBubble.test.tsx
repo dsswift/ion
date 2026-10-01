@@ -139,8 +139,8 @@ describe('MessageBubble — slash model provenance', () => {
     // model list, exactly as the model picker does.
     useModelStore.setState({
       models: [
-        { id: 'dci-marketing/gpt-5.6-terra', providerId: 'dci-marketing', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
-        { id: 'gpt-5.6-terra', providerId: 'dci-marketing', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+        { id: 'corp-gateway/gpt-5.6-terra', providerId: 'corp-gateway', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+        { id: 'gpt-5.6-terra', providerId: 'corp-gateway', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
       ],
     })
   })
@@ -150,7 +150,7 @@ describe('MessageBubble — slash model provenance', () => {
       slashCommand: '/align',
       slashArgs: 'review changes',
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     }))
 
     const modelPill = el.querySelector('[data-slash-model-pill]')
