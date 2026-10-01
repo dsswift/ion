@@ -381,6 +381,7 @@ An error signal from the engine. It carries structured classification when the s
 | `budget_exceeded`   | `provider_error`  | no        | Run cost exceeded budget limit     |
 | `session_not_found` | `provider_error`  | no        | No session for the given key       |
 | `queue_full`        | `provider_error`  | yes       | Prompt queue at capacity           |
+| `managed_policy_absent` | `provider_error` | no     | The installation is managed and has no enterprise policy; every prompt is refused |
 | `hook_failed`       | `hook_error`      | no        | Extension hook threw an error. Message includes the stack trace. |
 
 ```json

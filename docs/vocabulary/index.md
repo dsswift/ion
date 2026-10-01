@@ -131,6 +131,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
 - [Local Principal](#term-local-principal)
+- [Managed-Mode Marker](#term-managed-mode-marker)
 - [Menu](#term-menu)
 - [Message](#term-message)
 - [Message forwarding](#term-forwarding)
@@ -545,6 +546,20 @@ One of the parts a conversation event is delivered as when its size exceeds the 
 - **Implementations:**
   - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
   - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
+
+#### Managed-Mode Marker {#term-managed-mode-marker}
+
+An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.
+
+- **ID:** `managed-mode-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func readManagedMarker` in `engine/internal/config/managed.go`
+  - `engine` / `code` / `go`: `type ManagedModeStatus` in `engine/internal/types/config_managed.go`
 
 #### Model Boundary {#term-model-boundary}
 

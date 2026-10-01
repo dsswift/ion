@@ -54,7 +54,7 @@ A literal API key (mixed case, containing hyphens, etc.) is used as-is:
 
 | Variable | Description |
 |----------|-------------|
-| `ION_ENTERPRISE_CONFIG` | Path to a JSON file containing enterprise configuration. Checked before any platform-specific enterprise source (MDM plist, registry, /etc). Works on all operating systems. |
+| `ION_ENTERPRISE_CONFIG` | Path to a JSON file containing enterprise configuration. Checked before any platform-specific enterprise source (MDM plist, registry, /etc) on an unmanaged installation, and ignored on a managed one. Works on all operating systems. |
 | `ION_DATA_DIR` | The engine's data root. When set, used verbatim as the base for every engine-owned path — conversations, session bindings, `install_id`, `engine.json`, `settings.json`, the worktree registry, logs, the plugin cache, MCP client and token stores, skills, and plan directories. When unset, the conventional `<home>/.ion` path is used. Lets multiple engine instances share one machine (or a container) without colliding on `~/.ion`. The Ion Studio Server reads and writes `<ION_DATA_DIR>/server.json`, `server.jsonl`, and its other server-owned files from the SAME root — an engine and server forming one Environment must share it. |
 | `ION_HOST_NAME` | The host name the engine and the Ion Studio Server report in log lines (`host`), telemetry and egress (`host.name`), finished-conversation pushes, and iOS log attribution. Unset uses the OS hostname. A container's hostname is its pod name, new on every restart, so a deployment sets this to a name that outlives the pod (its public DNS name) and every restart stays one host in the Fleet dashboards. Identity only: network addresses, discovery, and pairing links still use the OS hostname. Set the same value on the engine and the server. |
 | `ION_SOCKET_PATH` | Overrides the engine's Unix-socket (or Windows loopback) address the server and CLI dial. Unset resolves to `<ION_DATA_DIR>/engine.sock`. Set this to point the socket at a separate volume from the rest of `ION_DATA_DIR` — e.g. a Kubernetes pod's shared `emptyDir` — so socket churn never touches the durable PVC. |
@@ -77,7 +77,7 @@ This is useful for:
 
 ### Enterprise config path
 
-`ION_ENTERPRISE_CONFIG` is the highest-priority enterprise config source. When set, the engine reads the JSON file at the specified path and uses it as the enterprise layer. Platform-specific sources (macOS managed preferences, Linux `/etc/ion/`, Windows registry) are not checked if this variable is set and points to a valid file.
+`ION_ENTERPRISE_CONFIG` is the highest-priority enterprise config source on an unmanaged installation. An installation carrying the [managed-mode marker](../enterprise/mdm.md#managed-mode) ignores it, because the engine inherits its user's environment and a user must not be able to replace machine policy. When set on an unmanaged installation, the engine reads the JSON file at the specified path and uses it as the enterprise layer. Platform-specific sources (macOS managed preferences, Linux `/etc/ion/`, Windows registry) are not checked if this variable is set and points to a valid file.
 
 ```bash
 export ION_ENTERPRISE_CONFIG="/opt/company/ion-policy.json"

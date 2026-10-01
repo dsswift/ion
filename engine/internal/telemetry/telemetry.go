@@ -74,13 +74,15 @@ const (
 	// pipeline; the payload carries the subject, the policy source, and any
 	// correlation context in scope. Additive event names only — the telemetry
 	// schema is unchanged (no version bump).
-	EnforcementToolBlocked      = "enforcement.tool_blocked"
-	EnforcementModelRejected    = "enforcement.model_rejected"
-	EnforcementProviderPruned   = "enforcement.provider_pruned"
-	EnforcementProviderPinned   = "enforcement.provider_pinned"
-	EnforcementMcpPruned        = "enforcement.mcp_pruned"
-	EnforcementSessionLimit     = "enforcement.session_limit"
-	EnforcementExtensionBlocked = "enforcement.extension_blocked"
+	EnforcementToolBlocked            = "enforcement.tool_blocked"
+	EnforcementModelRejected          = "enforcement.model_rejected"
+	EnforcementProviderPruned         = "enforcement.provider_pruned"
+	EnforcementProviderPinned         = "enforcement.provider_pinned"
+	EnforcementMcpPruned              = "enforcement.mcp_pruned"
+	EnforcementSessionLimit           = "enforcement.session_limit"
+	EnforcementExtensionBlocked       = "enforcement.extension_blocked"
+	EnforcementManagedPolicyAbsent    = "enforcement.managed_policy_absent"
+	EnforcementManagedOverrideRefused = "enforcement.managed_override_refused"
 )
 
 // Event is one expanded telemetry data point. The file target compacts a flush

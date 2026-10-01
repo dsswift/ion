@@ -10,7 +10,7 @@ Enterprise configuration can be deployed through platform-native device manageme
 
 ## Source resolution order
 
-The engine checks `ION_ENTERPRISE_CONFIG` first on every platform. When that variable names a readable JSON file, that file is the whole enterprise config and no platform source is consulted.
+On an unmanaged installation the engine checks `ION_ENTERPRISE_CONFIG` first on every platform. When that variable names a readable JSON file, that file is the whole enterprise config and no platform source is consulted. On a [managed installation](#managed-mode) the variable is ignored.
 
 Otherwise the engine reads its platform-native source:
 
@@ -26,6 +26,57 @@ This page describes the **machine layer** -- the sole policy enforcer. A second,
 additive-only **per-user layer** lets IT provision which Ion Studio Servers a specific
 person should see, without giving a person-writable file any power to loosen policy. See
 [Enterprise Configuration](../configuration/enterprise.md) for the two-layer model.
+
+## Managed mode
+
+Policy and the application usually arrive as separate packages. If the policy package is removed, unassigned, or never installed, an engine with no other signal runs with no restrictions, which is correct for a personal machine and wrong for a fleet device. The **managed-mode marker** is that signal. It says "this installation is supposed to be managed", and it is separate from the policy so it still says so when the policy is missing.
+
+The marker is a JSON file an administrator places where a standard user cannot write:
+
+| Platform | Marker path |
+|----------|-------------|
+| macOS | `/Library/Application Support/Ion/managed.json` |
+| Windows | `%ProgramData%\Ion\managed.json` |
+| Linux | `/etc/ion/managed.json` |
+
+```json
+{"managed": true}
+```
+
+On Windows the engine resolves `%ProgramData%` from the system's known-folder table, not from the environment variable of that name, for the marker and for the policy files alike.
+
+No marker means unmanaged, and nothing on this page changes. A marker that exists but cannot be read or parsed counts as managed. Only an explicit `{"managed": false}` opts back out.
+
+With the marker present:
+
+| Condition | What the engine does | Log line (`~/.ion/engine.jsonl`) | Telemetry event |
+|-----------|----------------------|----------------------------------|-----------------|
+| No machine policy resolves | Starts **locked**. Every prompt is refused with error code `managed_policy_absent`, and no extension is loaded. | `ERROR` `enterprise policy expected and absent` | `enforcement.managed_policy_absent` |
+| `ION_ENTERPRISE_CONFIG` is set | Ignores the variable and reads the machine source. | `WARN` `enterprise policy override refused` | `enforcement.managed_override_refused` |
+
+Both conditions also reach clients. The policy blob from `get_enterprise_policy` carries a `managedMode` object, present only on a managed installation:
+
+```json
+{"managedMode": {"managed": true, "policyAbsent": true, "overrideRefused": true}}
+```
+
+Ion Studio shows a notice above the composer for each condition. The engine stamps `managedMode` itself, so a policy file cannot set it.
+
+The marker and the policy are read when the engine starts. After restoring policy on a locked device, restart the engine.
+
+### Placing the marker
+
+```bash
+# macOS
+sudo mkdir -p "/Library/Application Support/Ion"
+echo '{"managed": true}' | sudo tee "/Library/Application Support/Ion/managed.json"
+
+# Linux
+sudo mkdir -p /etc/ion
+echo '{"managed": true}' | sudo tee /etc/ion/managed.json
+```
+
+Leave both owned by root and not writable by anyone else. On Windows, pass `/managed` to the installer; see [Win32 app settings](#win32-app-settings).
 
 ## macOS: Managed Preferences
 
@@ -283,7 +334,7 @@ On any platform, set `ION_ENTERPRISE_CONFIG` to the path of a JSON file containi
 export ION_ENTERPRISE_CONFIG=/opt/ion/enterprise-config.json
 ```
 
-This is checked first on all platforms. It is useful for:
+On an unmanaged installation this is checked first on all platforms. A [managed installation](#managed-mode) ignores it. It is useful for:
 
 - Containerized deployments where MDM is not available
 - CI/CD environments
@@ -363,11 +414,17 @@ best-effort cross-build; it is neither verified nor supported.
 
 | Setting | Value |
 |---------|-------|
-| Install command | `Ion-Setup-<version>-x64.exe /S /allusers` |
+| Install command | `Ion-Setup-<version>-x64.exe /S /allusers /managed` |
 | Uninstall command | `"%ProgramFiles%\Ion\Uninstall Ion.exe" /allusers /S` |
 | Install behavior | System |
 | Detection rule | Custom detection script -- upload the stamped `Detect-Ion.ps1`. Run as 32-bit: No. |
 | Return codes | `0` = Success |
+
+`/managed` writes the [managed-mode marker](#managed-mode) to
+`%ProgramData%\Ion\managed.json`, after the installer has restricted that
+directory to administrators. Uninstall leaves it in place. Omit the switch for
+a device that is not meant to be managed; an upgrade without it leaves an
+existing marker alone.
 
 `/allusers` is what forces the per-machine install into `%ProgramFiles%\Ion`.
 Without it the assisted installer installs per-user, which under a
@@ -450,7 +507,9 @@ Policy changes more often than the application does, so it ships as a second
 Win32 app -- the Ion Enterprise Policy package -- declared as a **dependency**
 of Ion Studio with "Automatically install" set to Yes. Intune applies a
 dependency before the app that declares it, which is what makes the engine
-find its configuration on first launch rather than starting unmanaged. It also
+find its configuration on first launch. The dependency governs install order
+only, so install the application with `/managed` as well: a device whose
+policy package is later removed then locks instead of running unmanaged. It also
 means a scope list changes without redeploying the application, and a policy
 change rolls back on its own.
 

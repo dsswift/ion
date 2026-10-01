@@ -70,9 +70,12 @@ type NewConversationDefaultsPolicy struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string `json:"allowedModels,omitempty"`
-	BlockedModels    []string `json:"blockedModels,omitempty"`
-	AllowedProviders []string `json:"allowedProviders,omitempty"`
+	// ManagedMode is stamped by the loader when the managed-mode marker is
+	// present, and nil otherwise. A policy source cannot set it.
+	ManagedMode      *ManagedModeStatus `json:"managedMode,omitempty"`
+	AllowedModels    []string           `json:"allowedModels,omitempty"`
+	BlockedModels    []string           `json:"blockedModels,omitempty"`
+	AllowedProviders []string           `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from

@@ -2544,6 +2544,31 @@
       ]
     },
     {
+      "id": "managed-mode-marker",
+      "term": "Managed-Mode Marker",
+      "definition": "An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func readManagedMarker",
+          "path": "engine/internal/config/managed.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ManagedModeStatus",
+          "path": "engine/internal/types/config_managed.go"
+        }
+      ]
+    },
+    {
       "id": "menu",
       "term": "Menu",
       "definition": "A short list of actions that opens from a control or from a long press. It closes when the user picks an action.",

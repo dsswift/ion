@@ -52,6 +52,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		})
 		return fmt.Errorf("session %q not found", key)
 	}
+	if err := m.rejectIfManagedLocked(key); err != nil {
+		return err
+	}
 	// A required identity can disappear after a session starts. Refuse new work
 	// before reserving a run; an active run is deliberately left unchanged.
 	if err := policy.check(key, "prompt dispatch"); err != nil {

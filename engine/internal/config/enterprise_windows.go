@@ -3,8 +3,7 @@
 package config
 
 import (
-	"os"
-
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -41,9 +40,20 @@ var windowsPolicyRoot = registry.LOCAL_MACHINE
 // same subtree name -- the difference is entirely which hive owns them.
 var windowsUserPolicyKeyPath = `SOFTWARE\Policies\IonEngine`
 
-// windowsProgramDataRoot resolves %ProgramData%. A func var so a test can
-// substitute a temp directory.
-var windowsProgramDataRoot = func() string { return os.Getenv("ProgramData") }
+// windowsProgramDataRoot resolves the ProgramData directory from the shell's
+// known-folder table, never from the ProgramData environment variable: the
+// engine inherits its user's environment, and a variable the user can set
+// must not choose where machine policy and the managed-mode marker are read
+// from. Returns "" when the folder cannot be resolved. A func var so a test
+// can substitute a temp directory.
+var windowsProgramDataRoot = func() string {
+	root, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "config.enterprise", "programdata folder unresolved", map[string]any{"error": err.Error()})
+		return ""
+	}
+	return root
+}
 
 // windowsPolicySources names, in prose, the sources readWindows checks, for
 // docs and for the pinned test that asserts HKCU never appears in this list.
