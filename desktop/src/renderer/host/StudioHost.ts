@@ -13,6 +13,7 @@ import type { ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
+import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
 import type { ShellApi } from './shell-api'
 
 /**
@@ -146,6 +147,22 @@ export interface FileDialogFilter {
   extensions: string[]
 }
 
+/**
+ * Port Forward (`@ion/shared/port-forward`): this client listens on a loopback
+ * port of its own machine and carries each connection to a port on an
+ * Environment's host.
+ */
+export interface PortForwardHost {
+  /** Every active forward on this client. */
+  list(): Promise<PortForward[]>
+  /** The full list, pushed on every change. Returns an unsubscribe function. */
+  onChange(cb: (forwards: PortForward[]) => void): () => void
+  /** Forwards `remotePort` on `environmentId`'s host; resolves to the existing forward when there is one. */
+  start(environmentId: string, remotePort: number): Promise<PortForwardStartResult>
+  /** Stops one forward. Resolves to whether there was one. */
+  stop(environmentId: string, remotePort: number): Promise<boolean>
+}
+
 export type Capability =
   | 'openExternal' | 'pickFile' | 'pickDirectory' | 'clipboardWriteImage'
   | 'browser' | 'deeplink' | 'tray' | 'notifications' | 'local' | 'relay'
@@ -236,4 +253,6 @@ export interface StudioHost {
   onTransferProgress(cb: (progress: TransferProgress) => void): () => void
   /** Abandons the in-flight export/import for `tabId`. Resolves to whether there was one to cancel. */
   cancelTransfer(tabId: string): Promise<boolean>
+  /** Null on a host that cannot listen on its own machine (a browser tab). */
+  portForward: PortForwardHost | null
 }

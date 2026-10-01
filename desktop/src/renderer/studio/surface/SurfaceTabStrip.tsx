@@ -6,7 +6,7 @@
  * tabs read sessionStore.fileEditorStates — the buffer owner.
  */
 import React, { useMemo, useState } from 'react'
-import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, Question, Robot, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
+import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, Plugs, Question, Robot, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -32,6 +32,7 @@ function tabIcon(tab: SurfaceTab, activity: import('@ion/shared/terminal-activit
       if (tab.id === 'files') return <FolderOpen size={size} />
       if (tab.id === 'gitpanel') return <GitBranch size={size} />
       if (tab.id === 'graph') return <GraphIcon size={size} />
+      if (tab.id === 'ports') return <Plugs size={size} />
       return <ChartBar size={size} />
     case 'file':
     case 'scratch':
@@ -63,6 +64,7 @@ function tabLabel(tab: SurfaceTab): string {
       if (tab.id === 'files') return 'Explorer'
       if (tab.id === 'gitpanel') return 'Git'
       if (tab.id === 'graph') return 'Graph'
+      if (tab.id === 'ports') return 'Ports'
       return 'Visualizer'
     case 'file':
     case 'preview':

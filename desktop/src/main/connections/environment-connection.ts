@@ -274,6 +274,11 @@ export class EnvironmentConnection {
     return this.target.transport
   }
 
+  /** What the server said it can do, in the welcome that opened the live connection. Null while there is none. */
+  get serverCapabilities(): readonly string[] | null {
+    return this.welcomed && this.lastWelcome?.type === 'studio_welcome' ? this.lastWelcome.capabilities : null
+  }
+
   /**
    * Hand the live connection's welcome to the listeners again, then ask the
    * server for a fresh snapshot so they converge on its current state rather

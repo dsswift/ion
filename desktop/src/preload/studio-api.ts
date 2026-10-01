@@ -16,6 +16,7 @@ import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBr
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
+import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
 
 /** Subscribers to host frames; see `onHostFrame` for why one IPC listener serves them all. */
 const hostFrameSubscribers = new Set<(environmentId: string, frame: StudioFrame) => void>()
@@ -132,6 +133,14 @@ export interface StudioApi {
   onHostTransferProgress(callback: (progress: TransferProgress) => void): () => void
   /** Abandons the in-flight export/import for `tabId`. Resolves to whether there was one. */
   hostTransferCancel(tabId: string): Promise<boolean>
+  /** Every active Port Forward on this desktop. */
+  hostPortForwards(): Promise<PortForward[]>
+  /** The full Port Forward list, pushed on every change. */
+  onHostPortForwards(callback: (forwards: PortForward[]) => void): () => void
+  /** Listens on a loopback port here and carries it to `remotePort` on `environmentId`'s host. */
+  hostPortForwardStart(environmentId: string, remotePort: number): Promise<PortForwardStartResult>
+  /** Stops one Port Forward. Resolves to whether there was one. */
+  hostPortForwardStop(environmentId: string, remotePort: number): Promise<boolean>
 }
 
 export const studioApi: StudioApi = {
@@ -247,4 +256,12 @@ export const studioApi: StudioApi = {
     ipcRenderer.on(IPC.HOST_TRANSFER_PROGRESS, handler)
     return () => ipcRenderer.removeListener(IPC.HOST_TRANSFER_PROGRESS, handler)
   },
+  hostPortForwards: () => ipcRenderer.invoke(IPC.HOST_PORT_FORWARDS),
+  onHostPortForwards: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, forwards: PortForward[]) => callback(forwards)
+    ipcRenderer.on(IPC.HOST_PORT_FORWARDS, handler)
+    return () => ipcRenderer.removeListener(IPC.HOST_PORT_FORWARDS, handler)
+  },
+  hostPortForwardStart: (environmentId, remotePort) => ipcRenderer.invoke(IPC.HOST_PORT_FORWARD_START, environmentId, remotePort),
+  hostPortForwardStop: (environmentId, remotePort) => ipcRenderer.invoke(IPC.HOST_PORT_FORWARD_STOP, environmentId, remotePort),
 }

@@ -31,7 +31,7 @@ import type { ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
-import type { Capability, StudioHost, FileDialogFilter } from './StudioHost'
+import type { Capability, PortForwardHost, StudioHost, FileDialogFilter } from './StudioHost'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { resolveShellEnvironment, activeTabEnvironmentId } from '../studio/connection/tab-environment'
 import { BRIDGED_CAPABILITIES, type ShellSubscribeScope } from './browser-shell-bridge'
@@ -248,5 +248,12 @@ export class ElectronStudioHost implements StudioHost {
 
   async cancelTransfer(tabId: string): Promise<boolean> {
     return this.preload.hostTransferCancel(tabId)
+  }
+
+  readonly portForward: PortForwardHost = {
+    list: () => this.preload.hostPortForwards(),
+    onChange: (cb) => this.preload.onHostPortForwards(cb),
+    start: (environmentId, remotePort) => this.preload.hostPortForwardStart(environmentId, remotePort),
+    stop: (environmentId, remotePort) => this.preload.hostPortForwardStop(environmentId, remotePort),
   }
 }

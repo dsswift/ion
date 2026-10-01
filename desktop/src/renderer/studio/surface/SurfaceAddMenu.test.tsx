@@ -32,9 +32,9 @@ vi.mock('../graph/graph-store', () => ({
 }))
 
 // Hoisted: the host mock is read at import time (mod-key computes IS_MAC once).
-const caps = vi.hoisted(() => ({ list: [] as string[] }))
+const caps = vi.hoisted(() => ({ list: [] as string[], portForward: null as object | null }))
 vi.mock('../../host/host-instance', () => ({
-  host: { capabilities: () => caps.list },
+  host: { capabilities: () => caps.list, get portForward() { return caps.portForward } },
 }))
 
 import { SurfaceAddMenu } from './SurfaceAddMenu'
@@ -49,6 +49,7 @@ describe('SurfaceAddMenu availability filtering', () => {
     root = createRoot(container)
     graphStoreState.available = false
     caps.list = ['browser']
+    caps.portForward = null
   })
 
   afterEach(() => {
@@ -82,6 +83,19 @@ describe('SurfaceAddMenu availability filtering', () => {
     for (const label of ['Diff', 'Plan Preview', 'Scratch Document', 'Explorer', 'Git', 'Terminal']) {
       expect(labels().some((l) => l.includes(label))).toBe(true)
     }
+  })
+
+  it('the Ports entry is present only on a host that can forward ports', () => {
+    act(() => {
+      root.render(<SurfaceAddMenu x={0} y={0} onClose={() => {}} />)
+    })
+    expect(labels().some((l) => l.includes('Ports'))).toBe(false)
+
+    caps.portForward = {}
+    act(() => {
+      root.render(<SurfaceAddMenu x={1} y={0} onClose={() => {}} />)
+    })
+    expect(labels().some((l) => l.includes('Ports'))).toBe(true)
   })
 
   it('the Visualizer entry is present on every host', () => {

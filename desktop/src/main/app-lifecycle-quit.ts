@@ -22,6 +22,7 @@
 import { app, dialog, globalShortcut } from 'electron'
 import { localServer } from './local-server-instance'
 import { sshTunnels } from './connections/ssh/ssh-tunnel-instance'
+import { portForwards } from './connections/port-forward-instance'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { log as _log, warn as _warn, error as _error, flushLogs } from './logger'
@@ -220,6 +221,7 @@ export function installQuitHandlers(): void {
     log('will-quit: stopping the local server as a safety net')
     void localServer.stop().catch((err) => warn('will-quit: local server stop failed', { error: String(err) }))
     sshTunnels.stopAll()
+    portForwards.stopAll()
     desktopTeardown()
   })
 

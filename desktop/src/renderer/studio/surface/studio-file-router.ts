@@ -6,6 +6,7 @@ import { activeInstance } from '@ion/server/store/conversation-instance'
 import { latestPlanPathFromMessages } from '../../components/StatusBarAttachmentsParser'
 import { registerRuntimePanel, updateRuntimePanel } from './runtime-panel-registry'
 import { rDebug, rTrace, rWarn } from '../../rendererLogger'
+import { webApplicationUrlForThisMachine } from '../ports/port-forward-store'
 
 export function registerStudioFileRouter(revealSurface: () => void = () => {}): void {
   registerContentRouter({
@@ -63,7 +64,15 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
     openWebApplication: (tabId, url) => {
       revealSurface()
       useSessionStore.getState().selectTab(tabId)
-      useSurfaceStore.getState().openBrowserTab(url, 'browse')
+      void webApplicationUrlForThisMachine(tabId, url).then((localUrl) => {
+        if (localUrl) {
+          useSurfaceStore.getState().openBrowserTab(localUrl, 'browse')
+          return
+        }
+        // The Ports surface shows why the forward failed and offers it again.
+        useSurfaceStore.getState().openSingleton('ports')
+        rWarn('studio.surface', 'web application not opened: its port could not be forwarded', { tab_id: tabId, url_host: hostOf(url) })
+      })
     },
     openGitDiff: ({ repoDir, filePath, staged }) => {
       const session = useSessionStore.getState()
