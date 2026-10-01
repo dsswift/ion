@@ -246,8 +246,8 @@ final class StudioRouteTests: XCTestCase {
 
     // MARK: - A server that moved to another network
 
-    private let homeURL = URL(string: "http://192.168.86.211:7331")!
-    private let nameURL = URL(string: "http://dcitag8331.local:7331")!
+    private let homeURL = URL(string: "http://192.168.1.211:7331")!
+    private let nameURL = URL(string: "http://macbook.local:7331")!
 
     private final class Adopted: @unchecked Sendable {
         private let lock = NSLock()

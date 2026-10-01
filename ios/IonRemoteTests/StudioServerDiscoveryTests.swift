@@ -5,12 +5,12 @@ import XCTest
 /// code — the path that reaches a server with no desktop in between.
 final class StudioServerDiscoveryTests: XCTestCase {
 
-    private func server(id: String = "studioServer:x", machine: String? = nil, environment: String? = nil, label: String? = "oscar", host: String = "192.168.1.9") -> DiscoveredService {
+    private func server(id: String = "studioServer:x", machine: String? = nil, environment: String? = nil, label: String? = "devbox", host: String = "192.168.1.9") -> DiscoveredService {
         var txt: [String: String] = [:]
         if let machine { txt["machine"] = machine }
         if let environment { txt["id"] = environment }
         if let label { txt["label"] = label }
-        return DiscoveredService(id: id, name: "Ion Studio (oscar)", host: host, port: 7331, metadata: txt)
+        return DiscoveredService(id: id, name: "Ion Studio (devbox)", host: host, port: 7331, metadata: txt)
     }
 
     private func record(machineId: String? = nil, environmentId: String? = nil) -> StudioServerRecord {
@@ -37,8 +37,8 @@ final class StudioServerDiscoveryTests: XCTestCase {
     }
 
     func testDisplayNamePrefersTheAnnouncedLabelOverTheDecoratedInstanceName() {
-        XCTAssertEqual(server().displayName, "oscar")
-        XCTAssertEqual(server(label: nil).displayName, "Ion Studio (oscar)")
+        XCTAssertEqual(server().displayName, "devbox")
+        XCTAssertEqual(server(label: nil).displayName, "Ion Studio (devbox)")
     }
 
     // A pairing carried over from the older wire knows its server only by the
