@@ -328,3 +328,30 @@ describe('RelayStudioSocket: a join the relay refuses', () => {
     expect(err.message).toMatch(/refused the channel join: HTTP 401$/)
   })
 })
+
+/**
+ * A server that restarts rejoins the channel with a new Connection that drops
+ * every frame until it gets a hello. The desktop once only logged the relay's
+ * notice and kept its old session, so every action went unanswered.
+ */
+describe('RelayStudioSocket: the server leaves or rejoins the channel', () => {
+  const closedAfter = async (control: string): Promise<number> => {
+    const relay = new WebSocketServer({ port: 0, host: '127.0.0.1' })
+    await new Promise<void>((resolve) => relay.once('listening', resolve))
+    relay.on('connection', (ws: WsSocket) => ws.send(JSON.stringify({ type: control })))
+    try {
+      const socket = new RelayStudioSocket(`ws://127.0.0.1:${(relay.address() as AddressInfo).port}`, 'ab'.repeat(16), Buffer.alloc(32, 7), 'token')
+      return await new Promise<number>((resolve) => socket.once('close', (code) => resolve(code)))
+    } finally {
+      relay.close()
+    }
+  }
+
+  it('ends the session when the server rejoins, so the broker joins again and says hello', async () => {
+    expect(await closedAfter('relay:peer-reconnected')).toBe(1006)
+  })
+
+  it('ends the session when the server leaves', async () => {
+    expect(await closedAfter('relay:peer-disconnected')).toBe(1006)
+  })
+})
