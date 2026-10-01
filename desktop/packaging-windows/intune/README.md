@@ -266,14 +266,7 @@ pwsh -File desktop/packaging-windows/intune/policy/New-IonPolicyIntuneWin.ps1 `
   -OutputDir .\out
 ```
 
-For the dci Marketing rollout the two inputs are, exactly:
-
-```
-/Users/Shared/source/dcienterprise/cloudops/projects/dci-orion/artifacts/ion/enterprise-config.json
-/Users/Shared/source/dcienterprise/cloudops/projects/dci-orion/themes/dci-marketing/theme.json
-```
-
-Those are the canonical copies and they are the ones to point at. **This
+Point at the canonical copies your organization keeps outside this repository. **This
 repository ships no tenant's values.** `enterprise-config.example.json` is
 placeholders only, documents the required shape, and is refused by the
 packaging tool -- it exists so a reader can see what is required, never so
@@ -311,11 +304,10 @@ So the pack travels inside the package, is validated against the policy that
 names it, is installed by the same install command, is compared by the same
 detection rule, and is removed by the same uninstall.
 
-For this rollout the pack is `dci-marketing`, version `1.2.0`, and it installs
-to exactly:
+A pack named `corp-gateway` installs to exactly:
 
 ```
-%ProgramData%\Ion\themes\dci-marketing
+%ProgramData%\Ion\themes\corp-gateway
 ```
 
 That is the machine-scope pack root the desktop scans
@@ -469,7 +461,7 @@ Ion Studio:
    edge in one direction.
 
 None of the three scripts touches a user profile, `%USERPROFILE%\.ion`,
-conversations, credentials, an operator's `~\orion` or `~\.orion`, another
+conversations, credentials, an operator's `~\atlas` or `~\.atlas`, another
 theme pack, or the administrator-authored `enterprise-config.json` /
 `enterprise-config.d` files under `%ProgramData%\Ion`. That is asserted by
 `desktop/packaging-windows/intune/policy/New-IonPolicyPackage.test.ps1`, not just
@@ -484,11 +476,11 @@ so a defect in the configuration reaches one machine rather than three:
 1. Assign the policy app to the host. Wait for it to report installed.
 2. Confirm on the device: the values under
    `HKLM\SOFTWARE\Policies\IonEngine` match, and
-   `%ProgramData%\Ion\themes\dci-marketing\theme.json` is present.
+   `%ProgramData%\Ion\themes\corp-gateway\theme.json` is present.
 3. Assign Ion Studio to the host, with the policy app as its dependency.
 4. Sign in as a real user and confirm the engine starts, the sign-in completes
    against the configured provider, and the desktop renders the
-   `dci-marketing` theme rather than a built-in one.
+   `corp-gateway` theme rather than a built-in one.
 5. Only then start the next host.
 
 The full registry contract -- which value names exist, which registry types each
