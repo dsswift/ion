@@ -243,7 +243,8 @@ conversation that arrives without its worktree: `{kind: 'checkout', dir}`,
 `{kind: 'worktree', worktreePath}`, or `{kind: 'new-worktree', projectDir, baseBranch}`,
 each re-checked there. `transfer.remove {tabId, targetEnvironmentId, retireWorktree?}`
 retires the source worktree only when told, on the last conversation of a
-whole-worktree move. `transfer.relocate {tabId, landing}` moves a
+whole-worktree move, and only when the export that put the tab in flight
+carried that worktree. `transfer.relocate {tabId, landing}` moves a
 conversation within the machine it is on, with no archive.
 
 #### Options for a client with no checkout of its own
