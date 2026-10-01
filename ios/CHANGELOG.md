@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.2.0](https://github.com/dsswift/ion/compare/ios-v2.1.1...ios-v2.2.0) (2026-10-01)
+
+### Features
+
+* **ios:** prompt when a provider subscription needs a person (#459) ([4006809](https://github.com/dsswift/ion/commit/4006809a19c5e49c671b83c4c0553b1fa4f80771))
+
 ## [2.1.1](https://github.com/dsswift/ion/compare/ios-v2.1.0...ios-v2.1.1) (2026-10-01)
 
 ### Bug Fixes

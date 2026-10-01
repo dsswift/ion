@@ -8,6 +8,20 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.4.0](https://github.com/dsswift/ion/compare/server-v1.3.0...server-v1.4.0) (2026-10-01)
+
+### Features
+
+* **server:** prompt when a provider subscription needs a person (#459) ([7469856](https://github.com/dsswift/ion/commit/746985672c68aa7ee856888becd9079db0b6bd96))
+* **desktop:** always show task lists in dispatch previews ([a0f4dd6](https://github.com/dsswift/ion/commit/a0f4dd6c9d5ac11d27e5b401380765aab5072086))
+* **server:** seal the managed-mode marker and log its status (#460) ([ecc3e53](https://github.com/dsswift/ion/commit/ecc3e5379d2c34bf19ec6b7b5844aa0fb47f5182))
+
+### Bug Fixes
+
+* **server:** never retire a worktree the export did not carry ([01a5b51](https://github.com/dsswift/ion/commit/01a5b51cb1c540ae1b54ae04eebe4e2ec3c27f79))
+* **desktop:** fold root sections on explorer collapse all ([c8f1b72](https://github.com/dsswift/ion/commit/c8f1b7283af7644f01c9da0a54e17a74d6cbb403))
+* **server:** keep one identity for the local connection ([12a5e82](https://github.com/dsswift/ion/commit/12a5e8274638fce0958cbaeee15fa96e2158c03b))
+
 ## [1.3.0](https://github.com/dsswift/ion/compare/server-v1.2.2...server-v1.3.0) (2026-10-01)
 
 ### Features

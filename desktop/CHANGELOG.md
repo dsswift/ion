@@ -10,6 +10,21 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.4.0](https://github.com/dsswift/ion/compare/desktop-v2.3.0...desktop-v2.4.0) (2026-10-01)
+
+### Features
+
+* **desktop:** prompt when a provider subscription needs a person (#459) ([3248300](https://github.com/dsswift/ion/commit/324830092b1d930b4e1110f93d44be536827e2c3))
+* **desktop:** always show task lists in dispatch previews ([a0f4dd6](https://github.com/dsswift/ion/commit/a0f4dd6c9d5ac11d27e5b401380765aab5072086))
+* **desktop:** show managed-mode status and add /managed (#460) ([9de1cd3](https://github.com/dsswift/ion/commit/9de1cd3871d7a900b2c35360bae6b81720215afa))
+
+### Bug Fixes
+
+* **desktop:** stop early socket errors from crashing the app ([67c2e56](https://github.com/dsswift/ion/commit/67c2e565c9a56a6092a1e450fc0aef1db1f76dad))
+* **desktop:** keep the worktree when a conversation moves alone ([7c0b81b](https://github.com/dsswift/ion/commit/7c0b81b27c77228e72c4c2a04dd0978625cb79ff))
+* **desktop:** fold root sections on explorer collapse all ([c8f1b72](https://github.com/dsswift/ion/commit/c8f1b7283af7644f01c9da0a54e17a74d6cbb403))
+* **desktop:** keep drilled-in dispatch previews live ([6a61d35](https://github.com/dsswift/ion/commit/6a61d356a0081cdfd0bd8074850086e40909766e))
+
 ## [2.3.0](https://github.com/dsswift/ion/compare/desktop-v2.2.3...desktop-v2.3.0) (2026-10-01)
 
 ### Features

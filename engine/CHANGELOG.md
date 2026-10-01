@@ -18,6 +18,20 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.91.0](https://github.com/dsswift/ion/compare/engine-v1.90.1...engine-v1.91.0) (2026-10-01)
+
+### Features
+
+* **engine:** prompt when a provider subscription needs a person (#459) ([2c43dbf](https://github.com/dsswift/ion/commit/2c43dbfd4f9a075c0ff507fa70e5af881411fffe))
+* **engine:** enforce managed mode for enterprise policy (#460) ([a8fb9a0](https://github.com/dsswift/ion/commit/a8fb9a0633d9d4fb39b0aa760eb0826cf7a782a6))
+
+### Bug Fixes
+
+* **engine:** keep fleet sudo installs alive and time every step ([4870bc3](https://github.com/dsswift/ion/commit/4870bc36c7b764d89543c26a63633dbe14e030c4))
+* **engine:** enforce enterprise command patterns sandbox-off (#389) ([5474086](https://github.com/dsswift/ion/commit/54740866b991dba34b57a0f6cbf5a6da5dd8e5a3))
+* **engine:** keep managed marker paths posix on any host (#460) ([647f79b](https://github.com/dsswift/ion/commit/647f79b22b28e3f2b1006446fd94aa51f316f7d7))
+* **engine:** pin programdata lookup against the environment (#460) ([d0d79fa](https://github.com/dsswift/ion/commit/d0d79fa591f6a02cbf644066dd64ec8f16e394e5))
+
 ## [1.90.1](https://github.com/dsswift/ion/compare/engine-v1.90.0...engine-v1.90.1) (2026-10-01)
 
 ## [1.90.0](https://github.com/dsswift/ion/compare/engine-v1.89.0...engine-v1.90.0) (2026-10-01)
