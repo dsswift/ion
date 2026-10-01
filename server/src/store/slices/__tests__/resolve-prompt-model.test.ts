@@ -92,13 +92,13 @@ describe("resolvePromptModel", () => {
     expect(
       resolvePromptModel(
         {
-          modelOverride: "dci-marketing/claude-sonnet-5",
+          modelOverride: "corp-gateway/claude-sonnet-5",
           modelOverrideSource: "automatic",
           modelOverrideProviderId: null,
           sessionModel: null,
         },
         "claude-sonnet-5",
       ),
-    ).toBe("dci-marketing/claude-sonnet-5");
+    ).toBe("corp-gateway/claude-sonnet-5");
   });
 });

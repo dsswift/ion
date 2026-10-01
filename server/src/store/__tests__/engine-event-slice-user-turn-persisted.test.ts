@@ -102,14 +102,14 @@ describe('user_turn_persisted re-keys the optimistic user row', () => {
       type: 'user_turn_persisted',
       entryId: 'entry-align',
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     })
 
     const message = activeInstance(state.conversationPanes, 'tab1')!.messages[0]
     expect(message).toMatchObject({
       id: 'entry-align',
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     })
   })
 
@@ -122,12 +122,12 @@ describe('user_turn_persisted re-keys the optimistic user row', () => {
       type: 'user_turn_persisted',
       entryId: 'entry-align',
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     })
 
     expect(activeInstance(state.conversationPanes, 'tab1')!.messages[0]).toMatchObject({
       slashModelAlias: 'standard',
-      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+      slashModelEffective: 'corp-gateway/gpt-5.6-terra',
     })
   })
 

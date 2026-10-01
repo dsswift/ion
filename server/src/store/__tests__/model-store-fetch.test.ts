@@ -40,7 +40,7 @@ describe('model store fetch', () => {
   // The store itself never saves a preference: in the browser Studio bundle
   // the server's preference writer is a stub that throws.
   it('hands a fresh local catalog to its listeners and nothing else', async () => {
-    const models = [{ id: 'claude-sonnet-5', providerId: 'dci-marketing' }]
+    const models = [{ id: 'claude-sonnet-5', providerId: 'corp-gateway' }]
     mocks.listModels.mockResolvedValue({ models, providers: [] })
     const listener = vi.fn()
     const off = onLocalModelsFetched(listener)

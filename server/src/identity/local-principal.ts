@@ -61,7 +61,7 @@ export function localPrincipal(): SessionPrincipal {
 /**
  * The principal for a `{kind:'local'}` Studio connection (`hello.ts`'s
  * `LocalOnlyAuthPolicy`, the desktop's own connection to its own engine):
- * the engine's signed-in Entra identity (`dci Orion`, `oidc_identity`) when
+ * the engine's signed-in Entra identity (`oidc_identity`) when
  * one exists, falling back to `localPrincipal()` (the OS username) only
  * when nobody is signed in.
  *

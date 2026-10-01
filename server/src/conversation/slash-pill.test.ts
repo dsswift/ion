@@ -68,8 +68,8 @@ describe('resolveSlashPill — engine metadata (slashCommand)', () => {
   })
 
   it('includes command tier and resolved model provenance', () => {
-    const m = msg({ slashCommand: '/diagram', slashArgs: 'auth flow', slashModelAlias: 'fast', slashModelEffective: 'dci-marketing/gpt-5.6-luna' })
-    const models: ModelEntry[] = [{ id: 'dci-marketing/gpt-5.6-luna', providerId: 'dci-marketing', displayName: 'GPT-5.6 Luna', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }]
+    const m = msg({ slashCommand: '/diagram', slashArgs: 'auth flow', slashModelAlias: 'fast', slashModelEffective: 'corp-gateway/gpt-5.6-luna' })
+    const models: ModelEntry[] = [{ id: 'corp-gateway/gpt-5.6-luna', providerId: 'corp-gateway', displayName: 'GPT-5.6 Luna', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }]
     const pill = resolveSlashPill(m, m.content, models)
     expect(pill).toEqual({ command: '/diagram', args: 'auth flow', modelDisplay: 'Fast · GPT-5.6 Luna' })
   })
@@ -89,13 +89,13 @@ describe('resolveSlashPill — engine metadata (slashCommand)', () => {
 
 describe('formatSlashModelDisplay', () => {
   const models: ModelEntry[] = [
-    { id: 'dci-marketing/claude-sonnet-5', providerId: 'dci-marketing', displayName: 'Claude Sonnet 5', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+    { id: 'corp-gateway/claude-sonnet-5', providerId: 'corp-gateway', displayName: 'Claude Sonnet 5', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
     { id: 'claude-opus-5', providerId: 'anthropic', displayName: 'Claude Opus 5', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
-    { id: 'gpt-5.6-terra', providerId: 'dci-marketing', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+    { id: 'gpt-5.6-terra', providerId: 'corp-gateway', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
   ]
 
   it("names a provider-qualified model by the engine's displayName, as the picker does", () => {
-    expect(formatSlashModelDisplay('standard', 'dci-marketing/claude-sonnet-5', models)).toBe('Standard · Claude Sonnet 5')
+    expect(formatSlashModelDisplay('standard', 'corp-gateway/claude-sonnet-5', models)).toBe('Standard · Claude Sonnet 5')
   })
 
   it('renders a direct command model once', () => {
@@ -104,7 +104,7 @@ describe('formatSlashModelDisplay', () => {
 
   it('shows the bare id for a model the engine did not name, never a guessed name', () => {
     expect(formatSlashModelDisplay('standard', 'gpt-5.6-terra', models)).toBe('Standard · gpt-5.6-terra')
-    expect(formatSlashModelDisplay('standard', 'dci-marketing/gpt-5.6-terra')).toBe('Standard · gpt-5.6-terra')
+    expect(formatSlashModelDisplay('standard', 'corp-gateway/gpt-5.6-terra')).toBe('Standard · gpt-5.6-terra')
   })
 
   it('returns tier and model when both present', () => {
@@ -141,7 +141,7 @@ describe('resolveSlashPill — fallback content parse (no metadata)', () => {
       slashModelAlias: 'standard',
       slashModelEffective: 'gpt-5.6-terra',
     })
-    const models: ModelEntry[] = [{ id: 'gpt-5.6-terra', providerId: 'dci-marketing', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }]
+    const models: ModelEntry[] = [{ id: 'gpt-5.6-terra', providerId: 'corp-gateway', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }]
     const pill = resolveSlashPill(m, m.content, models)
     expect(pill).toEqual({ command: '/align', args: '', modelDisplay: 'Standard · GPT-5.6 Terra' })
   })

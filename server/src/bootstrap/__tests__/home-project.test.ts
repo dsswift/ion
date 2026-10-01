@@ -38,8 +38,8 @@ import { ensureHomeProject } from '../home-project'
 import type { ServerHomeProjectConfig } from '../../config/server-config'
 
 const CONFIG: ServerHomeProjectConfig = {
-  directory: '/data/home/jdoe/orion',
-  gitRemote: 'git@gitlab.dcim.com:cloud/ops.git',
+  directory: '/data/home/jdoe/atlas',
+  gitRemote: 'git@gitlab.example.com:team/ops.git',
   engineProfile: { name: 'cos2', extensions: ['/data/.ion/extensions/cos2/main'], defaultMode: 'auto' },
 }
 
