@@ -139,7 +139,11 @@ describe('ConflictsDialog', () => {
     await act(async () => {
       (host.querySelector('[data-testid="conflict-merge-shared.txt"]') as HTMLButtonElement).click()
     })
-    expect(host.querySelector('[data-testid="merge-editor-shared.txt"]')).not.toBeNull()
+    const editor = host.querySelector('[data-testid="merge-editor-shared.txt"]')
+    expect(editor).not.toBeNull()
+    // Beside the dialog's panel, not inside it. A panel's children unmount
+    // when another panel takes the screen, and the editor is another panel.
+    expect(editor?.closest('[data-testid="panel"]')).toBeNull()
   })
 
   it('Continue is disabled while conflicts remain and enabled when resolved', async () => {
