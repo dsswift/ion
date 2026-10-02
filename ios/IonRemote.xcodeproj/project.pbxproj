@@ -440,6 +440,9 @@
 		B1B2C3D4E5F60001CC000013 /* NormalizedEvent+Codable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */; };
 		B1B2C3D4E5F60001CC000009 /* SessionViewModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */; };
 		A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10001AA /* AppTheme.swift */; };
+		MANAGEDDEFAULT0000000002 /* ManagedDefault.swift in Sources */ = {isa = PBXBuildFile; fileRef = MANAGEDDEFAULT0000000001 /* ManagedDefault.swift */; };
+		MANAGEDDEFAULT0000000004 /* ThemeManager+ThemePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = MANAGEDDEFAULT0000000003 /* ThemeManager+ThemePolicy.swift */; };
+		MANAGEDDEFAULT0000000006 /* ManagedDefaultParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MANAGEDDEFAULT0000000005 /* ManagedDefaultParityTests.swift */; };
 		THEMEDARK00000000000002 /* IonDarkTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEDARK00000000000001 /* IonDarkTheme.swift */; };
 		THEMELIGHT0000000000002 /* IonLightTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMELIGHT0000000000001 /* IonLightTheme.swift */; };
 		THEMECLASSIC00000000002 /* IonClassicTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMECLASSIC00000000001 /* IonClassicTheme.swift */; };
@@ -1368,6 +1371,9 @@
 		TRNSCOORT000000000001 /* TranscriptCopyCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCopyCoordinatorTests.swift; sourceTree = "<group>"; };
 		TRNSCLIPT000000000001 /* ConversationClipboardActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationClipboardActionsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10001AA /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		MANAGEDDEFAULT0000000001 /* ManagedDefault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedDefault.swift; sourceTree = "<group>"; };
+		MANAGEDDEFAULT0000000003 /* ThemeManager+ThemePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ThemeManager+ThemePolicy.swift"; sourceTree = "<group>"; };
+		MANAGEDDEFAULT0000000005 /* ManagedDefaultParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedDefaultParityTests.swift; sourceTree = "<group>"; };
 		THEMEDARK00000000000001 /* IonDarkTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDarkTheme.swift; sourceTree = "<group>"; };
 		THEMELIGHT0000000000001 /* IonLightTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonLightTheme.swift; sourceTree = "<group>"; };
 		THEMECLASSIC00000000001 /* IonClassicTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonClassicTheme.swift; sourceTree = "<group>"; };
@@ -2301,6 +2307,7 @@
 				IONGEOGATETST0000000001 /* IonGeometrySourceGatesTests.swift */,
 				SYNCTHMINHTST0000000001 /* SyncedThemeInheritanceTests.swift */,
 				THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */,
+				MANAGEDDEFAULT0000000005 /* ManagedDefaultParityTests.swift */,
 				58786EA9E2EF8458CD3FC626 /* GitIdentityWireTests.swift */,
 				THEMELUMTST00000000001 /* ThemeLuminanceTests.swift */,
 				DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */,
@@ -2547,6 +2554,8 @@
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
 				MOBINSTID000000000000002 /* MobileInstallationIdentity.swift */,
 						A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
+						MANAGEDDEFAULT0000000001 /* ManagedDefault.swift */,
+						MANAGEDDEFAULT0000000003 /* ThemeManager+ThemePolicy.swift */,
 				THEMEDARK00000000000001 /* IonDarkTheme.swift */,
 				THEMELIGHT0000000000001 /* IonLightTheme.swift */,
 				THEMECLASSIC00000000001 /* IonClassicTheme.swift */,
@@ -3664,6 +3673,8 @@
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
 				MOBINSTID000000000000001 /* MobileInstallationIdentity.swift in Sources */,
 				A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */,
+				MANAGEDDEFAULT0000000002 /* ManagedDefault.swift in Sources */,
+				MANAGEDDEFAULT0000000004 /* ThemeManager+ThemePolicy.swift in Sources */,
 				THEMEDARK00000000000002 /* IonDarkTheme.swift in Sources */,
 				THEMELIGHT0000000000002 /* IonLightTheme.swift in Sources */,
 				THEMECLASSIC00000000002 /* IonClassicTheme.swift in Sources */,
@@ -4005,6 +4016,7 @@
 				IONGEOGATETST0000000002 /* IonGeometrySourceGatesTests.swift in Sources */,
 				SYNCTHMINHTST0000000002 /* SyncedThemeInheritanceTests.swift in Sources */,
 				THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */,
+				MANAGEDDEFAULT0000000006 /* ManagedDefaultParityTests.swift in Sources */,
 				1BD19D003A4DEDAEE3094FB0 /* GitIdentityWireTests.swift in Sources */,
 				THEMELUMTST00000000002 /* ThemeLuminanceTests.swift in Sources */,
 				DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */,

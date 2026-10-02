@@ -7,8 +7,9 @@
  * MDM-supplied shape identically.
  *
  * Semantics of the two knobs:
- *   - `themeId` alone (locked absent/false): managed DEFAULT — applied when
- *     the user has never picked a theme, user may change it afterwards.
+ *   - `themeId` alone (locked absent/false): managed DEFAULT — seeds the
+ *     user's theme once per published value (`./managed-defaults`); the user
+ *     may change it afterwards.
  *   - `locked: true`: enforced — the theme always applies and pickers are
  *     disabled, on the desktop and on paired iOS devices.
  *

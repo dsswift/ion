@@ -313,8 +313,6 @@ final class ThemeManager: AppTheme {
     }
 
     /// Apply (or clear, with nil) the enterprise theme enforcement.
-    /// Called from the settings-snapshot handler on every projection, so a
-    /// policy change on the desktop propagates without an app restart.
     func setEnforcedTheme(_ id: String?) {
         guard id != enforcedThemeId else { return }
         DiagnosticLog.log("enforced theme changed", tag: "theme.manager", fields: [

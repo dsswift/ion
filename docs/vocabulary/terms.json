@@ -2544,6 +2544,38 @@
       ]
     },
     {
+      "id": "managed-default",
+      "term": "Managed Default",
+      "definition": "An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function decideManagedDefault",
+          "path": "packages/shared/src/managed-defaults.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function reconcileManagedDefaults",
+          "path": "desktop/src/renderer/managed-defaults.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "enum ManagedDefault",
+          "path": "ios/IonRemote/Utilities/ManagedDefault.swift"
+        }
+      ]
+    },
+    {
       "id": "managed-mode-marker",
       "term": "Managed-Mode Marker",
       "definition": "An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.",

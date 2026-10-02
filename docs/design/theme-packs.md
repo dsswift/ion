@@ -169,7 +169,7 @@ Enterprise theme policy rides the engine's MDM-sealed enterprise config under th
 }
 ```
 
-- `themeId` alone (`locked` absent/false): **managed default** — applied when the user has never picked a theme; the user may change it afterwards.
+- `themeId` alone (`locked` absent/false): **managed default**. The theme is applied once per published value, on the desktop **and** on every paired iOS device, and it replaces whatever theme was selected. The user may change it afterwards, and that choice stays until an administrator publishes a different `themeId`. See [Managed defaults](../enterprise/sealed-config.md#managed-defaults-seed-then-the-person-owns-it).
 - `locked: true`: **enforced** — the theme always renders and the picker is disabled, on the desktop **and** on every paired iOS device (projected via `desktop_settings_snapshot.themePolicy`). The user's own saved selection is preserved and resumes when the policy lifts. Enforcement persists on iOS across offline relaunches.
 
 A typical enterprise deployment pairs the two mechanisms: the MDM installs the branded pack into the machine-scope themes root and sets `themePolicy` in the managed enterprise config. See [docs/enterprise/mdm.md](../enterprise/mdm.md) for the managed-config delivery paths. The engine passes `customFields['ion-desktop']` through opaquely — no engine configuration is involved beyond the sealed config file itself.

@@ -1041,7 +1041,9 @@ export interface NewConversationDefaultsPolicy {
   /**
    * When true, the user cannot change baseDirectory or engineProfileId.
    * The desktop skips both the directory picker and the profile picker and
-   * opens the conversation directly with these values.
+   * opens the conversation directly with these values. When false, both are
+   * managed defaults (`./managed-defaults`): each seeds the user's own
+   * preference and the user may change it.
    */
   locked: boolean;
   /** Enterprise-owned Projects visible to clients but not user-editable. */

@@ -131,6 +131,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
 - [Local Principal](#term-local-principal)
+- [Managed Default](#term-managed-default)
 - [Managed-Mode Marker](#term-managed-mode-marker)
 - [Menu](#term-menu)
 - [Message](#term-message)
@@ -2550,6 +2551,21 @@ Which folders are expanded, which root sections are folded shut, and which row i
   - `desktop` / `code` / `typescript`: `loadExplorerState` in `server/src/explorer-state-store.ts`
   - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `server/src/store/explorer-state-sync.ts`
 
+#### Managed Default {#term-managed-default}
+
+An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.
+
+- **ID:** `managed-default`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `function decideManagedDefault` in `packages/shared/src/managed-defaults.ts`
+  - `desktop` / `code` / `typescript`: `function reconcileManagedDefaults` in `desktop/src/renderer/managed-defaults.ts`
+  - `ios` / `code` / `swift`: `enum ManagedDefault` in `ios/IonRemote/Utilities/ManagedDefault.swift`
+
 #### Mirror store {#term-mirror-store}
 
 A Studio client's copy of the session store: the union of every connected Environment's published state. It runs the same reducers on the same event streams, forwards owner-durable mutations to the server that owns them, and never persists.
@@ -3061,6 +3077,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |
 | Local Principal | `localPrincipal` | `localPrincipal` | `localPrincipal` | None | iOS |
+| Managed Default | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `enum ManagedDefault` | None |
 | Menu | `export function InboxRowMenu` | `export function InboxRowMenu` | `export function InboxRowMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
 | Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `hydrateTabsFromSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |

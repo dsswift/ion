@@ -14,12 +14,20 @@ export interface ProjectProfileResolution {
   status?: 'resolved' | 'missing' | 'ambiguous'
 }
 
-/** Resolve the normal New Conversation profile action with explicit precedence. */
+/**
+ * Resolve the normal New Conversation profile action with explicit precedence.
+ *
+ * `defaultProfileId` is the person's default profile preference, the lowest
+ * choice that still skips the picker. An unlocked enterprise policy reaches
+ * this function only through it: the policy's profile seeds that preference
+ * as a managed default.
+ */
 export function resolveConversationProfileAction(
   profiles: readonly EngineProfile[],
   override: ProjectProfileOverride | undefined,
   recommendation: ProjectProfileResolution | undefined,
   enterprisePolicy: NewConversationDefaultsPolicy | null,
+  defaultProfileId = '',
 ): ConversationProfileAction {
   if (enterprisePolicy?.locked) {
     if (!enterprisePolicy.engineProfileId) return { kind: 'plain', source: 'enterprise-lock' }
@@ -39,5 +47,8 @@ export function resolveConversationProfileAction(
     return { kind: 'profile', profileId: recommendation.profileId, source: recommendation.source ?? 'project-recommendation' }
   }
   if (profiles.length === 0) return { kind: 'plain', source: 'no-profiles' }
+  if (override?.kind !== 'ask' && defaultProfileId && profiles.some((item) => item.id === defaultProfileId)) {
+    return { kind: 'profile', profileId: defaultProfileId, source: 'default-profile' }
+  }
   return { kind: 'picker', source: override?.kind === 'ask' ? 'user-project-ask' : 'no-default' }
 }

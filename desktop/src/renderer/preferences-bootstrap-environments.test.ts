@@ -1,8 +1,7 @@
 /**
  * preferences-bootstrap — managed environments wiring (spec 14): the
  * catalog reconciliation runs whenever `customFields['ion-desktop'].environments`
- * is present, and the environments managed-default marker records the
- * first application (mirroring the tab-strip/theme markers' shape).
+ * is present.
  *
  * Source-scan style, matching the established convention for wiring pinned
  * inside `bootstrapPreferences` (see `preferences-bootstrap.ts`'s own
@@ -20,10 +19,6 @@ describe('preferences-bootstrap: managed environments (spec 14)', () => {
   it('reconciles the catalog from customFields[ion-desktop].environments', () => {
     expect(source).toContain("policy?.customFields?.['ion-desktop']");
     expect(source).toContain('reconcileManagedCatalog(targets)')
-  })
-
-  it('records the environments managed-default marker after reconciling', () => {
-    expect(source).toContain("markManagedDefaultApplied('environments')")
   })
 
   it('a reconciliation failure is logged, not swallowed', () => {

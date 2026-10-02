@@ -374,7 +374,7 @@ extension SessionViewModel {
                     "reason": String(policy.engineProfileId.prefix(8))
                 ])
             }
-            // Enterprise theme lock — see SessionViewModel+ThemeSync.swift.
+            // Enterprise theme policy — see SessionViewModel+ThemeSync.swift.
             applyThemePolicy(themePolicy)
 
         // Theme-pack sync — handlers in SessionViewModel+ThemeSync.swift.

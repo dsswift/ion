@@ -1,111 +1,230 @@
 /**
- * One-shot record of which enterprise managed defaults this profile has
- * already had applied.
+ * Enterprise managed defaults on this client.
  *
- * An unlocked enterprise policy is a DEFAULT, not an enforcement: it seeds a
- * value on a profile that has never had it, and after that the user owns the
- * setting. That requires distinguishing "never applied" from "applied, and
- * the user has since changed it" -- and the setting's own value cannot answer
- * it, because a user who chose the policy's value looks identical to one who
- * never chose at all.
+ * A managed default is an unlocked enterprise value that seeds a preference
+ * the person may then change (`@ion/shared/managed-defaults` holds the rule).
+ * This module is the table of preferences in the class and the one routine
+ * that reconciles all of them against the loaded policy.
  *
- * The presence of the key in settings.json cannot answer it either. The
- * desktop persists the entire settings object on every save, so every key
- * exists as soon as any unrelated preference is written; on a real profile
- * that is all 87 of them, from the first launch.
- *
- * localStorage is the right home: it is per-profile, survives restarts,
- * is not part of the settings object the desktop rewrites wholesale, and is
- * where the theme policy already keeps the equivalent marker.
+ * The watermark is saved through the settings funnel, in the same place as
+ * the preference it belongs to: a client-owned preference keeps its watermark
+ * on this client, a server-owned one keeps it in the person's settings on
+ * that server. The preference and its watermark go out in one save, so a
+ * refused save cannot record a default that was never stored.
  */
-import { rWarn } from './rendererLogger'
+import type { StoreApi } from "zustand";
+import type { PreferencesState } from "@ion/server/preferences-types";
+import {
+  decideManagedDefault,
+  sanitizeManagedDefaultWatermarks,
+  type ManagedDefaultWatermarks,
+} from "@ion/shared/managed-defaults";
+import { deriveEnterpriseThemePolicy } from "@ion/shared/enterprise-theme-policy";
+import { host } from "./host/host-instance";
+import type { ShellApi } from "./host/shell-api";
+import { saveSettings } from "./preferences-persist";
+import { isClientOwnedSetting } from "./preferences-scope-transport";
+import { applyTheme } from "./theme-tokens";
+import { rDebug, rInfo, rWarn } from "./rendererLogger";
 
-const STORAGE_KEY = 'ion_managedDefaultsApplied'
+/** Watermarks for preferences this client keeps. A Device setting. */
+export const CLIENT_WATERMARKS_KEY = "managedDefaultsApplied";
+/** Watermarks for preferences a server keeps for this person. An Account setting. */
+export const ACCOUNT_WATERMARKS_KEY = "accountManagedDefaultsApplied";
 
-/** Managed defaults that apply once per profile. */
-export type ManagedDefaultId = 'environments'
+type WatermarksKey =
+  typeof CLIENT_WATERMARKS_KEY | typeof ACCOUNT_WATERMARKS_KEY;
+type ManagedPreferenceKey =
+  "selectedTheme" | "defaultBaseDirectory" | "defaultEngineProfileId";
 
-function read(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return new Set()
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? new Set(parsed.filter((v): v is string => typeof v === 'string')) : new Set()
-  } catch (err) {
-    // A corrupt marker must not block startup. Treating it as empty re-applies
-    // the managed default once, which is the safe direction: the operator's
-    // intended value is restored and the user can change it again.
-    rWarn('preferences', 'managed-defaults marker unreadable; treating as unapplied', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return new Set()
+interface ManagedDefaultField {
+  /** The preference the policy seeds. Also the watermark's key. */
+  key: ManagedPreferenceKey;
+  /** The policy's value for this preference, or null when the loaded policy does not set it. */
+  policy(state: PreferencesState): { value: string; locked: boolean } | null;
+  /** What must happen besides storing the value, if anything. */
+  afterApply?(value: string): void;
+}
+
+/** Every preference in the managed-default class. A new member is one row here. */
+export const MANAGED_DEFAULT_FIELDS: readonly ManagedDefaultField[] = [
+  {
+    key: "selectedTheme",
+    policy: (state) => {
+      const policy = deriveEnterpriseThemePolicy(state.enterprisePolicy);
+      return policy ? { value: policy.themeId, locked: policy.locked } : null;
+    },
+    afterApply: (themeId) => {
+      // The same two effects the theme setter has beyond storing the id.
+      localStorage.setItem("ion_selectedTheme", themeId);
+      applyTheme(themeId);
+    },
+  },
+  {
+    key: "defaultBaseDirectory",
+    policy: (state) => {
+      const policy = state.enterpriseNewConversationDefaults;
+      return policy?.baseDirectory
+        ? { value: policy.baseDirectory, locked: policy.locked === true }
+        : null;
+    },
+  },
+  {
+    key: "defaultEngineProfileId",
+    policy: (state) => {
+      const policy = state.enterpriseNewConversationDefaults;
+      return policy?.engineProfileId
+        ? { value: policy.engineProfileId, locked: policy.locked === true }
+        : null;
+    },
+  },
+];
+
+function watermarksKeyFor(key: ManagedPreferenceKey): WatermarksKey {
+  return isClientOwnedSetting(key)
+    ? CLIENT_WATERMARKS_KEY
+    : ACCOUNT_WATERMARKS_KEY;
+}
+
+/** Where watermarks are read from and where an application is saved. A seam for tests. */
+export interface ManagedDefaultsIo {
+  readClient(): Promise<Record<string, unknown>>;
+  readServer(): Promise<Record<string, unknown>>;
+  save(patch: Record<string, unknown>): void;
+}
+
+const hostIo: ManagedDefaultsIo = {
+  readClient: () => host.deviceSettings(),
+  readServer: async () => {
+    const load = (host as { shell?: Partial<Pick<ShellApi, "loadSettings">> })
+      .shell?.loadSettings;
+    if (typeof load !== "function")
+      throw new Error("settings transport has no loadSettings");
+    return (await load()) ?? {};
+  },
+  save: (patch) => saveSettings(patch),
+};
+
+type PreferencesStore = Pick<
+  StoreApi<PreferencesState>,
+  "getState" | "setState"
+>;
+
+async function reconcile(
+  store: PreferencesStore,
+  io: ManagedDefaultsIo,
+): Promise<void> {
+  const state = store.getState();
+  const unlocked: Array<{ field: ManagedDefaultField; value: string }> = [];
+  for (const field of MANAGED_DEFAULT_FIELDS) {
+    const policy = field.policy(state);
+    const decision = decideManagedDefault({
+      policyValue: policy?.value,
+      locked: policy?.locked === true,
+      applied: null,
+    });
+    if (decision === "apply" && policy)
+      unlocked.push({ field, value: policy.value });
+    else
+      rDebug("preferences", "managed default not in play", {
+        key: field.key,
+        decision,
+      });
+  }
+  // An unmanaged or fully locked installation reads nothing.
+  if (unlocked.length === 0) return;
+
+  const needsClient = unlocked.some(
+    ({ field }) => watermarksKeyFor(field.key) === CLIENT_WATERMARKS_KEY,
+  );
+  const needsServer = unlocked.some(
+    ({ field }) => watermarksKeyFor(field.key) === ACCOUNT_WATERMARKS_KEY,
+  );
+  const none: Record<string, unknown> = {};
+  const [client, server] = await Promise.all([
+    needsClient ? io.readClient() : none,
+    needsServer ? io.readServer() : none,
+  ]);
+  const watermarks: Record<WatermarksKey, ManagedDefaultWatermarks> = {
+    [CLIENT_WATERMARKS_KEY]: sanitizeManagedDefaultWatermarks(
+      client[CLIENT_WATERMARKS_KEY],
+    ),
+    [ACCOUNT_WATERMARKS_KEY]: sanitizeManagedDefaultWatermarks(
+      server[ACCOUNT_WATERMARKS_KEY],
+    ),
+  };
+
+  const patch: Record<string, unknown> = {};
+  const statePatch: Partial<Pick<PreferencesState, ManagedPreferenceKey>> = {};
+  const applied: ManagedDefaultField[] = [];
+  for (const { field, value } of unlocked) {
+    const watermarksKey = watermarksKeyFor(field.key);
+    const previousPolicyValue = watermarks[watermarksKey][field.key] ?? null;
+    if (
+      decideManagedDefault({
+        policyValue: value,
+        locked: false,
+        applied: previousPolicyValue,
+      }) === "keep"
+    ) {
+      rDebug(
+        "preferences",
+        "enterprise managed default unchanged; preference left alone",
+        { key: field.key, policy_value: value },
+      );
+      continue;
+    }
+    watermarks[watermarksKey] = {
+      ...watermarks[watermarksKey],
+      [field.key]: value,
+    };
+    patch[field.key] = value;
+    patch[watermarksKey] = watermarks[watermarksKey];
+    statePatch[field.key] = value;
+    applied.push(field);
+    rInfo(
+      "preferences",
+      "enterprise managed default applied; preference overwritten",
+      {
+        key: field.key,
+        policy_value: value,
+        previous_policy_value: previousPolicyValue,
+        preference_changed: store.getState()[field.key] !== value,
+      },
+    );
+  }
+  if (applied.length === 0) return;
+  store.setState(statePatch);
+  io.save(patch);
+  for (const field of applied) {
+    const value = statePatch[field.key];
+    if (value !== undefined) field.afterApply?.(value);
   }
 }
 
-export function hasAppliedManagedDefault(id: ManagedDefaultId): boolean {
-  return read().has(id)
-}
-
-export function markManagedDefaultApplied(id: ManagedDefaultId): void {
-  const applied = read()
-  applied.add(id)
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...applied]))
-  } catch (err) {
-    // Failing to record it means the default re-applies on the next launch,
-    // overriding a user change. Worth an error: it is silent to the user and
-    // reads as the setting refusing to stick.
-    rWarn('preferences', 'could not record managed default; it may re-apply next launch', {
-      id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
-const VALUES_STORAGE_KEY = 'ion_managedDefaultValues'
-
-function readValues(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(VALUES_STORAGE_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : {}
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
-  } catch (err) {
-    // Read as empty, for the same reason as the marker above: the managed
-    // default is supplied once more and stays changeable.
-    rWarn('preferences', 'managed-default values record unreadable; treating as unapplied', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return {}
-  }
-}
+let queue: Promise<void> = Promise.resolve();
 
 /**
- * The signature of the managed-default value this profile was last given for
- * a setting key, or undefined. A settings-policy managed default is supplied
- * once per VALUE, so a policy that changes the value supplies the new one.
+ * Reconcile every managed default against the policy the store holds now.
+ * Call it whenever a policy lands. Runs are serialized: each one reads the
+ * stored watermarks and writes them back, and two policy fetches settle
+ * independently at startup.
  */
-export function managedDefaultValueApplied(key: string): string | undefined {
-  return readValues()[key]
-}
-
-export function recordManagedDefaultValue(key: string, signature: string): void {
-  try {
-    localStorage.setItem(VALUES_STORAGE_KEY, JSON.stringify({ ...readValues(), [key]: signature }))
-  } catch (err) {
-    rWarn('preferences', 'could not record managed default; it may re-apply next launch', {
-      id: key,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
-/** Test seam. */
-export function _resetManagedDefaultsForTest(): void {
-  try {
-    localStorage.removeItem(VALUES_STORAGE_KEY)
-    localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    // silent-ok: test-only reset on a storage that is already unavailable
-  }
+export function reconcileManagedDefaults(
+  store: PreferencesStore,
+  io: ManagedDefaultsIo = hostIo,
+): Promise<void> {
+  queue = queue
+    .then(() => reconcile(store, io))
+    .catch((err: unknown) => {
+      // Nothing was applied or recorded, so the next policy load tries again.
+      rWarn(
+        "preferences",
+        "managed defaults not reconciled; will retry on the next policy load",
+        {
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    });
+  return queue;
 }

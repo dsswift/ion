@@ -111,6 +111,9 @@ export const SETTINGS_REGISTRY = {
   worktreeBranchDefaults: account('git'),
   commitCommand: account('git'),
   quickTools: account('quicktools'),
+  // The last enterprise policy value applied to each Account preference in
+  // the managed-default class.
+  accountManagedDefaultsApplied: account('none'),
 
   // ── personal ─────────────────────────────────────────────────────────
   defaultPermissionMode: travels('general'),
@@ -164,6 +167,9 @@ export const SETTINGS_REGISTRY = {
   idleRepaintGpuPercent: device('none'),
   idleRepaintCpuPercent: device('none'),
   idleRepaintSeconds: device('none'),
+  // The last enterprise policy value applied to each client-owned preference
+  // in the managed-default class.
+  managedDefaultsApplied: device('none'),
 
   // ── runtime ──────────────────────────────────────────────────────────
   enterprisePolicy: runtime('none'),

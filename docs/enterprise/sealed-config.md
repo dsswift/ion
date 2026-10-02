@@ -16,44 +16,44 @@ Different field types have different sealing behaviors:
 
 These fields restrict what is available. Lower layers cannot expand them.
 
-| Field | Sealing behavior |
-|-------|-----------------|
-| `allowedModels` | If set, only these models can be used. Lower layers cannot add models to the list. |
-| `blockedModels` | These models are always blocked. Lower layers cannot remove models from the list. |
-| `allowedProviders` | If set, only these providers can be used. |
-| `permissions.mode` | Can only move toward more restrictive: `allow` < `ask` < `deny`. Enterprise `ask` means user/project cannot set `allow`. |
-| `toolRestrictions.deny` | Tools on this list are always denied. Lower layers cannot remove entries. |
-| `sandbox.required` | If `true`, sandbox cannot be disabled. |
-| `sandbox.allowDisable` | If `false`, the `sandbox.enabled` field is locked. |
-| `security.requirePrincipalPartitioning` | If `true`, `security.principalPartitioning.enabled` cannot be set to `false` (ADR-034). |
-| `security.minEnforcement` | Raises the effective partitioning enforcement to at least this level (`none` < `read-only` < `strict`). A lower layer may configure something stricter; it can never soften below this floor. An unrecognized enforcement value ranks as `none` so a malformed config can never satisfy a stricter floor. |
-| `git.required` | If `true`, a session with no resolvable git author identity refuses a commit-recording Bash call rather than stamping one unattributed. |
+| Field                                   | Sealing behavior                                                                                                                                                                                                                                                                                          |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowedModels`                         | If set, only these models can be used. Lower layers cannot add models to the list.                                                                                                                                                                                                                        |
+| `blockedModels`                         | These models are always blocked. Lower layers cannot remove models from the list.                                                                                                                                                                                                                         |
+| `allowedProviders`                      | If set, only these providers can be used.                                                                                                                                                                                                                                                                 |
+| `permissions.mode`                      | Can only move toward more restrictive: `allow` < `ask` < `deny`. Enterprise `ask` means user/project cannot set `allow`.                                                                                                                                                                                  |
+| `toolRestrictions.deny`                 | Tools on this list are always denied. Lower layers cannot remove entries.                                                                                                                                                                                                                                 |
+| `sandbox.required`                      | If `true`, sandbox cannot be disabled.                                                                                                                                                                                                                                                                    |
+| `sandbox.allowDisable`                  | If `false`, the `sandbox.enabled` field is locked.                                                                                                                                                                                                                                                        |
+| `security.requirePrincipalPartitioning` | If `true`, `security.principalPartitioning.enabled` cannot be set to `false` (ADR-034).                                                                                                                                                                                                                   |
+| `security.minEnforcement`               | Raises the effective partitioning enforcement to at least this level (`none` < `read-only` < `strict`). A lower layer may configure something stricter; it can never soften below this floor. An unrecognized enforcement value ranks as `none` so a malformed config can never satisfy a stricter floor. |
+| `git.required`                          | If `true`, a session with no resolvable git author identity refuses a commit-recording Bash call rather than stamping one unattributed.                                                                                                                                                                   |
 
 ### Additive fields (union merge)
 
 These fields accumulate values from all layers. Enterprise values are always included.
 
-| Field | Sealing behavior |
-|-------|-----------------|
-| `permissions.rules` | Enterprise rules are prepended to the rule list (evaluated first). |
-| `permissions.dangerousPatterns` | Enterprise patterns are added to the pattern list. |
-| `permissions.readOnlyPaths` | Enterprise paths are added to the read-only list. |
-| `sandbox.additionalDenyPaths` | Merged into the sandbox deny list. |
+| Field                                 | Sealing behavior                                                                                                     |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `permissions.rules`                   | Enterprise rules are prepended to the rule list (evaluated first).                                                   |
+| `permissions.dangerousPatterns`       | Enterprise patterns are added to the pattern list.                                                                   |
+| `permissions.readOnlyPaths`           | Enterprise paths are added to the read-only list.                                                                    |
+| `sandbox.additionalDenyPaths`         | Merged into the sandbox deny list.                                                                                   |
 | `sandbox.additionalDangerousPatterns` | Enforced on every session, with the sandbox on or off. Added to the built-in sandbox patterns, never replacing them. |
-| `mcpDenylist` | Denied servers are always blocked. Lower layers cannot remove entries. |
+| `mcpDenylist`                         | Denied servers are always blocked. Lower layers cannot remove entries.                                               |
 
 ### Override fields (enterprise replaces)
 
 These fields, when set at the enterprise level, replace any value from lower layers entirely.
 
-| Field | Sealing behavior |
-|-------|-----------------|
-| `network` | Enterprise network config (proxy, CA certs, TLS) replaces all lower-layer network settings. |
-| `telemetry` | Enterprise telemetry config replaces lower layers. If `enabled: true`, it cannot be disabled. |
-| `requiredHooks` | These hooks must be active. Extensions cannot deregister them. |
-| `newConversationDefaults` | When non-null, replaces the base value. A null overlay preserves the base value. When `locked: true`, clients skip the profile and directory pickers for new conversations and use the mandated values. |
-| `subscriptionLookup` | When set, replaces the user and project block whole, so the endpoint that issues provider keys cannot be redirected by a lower layer. See [Subscription Lookup](../configuration/subscription-lookup.md). |
-| `git.machine` | When set, replaces the user-layer `git.identity.machine` fallback wholesale — the enterprise-mandated author identity, used whenever `fromPrincipal` is false or a principal's own name/email can't be resolved. |
+| Field                     | Sealing behavior                                                                                                                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network`                 | Enterprise network config (proxy, CA certs, TLS) replaces all lower-layer network settings.                                                                                                                      |
+| `telemetry`               | Enterprise telemetry config replaces lower layers. If `enabled: true`, it cannot be disabled.                                                                                                                    |
+| `requiredHooks`           | These hooks must be active. Extensions cannot deregister them.                                                                                                                                                   |
+| `newConversationDefaults` | When non-null, replaces the base value. A null overlay preserves the base value. When `locked: true`, clients skip the profile and directory pickers for new conversations and use the mandated values.          |
+| `subscriptionLookup`      | When set, replaces the user and project block whole, so the endpoint that issues provider keys cannot be redirected by a lower layer. See [Subscription Lookup](../configuration/subscription-lookup.md).        |
+| `git.machine`             | When set, replaces the user-layer `git.identity.machine` fallback wholesale — the enterprise-mandated author identity, used whenever `fromPrincipal` is false or a principal's own name/email can't be resolved. |
 
 ### Per-principal fields (`toolRestrictions.principals`)
 
@@ -68,9 +68,13 @@ A `match` with every field empty matches every principal — the operator's own 
 
 ```jsonc
 {
-  "match": { "subjects": ["alice@example.com"], "providers": ["entra"], "claims": { "groups": ["eng"] } },
+  "match": {
+    "subjects": ["alice@example.com"],
+    "providers": ["entra"],
+    "claims": { "groups": ["eng"] },
+  },
   "allow": ["Read", "Grep"],
-  "deny": ["Bash"]
+  "deny": ["Bash"],
 }
 ```
 
@@ -80,10 +84,10 @@ A `match` with every field empty matches every principal — the operator's own 
 
 These fields act as filters applied after the merge.
 
-| Field | Sealing behavior |
-|-------|-----------------|
-| `mcpAllowlist` | After merge, any MCP server not on this list is removed from the final config. |
-| `toolRestrictions.allow` | If set, only these tools are available. All others are removed. |
+| Field                         | Sealing behavior                                                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcpAllowlist`                | After merge, any MCP server not on this list is removed from the final config.                                                                            |
+| `toolRestrictions.allow`      | If set, only these tools are available. All others are removed.                                                                                           |
 | `planModeAllowedBashCommands` | After merge, any plan-mode Bash command not sanctioned by this list is removed. Prefix-aware — see [Plan-mode Bash allowlist](#plan-mode-bash-allowlist). |
 
 ## Evaluation order
@@ -153,7 +157,7 @@ Result: `"gpt-4o"` is not in the allowed list. The engine rejects it and falls b
 
 `limits.planModeAllowedBashCommands` controls which Bash commands the model may run while a session is in plan mode. Plan mode is otherwise read-only, so this list is the one seam where a planning session can execute a shell command — which makes it the field most worth understanding before you deploy policy.
 
-It behaves differently from every other field on this page, because it is the only one where the layers *below* enterprise merge additively with each other while still being hard-capped from above.
+It behaves differently from every other field on this page, because it is the only one where the layers _below_ enterprise merge additively with each other while still being hard-capped from above.
 
 ### The two mechanisms
 
@@ -168,7 +172,7 @@ The pairing is the design: step 1 is deliberately permissive and is only safe be
 
 ### Why user and project are additive
 
-A committed `.ion/engine.json` cannot know each developer's personal list. If the project layer *replaced* the user layer, every repo would have to restate every developer's global entries or silently strip them. Union means a repo adds what it needs and each developer keeps what they had.
+A committed `.ion/engine.json` cannot know each developer's personal list. If the project layer _replaced_ the user layer, every repo would have to restate every developer's global entries or silently strip them. Union means a repo adds what it needs and each developer keeps what they had.
 
 ```jsonc
 // ~/.ion/engine.json — developer's global config
@@ -203,14 +207,14 @@ Lower layers may still **narrow** further: a project that permits fewer commands
 
 ### Prefix matching runs one direction
 
-Entries are command *prefixes*, so intersection has to decide what counts as "sanctioned by" a ceiling entry. The rule:
+Entries are command _prefixes_, so intersection has to decide what counts as "sanctioned by" a ceiling entry. The rule:
 
-| Ceiling entry | Lower-layer entry | Result | Why |
-|---|---|---|---|
-| `gh` | `gh pr view` | **kept** | Narrower form. `gh` already permits every `gh ...` invocation, so keeping the specific entry grants nothing new. |
-| `gh pr view` | `gh` | **stripped** | Generalising outward. Keeping it would permit `gh repo delete`, which the ceiling excluded. |
-| `git` | `git log` | **kept** | Genuine sub-command. |
-| `git` | `github-cli-doer` | **stripped** | Prefix-string coincidence, not a sub-command. A match requires the next character to be a space. |
+| Ceiling entry | Lower-layer entry | Result       | Why                                                                                                              |
+| ------------- | ----------------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `gh`          | `gh pr view`      | **kept**     | Narrower form. `gh` already permits every `gh ...` invocation, so keeping the specific entry grants nothing new. |
+| `gh pr view`  | `gh`              | **stripped** | Generalising outward. Keeping it would permit `gh repo delete`, which the ceiling excluded.                      |
+| `git`         | `git log`         | **kept**     | Genuine sub-command.                                                                                             |
+| `git`         | `github-cli-doer` | **stripped** | Prefix-string coincidence, not a sub-command. A match requires the next character to be a space.                 |
 
 The asymmetry in rows 1 and 2 is the security property. If it ran both ways, any ceiling entry could be generalised up to its bare command and the policy would be advisory.
 
@@ -245,14 +249,14 @@ Enforcement replaces and removes values a user or project configured. So that a 
 }
 ```
 
-| Reason | Field | Recorded when |
-|--------|-------|---------------|
+| Reason                    | Field                       | Recorded when                                                                                    |
+| ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
 | `managed_provider_pinned` | `providers.<key>.<setting>` | An enterprise `providers` entry replaced that setting of the lower-layer entry for the same key. |
-| `provider_not_allowed` | `providers.<key>` | `allowedProviders` removed a lower-layer provider. |
-| `model_not_allowed` | `defaultModel` | `allowedModels` does not name the lower-layer default model. |
-| `model_blocked` | `defaultModel` | `blockedModels` names the lower-layer default model. |
-| `mcp_server_denied` | `mcpServers.<key>` | `mcpDenylist` removed a lower-layer MCP server. |
-| `mcp_server_not_allowed` | `mcpServers.<key>` | `mcpAllowlist` did not admit a lower-layer MCP server. |
+| `provider_not_allowed`    | `providers.<key>`           | `allowedProviders` removed a lower-layer provider.                                               |
+| `model_not_allowed`       | `defaultModel`              | `allowedModels` does not name the lower-layer default model.                                     |
+| `model_blocked`           | `defaultModel`              | `blockedModels` names the lower-layer default model.                                             |
+| `mcp_server_denied`       | `mcpServers.<key>`          | `mcpDenylist` removed a lower-layer MCP server.                                                  |
+| `mcp_server_not_allowed`  | `mcpServers.<key>`          | `mcpAllowlist` did not admit a lower-layer MCP server.                                           |
 
 - A notice exists only when the value in effect differs from the one the lower layer supplied. A lower-layer value equal to the policy value, or a setting the lower layer never set, produces none.
 - `field` is the path in `engine.json` key spelling. `reason` is a stable code; the engine ships no presentation text.
@@ -276,9 +280,9 @@ Ion Studio shows the provider notices on the Providers & models page and the MCP
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `id` | The extension identifier: the `name` in its `extension.json`, else its directory name. |
+| Field    | Description                                                                                                       |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `id`     | The extension identifier: the `name` in its `extension.json`, else its directory name.                            |
 | `sha256` | Optional. The hex SHA-256 of the extension's entry-point file. A mismatch blocks the load even when `id` matches. |
 
 An empty or absent list loads every extension. A non-empty list blocks every extension it does not name, before the extension runs. A blocked load surfaces as an `engine_error` with `errorCode: "extension_blocked"` and records an `enforcement.extension_blocked` telemetry event.
