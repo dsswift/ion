@@ -153,6 +153,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Personal Preference](#term-personal-preference)
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
+- [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
 - [Port Forward](#term-port-forward)
 - [Presence](#term-presence)
@@ -961,6 +962,20 @@ The engine's typed inner event union. Each variant carries one shape. The engine
   - `engine` / `wire` / `go`: `type NormalizedEvent struct` in `engine/internal/types/normalized_event.go`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
 - **Notes:** Bare internal names never reach a consumer. Semantics such as snapshot versus incremental are part of the contract.
+
+#### Policy Override Notice {#term-policy-override-notice}
+
+A record that enterprise enforcement replaced or removed one user or project config value: the field path, a stable reason code, and, where neither can hold a secret, the displaced value and the value in effect. The engine stamps the list on the enterprise policy it returns; a client words it.
+
+- **ID:** `policy-override-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type PolicyOverride` in `engine/internal/types/config_policy_override.go`
+  - `desktop` / `code` / `typescript`: `export function providerOverrides` in `desktop/src/renderer/components/settings/policy-override-notices.ts`
 
 #### Server message {#term-server-message}
 
@@ -3045,6 +3060,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |

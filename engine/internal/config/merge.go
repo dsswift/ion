@@ -55,6 +55,7 @@ func MergeConfigs(enterprise *types.EnterpriseConfig, configs ...*types.EngineRu
 // Called after all other merges. Enterprise rules cannot be weakened.
 func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.EnterpriseConfig) *types.EngineRuntimeConfig {
 	result := *config
+	overrides := &overrideCollector{}
 
 	// Deep copy McpServers so deletes don't mutate the input
 	if config.McpServers != nil {
@@ -68,6 +69,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 	if len(enterprise.AllowedModels) > 0 {
 		if !contains(enterprise.AllowedModels, result.DefaultModel) {
 			utils.Log("ConfigMerge", "enterprise: defaultModel \""+result.DefaultModel+"\" not in allowedModels, falling back to \""+enterprise.AllowedModels[0]+"\"")
+			overrides.replaced("defaultModel", types.PolicyOverrideModelNotAllowed, result.DefaultModel, enterprise.AllowedModels[0])
 			result.DefaultModel = enterprise.AllowedModels[0]
 		}
 	}
@@ -86,6 +88,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			fallback = enterprise.AllowedModels[0]
 		}
 		utils.Log("ConfigMerge", "enterprise: defaultModel \""+result.DefaultModel+"\" is blocked, falling back to \""+fallback+"\"")
+		overrides.replaced("defaultModel", types.PolicyOverrideModelBlocked, result.DefaultModel, fallback)
 		result.DefaultModel = fallback
 	}
 
@@ -116,9 +119,15 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			pruned[k] = v
 		}
 		for key := range pruned {
+			// A provider the enterprise declares is implicitly allowed; the
+			// pin below needs its lower-layer entry to carry the API key over.
+			if _, declared := enterprise.Providers[key]; declared {
+				continue
+			}
 			if !contains(enterprise.AllowedProviders, key) {
 				utils.Log("ConfigMerge", "enterprise: removing non-allowlisted provider \""+key+"\"")
 				recordEnforcement(EnforcementProviderPruned, key, "allowlist", nil)
+				overrides.removed("providers."+key, types.PolicyOverrideProviderNotAllowed)
 				delete(pruned, key)
 			}
 		}
@@ -153,6 +162,9 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: pinning provider definition", map[string]any{"provider": key, "baseURL": entProvider.BaseURL, "had_user_entry": hadUser})
 			}
 			recordEnforcement(EnforcementProviderPinned, key, "pin", map[string]any{"base_url": entProvider.BaseURL})
+			if hadUser {
+				overrides.providerPinned(key, userProvider, entProvider)
+			}
 			pinned[key] = entProvider
 		}
 		result.Providers = pinned
@@ -163,6 +175,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			if _, ok := result.McpServers[denied]; ok {
 				utils.Log("ConfigMerge", "enterprise: removing denied MCP server \""+denied+"\"")
 				recordEnforcement(EnforcementMcpPruned, denied, "denylist", nil)
+				overrides.removed("mcpServers."+denied, types.PolicyOverrideMcpServerDenied)
 				delete(result.McpServers, denied)
 			}
 		}
@@ -186,6 +199,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			}
 			utils.Log("ConfigMerge", "enterprise: removing non-allowlisted MCP server \""+key+"\"")
 			recordEnforcement(EnforcementMcpPruned, key, "allowlist", nil)
+			overrides.removed("mcpServers."+key, types.PolicyOverrideMcpServerNotAllowed)
 			delete(result.McpServers, key)
 		}
 	}
@@ -552,8 +566,8 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		})
 	}
 
-	// Store enterprise config for runtime access
-	result.Enterprise = enterprise
+	// Store enterprise config for runtime access, with what this pass displaced.
+	result.Enterprise = overrides.stamp(enterprise)
 
 	return &result
 }

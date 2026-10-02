@@ -72,10 +72,14 @@ type NewConversationDefaultsPolicy struct {
 type EnterpriseConfig struct {
 	// ManagedMode is stamped by the loader when the managed-mode marker is
 	// present, and nil otherwise. A policy source cannot set it.
-	ManagedMode      *ManagedModeStatus `json:"managedMode,omitempty"`
-	AllowedModels    []string           `json:"allowedModels,omitempty"`
-	BlockedModels    []string           `json:"blockedModels,omitempty"`
-	AllowedProviders []string           `json:"allowedProviders,omitempty"`
+	ManagedMode *ManagedModeStatus `json:"managedMode,omitempty"`
+	// Overrides lists the lower-layer config values enforcement displaced,
+	// sorted by field. It is stamped by EnforceEnterprise and a policy source
+	// cannot set it. Empty when enforcement changed no lower-layer value.
+	Overrides        []PolicyOverride `json:"overrides,omitempty"`
+	AllowedModels    []string         `json:"allowedModels,omitempty"`
+	BlockedModels    []string         `json:"blockedModels,omitempty"`
+	AllowedProviders []string         `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from

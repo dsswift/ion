@@ -227,6 +227,42 @@ An explicit empty list (`[]`) is a real policy meaning "no Bash in plan mode, ev
 
 Every stripped entry is recorded as a `plan_mode_bash_pruned` enforcement action, with the rejected command as the subject and the reason. Without this an operator whose project config had no effect would have no way to discover why. Enforcement actions are drained at serve startup and on each enterprise config reload; see [Compliance](compliance.md).
 
+## Policy override notices
+
+Enforcement replaces and removes values a user or project configured. So that a client can say why a configured value is not the one in effect, the engine records each displaced value on the policy it returns from [`get_enterprise_policy`](../protocol/client-commands.md#get_enterprise_policy), under `policy.overrides`:
+
+```json
+{
+  "overrides": [
+    {
+      "field": "providers.gateway.baseURL",
+      "reason": "managed_provider_pinned",
+      "userValue": "https://other.example.org/v1",
+      "effectiveValue": "https://gateway.example.org/v1"
+    },
+    { "field": "providers.extra", "reason": "provider_not_allowed" }
+  ]
+}
+```
+
+| Reason | Field | Recorded when |
+|--------|-------|---------------|
+| `managed_provider_pinned` | `providers.<key>.<setting>` | An enterprise `providers` entry replaced that setting of the lower-layer entry for the same key. |
+| `provider_not_allowed` | `providers.<key>` | `allowedProviders` removed a lower-layer provider. |
+| `model_not_allowed` | `defaultModel` | `allowedModels` does not name the lower-layer default model. |
+| `model_blocked` | `defaultModel` | `blockedModels` names the lower-layer default model. |
+| `mcp_server_denied` | `mcpServers.<key>` | `mcpDenylist` removed a lower-layer MCP server. |
+| `mcp_server_not_allowed` | `mcpServers.<key>` | `mcpAllowlist` did not admit a lower-layer MCP server. |
+
+- A notice exists only when the value in effect differs from the one the lower layer supplied. A lower-layer value equal to the policy value, or a setting the lower layer never set, produces none.
+- `field` is the path in `engine.json` key spelling. `reason` is a stable code; the engine ships no presentation text.
+- `userValue` and `effectiveValue` are omitted for a removed entry and for `apiKey`. A `baseURL` is reported without userinfo, query, or fragment; when two URLs differ only there, both values are omitted.
+- The list is sorted by `field`, is part of the policy blob, and so changes `policyHash` when it changes.
+- The engine computes the list. A policy source that carries an `overrides` key has it discarded.
+- The list describes the config the daemon loaded at start: the user-level `engine.json` against the enterprise policy.
+
+Ion Studio shows the provider notices on the Providers & models page and the MCP notices on the MCP servers list.
+
 ## Extension allowlist
 
 `extensionAllowlist` limits which extensions the engine loads. Each entry names one extension:

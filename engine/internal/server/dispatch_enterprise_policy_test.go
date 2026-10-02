@@ -21,6 +21,7 @@ package server
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -306,5 +307,44 @@ func TestGetEnterprisePolicy_FullBlobNullWhenNoConfig(t *testing.T) {
 	}
 	if string(rawPolicy) != "null" {
 		t.Errorf("policy must be null when no enterprise config is loaded, got %s", rawPolicy)
+	}
+}
+
+// TestGetEnterprisePolicy_CarriesOverrides pins that the override notices
+// stamped on the enterprise config reach a client through the policy blob, in
+// their wire spelling.
+func TestGetEnterprisePolicy_CarriesOverrides(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	srv.SetConfig(&types.EngineRuntimeConfig{
+		Enterprise: &types.EnterpriseConfig{
+			Overrides: []types.PolicyOverride{{
+				Field: "providers.gateway.baseURL", Reason: types.PolicyOverrideProviderPinned,
+				UserValue: "https://rogue.example.org", EffectiveValue: "https://gateway.example.org",
+			}},
+		},
+	})
+
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+
+	sendJSON(t, conn, map[string]interface{}{"cmd": "get_enterprise_policy", "requestId": "req-ent-overrides"})
+
+	rawPolicy, _, ok := fullPolicyResult(t, readLines(t, conn, 3, 2*time.Second))
+	if !ok {
+		t.Fatalf("expected ok=true, got ok=false")
+	}
+	var decoded struct {
+		Overrides []map[string]string `json:"overrides"`
+	}
+	if err := json.Unmarshal(rawPolicy, &decoded); err != nil {
+		t.Fatalf("decode policy: %v", err)
+	}
+	want := []map[string]string{{
+		"field": "providers.gateway.baseURL", "reason": "managed_provider_pinned",
+		"userValue": "https://rogue.example.org", "effectiveValue": "https://gateway.example.org",
+	}}
+	if !reflect.DeepEqual(decoded.Overrides, want) {
+		t.Fatalf("overrides mismatch\n got: %v\nwant: %v", decoded.Overrides, want)
 	}
 }

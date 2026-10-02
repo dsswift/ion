@@ -775,6 +775,12 @@
       "kind",
       "label"
     ],
+    "PolicyOverride": [
+      "effectiveValue",
+      "field",
+      "reason",
+      "userValue"
+    ],
     "ProviderCliStatus": [
       "authMethod",
       "authenticated",
