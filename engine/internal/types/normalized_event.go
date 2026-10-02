@@ -346,6 +346,9 @@ type ErrorEvent struct {
 	// PolicyFailure is the Policy Failure identifier when the error results
 	// from enterprise policy. Empty otherwise.
 	PolicyFailure string `json:"policyFailure,omitempty"`
+	// ExtensionName is the extension the error is about, when it is about
+	// one. Empty otherwise.
+	ExtensionName string `json:"extensionName,omitempty"`
 }
 
 func (ErrorEvent) eventType() string { return EventError }

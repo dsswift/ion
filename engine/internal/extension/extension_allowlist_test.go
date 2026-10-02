@@ -48,6 +48,19 @@ func TestCheckExtensionAllowlist_NotListedBlocked(t *testing.T) {
 	if !errors.Is(err, ErrExtensionBlocked) {
 		t.Errorf("error must wrap ErrExtensionBlocked, got %v", err)
 	}
+	assertBlocked(t, err, "rogue-ext", BlockReasonName)
+}
+
+// assertBlocked pins that a block carries its identifier and reason as data.
+func assertBlocked(t *testing.T, err error, identifier, reason string) {
+	t.Helper()
+	var blocked *BlockedError
+	if !errors.As(err, &blocked) {
+		t.Fatalf("error must be a *BlockedError, got %T", err)
+	}
+	if blocked.Identifier != identifier || blocked.Reason != reason {
+		t.Errorf("blocked = {%q, %q}, want {%q, %q}", blocked.Identifier, blocked.Reason, identifier, reason)
+	}
 }
 
 // TestCheckExtensionAllowlist_HashMatchPasses pins integrity verification: a
@@ -81,6 +94,11 @@ func TestCheckExtensionAllowlist_HashMismatchBlocked(t *testing.T) {
 	if !errors.Is(err, ErrExtensionBlocked) {
 		t.Errorf("error must wrap ErrExtensionBlocked, got %v", err)
 	}
+	assertBlocked(t, err, "pinned", BlockReasonHash)
+
+	// A pinned entry point that cannot be read is blocked for the same reason.
+	err = checkExtensionAllowlist("pinned", filepath.Join(dir, "missing.ts"), allow)
+	assertBlocked(t, err, "pinned", BlockReasonHash)
 }
 
 // TestCheckExtensionAllowlist_CaseInsensitiveHash pins that hex hash comparison

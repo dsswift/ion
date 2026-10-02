@@ -88,6 +88,7 @@
       "contextTokens",
       "contextWindow",
       "errorCode",
+      "extensionName",
       "httpStatus",
       "isError",
       "message",

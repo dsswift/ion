@@ -453,7 +453,9 @@ type EngineEvent struct {
 	CompactingStrategy       string `json:"strategy,omitempty"`
 	CompactingMicroOnly      bool   `json:"microOnly,omitempty"`
 
-	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
+	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent.
+	// Also the blocked extension's identifier on an engine_error with
+	// errorCode=extension_blocked.
 	ExtensionName string `json:"extensionName,omitempty"`
 	AttemptNumber int    `json:"attemptNumber,omitempty"`
 

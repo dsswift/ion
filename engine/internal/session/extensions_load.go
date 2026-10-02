@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -69,29 +68,25 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			errorCode := "extension_load_failed"
 			message := fmt.Sprintf("extension load failed: %s", err.Error())
 			policyFailure := ""
-			if errors.Is(err, extension.ErrExtensionBlocked) {
+			blockedExtension := ""
+			var blocked *extension.BlockedError
+			if errors.As(err, &blocked) {
 				errorCode = "extension_blocked"
 				policyFailure = types.PolicyFailureExtensionBlocked
+				// The identifier and reason come from the block itself, never
+				// from the text: the text shown may be the policy's own.
+				blockedExtension = blocked.Identifier
 				if m.config != nil {
 					message = ionconfig.PolicyMessage(ionconfig.EnterpriseMessages(m.config.Enterprise), policyFailure, message)
 				}
-				utils.LogWithFields(utils.LevelInfo, "session", "extension blocked by enterprise allowlist", map[string]any{"ext_path": extPath, "error": err.Error()})
+				utils.LogWithFields(utils.LevelInfo, "session", "extension blocked by enterprise allowlist", map[string]any{"ext_path": extPath, "extension": blocked.Identifier, "reason": blocked.Reason, "error": err.Error()})
 				// Enforcement audit event (feature 0010 audit clause). Nil-safe
 				// on the session collector.
 				if s.telemetry != nil {
-					reason := "name"
-					if strings.Contains(err.Error(), "reason: hash") {
-						reason = "hash"
-					}
 					s.telemetry.Event(telemetry.EnforcementExtensionBlocked, map[string]any{
-						// host.Name() is the manifest-resolved identifier (manifest.Name
-						// else dir basename) — the same identifier checkExtensionAllowlist
-						// checked. filepath.Base(filepath.Dir(extPath)) would give the
-						// directory name, which differs from the manifest name when
-						// extension.json declares a different name than the directory.
-						"subject": host.Name(),
+						"subject": blocked.Identifier,
 						"source":  "allowlist",
-						"reason":  reason,
+						"reason":  blocked.Reason,
 					}, nil)
 				}
 			} else {
@@ -102,6 +97,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				EventMessage:  message,
 				ErrorCode:     errorCode,
 				PolicyFailure: policyFailure,
+				ExtensionName: blockedExtension,
 				StderrTail:    stderrTail,
 			})
 			continue

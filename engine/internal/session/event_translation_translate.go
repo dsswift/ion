@@ -168,6 +168,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 			ProviderSubscription: e.ProviderSubscription,
 			PolicyFailure:        e.PolicyFailure,
+			ExtensionName:        e.ExtensionName,
 		}
 
 	case *types.UsageEvent:

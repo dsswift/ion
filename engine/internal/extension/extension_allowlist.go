@@ -15,9 +15,35 @@ import (
 // ErrExtensionBlocked is returned by Host.Load when the enterprise extension
 // allowlist (feature 0011 / D-020, issue #308) rejects an extension — either
 // because its identifier is not listed, or because its entry-point file's
-// SHA-256 does not match a pinned hash. Callers (the session layer) surface it
-// to clients with the distinct ErrorCode "extension_blocked".
+// SHA-256 does not match a pinned hash. The concrete error is a *BlockedError.
 var ErrExtensionBlocked = errors.New("extension blocked by enterprise allowlist")
+
+// Why the allowlist blocked an extension.
+const (
+	// BlockReasonName: the identifier is not in the allowlist.
+	BlockReasonName = "name"
+	// BlockReasonHash: the identifier is listed with a pinned SHA-256 and the
+	// entry-point file did not match it, or could not be read to compare.
+	BlockReasonHash = "hash"
+)
+
+// BlockedError is the error checkExtensionAllowlist returns for a block. It
+// carries the blocked identifier and the reason as data, so a caller reports
+// them without reading the error text. errors.Is(err, ErrExtensionBlocked)
+// holds for every BlockedError.
+type BlockedError struct {
+	// Identifier is the extension identity the allowlist was checked against.
+	Identifier string
+	// Reason is BlockReasonName or BlockReasonHash.
+	Reason string
+	detail string
+}
+
+func (e *BlockedError) Error() string {
+	return fmt.Sprintf("%s: %q %s (reason: %s)", ErrExtensionBlocked.Error(), e.Identifier, e.detail, e.Reason)
+}
+
+func (e *BlockedError) Unwrap() error { return ErrExtensionBlocked }
 
 // checkExtensionAllowlist enforces the enterprise extension allowlist against a
 // resolved extension. identifier is the final extension identity (manifest name
@@ -46,19 +72,19 @@ func checkExtensionAllowlist(identifier, entryPath string, allowlist []types.Ext
 		}
 	}
 	if entry == nil {
-		utils.LogWithFields(utils.LevelInfo, "extension", "extension blocked by enterprise allowlist", map[string]any{"extension": identifier, "reason": "name"})
-		return fmt.Errorf("%w: %q is not in the enterprise extension allowlist (reason: name)", ErrExtensionBlocked, identifier)
+		utils.LogWithFields(utils.LevelInfo, "extension", "extension blocked by enterprise allowlist", map[string]any{"extension": identifier, "reason": BlockReasonName})
+		return &BlockedError{Identifier: identifier, Reason: BlockReasonName, detail: "is not in the enterprise extension allowlist"}
 	}
 
 	if entry.SHA256 != "" {
 		actual, err := hashFile(entryPath)
 		if err != nil {
 			utils.LogWithFields(utils.LevelError, "extension", "extension allowlist hash read failed; blocking", map[string]any{"extension": identifier, "entry": entryPath, "error": err.Error()})
-			return fmt.Errorf("%w: %q entry-point hash could not be computed (reason: hash): %v", ErrExtensionBlocked, identifier, err)
+			return &BlockedError{Identifier: identifier, Reason: BlockReasonHash, detail: fmt.Sprintf("entry-point hash could not be computed: %v", err)}
 		}
 		if !strings.EqualFold(actual, entry.SHA256) {
-			utils.LogWithFields(utils.LevelInfo, "extension", "extension blocked by enterprise allowlist", map[string]any{"extension": identifier, "reason": "hash", "expected": entry.SHA256, "actual": actual})
-			return fmt.Errorf("%w: %q entry-point SHA-256 %s does not match pinned %s (reason: hash)", ErrExtensionBlocked, identifier, actual, entry.SHA256)
+			utils.LogWithFields(utils.LevelInfo, "extension", "extension blocked by enterprise allowlist", map[string]any{"extension": identifier, "reason": BlockReasonHash, "expected": entry.SHA256, "actual": actual})
+			return &BlockedError{Identifier: identifier, Reason: BlockReasonHash, detail: fmt.Sprintf("entry-point SHA-256 %s does not match pinned %s", actual, entry.SHA256)}
 		}
 		utils.LogWithFields(utils.LevelDebug, "extension", "extension allowlist hash verified; load permitted", map[string]any{"extension": identifier})
 		return nil
