@@ -18,6 +18,16 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.94.0](https://github.com/dsswift/ion/compare/engine-v1.93.0...engine-v1.94.0) (2026-10-02)
+
+### Features
+
+* **engine:** scope enterprise policy to accounts (#395) ([3db262b](https://github.com/dsswift/ion/commit/3db262bc02185c427afdcb76dbc6b61bf25dff9c))
+
+### Bug Fixes
+
+* **engine:** enforce the enterprise permissions policy ([33518a0](https://github.com/dsswift/ion/commit/33518a001caf94b6e80a078718ba1e86f0e0de4e))
+
 ## [1.93.0](https://github.com/dsswift/ion/compare/engine-v1.92.0...engine-v1.93.0) (2026-10-02)
 
 ### Features
