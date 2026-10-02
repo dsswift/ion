@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.94.1](https://github.com/dsswift/ion/compare/engine-v1.94.0...engine-v1.94.1) (2026-10-02)
+
+### Bug Fixes
+
+* **engine:** make dispatch recall reason race-free (#469) ([e047af4](https://github.com/dsswift/ion/commit/e047af46929566fb9db26fadedbc1803a3c7129c))
+
 ## [1.94.0](https://github.com/dsswift/ion/compare/engine-v1.93.0...engine-v1.94.0) (2026-10-02)
 
 ### Features
