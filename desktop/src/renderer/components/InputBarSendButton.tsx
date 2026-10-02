@@ -19,7 +19,7 @@ export interface SendButtonProps {
  * need to flip `visible` to fade it in/out.
  *
  * Interactive states follow the desktop style guide: hover → `sendHover`,
- * pressed → `accentPressed` + 0.97 scale, disabled → `sendDisabled` at 0.45
+ * pressed → `sendPressed` + 0.97 scale, disabled → `sendDisabled` at 0.45
  * opacity with inert handlers. Keyboard focus rides `.ion-focusable`.
  */
 export function SendButton({ visible, isBusy, disabled = false, colors, onClick }: SendButtonProps) {
@@ -29,7 +29,7 @@ export function SendButton({ visible, isBusy, disabled = false, colors, onClick 
   const background = disabled
     ? colors.sendDisabled
     : pressed
-      ? colors.accentPressed
+      ? colors.sendPressed
       : hover
         ? colors.sendHover
         : colors.sendBg
@@ -60,7 +60,7 @@ export function SendButton({ visible, isBusy, disabled = false, colors, onClick 
             className="ion-focusable w-9 h-9 rounded-full flex items-center justify-center"
             style={{
               background,
-              color: colors.textOnAccent,
+              color: colors.sendFg,
               opacity: disabled ? 0.45 : 1,
               cursor: disabled ? 'default' : 'pointer',
               transform: pressed && interactive ? 'scale(0.97)' : 'scale(1)',

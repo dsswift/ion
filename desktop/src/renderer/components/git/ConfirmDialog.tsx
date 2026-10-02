@@ -206,7 +206,7 @@ export function ConfirmDialog({
             {...confirmIx.handlers}
             className="ion-focusable text-[11px] px-3 py-1 rounded-md font-medium"
             style={{
-              color: colors.textOnAccent,
+              color: danger ? colors.textOnDanger : colors.textOnAccent,
               // Destructive confirms use the stop family (no dedicated
               // pressed token — stopHover serves both active states);
               // neutral confirms darken through the accent ladder. A busy

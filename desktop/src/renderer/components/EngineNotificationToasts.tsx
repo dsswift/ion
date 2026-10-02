@@ -56,11 +56,23 @@ const AUTO_DISMISS_MS = 5000
  *  oldest three (`slice(0, 3)`), which hid new signals behind stale ones. */
 const MAX_VISIBLE = 4
 
-/** Level → background color, resolved from the active theme palette. */
-function toastBackground(level: string, colors: ColorPalette): string {
-  if (level === 'error') return colors.stopBg
-  if (level === 'warning') return colors.statusWarning
-  return colors.surfaceSecondary
+/** A toast's fill and the foreground pair drawn on it. */
+export interface ToastColors {
+  background: string
+  fg: string
+  fgMuted: string
+}
+
+/** Level → fill and its matching foregrounds, resolved from the active theme
+ *  palette. Each level takes the foreground tokens named for its own fill. */
+export function toastColors(level: string, colors: ColorPalette): ToastColors {
+  if (level === 'error') {
+    return { background: colors.stopBg, fg: colors.textOnDanger, fgMuted: colors.textOnDangerMuted }
+  }
+  if (level === 'warning') {
+    return { background: colors.statusWarning, fg: colors.textOnWarning, fgMuted: colors.textOnWarningMuted }
+  }
+  return { background: colors.surfaceSecondary, fg: colors.textOnSurface, fgMuted: colors.textOnSurfaceMuted }
 }
 
 /** One toast row: message text + X button + own auto-dismiss timer.
@@ -70,6 +82,7 @@ function toastBackground(level: string, colors: ColorPalette): string {
 function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id: string) => void }) {
   const colors = useColors()
   const closeIx = useInteractiveState()
+  const toast = toastColors(notif.level, colors)
   const [hovered, setHovered] = useState(false)
   // Milliseconds left in this toast's auto-dismiss window. Decremented on
   // every effect cleanup (hover pause, dep change) so pauses accumulate
@@ -107,8 +120,8 @@ function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id
         padding: '8px 12px',
         borderRadius: 8,
         fontSize: 12,
-        background: toastBackground(notif.level, colors),
-        color: colors.textOnAccent,
+        background: toast.background,
+        color: toast.fg,
         boxShadow: colors.cardShadow,
         // Toasts overlay the scrollable conversation area; without this
         // the column container's pointerEvents: 'none' (which lets clicks
@@ -138,7 +151,7 @@ function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id
           marginTop: 1,
           borderRadius: 4,
           cursor: 'pointer',
-          color: closeIx.hover ? colors.textOnAccent : colors.textOnAccentMuted,
+          color: closeIx.hover ? toast.fg : toast.fgMuted,
           transition: `background ${transitions.base}, color ${transitions.base}`,
         }}
       >

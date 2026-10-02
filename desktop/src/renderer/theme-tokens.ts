@@ -21,6 +21,7 @@ import { hudColors } from './theme/palette-hud'
 import { contrastDarkColors } from './theme/palette-contrast-dark'
 import { contrastLightColors } from './theme/palette-contrast-light'
 import type { CustomThemeForRenderer, ThemePackDiagnostic } from '@ion/shared/theme-pack-types'
+import { TOKEN_FALLBACKS } from './theme/token-fallbacks'
 
 export { darkColors, lightColors, classicColors, hudColors, contrastDarkColors, contrastLightColors }
 export type { ColorPalette }
@@ -101,14 +102,18 @@ const registryListeners = new Set<() => void>()
 
 /** Resolve one pack payload into a full ThemeDefinition: the base built-in
  * palette filled with the pack's token overlay. Only known ColorPalette
- * keys are applied (the loader validates, this stays defensive). */
+ * keys are applied (the loader validates, this stays defensive). A token the
+ * pack omits takes the pack's value for its TOKEN_FALLBACKS source before it
+ * takes the base palette's. */
 export function resolveCustomThemeDefinition(t: CustomThemeForRenderer): ThemeDefinition {
   const base = themes.find((b) => b.id === t.base) ?? themes[0]
   // ColorPalette is homomorphic over the as-const dark palette, so its
   // properties are readonly — build through a mutable record, then narrow.
   const colors: Record<string, string> = { ...base.colors }
+  const fallbacks: Partial<Record<string, string>> = TOKEN_FALLBACKS
   for (const key of Object.keys(colors)) {
-    const v = t.tokens[key]
+    const fallback = fallbacks[key]
+    const v = t.tokens[key] ?? (fallback ? t.tokens[fallback] : undefined)
     if (typeof v === 'string') colors[key] = v
   }
   return {

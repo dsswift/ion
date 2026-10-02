@@ -5,6 +5,7 @@ import { classicColors } from "./palette-classic";
 import { hudColors } from "./palette-hud";
 import { contrastDarkColors } from "./palette-contrast-dark";
 import { contrastLightColors } from "./palette-contrast-light";
+import { TOKEN_FALLBACKS } from "./token-fallbacks";
 
 describe("palette parity", () => {
   it("all built-in palettes carry the identical key set", () => {
@@ -365,5 +366,32 @@ describe("Ion Classic freeze", () => {
   it("classic does not alias any other palette", () => {
     expect(classicColors).not.toBe(darkColors);
     expect(classicColors).not.toBe(hudColors);
+  });
+
+  // A role-specific token carries the same value as its fallback source in
+  // every built-in, so splitting a role out never moved a built-in's look.
+  it("role tokens equal their fallback source in every built-in", () => {
+    const palettes = {
+      darkColors,
+      lightColors,
+      classicColors,
+      hudColors,
+      contrastDarkColors,
+      contrastLightColors,
+    };
+    for (const [name, palette] of Object.entries(palettes)) {
+      for (const [token, source] of Object.entries(TOKEN_FALLBACKS)) {
+        expect(
+          palette[token as keyof typeof TOKEN_FALLBACKS],
+          `${name}.${token} must equal ${name}.${source}`,
+        ).toBe(palette[source]);
+      }
+    }
+  });
+
+  it("no fallback source is itself a role token", () => {
+    for (const source of Object.values(TOKEN_FALLBACKS)) {
+      expect(Object.keys(TOKEN_FALLBACKS)).not.toContain(source);
+    }
   });
 });

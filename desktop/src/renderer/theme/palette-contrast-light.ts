@@ -31,6 +31,10 @@ export const contrastLightColors: ColorPalette = {
   textSecondary: '#303139',
   textTertiary: '#4b4d57',
 
+  // Role foregrounds that track this palette's own base and text values.
+  textOnInfo: '#ffffff',
+  textOnRunning: '#121318',
+
   // Accent (alpha 0.10/0.14 resolve to the 0x1A/0x24 bytes iOS produces).
   accent: '#1248c6',
   accentLight: 'rgba(18, 72, 198, 0.10)',

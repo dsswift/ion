@@ -132,6 +132,7 @@ export const lightColors: ColorPalette = {
   sendBg: "#2B5FE8",
   sendHover: "#2453D3",
   sendDisabled: "rgba(43, 95, 232, 0.35)",
+  sendPressed: "#1D47BC",
 
   // Modal backdrop scrim (theme-neutral black; kept as a token so every
   // dialog dims identically)
@@ -169,9 +170,29 @@ export const lightColors: ColorPalette = {
   // Disabled button color
   btnDisabled: "#d4d4d8",
 
-  // Text on accent backgrounds
+  // Text on accent fills (accent / accentHover / accentPressed)
   textOnAccent: "#ffffff",
   textOnAccentMuted: "rgba(255, 255, 255, 0.7)",
+
+  // Foreground by surface role. Each token names the fill it is drawn on, so
+  // a theme sets every pairing independently.
+  // Neutral surface (surfaceSecondary and its neighbours).
+  textOnSurface: "#ffffff",
+  textOnSurfaceMuted: "rgba(255, 255, 255, 0.7)",
+  // Danger fill (stopBg / stopHover).
+  textOnDanger: "#ffffff",
+  textOnDangerMuted: "rgba(255, 255, 255, 0.7)",
+  // Warning fill (statusWarning).
+  textOnWarning: "#ffffff",
+  textOnWarningMuted: "rgba(255, 255, 255, 0.7)",
+  // Info fill (infoText used as a solid background).
+  textOnInfo: "#fbfbfc",
+  // Running fill (statusRunning used as a solid background).
+  textOnRunning: "#18181b",
+  // Send button glyph (sendBg / sendHover).
+  sendFg: "#ffffff",
+  // Agent name pill, whose fill is the agent's own color.
+  agentPillText: "#ffffff",
 
   // Button hover (CSS-only stack buttons)
   btnHoverColor: "#18181b",
