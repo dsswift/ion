@@ -965,7 +965,7 @@ final class ContractSyncTests: XCTestCase {
     let swiftHandled: Set<String> = [
       "name", "transport", "url", "command", "args", "oauth",
       "connected", "authenticated", "toolCount", "lastError",
-      "protocolVersion", "capabilities",
+      "protocolVersion", "capabilities", "managed",
     ]
     let unhandled = Set(goFields).subtracting(swiftHandled)
     XCTAssert(
