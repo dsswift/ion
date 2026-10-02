@@ -157,6 +157,12 @@ type DispatchAgentOpts struct {
 	// Detached excludes an asynchronous child from the parent run's parked-child
 	// set. Use it for genuine fire-and-forget work.
 	Detached bool `json:"detached,omitempty"`
+	// ParkCheckInIntervalMs wakes this dispatch for one turn every interval
+	// while it is parked on work it started (child dispatches, background
+	// commands, polls) and that work is still running. The woken turn is
+	// classified "checkin"; when it ends with the work still outstanding the
+	// dispatch parks again. Zero means no check-ins.
+	ParkCheckInIntervalMs int `json:"parkCheckInIntervalMs,omitempty"`
 
 	// --- Callbacks. Local only; never serialised. ---
 
@@ -184,6 +190,12 @@ type DispatchAgentOpts struct {
 	// OnChildQuestion fires when the child asks the operator a question. The
 	// child's run blocks until this returns, so answer promptly.
 	OnChildQuestion func(DispatchChildQuestionInfo) (answer string, cancelled bool, err error) `json:"-"`
+	// OnParkCheckIn fires each time a parked dispatch's check-in interval
+	// elapses (see ParkCheckInIntervalMs). Return the prompt to wake the
+	// parked agent with, or Skip to leave it parked for another interval. An
+	// error also leaves it parked. When nil, the engine delivers its own
+	// generic prompt. The engine waits a bounded time for the answer.
+	OnParkCheckIn func(DispatchParkCheckInInfo) (DispatchParkCheckInReply, error) `json:"-"`
 }
 
 // DispatchAgentResult is a dispatch's outcome. For an asynchronous dispatch the
@@ -412,6 +424,36 @@ type DispatchChildQuestionInfo struct {
 	RequestID  string `json:"requestId"`
 	Question   string `json:"question"`
 	Depth      int    `json:"depth"`
+}
+
+// DispatchParkCheckInInfo describes a parked dispatch whose check-in interval
+// elapsed with its awaited work still running.
+type DispatchParkCheckInInfo struct {
+	Name       string `json:"name"`
+	DispatchID string `json:"dispatchId"`
+	RequestID  string `json:"requestId"`
+	Depth      int    `json:"depth"`
+	// ParkedMs is how long the current park has lasted.
+	ParkedMs int64 `json:"parkedMs"`
+	// CheckInCount is the 1-based number of this check-in within the current
+	// park. It restarts each time the dispatch parks again.
+	CheckInCount int `json:"checkInCount"`
+	// The work the dispatch parked on.
+	AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+	AwaitingTaskIDs     []string `json:"awaitingTaskIds,omitempty"`
+	AwaitingPollIDs     []string `json:"awaitingPollIds,omitempty"`
+	// AwaitingDispatches is the live state of each awaited child dispatch
+	// still in flight. This callback runs outside any hook or tool context,
+	// where ListDispatchState is unavailable, so the engine supplies it here.
+	AwaitingDispatches []DispatchStateEntry `json:"awaitingDispatches,omitempty"`
+}
+
+// DispatchParkCheckInReply answers a park check-in.
+type DispatchParkCheckInReply struct {
+	// Prompt is the message the parked agent is woken with. Empty is a skip.
+	Prompt string `json:"prompt,omitempty"`
+	// Skip leaves the dispatch parked for another interval.
+	Skip bool `json:"skip,omitempty"`
 }
 
 // AgentSpec declares an LLM-visible agent at runtime. Mirrors an agent

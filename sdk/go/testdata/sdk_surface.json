@@ -1,6 +1,7 @@
 {
   "context": [
     "AckDispatchLost",
+    "AnswerDispatchParkCheckIn",
     "AnswerDispatchQuestion",
     "ApplicationConfig",
     "CallTool",
@@ -243,6 +244,7 @@
       "maxTurns",
       "model",
       "name",
+      "parkCheckInIntervalMs",
       "planFilePath",
       "planMode",
       "planModeTools",

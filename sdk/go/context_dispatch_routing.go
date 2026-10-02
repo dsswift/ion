@@ -168,6 +168,9 @@ func (r *notificationRouter) bindLifecycle(key string, opts DispatchAgentOpts) f
 	if opts.OnChildQuestion != nil {
 		bind("dispatch_child_question", r.childQuestionHandler(opts.OnChildQuestion))
 	}
+	if opts.OnParkCheckIn != nil {
+		bind("dispatch_park_checkin", r.parkCheckInHandler(opts.OnParkCheckIn))
+	}
 
 	r.mu.Lock()
 	for k, fn := range bindings {
@@ -212,6 +215,38 @@ func (r *notificationRouter) childQuestionHandler(
 			"cancelled":  cancelled,
 		}, nil); err != nil {
 			r.sdk.logger.Error("could not deliver child question answer",
+				map[string]any{"dispatchId": info.DispatchID, "error": err.Error()})
+		}
+	}
+}
+
+// parkCheckInHandler answers a park check-in by invoking the caller's callback
+// and sending the reply back, which decides whether the parked agent wakes.
+func (r *notificationRouter) parkCheckInHandler(
+	fn func(DispatchParkCheckInInfo) (DispatchParkCheckInReply, error),
+) func(json.RawMessage) {
+	return func(params json.RawMessage) {
+		var info DispatchParkCheckInInfo
+		if err := json.Unmarshal(params, &info); err != nil {
+			r.sdk.logger.Error("park check-in did not decode; the dispatch stays parked",
+				map[string]any{"error": err.Error()})
+			return
+		}
+		reply, err := fn(info)
+		if err != nil {
+			// The engine is waiting on an answer, so a handler error still
+			// replies: a skip leaves the dispatch parked.
+			r.sdk.logger.Error("park check-in handler failed; skipping this check-in",
+				map[string]any{"dispatchId": info.DispatchID, "error": err.Error()})
+			reply = DispatchParkCheckInReply{Skip: true}
+		}
+		if err := r.sdk.call(context.Background(), "ext/answer_dispatch_park_checkin", map[string]any{
+			"dispatchId": info.DispatchID,
+			"requestId":  info.RequestID,
+			"prompt":     reply.Prompt,
+			"skip":       reply.Skip,
+		}, nil); err != nil {
+			r.sdk.logger.Error("could not deliver park check-in answer",
 				map[string]any{"dispatchId": info.DispatchID, "error": err.Error()})
 		}
 	}

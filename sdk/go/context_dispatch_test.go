@@ -374,6 +374,104 @@ func TestChildQuestionHandlerErrorStillAnswers(t *testing.T) {
 	fe.awaitLog("child question handler failed")
 }
 
+// TestParkCheckInIsAnswered pins the park check-in round trip: a dispatch with
+// OnParkCheckIn tells the engine it answers, and the engine's notification is
+// answered with the handler's prompt.
+func TestParkCheckInIsAnswered(t *testing.T) {
+	fe := newFakeEngine(t, WithName("park-checkin-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	ctx := fe.sdk.newContext(nil)
+
+	got := make(chan DispatchParkCheckInInfo, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := ctx.DispatchAgent(context.Background(), DispatchAgentOpts{
+			Name:                  "lead",
+			Task:                  "delegate",
+			ParkCheckInIntervalMs: 600000,
+			OnParkCheckIn: func(info DispatchParkCheckInInfo) (DispatchParkCheckInReply, error) {
+				got <- info
+				return DispatchParkCheckInReply{Prompt: "look at your staff"}, nil
+			},
+		})
+		done <- err
+	}()
+
+	frame := fe.awaitMethod("ext/dispatch_agent")
+	sent, _ := frame["params"].(map[string]any)
+	if sent["parkCheckInIntervalMs"] != float64(600000) || sent["parkCheckInAsk"] != true {
+		t.Errorf("dispatch params = %+v, want the interval and parkCheckInAsk true", sent)
+	}
+	if sent["name"] != "lead" || sent["task"] != "delegate" {
+		t.Errorf("dispatch params lost the caller's options: %+v", sent)
+	}
+	id, _ := frame["id"].(float64)
+	fe.respond(id, map[string]any{"name": "lead", "dispatchId": "d-p"})
+	if err := <-done; err != nil {
+		t.Fatalf("dispatch failed: %v", err)
+	}
+
+	fe.notify("dispatch_park_checkin", map[string]any{
+		"name": "lead", "dispatchId": "d-p", "requestId": "pc-1", "depth": 1,
+		"parkedMs": 600000, "checkInCount": 1, "awaitingDispatchIds": []string{"d-child"},
+	})
+
+	answer := fe.awaitMethod("ext/answer_dispatch_park_checkin")
+	params, _ := answer["params"].(map[string]any)
+	if params["prompt"] != "look at your staff" || params["skip"] != false {
+		t.Errorf("answer = %+v, want the handler's prompt and no skip", params)
+	}
+	if params["requestId"] != "pc-1" || params["dispatchId"] != "d-p" {
+		t.Errorf("answer routing = %+v, want requestId pc-1 / dispatchId d-p", params)
+	}
+	info := <-got
+	if info.CheckInCount != 1 || info.ParkedMs != 600000 || len(info.AwaitingDispatchIDs) != 1 {
+		t.Errorf("handler info = %+v", info)
+	}
+}
+
+// TestParkCheckInHandlerErrorSkips pins the failure path: the engine is
+// waiting on an answer, so a handler error still replies, with a skip.
+func TestParkCheckInHandlerErrorSkips(t *testing.T) {
+	fe := newFakeEngine(t, WithName("park-checkin-error-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	ctx := fe.sdk.newContext(nil)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := ctx.DispatchAgent(context.Background(), DispatchAgentOpts{
+			Name: "lead",
+			Task: "delegate",
+			OnParkCheckIn: func(DispatchParkCheckInInfo) (DispatchParkCheckInReply, error) {
+				return DispatchParkCheckInReply{}, errTestToolFailed
+			},
+		})
+		done <- err
+	}()
+
+	frame := fe.awaitMethod("ext/dispatch_agent")
+	id, _ := frame["id"].(float64)
+	fe.respond(id, map[string]any{"name": "lead", "dispatchId": "d-pe"})
+	if err := <-done; err != nil {
+		t.Fatalf("dispatch failed: %v", err)
+	}
+
+	fe.notify("dispatch_park_checkin", map[string]any{
+		"name": "lead", "dispatchId": "d-pe", "requestId": "pc-2",
+	})
+
+	answer := fe.awaitMethod("ext/answer_dispatch_park_checkin")
+	params, _ := answer["params"].(map[string]any)
+	if params["skip"] != true {
+		t.Errorf("skip = %v, want true so the dispatch stays parked", params["skip"])
+	}
+	fe.awaitLog("park check-in handler failed")
+}
+
 func TestListDispatchStateDecodesWaitingOn(t *testing.T) {
 	fe := newFakeEngine(t, WithName("dispatch-waiting-on-test"))
 	fe.start()
