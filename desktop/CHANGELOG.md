@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.6.0](https://github.com/dsswift/ion/compare/desktop-v2.5.0...desktop-v2.6.0) (2026-10-02)
+
+### Features
+
+* **desktop:** show policy text for subscription failures (#386) ([afaf20b](https://github.com/dsswift/ion/commit/afaf20bc5abc0fa9650e4c85a488fce3bf38403f))
+
+### Bug Fixes
+
+* **ci:** build the server bundle after the engine publishes (#468) ([da7c719](https://github.com/dsswift/ion/commit/da7c719200a4a6efbe27385008c184d634e71f7c))
+
 ## [2.5.0](https://github.com/dsswift/ion/compare/desktop-v2.4.1...desktop-v2.5.0) (2026-10-02)
 
 ### Features

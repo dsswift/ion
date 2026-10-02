@@ -18,6 +18,19 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.93.0](https://github.com/dsswift/ion/compare/engine-v1.92.0...engine-v1.93.0) (2026-10-02)
+
+### Features
+
+* **engine:** add configurable policy failure messages (#386) ([cb0e98d](https://github.com/dsswift/ion/commit/cb0e98d72daff90b888acd22740e44213ee05f7d))
+* **engine:** name the blocked extension on its error (#390) ([276f8a4](https://github.com/dsswift/ion/commit/276f8a452fc4822b5d7ab72a7fecf2bf94c711f2))
+* **engine:** wake a parked dispatch for periodic check-ins ([7e09c12](https://github.com/dsswift/ion/commit/7e09c124457d3b97950b691e6d65938d54ad0f08))
+* **engine:** expose conversation record path and read (#436) ([96f96d6](https://github.com/dsswift/ion/commit/96f96d6f76345fb823b686eb10fecc7b0aea4862))
+
+### Bug Fixes
+
+* **engine:** classify the transcript cursor version (#467) ([259fea9](https://github.com/dsswift/ion/commit/259fea96c986a4a398456cddbec6edd6084d877e))
+
 ## [1.92.0](https://github.com/dsswift/ion/compare/engine-v1.91.0...engine-v1.92.0) (2026-10-02)
 
 ### Features

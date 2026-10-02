@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.18](https://github.com/dsswift/ion/compare/sdk/go-v0.1.17...sdk/go-v0.1.18) (2026-10-02)
+
+### Features
+
+* **sdk:** carry the policy failure on on_error (#386) ([b6b49c0](https://github.com/dsswift/ion/commit/b6b49c08393f25d5c64e97aec78a00d3c078c709))
+* **sdk:** add park check-in interval to dispatch options ([db53733](https://github.com/dsswift/ion/commit/db53733be6631cab6dbc1bd2009eb5c30a96c878))
+* **sdk:** read conversation records from the go sdk (#436) ([7978eab](https://github.com/dsswift/ion/commit/7978eab33dd714c4832e142ad9ff21fc984075b0))
+
 ## [0.1.17](https://github.com/dsswift/ion/compare/sdk/go-v0.1.16...sdk/go-v0.1.17) (2026-10-02)
 
 ### Features

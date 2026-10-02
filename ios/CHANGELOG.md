@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.4.0](https://github.com/dsswift/ion/compare/ios-v2.3.0...ios-v2.4.0) (2026-10-02)
+
+### Features
+
+* **ios:** show policy text for subscription failures (#386) ([7a0b75e](https://github.com/dsswift/ion/commit/7a0b75ef9a468cc85fd5e4dd0c1148f34af7b20a))
+
 ## [2.3.0](https://github.com/dsswift/ion/compare/ios-v2.2.0...ios-v2.3.0) (2026-10-02)
 
 ### Features
