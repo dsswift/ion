@@ -39,6 +39,10 @@ export function tabIdVisibleToSubject(_tabId: string, _subject: string | null): 
   return true;
 }
 
+export function tabOwnedBySubject(_tabId: string, _subject: string | null): boolean {
+  return true;
+}
+
 export function registerTabOwner(_tabId: string, _subject: string): void {}
 
 export function _resetPrincipalIndexForTest(): void {}
