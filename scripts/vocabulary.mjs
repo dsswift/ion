@@ -154,7 +154,7 @@ export function validateRegistry(data, root) {
     const before = data.terms[index - 1]?.id;
     const after = data.terms[index]?.id;
     if (typeof before === 'string' && typeof after === 'string' && before > after) {
-      errors.push(`registry: terms are not sorted by id: ${display(before)} must precede ${display(after)}`);
+      errors.push(`registry: terms are not sorted by id: ${display(after)} must precede ${display(before)}`);
       break;
     }
   }

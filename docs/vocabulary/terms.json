@@ -3270,31 +3270,6 @@
       ]
     },
     {
-      "id": "policy-override-notice",
-      "term": "Policy Override Notice",
-      "definition": "A record that enterprise enforcement replaced or removed one user or project config value: the field path, a stable reason code, and, where neither can hold a secret, the displaced value and the value in effect. The engine stamps the list on the enterprise policy it returns; a client words it.",
-      "domain": "engine",
-      "kind": "public-contract",
-      "status": "canonical",
-      "contract": "public-wire",
-      "implementations": [
-        {
-          "platform": "engine",
-          "presentation": "code",
-          "language": "go",
-          "symbol": "type PolicyOverride",
-          "path": "engine/internal/types/config_policy_override.go"
-        },
-        {
-          "platform": "desktop",
-          "presentation": "code",
-          "language": "typescript",
-          "symbol": "export function providerOverrides",
-          "path": "desktop/src/renderer/components/settings/policy-override-notices.ts"
-        }
-      ]
-    },
-    {
       "id": "policy-failure",
       "term": "Policy Failure",
       "definition": "A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.",
@@ -3334,6 +3309,31 @@
           "language": "swift",
           "symbol": "func failureText",
           "path": "ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift"
+        }
+      ]
+    },
+    {
+      "id": "policy-override-notice",
+      "term": "Policy Override Notice",
+      "definition": "A record that enterprise enforcement replaced or removed one user or project config value: the field path, a stable reason code, and, where neither can hold a secret, the displaced value and the value in effect. The engine stamps the list on the enterprise policy it returns; a client words it.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type PolicyOverride",
+          "path": "engine/internal/types/config_policy_override.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function providerOverrides",
+          "path": "desktop/src/renderer/components/settings/policy-override-notices.ts"
         }
       ]
     },
@@ -5072,7 +5072,7 @@
           "presentation": "code",
           "language": "go",
           "symbol": "func IsToolAllowedFor",
-          "path": "engine/internal/config/merge.go"
+          "path": "engine/internal/config/policy_checks.go"
         }
       ]
     },

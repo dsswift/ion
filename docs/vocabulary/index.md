@@ -157,8 +157,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Personal Preference](#term-personal-preference)
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
-- [Policy Override Notice](#term-policy-override-notice)
 - [Policy Failure](#term-policy-failure)
+- [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
 - [Port Forward](#term-port-forward)
 - [Presence](#term-presence)
@@ -862,7 +862,7 @@ A per-principal backstop that refuses a tool call whose path falls outside the s
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `code` / `go`: `func New` in `engine/internal/principalboundary/checker.go`
-  - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/merge.go`
+  - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/policy_checks.go`
 
 #### Webhook {#term-webhook}
 
@@ -3156,8 +3156,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
-| Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Policy Failure | None | None | None | `func failureText` | Desktop, Studio, Overlay |
+| Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
