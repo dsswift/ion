@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -64,16 +65,28 @@ func (s *Server) requireOperatorIdentityForSession() error {
 	}
 	if identity == nil {
 		utils.LogWithFields(utils.LevelError, "server.oidc", "required operator identity unavailable", map[string]any{"reason": "provider_not_configured"})
-		return fmt.Errorf("operator OIDC identity is required but no interactive identity provider is available")
+		return s.authenticationFailed(fmt.Errorf("operator OIDC identity is required but no interactive identity provider is available"))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := identity.ValidateGrant(ctx); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "server.oidc", "session refused: required operator identity unavailable", map[string]any{"error": err.Error()})
-		return fmt.Errorf("operator OIDC identity is required; complete oidc_begin_login before starting a session: %w", err)
+		return s.authenticationFailed(fmt.Errorf("operator OIDC identity is required; complete oidc_begin_login before starting a session: %w", err))
 	}
 	utils.LogWithFields(utils.LevelInfo, "server.oidc", "required operator identity accepted for session", nil)
 	return nil
+}
+
+// authenticationFailed wraps cause as the authentication_failed Policy
+// Failure, worded by the enterprise policy's message when one is configured.
+func (s *Server) authenticationFailed(cause error) error {
+	s.mu.RLock()
+	var messages map[string]string
+	if s.config != nil {
+		messages = config.EnterpriseMessages(s.config.Enterprise)
+	}
+	s.mu.RUnlock()
+	return config.NewPolicyError(messages, types.PolicyFailureAuthenticationFailed, cause)
 }
 
 // dispatchOidcBeginLogin starts an interactive (PKCE) or headless (device
@@ -92,7 +105,7 @@ func (s *Server) dispatchOidcBeginLogin(conn net.Conn, cmd *protocol.ClientComma
 		login, err := m.BeginDeviceLogin()
 		if err != nil {
 			utils.LogWithFields(utils.LevelError, "server.oidc", "device login start failed", map[string]any{"error": err.Error()})
-			s.sendResult(conn, cmd, err, nil)
+			s.sendResult(conn, cmd, s.authenticationFailed(err), nil)
 			return
 		}
 		s.emitOidcEventTo(conn, cmd.Key, types.EngineEvent{
@@ -122,7 +135,7 @@ func (s *Server) dispatchOidcBeginLogin(conn net.Conn, cmd *protocol.ClientComma
 		login, err := m.BeginLogin()
 		if err != nil {
 			utils.LogWithFields(utils.LevelError, "server.oidc", "interactive login start failed", map[string]any{"error": err.Error()})
-			s.sendResult(conn, cmd, err, nil)
+			s.sendResult(conn, cmd, s.authenticationFailed(err), nil)
 			return
 		}
 		s.emitOidcEventTo(conn, cmd.Key, types.EngineEvent{

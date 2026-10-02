@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -66,8 +67,14 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			// this extension" apart from a genuine load failure (crash, bad
 			// manifest, transpile error).
 			errorCode := "extension_load_failed"
+			message := fmt.Sprintf("extension load failed: %s", err.Error())
+			policyFailure := ""
 			if errors.Is(err, extension.ErrExtensionBlocked) {
 				errorCode = "extension_blocked"
+				policyFailure = types.PolicyFailureExtensionBlocked
+				if m.config != nil {
+					message = ionconfig.PolicyMessage(ionconfig.EnterpriseMessages(m.config.Enterprise), policyFailure, message)
+				}
 				utils.LogWithFields(utils.LevelInfo, "session", "extension blocked by enterprise allowlist", map[string]any{"ext_path": extPath, "error": err.Error()})
 				// Enforcement audit event (feature 0010 audit clause). Nil-safe
 				// on the session collector.
@@ -91,10 +98,11 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				utils.LogWithFields(utils.LevelError, "session", "extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
 			}
 			m.emit(key, types.EngineEvent{
-				Type:         "engine_error",
-				EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
-				ErrorCode:    errorCode,
-				StderrTail:   stderrTail,
+				Type:          "engine_error",
+				EventMessage:  message,
+				ErrorCode:     errorCode,
+				PolicyFailure: policyFailure,
+				StderrTail:    stderrTail,
 			})
 			continue
 		}

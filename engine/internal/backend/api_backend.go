@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -704,6 +705,10 @@ func (b *ApiBackend) emitErrorWith(run *activeRun, err error, subscription *type
 		errEvent.HttpStatus = pe.HTTPStatus
 		errEvent.Retryable = pe.Retryable
 		errEvent.RetryAfterMs = pe.RetryAfterMs
+	}
+	var policyErr *types.PolicyError
+	if errors.As(err, &policyErr) {
+		errEvent.PolicyFailure = policyErr.Failure
 	}
 	b.emit(run, types.NormalizedEvent{Data: errEvent})
 

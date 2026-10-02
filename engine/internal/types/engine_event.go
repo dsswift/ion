@@ -35,6 +35,9 @@ type EngineEvent struct {
 	Level         string `json:"level,omitempty"`
 	ErrorCode     string `json:"errorCode,omitempty"`
 	ErrorCategory string `json:"errorCategory,omitempty"`
+	// PolicyFailure is the Policy Failure identifier on an engine_error or
+	// engine_tool_end that results from enterprise policy. Empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
 	Retryable     bool   `json:"retryable,omitempty"`
 	RetryAfterMs  int64  `json:"retryAfterMs,omitempty"`
 	HttpStatus    int    `json:"httpStatus,omitempty"`

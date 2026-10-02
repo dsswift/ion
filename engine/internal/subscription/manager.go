@@ -43,6 +43,9 @@ type Manager struct {
 	// displayName is the provider's configured display name, stamped on
 	// every snapshot.
 	displayName string
+	// messages is the enterprise policy's replacement text per Policy
+	// Failure identifier, stamped on every snapshot in a failure state.
+	messages map[string]string
 
 	root       context.Context
 	cancelRoot context.CancelFunc
@@ -133,6 +136,14 @@ func (m *Manager) Stop() {
 	utils.LogWithFields(utils.LevelInfo, "subscription", "subscription lookup stopped", map[string]any{"provider": m.cfg.Provider})
 }
 
+// SetPolicyMessages supplies the enterprise policy's replacement text per
+// Policy Failure identifier. Call before Start.
+func (m *Manager) SetPolicyMessages(messages map[string]string) {
+	m.mu.Lock()
+	m.messages = messages
+	m.mu.Unlock()
+}
+
 // Status returns the current snapshot.
 func (m *Manager) Status() types.ProviderSubscriptionStatus {
 	m.mu.Lock()
@@ -141,7 +152,21 @@ func (m *Manager) Status() types.ProviderSubscriptionStatus {
 	if out.Provider != "" {
 		out.ProviderDisplayName = m.displayName
 	}
+	out.PolicyFailure = policyFailureOf(out.State)
+	out.Message = m.messages[out.PolicyFailure]
 	return out
+}
+
+// policyFailureOf names the Policy Failure a state is, or "" for a state
+// that is not a failure.
+func policyFailureOf(state string) string {
+	switch state {
+	case types.SubscriptionStateNone:
+		return types.PolicyFailureSubscriptionUnavailable
+	case types.SubscriptionStateFailed:
+		return types.PolicyFailureSubscriptionLookupFailed
+	}
+	return ""
 }
 
 func cloneStatus(status types.ProviderSubscriptionStatus) types.ProviderSubscriptionStatus {
@@ -162,6 +187,7 @@ func (m *Manager) publish() {
 	status := m.Status()
 	utils.LogWithFields(utils.LevelInfo, "subscription", "subscription state changed", map[string]any{
 		"provider": status.Provider, "state": status.State, "source": status.Source, "count": len(status.Options),
+		"policy_failure": status.PolicyFailure, "message_overridden": status.Message != "",
 	})
 	if m.onChange != nil {
 		m.onChange(status)

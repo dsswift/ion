@@ -256,6 +256,7 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if len(overlay.CustomFields) > 0 {
 		result.CustomFields = overlay.CustomFields
 	}
+	result.Messages = mergePolicyMessages(result.Messages, overlay.Messages)
 	return &result
 }
 

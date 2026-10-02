@@ -91,6 +91,7 @@
       "httpStatus",
       "isError",
       "message",
+      "policyFailure",
       "providerSubscription",
       "retryAfterMs",
       "retryable",
@@ -288,6 +289,7 @@
       "content",
       "images",
       "isError",
+      "policyFailure",
       "toolId"
     ],
     "tool_stalled": [
@@ -499,6 +501,7 @@
     "planProposalKind",
     "planSlug",
     "planWriteOperation",
+    "policyFailure",
     "pollProgress",
     "pollStarted",
     "pollTerminal",
@@ -816,7 +819,9 @@
     ],
     "ProviderSubscriptionStatus": [
       "error",
+      "message",
       "options",
+      "policyFailure",
       "provider",
       "providerDisplayName",
       "resolvedAt",

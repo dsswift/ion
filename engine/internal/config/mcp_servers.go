@@ -108,7 +108,7 @@ func CheckMcpServerAllowed(name string, cfg types.McpServerConfig) error {
 		utils.LogWithFields(utils.LevelWarn, "config", "mcp server add refused by enterprise denylist", map[string]any{
 			"server": name,
 		})
-		return fmt.Errorf("MCP server %q is blocked by enterprise policy (mcpDenylist)", name)
+		return NewPolicyError(enterprise.Messages, types.PolicyFailureMcpServerBlocked, fmt.Errorf("MCP server %q is blocked by enterprise policy (mcpDenylist)", name))
 	}
 
 	if len(enterprise.McpAllowlist) > 0 {
@@ -124,7 +124,7 @@ func CheckMcpServerAllowed(name string, cfg types.McpServerConfig) error {
 		utils.LogWithFields(utils.LevelWarn, "config", "mcp server add refused by enterprise allowlist", map[string]any{
 			"server": name, "url_host": mcpServerURLHost(cfg), "allowlist": enterprise.McpAllowlist,
 		})
-		return fmt.Errorf("MCP server %q is not permitted by enterprise policy (mcpAllowlist)", name)
+		return NewPolicyError(enterprise.Messages, types.PolicyFailureMcpServerBlocked, fmt.Errorf("MCP server %q is not permitted by enterprise policy (mcpAllowlist)", name))
 	}
 
 	return nil

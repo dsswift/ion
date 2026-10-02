@@ -292,12 +292,13 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		if errEv, ok := event.Data.(*types.ErrorEvent); ok {
 			errCtx := m.newExtContext(s, key)
 			s.extGroup.FireOnError(errCtx, extension.ErrorInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
-				Message:      errEv.ErrorMessage,
-				ErrorCode:    errEv.ErrorCode,
-				Category:     classifyErrorCategory(errEv.ErrorCode),
-				Retryable:    errEv.Retryable,
-				RetryAfterMs: errEv.RetryAfterMs,
-				HttpStatus:   errEv.HttpStatus,
+				Message:       errEv.ErrorMessage,
+				ErrorCode:     errEv.ErrorCode,
+				Category:      classifyErrorCategory(errEv.ErrorCode),
+				Retryable:     errEv.Retryable,
+				RetryAfterMs:  errEv.RetryAfterMs,
+				HttpStatus:    errEv.HttpStatus,
+				PolicyFailure: errEv.PolicyFailure,
 			})
 		}
 	}

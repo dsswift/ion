@@ -66,6 +66,10 @@ func (m *Manager) buildRunConfig(
 	if m.config != nil && m.config.DefaultModel != "" {
 		runCfg.DefaultModel = m.config.DefaultModel
 	}
+	if m.config != nil {
+		runCfg.PolicyPrunedProviders = m.config.PolicyPrunedProviders
+		runCfg.PolicyMessages = ionconfig.EnterpriseMessages(m.config.Enterprise)
+	}
 
 	// Thread timeouts config into the run so tool execution and the run loop
 	// can read configured values.
@@ -185,7 +189,11 @@ func (m *Manager) buildRunConfig(
 						"rule":      rule,
 					}, nil)
 				}
-				return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil
+				return &backend.ToolCallResult{
+					Block:         true,
+					Reason:        ionconfig.PolicyMessage(capturedEnterprise.Messages, types.PolicyFailureToolBlocked, "tool blocked by enterprise policy"),
+					PolicyFailure: types.PolicyFailureToolBlocked,
+				}, nil
 			}
 			return nil, nil
 		}

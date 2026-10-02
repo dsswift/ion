@@ -148,11 +148,17 @@ func (b *ApiBackend) resolveProviderForRun(ctx context.Context, run *activeRun, 
 		utils.LogWithFields(utils.LevelError, "backend.runloop", "no provider for model", map[string]any{
 			"model": model,
 		})
+		message, policyFailure := noProviderMessage(run, model)
 		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
-			ErrorMessage: fmt.Sprintf("no provider found for model %q", model),
-			ErrorCode:    "invalid_model",
+			ErrorMessage:  message,
+			ErrorCode:     "invalid_model",
+			PolicyFailure: policyFailure,
 		}})
-		b.emitError(run, fmt.Errorf("no provider found for model %q", model))
+		noProvider := fmt.Errorf("no provider found for model %q", model)
+		if policyFailure != "" {
+			noProvider = &types.PolicyError{Failure: policyFailure, Message: message, Cause: noProvider}
+		}
+		b.emitError(run, noProvider)
 		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
 		return nil, "", ctx
 	}

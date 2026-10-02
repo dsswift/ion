@@ -112,4 +112,10 @@ type ProviderSubscriptionStatus struct {
 	// Error is the most recent lookup failure. It can accompany the applied
 	// state when a refresh failed and the cached key stayed in effect.
 	Error string `json:"error,omitempty"`
+	// PolicyFailure is the Policy Failure identifier of the state: set when
+	// State is none or failed, empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
+	// Message is the text enterprise policy configured for PolicyFailure.
+	// Empty when none is configured; a consumer then words the state itself.
+	Message string `json:"message,omitempty"`
 }

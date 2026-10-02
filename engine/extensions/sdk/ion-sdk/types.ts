@@ -2312,6 +2312,8 @@ export interface ErrorInfo {
   retryable?: boolean
   retryAfterMs?: number
   httpStatus?: number
+  /** The Policy Failure identifier when the error results from enterprise policy. */
+  policyFailure?: string
 }
 
 /** Payload for `turn_start` and `turn_end`. */

@@ -24,6 +24,25 @@ func (m *Manager) managedLocked() bool {
 	return m.config != nil && ionconfig.ManagedPolicyAbsent(m.config.Enterprise)
 }
 
+// policyError wraps cause as the Policy Failure id, worded by the enterprise
+// policy's message for it when one is configured. Takes m.mu, so the caller
+// must not hold it.
+func (m *Manager) policyError(id string, cause error) *types.PolicyError {
+	m.mu.RLock()
+	messages := m.policyMessagesLocked()
+	m.mu.RUnlock()
+	return ionconfig.NewPolicyError(messages, id, cause)
+}
+
+// policyMessagesLocked returns the enterprise policy's message map. The
+// caller holds m.mu.
+func (m *Manager) policyMessagesLocked() map[string]string {
+	if m.config == nil {
+		return nil
+	}
+	return ionconfig.EnterpriseMessages(m.config.Enterprise)
+}
+
 // rejectIfManagedLocked refuses a prompt on a locked engine. It runs before a
 // run is reserved, so there is nothing to unwind.
 func (m *Manager) rejectIfManagedLocked(key string) error {
@@ -31,10 +50,12 @@ func (m *Manager) rejectIfManagedLocked(key string) error {
 		return nil
 	}
 	utils.LogWithFields(utils.LevelWarn, "session", "prompt refused: managed installation has no enterprise policy", map[string]any{"key": key})
+	refusal := m.policyError(types.PolicyFailureManagedPolicyAbsent, errManagedPolicyAbsent)
 	m.emit(key, types.EngineEvent{
-		Type:         "engine_error",
-		EventMessage: errManagedPolicyAbsent.Error(),
-		ErrorCode:    managedPolicyAbsentErrorCode,
+		Type:          "engine_error",
+		EventMessage:  refusal.Message,
+		ErrorCode:     managedPolicyAbsentErrorCode,
+		PolicyFailure: refusal.Failure,
 	})
-	return errManagedPolicyAbsent
+	return refusal
 }

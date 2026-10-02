@@ -364,3 +364,43 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+// The two failure states name their Policy Failure, and carry the policy's
+// text for it only when one is configured.
+func TestFailureStatesCarryPolicyFailureAndConfiguredMessage(t *testing.T) {
+	failing := func() ([]Subscription, error) { return nil, errors.New("endpoint returned status 503") }
+	cases := []struct {
+		name        string
+		response    func() ([]Subscription, error)
+		state       string
+		wantFailure string
+	}{
+		{"none", answer(), types.SubscriptionStateNone, types.PolicyFailureSubscriptionUnavailable},
+		{"failed", failing, types.SubscriptionStateFailed, types.PolicyFailureSubscriptionLookupFailed},
+	}
+	for _, tc := range cases {
+		for _, override := range []string{"", "Open a ticket to request a subscription."} {
+			t.Run(tc.name, func(t *testing.T) {
+				h := newHarness(t, types.SubscriptionLookupConfig{}, tc.response)
+				if override != "" {
+					h.m.SetPolicyMessages(map[string]string{tc.wantFailure: override})
+				}
+				h.signIn("user-1")
+				status := h.waitFor(t, tc.state)
+				if status.PolicyFailure != tc.wantFailure || status.Message != override {
+					t.Fatalf("status = %+v, want failure %q message %q", status, tc.wantFailure, override)
+				}
+			})
+		}
+	}
+}
+
+func TestAppliedStateCarriesNoPolicyFailure(t *testing.T) {
+	h := newHarness(t, types.SubscriptionLookupConfig{}, answer(Subscription{ID: "std", Label: "Standard", Key: "key-std"}))
+	h.m.SetPolicyMessages(map[string]string{types.PolicyFailureSubscriptionUnavailable: "unused"})
+	h.signIn("user-1")
+	status := h.waitFor(t, types.SubscriptionStateApplied)
+	if status.PolicyFailure != "" || status.Message != "" {
+		t.Fatalf("applied status carries failure text: %+v", status)
+	}
+}

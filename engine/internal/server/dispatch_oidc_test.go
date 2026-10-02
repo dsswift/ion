@@ -459,3 +459,45 @@ func TestDispatchOidc_Logout(t *testing.T) {
 		t.Error("grant still present after oidc_logout")
 	}
 }
+
+// A session refused for want of the required identity reports the
+// authentication_failed Policy Failure, worded by policy when configured.
+func TestDispatchOidc_RequiredIdentityRefusalCarriesPolicyFailure(t *testing.T) {
+	for _, override := range []string{"", "Sign in with your work account. Help desk: extension 5000."} {
+		t.Setenv("HOME", t.TempDir())
+		srv := newShortPathTestServer(t, newMockBackend())
+		cfg := &types.EngineRuntimeConfig{Auth: &types.AuthConfig{RequireOperatorIdentity: true}}
+		if override != "" {
+			cfg.Enterprise = &types.EnterpriseConfig{Messages: map[string]string{types.PolicyFailureAuthenticationFailed: override}}
+		}
+		srv.SetConfig(cfg)
+		conn := dialServer(t, srv)
+
+		sendJSON(t, conn, map[string]interface{}{
+			"cmd": "start_session", "requestId": "req-start", "key": "required-auth",
+			"config": map[string]interface{}{"profileId": "default", "workingDirectory": t.TempDir()},
+		})
+		lines := readLinesUntil(t, conn, 2*time.Second, func(l string) bool { return strings.Contains(l, `"cmd":"result"`) })
+		conn.Close()
+		if len(lines) == 0 {
+			t.Fatal("no result")
+		}
+		var result struct {
+			OK            bool   `json:"ok"`
+			Error         string `json:"error"`
+			PolicyFailure string `json:"policyFailure"`
+		}
+		if err := json.Unmarshal([]byte(lines[len(lines)-1]), &result); err != nil {
+			t.Fatalf("decode result: %v", err)
+		}
+		if result.OK || result.PolicyFailure != types.PolicyFailureAuthenticationFailed {
+			t.Fatalf("override %q: result = %+v", override, result)
+		}
+		if override == "" && !strings.Contains(result.Error, "operator OIDC identity is required") {
+			t.Fatalf("default text changed: %q", result.Error)
+		}
+		if override != "" && result.Error != override {
+			t.Fatalf("error = %q, want the configured message", result.Error)
+		}
+	}
+}

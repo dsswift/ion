@@ -71,6 +71,9 @@ type ToolCallInfo struct {
 type ToolCallResult struct {
 	Block  bool
 	Reason string
+	// PolicyFailure is the Policy Failure identifier when enterprise policy
+	// is what blocked the call. Empty for any other block.
+	PolicyFailure string
 }
 
 // BeforeProviderRequestInfo mirrors extension.BeforeProviderRequestInfo for the
@@ -512,6 +515,13 @@ type RunConfig struct {
 	// Used as a fallback when the requested model doesn't resolve to a
 	// provider (e.g. an unrecognized tier alias in an agent .md).
 	DefaultModel string
+
+	// PolicyPrunedProviders are the provider ids enterprise policy removed
+	// from the configuration, and PolicyMessages is the policy's replacement
+	// text per Policy Failure identifier. Together they let a run that ends
+	// for want of a removed provider say so.
+	PolicyPrunedProviders []string
+	PolicyMessages        map[string]string
 
 	// EarlyStopContinue carries the engine-wide defaults for the early-stop
 	// continuation feature (from ~/.ion/engine.json or built-in defaults).

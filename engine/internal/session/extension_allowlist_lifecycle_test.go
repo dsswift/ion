@@ -45,19 +45,25 @@ setInterval(() => {}, 1000);
 
 	var mu sync.Mutex
 	var codes []string
+	var blocked []types.EngineEvent
 	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
 		if ev.Type == "engine_error" {
 			mu.Lock()
 			codes = append(codes, ev.ErrorCode)
+			if ev.ErrorCode == "extension_blocked" {
+				blocked = append(blocked, ev)
+			}
 			mu.Unlock()
 		}
 	})
 
+	const blockedText = "This extension is not approved. Request it through the software catalog."
 	cfg := defaultConfig()
 	cfg.WorkingDirectory = dir
 	cfg.Extensions = []string{jsPath}
 	mgr.SetConfig(&types.EngineRuntimeConfig{Enterprise: &types.EnterpriseConfig{
 		ExtensionAllowlist: []types.ExtensionAllowlistEntry{{ID: "only-this-one"}},
+		Messages:           map[string]string{types.PolicyFailureExtensionBlocked: blockedText},
 	}})
 
 	done := make(chan error, 1)
@@ -87,6 +93,11 @@ setInterval(() => {}, 1000);
 	}
 	if !found {
 		t.Errorf("expected an engine_error with ErrorCode extension_blocked, got codes %v", codes)
+	}
+	for _, ev := range blocked {
+		if ev.EventMessage != blockedText || ev.PolicyFailure != types.PolicyFailureExtensionBlocked {
+			t.Errorf("blocked extension error = %q (policy failure %q), want the configured message", ev.EventMessage, ev.PolicyFailure)
+		}
 	}
 }
 

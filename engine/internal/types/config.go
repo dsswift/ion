@@ -203,6 +203,12 @@ type EnterpriseConfig struct {
 	// policy change takes effect immediately.
 	DisableTelemetryHealthNotifications bool           `json:"disableTelemetryHealthNotifications,omitempty"`
 	CustomFields                        map[string]any `json:"customFields,omitempty"`
+	// Messages replaces the text shown for a Policy Failure, keyed by the
+	// failure's identifier (see PolicyFailureIDs). An identifier with no entry
+	// keeps the engine default. The text is presentation only: it never
+	// changes whether a failure happens or how it is coded. Keys the engine
+	// does not report are passed through for consumers that define their own.
+	Messages map[string]string `json:"messages,omitempty"`
 }
 
 // EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys
@@ -397,12 +403,15 @@ type EngineRuntimeConfig struct {
 	// commits are attributed to its principal, a configured machine
 	// fallback identity, or refused outright when neither resolves. See
 	// session.resolveGitIdentity.
-	Git          *GitConfig          `json:"git,omitempty"`
-	Enterprise   *EnterpriseConfig   `json:"enterprise,omitempty"`
-	FeatureFlags *FeatureFlagsConfig `json:"featureFlags,omitempty"`
-	Relay        *RelayConfig        `json:"relay,omitempty"`
-	Timeouts     *TimeoutsConfig     `json:"timeouts,omitempty"`
-	WebSearch    *WebSearchConfig    `json:"webSearch,omitempty"`
+	Git        *GitConfig        `json:"git,omitempty"`
+	Enterprise *EnterpriseConfig `json:"enterprise,omitempty"`
+	// PolicyPrunedProviders are the provider ids enterprise allowedProviders
+	// removed from this config. Derived by EnforceEnterprise on every load.
+	PolicyPrunedProviders []string            `json:"-"`
+	FeatureFlags          *FeatureFlagsConfig `json:"featureFlags,omitempty"`
+	Relay                 *RelayConfig        `json:"relay,omitempty"`
+	Timeouts              *TimeoutsConfig     `json:"timeouts,omitempty"`
+	WebSearch             *WebSearchConfig    `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
