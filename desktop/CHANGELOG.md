@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.7.0](https://github.com/dsswift/ion/compare/desktop-v2.6.0...desktop-v2.7.0) (2026-10-02)
+
+### Features
+
+* **desktop:** show managed config state and lock managed mcp edits (#393) ([79321cf](https://github.com/dsswift/ion/commit/79321cfd76cb05fc2410224aaa4389e8538cbe9d))
+
 ## [2.6.0](https://github.com/dsswift/ion/compare/desktop-v2.5.0...desktop-v2.6.0) (2026-10-02)
 
 ### Features

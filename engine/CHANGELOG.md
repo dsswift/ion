@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.95.0](https://github.com/dsswift/ion/compare/engine-v1.94.1...engine-v1.95.0) (2026-10-02)
+
+### Features
+
+* **engine:** honor managed engine and model config files (#393) ([b8b8a1a](https://github.com/dsswift/ion/commit/b8b8a1a15c2bedfb5c77c84062e349d01b5fc7bd))
+
 ## [1.94.1](https://github.com/dsswift/ion/compare/engine-v1.94.0...engine-v1.94.1) (2026-10-02)
 
 ### Bug Fixes

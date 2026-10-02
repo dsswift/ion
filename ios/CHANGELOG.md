@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.5.0](https://github.com/dsswift/ion/compare/ios-v2.4.0...ios-v2.5.0) (2026-10-02)
+
+### Features
+
+* **ios:** disable edit and remove on managed mcp servers (#393) ([c537c94](https://github.com/dsswift/ion/commit/c537c94d6326c1ea23b4c1e9edb4383929d31e94))
+
 ## [2.4.0](https://github.com/dsswift/ion/compare/ios-v2.3.0...ios-v2.4.0) (2026-10-02)
 
 ### Features
