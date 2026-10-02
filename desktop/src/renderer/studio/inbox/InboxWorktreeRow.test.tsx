@@ -61,7 +61,13 @@ vi.mock('../../components/WorktreeStageSlot', () => ({
     <button data-testid={`worktree-stage-chip-${branchName}`} data-stage={stage ?? 'none'} onClick={() => onSetStage?.('build')}>stage</button>
   ),
 }))
-vi.mock('../../components/git/ConflictsDialog', () => ({ ConflictsDialog: () => null }))
+const conflictsMounted = vi.hoisted(() => vi.fn())
+vi.mock('../../components/git/ConflictsDialog', () => ({
+  ConflictsDialog: ({ directory }: { directory: string }) => {
+    React.useEffect(() => { conflictsMounted(directory) }, [directory])
+    return null
+  },
+}))
 vi.mock('../../components/git/BenchConflictDialog', () => ({ BenchConflictDialog: () => null }))
 vi.mock('../../components/git/BenchVerificationDialog', () => ({ BenchVerificationDialog: () => null }))
 vi.mock('../../rendererLogger', () => logger)
@@ -121,6 +127,20 @@ afterEach(() => {
 })
 
 describe('InboxWorktreeRow header actions', () => {
+  it('opens the conflict dialog afresh on every click of the conflict marker', async () => {
+    render(undefined, { ...entry, operationState: 'rebasing', conflictedPaths: ['a.ts'] })
+    const marker = host.querySelector<HTMLButtonElement>(`[data-testid="worktree-conflict-${entry.branchName}"]`)!
+
+    await act(async () => { marker.click() })
+    expect(conflictsMounted).toHaveBeenCalledTimes(1)
+
+    // The dialog is still open as far as the row knows. A second click must
+    // mount it again so it comes back into view, not be swallowed.
+    await act(async () => { marker.click() })
+    expect(conflictsMounted).toHaveBeenCalledTimes(2)
+    expect(conflictsMounted).toHaveBeenLastCalledWith(entry.worktreePath)
+  })
+
   it('requests enrollment for a non-member worktree, naming its source branch', async () => {
     const onToggleMembership = vi.fn()
     render(undefined, entry, { onToggleMembership })

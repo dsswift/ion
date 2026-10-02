@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { CaretDown, CaretRight, GitBranch } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { WorktreeRowMenu } from '../../components/WorktreeRowMenu'
@@ -35,9 +35,15 @@ export function InboxWorktreeRow({
   const tabs = useSessionStore((state) => state.tabs)
   const workspaces = useSessionStore((state) => state.benchWorkspaces.get(repoPath) ?? [])
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
-  const [conflicts, setConflicts] = useState<string | null>(null)
-  const [benchConflict, setBenchConflict] = useState(false)
-  const [verification, setVerification] = useState(false)
+  // Each dialog's state carries an opening number, used as its React key.
+  // Clicking a control whose dialog is already open then remounts it, which
+  // brings the dialog back in front of the operator. Storing only "open" made
+  // the second click a no-op whenever the dialog had dropped out of view.
+  const openings = useRef(0)
+  const [conflicts, setConflicts] = useState<{ directory: string; opening: number } | null>(null)
+  const [benchConflict, setBenchConflict] = useState<number | null>(null)
+  const [verification, setVerification] = useState<number | null>(null)
+  const openConflicts = (directory: string): void => setConflicts({ directory, opening: ++openings.current })
   // Resolved the same way `membership` is: a direct member-scan first, and
   // when that misses but `group.membership` still carries a fallback value
   // (computed upstream against the ACTIVE bench selection, not every bench a
@@ -143,7 +149,7 @@ export function InboxWorktreeRow({
         <WorktreeEnrollmentSlot enrolled={enrolled} order={membership ? (workspace?.members.findIndex((member) => member.worktreePath === entry.worktreePath) ?? -1) + 1 : undefined} railStarts={false} railContinues={false} branchName={entry.branchName} width={14} pending={operationIsPending(worktreeOperation) || operationIsPending(benchOperation)} pendingMessage={controlMessage} onToggleMembership={toggleMembership} />
         {entry.isDirty && <strong style={{ color: colors.worktreeDirty }}>!</strong>}
         {entry.unlandedCommitCount > 0 && <span style={{ color: colors.unlandedCount, fontSize: 9 }}>{entry.unlandedCommitCount}↑</span>}
-        <WorktreeStateSlot state={rowState} branchName={entry.branchName} hasActiveWorktreeResolver={activeWorktreeResolver !== null} onFocusActiveWorktreeResolver={() => { if (activeWorktreeResolver) useSessionStore.getState().selectTab(activeWorktreeResolver) }} onResolve={() => setConflicts(entry.worktreePath)} onSync={sync} updatingPin={updatingPin} pinUpdateLocked={pinUpdateLocked} onUpdatePin={updatePin} onShowBenchConflict={() => setBenchConflict(true)} onFocusActiveResolver={() => { if (activeBenchResolver) useSessionStore.getState().selectTab(activeBenchResolver) }} onShowVerificationFailure={() => setVerification(true)} />
+        <WorktreeStateSlot state={rowState} branchName={entry.branchName} hasActiveWorktreeResolver={activeWorktreeResolver !== null} onFocusActiveWorktreeResolver={() => { if (activeWorktreeResolver) useSessionStore.getState().selectTab(activeWorktreeResolver) }} onResolve={() => openConflicts(entry.worktreePath)} onSync={sync} updatingPin={updatingPin} pinUpdateLocked={pinUpdateLocked} onUpdatePin={updatePin} onShowBenchConflict={() => setBenchConflict(++openings.current)} onFocusActiveResolver={() => { if (activeBenchResolver) useSessionStore.getState().selectTab(activeBenchResolver) }} onShowVerificationFailure={() => setVerification(++openings.current)} />
         <GitBranch size={13} color={colors.accent} />
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{group.label}</span>
         <span style={{ color: colors.textTertiary, fontSize: 10 }}>{group.tabs.length}</span>
@@ -158,8 +164,8 @@ export function InboxWorktreeRow({
       </div>
     </div>
     {menu && <WorktreeRowMenu entry={entry} repoPath={repoPath} anchor={menu} onClose={() => setMenu(null)} onRefresh={() => void useSessionStore.getState().refreshWorkspaceViews(repoPath)} />}
-    {conflicts && <ConflictsDialog directory={conflicts} onClose={() => setConflicts(null)} />}
-    {benchConflict && workspace && membership && <BenchConflictDialog repoPath={repoPath} sourceBranch={workspace.sourceBranch} member={membership} onClose={() => setBenchConflict(false)} onResolveReady={(benchPath) => { setBenchConflict(false); setConflicts(benchPath) }} />}
-    {verification && workspace && <BenchVerificationDialog repoPath={repoPath} workspace={workspace} onClose={() => setVerification(false)} />}
+    {conflicts && <ConflictsDialog key={conflicts.opening} directory={conflicts.directory} onClose={() => setConflicts(null)} />}
+    {benchConflict !== null && workspace && membership && <BenchConflictDialog key={benchConflict} repoPath={repoPath} sourceBranch={workspace.sourceBranch} member={membership} onClose={() => setBenchConflict(null)} onResolveReady={(benchPath) => { setBenchConflict(null); openConflicts(benchPath) }} />}
+    {verification !== null && workspace && <BenchVerificationDialog key={verification} repoPath={repoPath} workspace={workspace} onClose={() => setVerification(null)} />}
   </>
 }

@@ -46,12 +46,11 @@ function schedulePersist(get: () => SurfaceState): void {
 import { createQuestionsSurfaceActions } from "./surface-questions-actions";
 import { createSurfacePaneActions } from "./surface-pane-actions";
 import {
-  nextActiveAfterClose,
   nextTerminalTitle,
   normalizeTabs,
 } from "@ion/shared/studio-surface-ordering";
 import { rDebug, rInfo } from "../../rendererLogger";
-import { unregisterRuntimePanel } from "./runtime-panel-registry";
+import { createRuntimePanelActions } from "./surface-runtime-panel-actions";
 import { scratchTabsForProject } from "./surface-scratch";
 import { createScratchSurfaceActions } from "./surface-scratch-actions";
 import { createSurfaceTabLifecycleActions } from "./surface-tab-lifecycle-actions";
@@ -128,6 +127,8 @@ export interface SurfaceState {
   openRuntimePanel(id: string, title: string): void;
   updateRuntimePanelTitle(id: string, title: string): void;
   removeRuntimePanel(id: string): void;
+  /** Close, through their owners, every runtime panel a conversation holds. */
+  closeRuntimePanelsIn(conversationId: string): void;
   createScratch(): void;
   updateScratch(projectKey: string, documentId: string, content: string): void;
   toggleScratchPreview(projectKey: string, documentId: string): void;
@@ -318,8 +319,12 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   ...createSurfaceHydrationActions(set, get, schedulePersist),
 
-  selectConversation: (currentConversationId) =>
-    applyConversationSelection(set, get, currentConversationId),
+  selectConversation: (currentConversationId) => {
+    const previous = get().currentConversationId;
+    applyConversationSelection(set, get, currentConversationId);
+    if (previous && previous !== currentConversationId)
+      get().closeRuntimePanelsIn(previous);
+  },
 
   ...createSurfacePaneActions(set, get, updateCurrent),
 
@@ -443,36 +448,13 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       activeTabId: DISPATCH_SURFACE_ID,
     })),
 
-  openRuntimePanel: (id, title) =>
-    updateCurrent(set, get, (current) => ({
-      ...current,
-      tabs: current.tabs.some((tab) => tab.id === id)
-        ? current.tabs.map((tab) =>
-            tab.id === id ? { kind: "runtime-panel", id, title } : tab,
-          )
-        : [...current.tabs, { kind: "runtime-panel", id, title }],
-      activeTabId: id,
-    })),
-
-  updateRuntimePanelTitle: (id, title) =>
-    updateCurrent(set, get, (current) => ({
-      ...current,
-      tabs: current.tabs.map((tab) =>
-        tab.id === id && tab.kind === "runtime-panel" ? { ...tab, title } : tab,
-      ),
-    })),
-
-  removeRuntimePanel: (id) => {
-    unregisterRuntimePanel(id);
-    updateCurrent(set, get, (current) => ({
-      ...current,
-      tabs: current.tabs.filter((tab) => tab.id !== id),
-      activeTabId:
-        current.activeTabId === id
-          ? nextActiveAfterClose(get().tabs, id)
-          : current.activeTabId,
-    }));
-  },
+  ...createRuntimePanelActions({
+    set,
+    get,
+    updateCurrent,
+    updateConversation: (conversationId, update) =>
+      updateConversationById(set, get, conversationId, update),
+  }),
 
   ...createScratchSurfaceActions({
     set,
