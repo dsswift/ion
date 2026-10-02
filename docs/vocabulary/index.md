@@ -77,6 +77,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation events](#term-conversation-events)
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
+- [Conversation record read](#term-conversation-record-read)
 - [Conversation status](#term-conversation-status)
 - [Corpus Index](#term-corpus-index)
 - [Corpus Root](#term-corpus-root)
@@ -1147,6 +1148,21 @@ The path that carries a schedule firing or an inbound webhook into an extension 
 - **Implementations:**
   - `sdk` / `code` / `typescript`: `export async function dispatchFireAsync` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
   - `engine` / `wire` / `go`: `DeliveryId` in `engine/internal/protocol/protocol.go`
+
+#### Conversation record read {#term-conversation-record-read}
+
+The extension call that returns a conversation's messages with their timestamps by conversation identifier, read from disk so a conversation that has ended is readable. It pages by offset and limit, never writes to the record, and is subject to the calling session's read access under principal partitioning.
+
+- **ID:** `conversation-record-read`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (h *Host) rpcReadConversation` in `engine/internal/extension/host_rpc_conversation.go`
+  - `sdk` / `code` / `go`: `func (a *ConversationsAPI) Read` in `sdk/go/conversations.go`
+  - `sdk` / `code` / `typescript`: `conversations` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 #### Protected operation {#term-protected-operation}
 

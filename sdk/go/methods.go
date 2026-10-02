@@ -57,6 +57,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/task_suspend":       "Context.Suspend / Context.SuspendUntilAll",
 		"ext/get_context_usage":  "Context.GetContextUsage",
 		"ext/search_history":     "Context.SearchHistory",
+		"ext/read_conversation":  "ConversationsAPI.Read",
 		"ext/get_session_memory": "Context.GetSessionMemory",
 		"ext/set_session_memory": "Context.SetSessionMemory",
 		"ext/set_run_recovery":   "Context.SetRunRecovery",

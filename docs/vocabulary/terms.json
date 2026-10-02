@@ -872,6 +872,39 @@
       ]
     },
     {
+      "id": "conversation-record-read",
+      "term": "Conversation record read",
+      "definition": "The extension call that returns a conversation's messages with their timestamps by conversation identifier, read from disk so a conversation that has ended is readable. It pages by offset and limit, never writes to the record, and is subject to the calling session's read access under principal partitioning.",
+      "domain": "harness-sdk",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (h *Host) rpcReadConversation",
+          "path": "engine/internal/extension/host_rpc_conversation.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (a *ConversationsAPI) Read",
+          "path": "sdk/go/conversations.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "conversations",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "conversation-status",
       "term": "Conversation status",
       "definition": "The current run state of a conversation, with its model, permission mode, context use, and pending work. The engine computes it. Clients render it and never derive it.",

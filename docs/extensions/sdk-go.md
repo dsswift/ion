@@ -370,7 +370,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 | Area                | Methods                                                                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
+| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
@@ -378,6 +378,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
+| Conversation records | `Conversations().Read`                                                                                                                |
 | Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
 | Processes           | `RegisterProcess`, `DeregisterProcess`, `ListProcesses`, `TerminateProcess`, `CleanStaleProcesses`                                     |
 | Other               | `HTTP()`, `ProtectedOperation`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                 |
@@ -475,6 +476,21 @@ err := ctx.SetRunRecovery(context.Background(), ion.RunRecoveryConfig{
     Enabled:     &enabled,
     MaxAttempts: 3,
 })
+```
+
+`ConversationRecordPath` is the absolute path of the file this conversation's record is written to. The engine supplies it, so an extension never rebuilds it from the storage layout. It is `""` when no conversation is active, the same as `ConversationID`, and the file exists once the conversation's first turn has been saved.
+
+`Conversations().Read` returns a conversation's turns by ID, each with its `Timestamp` in Unix milliseconds. The engine reads the record from disk, so the conversation can be the running one or one that has already ended. `Offset` is the zero-based first message; `Limit` caps the page, and zero returns every message from `Offset` onward. The call is read-only. It returns an error when the conversation does not exist or when principal partitioning refuses the session access to it.
+
+```go
+record, err := ctx.Conversations().Read(rpcCtx, conversationID, ion.ReadConversationOpts{Offset: 0, Limit: 200})
+if err != nil {
+	return err
+}
+for _, message := range record.Messages {
+	_ = message.Timestamp
+}
+// record.Total is the full message count; record.HasMore says whether to page on.
 ```
 
 At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.

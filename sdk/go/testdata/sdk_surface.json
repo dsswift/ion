@@ -6,6 +6,7 @@
     "ApplicationConfig",
     "CallTool",
     "CleanStaleProcesses",
+    "Conversations",
     "DeregisterAgentSpec",
     "DeregisterProcess",
     "DiscoverAgents",
@@ -56,6 +57,7 @@
   "contextFields": [
     "Config",
     "ConversationID",
+    "ConversationRecordPath",
     "Cwd",
     "Depth",
     "DispatchID",
@@ -86,6 +88,9 @@
       "Await",
       "Get",
       "Snapshot"
+    ],
+    "ConversationsAPI": [
+      "Read"
     ],
     "HTTPAPI": [
       "Delete",

@@ -35,6 +35,11 @@ type Context struct {
 	SessionKey string
 	// ConversationID is the persistent conversation this session is bound to.
 	ConversationID string
+	// ConversationRecordPath is the absolute path of the file this
+	// conversation's record is written to, supplied by the engine. Empty when
+	// no conversation is active, matching ConversationID. The file exists once
+	// the conversation's first turn has been saved.
+	ConversationRecordPath string
 	// RunID identifies the active prompt-to-completion run. Empty when this
 	// invocation has no run (for example, session_start or a schedule delivery).
 	RunID string
@@ -120,6 +125,7 @@ type SessionPrincipal struct {
 type ctxEnvelope struct {
 	SessionKey     string           `json:"sessionKey"`
 	ConversationID string           `json:"conversationId"`
+	RecordPath     string           `json:"conversationRecordPath"`
 	RunID          string           `json:"runId"`
 	TraceID        string           `json:"traceId"`
 	Depth          int              `json:"depth"`
@@ -148,6 +154,7 @@ func (s *SDK) newContext(meta json.RawMessage) *Context {
 
 	ctx.SessionKey = env.SessionKey
 	ctx.ConversationID = env.ConversationID
+	ctx.ConversationRecordPath = env.RecordPath
 	ctx.RunID = env.RunID
 	ctx.TraceID = env.TraceID
 	ctx.Depth = env.Depth
