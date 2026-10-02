@@ -62,7 +62,6 @@ vi.mock('../../state', () => ({
 // above carries a null policy so this resolves to null (unmanaged).
 vi.mock('../../theme-policy', () => ({
   getEnterpriseThemePolicy: vi.fn((..._a: any[]) => null),
-  isThemeLocked: vi.fn((..._a: any[]) => false),
 }))
 
 vi.mock('../../persistence/settings-store', () => ({

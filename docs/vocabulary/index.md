@@ -184,6 +184,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Server message](#term-server-message)
 - [Session](#term-session)
 - [Session Principal](#term-session-principal)
+- [Settings Policy](#term-settings-policy)
 - [Settings Side Panel](#term-settings-side-panel)
 - [Settings Taxonomy](#term-settings-taxonomy)
 - [Slash command](#term-slash-command)
@@ -1705,6 +1706,20 @@ An unsaved Studio document stored by source-project identity. It appears across 
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `packages/shared/src/studio-surface-types.ts`
 
+#### Settings Policy {#term-settings-policy}
+
+An enterprise block that gives each settings key a mutability class: user-adjustable, managed-default, or sealed. One resolver reads it for every write path. The server's namespace governs the settings a server stores; the desktop's namespace is Device Policy and governs the settings a client keeps.
+
+- **ID:** `settings-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `setting mutability class`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `resolveSettingMutability(` in `packages/shared/src/enterprise-settings-policy.ts`
+  - `server` / `wire` / `typescript`: `'settings.policyState':` in `server/src/protocol/settings-actions.ts`
+
 #### Settings Taxonomy {#term-settings-taxonomy}
 
 The settings pages every client shows, in order under the This Device, You, and Servers headings, with the sections on each page and the settings group policy hides each section by. It also places every setting in one section. Studio renders it with its own icons and components, and the server sends it to the phone with the projected settings, so both clients name, order, and place settings the same way.
@@ -3078,6 +3093,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
 | Server Admin Session | None | None | None | `final class ServerAdminSession` | Desktop, Studio, Overlay |
+| Settings Policy | `resolveSettingMutability(` | `resolveSettingMutability(` | `resolveSettingMutability(` | None | iOS |
 | Settings Side Panel | `export function SidePanel` | `export function SidePanel` | `export function SidePanel` | None | iOS |
 | Settings Taxonomy | None | None | None | `struct ServerPagesView` | Desktop, Studio, Overlay |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
@@ -3228,6 +3244,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `scratch file` → [Scratch Document](#term-scratch-document)
 - Alias: `search in files` → [Workspace Search](#term-workspace-search)
 - Alias: `server event envelope` → [Server message](#term-server-message)
+- Alias: `setting mutability class` → [Settings Policy](#term-settings-policy)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
 - Alias: `slash model boundary` → [Model Boundary](#term-model-boundary)

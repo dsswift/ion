@@ -62,9 +62,48 @@ export function markManagedDefaultApplied(id: ManagedDefaultId): void {
   }
 }
 
+const VALUES_STORAGE_KEY = 'ion_managedDefaultValues'
+
+function readValues(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(VALUES_STORAGE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : {}
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch (err) {
+    // Read as empty, for the same reason as the marker above: the managed
+    // default is supplied once more and stays changeable.
+    rWarn('preferences', 'managed-default values record unreadable; treating as unapplied', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return {}
+  }
+}
+
+/**
+ * The signature of the managed-default value this profile was last given for
+ * a setting key, or undefined. A settings-policy managed default is supplied
+ * once per VALUE, so a policy that changes the value supplies the new one.
+ */
+export function managedDefaultValueApplied(key: string): string | undefined {
+  return readValues()[key]
+}
+
+export function recordManagedDefaultValue(key: string, signature: string): void {
+  try {
+    localStorage.setItem(VALUES_STORAGE_KEY, JSON.stringify({ ...readValues(), [key]: signature }))
+  } catch (err) {
+    rWarn('preferences', 'could not record managed default; it may re-apply next launch', {
+      id: key,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 /** Test seam. */
 export function _resetManagedDefaultsForTest(): void {
   try {
+    localStorage.removeItem(VALUES_STORAGE_KEY)
     localStorage.removeItem(STORAGE_KEY)
   } catch {
     // silent-ok: test-only reset on a storage that is already unavailable

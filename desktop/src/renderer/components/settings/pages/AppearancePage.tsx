@@ -8,7 +8,8 @@
  */
 import React, { useEffect, useState } from 'react'
 import { Minus, Plus } from '@phosphor-icons/react'
-import { deriveEnterpriseThemePolicy, resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
+import { resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
+import { resolveSettingMutability } from '@ion/shared/enterprise-settings-policy'
 import { rDebug } from '../../../rendererLogger'
 import { getTheme } from '../../../theme-tokens'
 import { useAllThemes } from '../../../hooks/useThemeRegistry'
@@ -67,8 +68,8 @@ export function AppearancePage(): React.JSX.Element {
   const enterprisePolicy = p((s) => s.enterprisePolicy)
 
   const allThemes = useAllThemes()
-  const themePolicy = deriveEnterpriseThemePolicy(enterprisePolicy)
-  const themeLocked = themePolicy?.locked === true
+  // Sealed with or without a policy theme: either way the picker is off.
+  const themeLocked = resolveSettingMutability(enterprisePolicy, 'selectedTheme').class === 'sealed'
   // A lock shows the enforced theme; the saved pick is kept for when it lifts.
   const displayedThemeId = resolveEffectiveThemeId(enterprisePolicy, selectedTheme)
   const activeTheme = getTheme(displayedThemeId)
@@ -105,23 +106,23 @@ export function AppearancePage(): React.JSX.Element {
       )}
 
       <FormGroup title="Conversation">
-        <ToggleRow anchor="tool-output" label="Expand tool output" description="Auto-expand file write and edit results inline." checked={expandToolResults} onChange={setExpandToolResults} />
-        <ToggleRow anchor="unified-turn" label="Unified turn view" description="Group tool calls into one collapsible panel and show the assistant's text as one continuous block, instead of interleaving them."checked={unifiedTurnView} onChange={setUnifiedTurnView} />
+        <ToggleRow anchor="tool-output" label="Expand tool output" settingKey="expandToolResults" description="Auto-expand file write and edit results inline." checked={expandToolResults} onChange={setExpandToolResults} />
+        <ToggleRow anchor="unified-turn" label="Unified turn view" settingKey="unifiedTurnView" description="Group tool calls into one collapsible panel and show the assistant's text as one continuous block, instead of interleaving them."checked={unifiedTurnView} onChange={setUnifiedTurnView} />
       </FormGroup>
 
       <FormGroup title="Editor & files">
-        <ToggleRow anchor="markdown-preview" label="Open Markdown in Preview" description="Saved .md files open in preview. New unsaved files always open in edit mode." checked={openMarkdownInPreview} onChange={setOpenMarkdownInPreview} />
-        <ToggleRow anchor="word-wrap" label="Word wrap" description="Wrap long lines in the editor instead of scrolling sideways." checked={editorWordWrap} onChange={setEditorWordWrap} />
-        <FormRow anchor="editor-font" label="Editor font size" description="Edit and preview text, in pixels.">
+        <ToggleRow anchor="markdown-preview" label="Open Markdown in Preview" settingKey="openMarkdownInPreview" description="Saved .md files open in preview. New unsaved files always open in edit mode." checked={openMarkdownInPreview} onChange={setOpenMarkdownInPreview} />
+        <ToggleRow anchor="word-wrap" label="Word wrap" settingKey="editorWordWrap" description="Wrap long lines in the editor instead of scrolling sideways." checked={editorWordWrap} onChange={setEditorWordWrap} />
+        <FormRow anchor="editor-font" label="Editor font size" settingKey="editorFontSize" description="Edit and preview text, in pixels.">
           <Stepper label="Editor font size" value={editorFontSize} onStep={(d) => setEditorFontSize(clampFont(editorFontSize + d))} />
         </FormRow>
-        <FormRow anchor="data-font" label="Data view font size" description="Conversation, plan, resource, Markdown preview, and diff text, in pixels.">
+        <FormRow anchor="data-font" label="Data view font size" settingKey="dataViewFontSize" description="Conversation, plan, resource, Markdown preview, and diff text, in pixels.">
           <Stepper label="Data view font size" value={dataViewFontSize} onStep={(d) => setDataViewFontSize(clampFont(dataViewFontSize + d))} />
         </FormRow>
       </FormGroup>
 
       <FormGroup title="Terminal" anchor="terminal-font">
-        <FormRow label="Terminal font" description="Prompt icons render with any font: Studio bundles the Nerd Font symbols as a fallback.">
+        <FormRow label="Terminal font" settingKey="terminalFontFamily" description="Prompt icons render with any font: Studio bundles the Nerd Font symbols as a fallback.">
           {nativeFonts ? (
             <Select aria-label="Terminal font" width={220} value={availableFonts.includes(terminalFontFamily) ? terminalFontFamily : ''} onChange={(e) => setTerminalFontFamily(e.target.value)}>
               {!availableFonts.includes(terminalFontFamily) && <option value="">{terminalFontFamily}</option>}
@@ -129,13 +130,13 @@ export function AppearancePage(): React.JSX.Element {
             </Select>
           ) : <Muted mono>{terminalFontFamily}</Muted>}
         </FormRow>
-        <FormRow label="Terminal font size" description="In pixels.">
+        <FormRow label="Terminal font size" settingKey="terminalFontSize" description="In pixels.">
           <Stepper label="Terminal font size" value={terminalFontSize} onStep={(d) => setTerminalFontSize(clampFont(terminalFontSize + d))} />
         </FormRow>
       </FormGroup>
 
       <FormGroup title="Interface scale">
-        <FormRow anchor="ui-zoom" label="Interface scale" description="Scales controls, menus, panels, and spacing. Data, editor, and terminal text keep their own sizes.">
+        <FormRow anchor="ui-zoom" label="Interface scale" settingKey="uiZoom" description="Scales controls, menus, panels, and spacing. Data, editor, and terminal text keep their own sizes.">
           <Stepper label="Interface scale" value={uiZoom} display={`${Math.round(uiZoom * 100)}%`} onStep={(d) => setUiZoom(uiZoom + d * 0.1)} />
           <Button variant="ghost" disabled={uiZoom === 1} onClick={() => setUiZoom(1)}>Reset</Button>
         </FormRow>

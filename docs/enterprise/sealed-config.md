@@ -302,3 +302,5 @@ The `customFields` map is a pass-through for organization-specific metadata. The
 ```
 
 The `ion-desktop` key is a desktop-owned namespace by convention: the Ion desktop reads its client-side enterprise constraints from `customFields["ion-desktop"]` (auto-update disable, theme enforcement via `themePolicy` — see [Theme Packs](../design/theme-packs.md#enterprise-enforcement)). The engine passes the namespace through without validating it.
+
+The `ion-server` key is the Studio Server's namespace in the same way. Both namespaces take a `settingsPolicy` block that classifies settings key by key; see [Settings policy](settings-policy.md).

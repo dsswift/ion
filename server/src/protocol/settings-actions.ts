@@ -42,7 +42,7 @@
  * from every device but the one it ran on, and said nothing about who the
  * caller was.
  */
-import type { Scope } from '@ion/shared/studio-wire/types'
+import type { Scope, StudioActionError } from '@ion/shared/studio-wire/types'
 import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
 import { sanitizePersonalPreferences, settingScope } from '@ion/shared/settings-registry'
 import { isEnvironmentOwnedSettingsKey, isServerOwnedSettingsKey } from '@ion/shared/settings-classification'
@@ -57,7 +57,9 @@ import { tabsAutoSettleWouldSettle } from '../store/auto-settle-sweep'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
 import { currentEnterprisePolicy } from '../enterprise-policy-source'
-import { settingsSealRefusal } from './settings-seal'
+import { settingMutabilityFor, settingsSealRefusal, sealRefusalError } from './settings-seal'
+import { settingsPolicyState } from '../settings-policy-state'
+import { TRAVELLING_PREFERENCE_KEYS } from '@ion/shared/settings-registry'
 import { AI_ASSIST_WORKFLOWS } from '@ion/shared/ai-assist-workflows'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -91,7 +93,7 @@ export function partitionSettingsPatch(patch: Record<string, unknown>): {
 
 export type SettingsActionOutcome =
   | { ok: true; value: unknown }
-  | { ok: false; error: { code: string; message: string } }
+  | { ok: false; error: StudioActionError }
 
 export interface SettingsActionSpec {
   requiredScope: Scope
@@ -121,7 +123,19 @@ export const SETTINGS_ACTIONS: Record<string, SettingsActionSpec> = {
   'preferences.declare': {
     requiredScope: 'conversations:read',
     handler: async (conn, args) => {
-      const declared = sanitizePersonalPreferences(args[0])
+      // A sealed preference with a policy value is the organization's on the
+      // local desktop, whatever this client declared.
+      const raw = args[0] && typeof args[0] === 'object' && !Array.isArray(args[0]) ? { ...(args[0] as Record<string, unknown>) } : {}
+      const policy = currentEnterprisePolicy()
+      const sealed: string[] = []
+      for (const key of TRAVELLING_PREFERENCE_KEYS) {
+        const mutability = settingMutabilityFor(conn, policy, key)
+        if (mutability.class !== 'sealed' || !mutability.hasValue) continue
+        raw[key] = mutability.value
+        sealed.push(key)
+      }
+      if (sealed.length > 0) log('declared preferences replaced by sealed values', { connection_id: conn.id, keys: sealed })
+      const declared = sanitizePersonalPreferences(raw)
       conn.preferences = declared
       // The values, not just the key names: what a conversation starts under
       // is decided here, and a wrong mode is unreadable from a key list.
@@ -156,6 +170,18 @@ export const SETTINGS_ACTIONS: Record<string, SettingsActionSpec> = {
     handler: async (conn) => {
       log('ai-assist workflows listed', { connection_id: conn.id, count: AI_ASSIST_WORKFLOWS.length })
       return { ok: true, value: AI_ASSIST_WORKFLOWS }
+    },
+  },
+  // [] -> SettingsPolicyState
+  // The mutability class in force for every setting, and the checksum of the
+  // policy that produced it. Classes only, never a value. Device policy is
+  // the local desktop's own, so only the local connection is told about it.
+  'settings.policyState': {
+    requiredScope: 'conversations:read',
+    handler: async (conn) => {
+      const state = settingsPolicyState(currentEnterprisePolicy(), conn.transport === 'local' ? undefined : ['ion-server'])
+      log('settings policy state read', { connection_id: conn.id, transport: conn.transport, checksum: state.checksum })
+      return { ok: true, value: state }
     },
   },
   'settings.load': {
@@ -217,7 +243,7 @@ export const SETTINGS_ACTIONS: Record<string, SettingsActionSpec> = {
       const sealRefusal = settingsSealRefusal(conn, currentEnterprisePolicy(), [...changed, ...changedPersonal])
       if (sealRefusal) {
         warn('settings save refused by enterprise policy', { connection_id: conn.id, subject, transport: conn.transport, code: sealRefusal.code, keys: sealRefusal.keys })
-        return { ok: false, error: { code: sealRefusal.code, message: sealRefusal.message } }
+        return { ok: false, error: sealRefusalError(sealRefusal) }
       }
       if (changed.length > 0 && !scopeSatisfies(conn.scopes, 'admin')) {
         warn('environment settings refused: connection lacks admin', { connection_id: conn.id, subject, transport: conn.transport, keys: changed, granted_scopes: conn.scopes })

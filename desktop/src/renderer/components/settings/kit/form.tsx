@@ -10,6 +10,7 @@ import React, { useId } from 'react'
 import { useColors } from '../../../theme'
 import { Switch } from './controls'
 import { KIT } from './tokens'
+import { useSealedToggleValue, useSettingLock } from '../../../settings-policy'
 
 export function PageHeader({ title, description, actions }: { title: string; description?: React.ReactNode; actions?: React.ReactNode }): React.JSX.Element {
   const colors = useColors()
@@ -80,12 +81,20 @@ export interface FormRowProps {
   anchor?: string
   /** An enforced value: why the control does not respond. */
   lockedReason?: string
+  /**
+   * The setting this row edits. When the enterprise settings policy seals it
+   * for the server Settings is editing, the row says so and its controls stop
+   * responding.
+   */
+  settingKey?: string
   warning?: string
   children?: React.ReactNode
 }
 
-export function FormRow({ label, description, stacked, anchor, lockedReason, warning, children }: FormRowProps): React.JSX.Element {
+export function FormRow({ label, description, stacked, anchor, lockedReason: lockedByCaller, settingKey, warning, children }: FormRowProps): React.JSX.Element {
   const colors = useColors()
+  const sealedReason = useSettingLock(settingKey)
+  const lockedReason = lockedByCaller ?? sealedReason
   const text = (
     <div style={{ flex: stacked ? undefined : '1 1 auto', minWidth: 0 }}>
       <div style={{ fontSize: KIT.font, fontWeight: 500, color: colors.textPrimary }}>{label}</div>
@@ -104,7 +113,7 @@ export function FormRow({ label, description, stacked, anchor, lockedReason, war
     >
       {text}
       {children !== undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: stacked ? 'flex-start' : 'flex-end', gap: 6, flexShrink: stacked ? undefined : 0, maxWidth: stacked ? undefined : '55%', minWidth: 0 }}>
+        <div inert={sealedReason !== undefined} style={{ display: 'flex', alignItems: 'center', justifyContent: stacked ? 'flex-start' : 'flex-end', gap: 6, flexShrink: stacked ? undefined : 0, maxWidth: stacked ? undefined : '55%', minWidth: 0, opacity: sealedReason !== undefined ? 0.55 : undefined }}>
           {children}
         </div>
       )}
@@ -112,13 +121,15 @@ export function FormRow({ label, description, stacked, anchor, lockedReason, war
   )
 }
 
-export function ToggleRow({ label, description, checked, onChange, lockedReason, warning, anchor }: Omit<FormRowProps, 'children' | 'stacked'> & {
+export function ToggleRow({ label, description, checked, onChange, lockedReason, settingKey, warning, anchor }: Omit<FormRowProps, 'children' | 'stacked'> & {
   checked: boolean
   onChange(next: boolean): void
 }): React.JSX.Element {
+  const sealedValue = useSealedToggleValue(settingKey)
+  const sealed = useSettingLock(settingKey) !== undefined
   return (
-    <FormRow label={label} description={description} lockedReason={lockedReason} warning={warning} anchor={anchor}>
-      <Switch checked={checked} onChange={onChange} label={label} disabled={!!lockedReason} />
+    <FormRow label={label} description={description} lockedReason={lockedReason} settingKey={settingKey} warning={warning} anchor={anchor}>
+      <Switch checked={sealedValue ?? checked} onChange={onChange} label={label} disabled={!!lockedReason || sealed} />
     </FormRow>
   )
 }

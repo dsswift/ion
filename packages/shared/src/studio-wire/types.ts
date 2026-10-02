@@ -177,6 +177,10 @@ export interface StudioActionRefusal {
 export interface StudioActionError {
   code: string
   message: string
+  /** `settings_sealed` and `settings_hidden`: the setting keys the refusal is about. */
+  keys?: string[]
+  /** `settings_sealed`: the mutability class that refused the write. */
+  class?: 'sealed'
 }
 
 export type StudioFrame =

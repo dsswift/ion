@@ -166,6 +166,9 @@ install time. It is not in the reference file because the default, `refuse`,
 is right for an install a person starts. A fleet that pushes unattended sets
 it to `replace`; see [MDM](mdm.md#unattended-install-over-a-running-ion).
 
+A `settingsPolicy` block here, and one under `customFields["ion-server"]`,
+classifies settings key by key. See [Settings policy](settings-policy.md).
+
 ### `auth`
 
 The enterprise block replaces user auth wholesale, so tenant, client ID,

@@ -21,6 +21,12 @@
  * document is a snapshot from whenever its store last loaded, so a save that
  * carried one would revert a fresh pairing on disk. `settings.save` drops
  * them from every patch; disk always wins.
+ *
+ * `recorded` marks a value the app writes on its own as a person works: a
+ * panel height, a usage count, an unsent draft. It is not a choice anyone
+ * makes in Settings, so an enterprise settings policy's default class does
+ * not reach it (`enterprise-settings-policy`). Naming the key in the policy
+ * still governs it.
  */
 
 export type SettingScope = 'environment' | 'account' | 'personal' | 'device' | 'runtime'
@@ -43,6 +49,8 @@ export interface SettingRegistryEntry {
   travels?: true
   /** Environment scope only: never accepted from a client patch. */
   serverWritten?: true
+  /** Written by the app as a person works, not chosen in Settings. */
+  recorded?: true
 }
 
 const environment = (page: SettingsPage): SettingRegistryEntry => ({ scope: 'environment', page })
@@ -52,6 +60,7 @@ const personal = (page: SettingsPage): SettingRegistryEntry => ({ scope: 'person
 const travels = (page: SettingsPage): SettingRegistryEntry => ({ scope: 'personal', page, travels: true })
 const device = (page: SettingsPage): SettingRegistryEntry => ({ scope: 'device', page })
 const runtime = (page: SettingsPage): SettingRegistryEntry => ({ scope: 'runtime', page })
+const recorded = (entry: SettingRegistryEntry): SettingRegistryEntry => ({ ...entry, recorded: true })
 
 export const SETTINGS_REGISTRY = {
   // ── environment ──────────────────────────────────────────────────────
@@ -61,7 +70,7 @@ export const SETTINGS_REGISTRY = {
   tabRecoveryTimeoutSec: environment('tabs'),
   engineProfiles: environment('environments'),
   projects: environment('environments'),
-  projectSettingsVersion: environment('environments'),
+  projectSettingsVersion: recorded(environment('environments')),
   gitWatcherIgnoredDirectories: environment('git'),
   studioPlaywrightEnabled: environment('general'),
   aiAssistPromptOverrides: environment('ai-assist'),
@@ -93,8 +102,8 @@ export const SETTINGS_REGISTRY = {
   implementModeModel: account('ai'),
   defaultEngineProfileId: account('ai'),
   defaultBaseDirectory: account('projects'),
-  recentBaseDirectories: account('projects'),
-  directoryUsageCounts: account('projects'),
+  recentBaseDirectories: recorded(account('projects')),
+  directoryUsageCounts: recorded(account('projects')),
   workspaceFolders: account('projects'),
   gitOpsMode: account('git'),
   worktreeCompletionStrategy: account('git'),
@@ -131,15 +140,14 @@ export const SETTINGS_REGISTRY = {
   keyboardShortcuts: device('shortcuts'),
   browserPreviewNetworkShield: device('general'),
   gitChangesTreeView: device('git'),
-  gitPanelPaneProportions: device('none'),
-  gitPanelHeight: device('none'),
-  gitPanelChangesOpen: device('none'),
-  gitPanelGraphOpen: device('none'),
-  gitPanelRepoSectionsCollapsed: device('none'),
-  fileExplorerHeight: device('none'),
+  gitPanelPaneProportions: recorded(device('none')),
+  gitPanelHeight: recorded(device('none')),
+  gitPanelChangesOpen: recorded(device('none')),
+  gitPanelGraphOpen: recorded(device('none')),
+  gitPanelRepoSectionsCollapsed: recorded(device('none')),
+  fileExplorerHeight: recorded(device('none')),
   studioSurfaceSwitchMode: device('general'),
-  // The Studio surface's own state. Electron keeps these in its device file.
-  // A browser has no durable device store, so it keeps them in its person's
+  // The Studio surface's own state. A client keeps these in its person's
   // overlay through `studio.setSetting`, a funnel of its own that accepts
   // only these keys (`server/src/persistence/studio-settings-keys.ts`).
   studioTheme: device('none'),
@@ -148,9 +156,9 @@ export const SETTINGS_REGISTRY = {
   studioHeat: device('none'),
   studioBeacon: device('none'),
   studioSound: device('none'),
-  studioLayout: device('none'),
-  studioSurface: device('none'),
-  studioComposerStash: device('none'),
+  studioLayout: recorded(device('none')),
+  studioSurface: recorded(device('none')),
+  studioComposerStash: recorded(device('none')),
   // Idle-repaint warning limits. Device scope: they judge this machine's
   // own Studio processes, which no server sees.
   idleRepaintGpuPercent: device('none'),
@@ -187,6 +195,11 @@ export function settingKeysInScope(scope: SettingScope): SettingKey[] {
 /** Environment keys a client patch may never carry. */
 export function isServerWrittenSettingKey(key: string): boolean {
   return isSettingKey(key) && REGISTRY[key].serverWritten === true
+}
+
+/** Keys the app writes on its own as a person works. */
+export function isRecordedSettingKey(key: string): boolean {
+  return isSettingKey(key) && REGISTRY[key].recorded === true
 }
 
 /** Personal keys the server consumes, so a client sends them with its requests. */

@@ -14,12 +14,14 @@ import { useViewportClamp } from '../../hooks/useViewportClamp'
 import { useColors } from '../../theme'
 import { useStudioControlsBus } from '../state/controls-bus'
 import { DEFAULT_MONO_FONT } from '../../typography'
+import { useSettingLock } from '../../settings-policy'
 
 export function ControlsPopover(): React.JSX.Element | null {
   const colors = useColors()
   const bus = useStudioControlsBus()
   const ref = useRef<HTMLDivElement>(null)
   useViewportClamp(ref, bus.open)
+  const themeLock = useSettingLock('studioTheme')
   const [genOpen, setGenOpen] = useState(false)
   const [draftSeed, setDraftSeed] = useState<string | null>(null)
 
@@ -130,6 +132,8 @@ export function ControlsPopover(): React.JSX.Element | null {
               </button>
             </div>
             <select
+              disabled={themeLock !== undefined}
+              title={themeLock}
               value={bus.activeThemeId}
               onChange={(e) => bus.actions?.selectTheme(e.target.value)}
               style={{

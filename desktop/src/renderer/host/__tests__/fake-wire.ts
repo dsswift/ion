@@ -98,7 +98,7 @@ export function installFakeWire<T extends Record<string, unknown>>(stub: T): T {
     // This client's own settings store (Personal and Device keys). Empty and
     // write-accepting by default; a test that cares passes its own.
     hostGetDeviceSettings: async () => ({}),
-    hostSetDeviceSetting: async () => {},
+    hostSetDeviceSetting: async () => ({ ok: true as const }),
     onHostConnections: () => () => {},
     ...stub,
 

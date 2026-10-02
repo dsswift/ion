@@ -27,7 +27,7 @@ async function load(disk: Record<string, unknown>): Promise<LoadResult> {
       // whatever the server still held.
       hostSetDeviceSetting: (key: string, value: unknown) => {
         if (key === 'terminalFontFamily' && value === DEFAULT_MONO_FONT) saved = true
-        return Promise.resolve()
+        return Promise.resolve({ ok: true })
       },
     }),
   }

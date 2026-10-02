@@ -628,6 +628,21 @@ Personal preference or a Device setting is refused with
 answers `admin_required` for an Environment key and `wrong_scope` for a key
 the client keeps itself.
 
+A write of a setting the enterprise settings policy seals is refused whole
+with `settings_sealed`, before the scope check, for an admin too. The error
+carries `keys` (the sealed keys in the patch) and `class` (`sealed`).
+`settings.setProjectable` answers the same code, keys, and class as its
+refusal value. `studio.setSetting` refuses a sealed Studio key the same way
+for the local connection, and `studio.getSettings` serves the sealed value.
+See [Settings policy](../enterprise/settings-policy.md).
+
+`settings.policyState` (`conversations:read`) answers the mutability class in
+force for every setting, and a checksum of the policy that produced it:
+`{ schemaVersion, checksum, namespaces, keys, ignoredKeys }`. It carries no
+setting's value. The local connection is told about both policy namespaces. A
+visiting connection is told about the server's own namespace only, because
+device policy is the local desktop's.
+
 `settings.load` needs only `conversations:read`. A connection without
 `admin` gets the document without its credentials: the relay API key and each
 paired device's shared secret and relay subject. Only a connection that may

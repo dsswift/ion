@@ -4,7 +4,8 @@ import { join } from 'path'
 import { dataDir } from './paths'
 import { resolveLocalStudioTarget } from './local-studio-socket'
 import { log as _log, warn as _warn, error as _error, setLogLevel } from './logger'
-import { publishEnterprisePolicy, settleEnterprisePolicyUnread } from './enterprise-policy-publish'
+import { settleEnterprisePolicyUnread } from './enterprise-policy-publish'
+import { cacheEnterprisePolicy } from './enterprise-policy-cache'
 import { applyMachineIdentity, initServerEgress, installCrashHandlers } from './process-logging'
 import { installExitHandlers } from './process-exit'
 import { startWireLatency } from './protocol/wire-latency-probe'
@@ -73,7 +74,6 @@ import { installMcpServersBroadcast } from './engine/mcp-servers-broadcast'
 import { installSystemMetrics } from './system-metrics/runtime'
 import { startConversationCleanup } from './maintenance/conversation-cleanup'
 import { enterprisePolicyCache } from './state'
-import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine/engine-bridge-fs'
 import {
   tabsFile,
   sessionChainsFile,
@@ -187,32 +187,6 @@ function wireEngineReadiness(health: HealthHandle, minVersion: string): void {
     }
   }, ENGINE_READINESS_POLL_MS)
   poll.unref()
-}
-
-/**
- * The enterprise policy blob (D-004), fetched once the bridge is up and kept
- * for the readers that run later: `studio_welcome.enterprisePolicy`, the
- * settings-group visibility filter, the theme lock, the automation policy,
- * the model-cache filter. A null policy (no enterprise config, engine
- * unreachable) means no constraints, the safe default for an unmanaged
- * install. This used to run only inside the desktop's own process, so a
- * server-served client saw no policy at all.
- */
-async function cacheEnterprisePolicy(): Promise<void> {
-  try {
-    publishEnterprisePolicy(await getEnterprisePolicy())
-  } catch (err) {
-    warn('enterprise policy fetch failed; proceeding unconstrained', { error: String(err) })
-    settleEnterprisePolicyUnread('fetch failed')
-  }
-  try {
-    enterprisePolicyCache.newConversationDefaults = await getEnterprisePolicyNewConversationDefaults()
-  } catch (err) {
-    warn('new-conversation policy fetch failed; proceeding unconstrained', { error: String(err) })
-  }
-  log('enterprise policy cached', { has_policy: enterprisePolicyCache.policy !== null, has_defaults: enterprisePolicyCache.newConversationDefaults !== null })
-  // The LAN-discovery seal lives in this policy and can arrive after boot.
-  discovery()?.reconcile()
 }
 
 let conversationCleanupStarted = false

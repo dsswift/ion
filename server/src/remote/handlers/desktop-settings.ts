@@ -34,7 +34,7 @@ import type { Scope } from '@ion/shared/studio-wire/types'
 import { broadcast } from '../../broadcast'
 import type { ConnectionTransport } from '../../protocol/connection'
 import { currentEnterprisePolicy } from '../../enterprise-policy-source'
-import { settingsSealRefusal } from '../../protocol/settings-seal'
+import { sealRefusalError, settingsSealRefusal } from '../../protocol/settings-seal'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -46,7 +46,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 /** Why a projectable-setting write was not applied. `admin_required` is a missing scope, `wrong_scope` a key the client keeps itself; the rest are the caller's error. */
 export type ProjectableSettingRefusal = 'unknown_key' | 'invalid_value' | 'admin_required' | 'wrong_scope' | 'write_failed' | 'settings_sealed' | 'settings_hidden'
 
-export type ProjectableSettingResult = { ok: true } | { ok: false; code: ProjectableSettingRefusal; message: string }
+export type ProjectableSettingResult = { ok: true } | { ok: false; code: ProjectableSettingRefusal; message: string; keys?: string[]; class?: 'sealed' }
 
 /** Who is writing: the overlay written is theirs, and `scopes` decides whether they may change the Environment. */
 export interface ProjectableSettingCaller {
@@ -83,7 +83,7 @@ export function applyProjectableSetting(key: string, value: unknown, caller: Pro
   const sealRefusal = settingsSealRefusal({ transport: caller.transport ?? 'relay' }, currentEnterprisePolicy(), [key])
   if (sealRefusal) {
     warn('settings_cmd: refused by enterprise policy', { tag, subject: caller.subject, code: sealRefusal.code })
-    return { ok: false, code: sealRefusal.code, message: sealRefusal.message }
+    return { ok: false, ...sealRefusalError(sealRefusal), code: sealRefusal.code }
   }
   try {
     if (scope === 'environment') {

@@ -7,6 +7,7 @@ import { rError, rInfo, rDebug, rWarn } from './rendererLogger'
 import { host } from './host/host-instance'
 import { mergeClientSettings, partitionByOwner, saveClientSettings } from './preferences-scope-transport'
 import { withTargetEnvironment } from './studio/connection/tab-environment'
+import { dropSealedSettings } from './settings-policy'
 import type { ShellApi } from './host/shell-api'
 import { sanitizeRecentDirectories } from '@ion/shared/recent-directories'
 import { sanitizeWorkspaceFolders } from '@ion/shared/workspace-roots'
@@ -83,7 +84,9 @@ export function settingsTargetOf(set: object): string | undefined {
  * the local server when none is given. The target is applied around the one
  * synchronous call that sends the frame, which is where the bridge reads it.
  */
-export function saveSettings(s: Record<string, unknown>, environmentId?: string): void {
+export function saveSettings(patch: Record<string, unknown>, environmentId?: string): void {
+  // The last client-side gate: a sealed key reaches neither store.
+  const s = dropSealedSettings(patch, environmentId)
   const { client, server } = partitionByOwner(s)
   if (Object.keys(client).length > 0) saveClientSettings(client)
   if (Object.keys(server).length === 0) return
@@ -121,8 +124,11 @@ export function saveSettingsFor(set: object, s: Record<string, unknown>): void {
  * the frozen keys were found and manually deleted from the overlay file.
  */
 export function persist(set: (patch: Partial<PreferencesState>) => void, patch: Partial<PreferencesState>): void {
-  set(patch)
-  saveSettingsFor(set, patch)
+  // A setting the enterprise policy seals is not changed, in memory or on disk.
+  const allowed = dropSealedSettings(patch, storeTargets.get(set))
+  if (Object.keys(allowed).length === 0) return
+  set(allowed)
+  saveSettingsFor(set, allowed)
 }
 
 export function getAllSettings(get: () => PreferencesState): Record<string, unknown> {

@@ -27,7 +27,7 @@ function stubIon(disk: Record<string, unknown>, saveSpy?: (s: Record<string, unk
     // Panel heights are Device settings: they are kept on this client, one
     // write per key, and never sent to a server.
     // The one-time adoption marker is written at boot; it is not a panel save.
-    hostSetDeviceSetting: (key: string, value: unknown) => { if (key !== 'clientSettingsAdopted') saveSpy?.({ [key]: value }); return Promise.resolve() },
+    hostSetDeviceSetting: (key: string, value: unknown) => { if (key !== 'clientSettingsAdopted') saveSpy?.({ [key]: value }); return Promise.resolve({ ok: true }) },
   })
 }
 

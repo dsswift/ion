@@ -20,6 +20,12 @@ import { reconcileManagedCatalog } from './studio/connection/catalog'
 import { rError, rInfo, rWarn } from './rendererLogger'
 import { host } from './host/host-instance'
 import type { ShellApi } from './host/shell-api'
+import type { EnterprisePolicy } from '@ion/shared/types-enterprise'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { stableStringify } from '@ion/shared/enterprise-settings-policy'
+import { policyStore } from './studio/connection/policy-store'
+import { holdDevicePolicy } from './settings-policy'
+import { applyDeviceSettingsPolicy } from './settings-policy-apply'
 
 type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
 
@@ -135,12 +141,12 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
   // Sequenced after disk hydration so the policy lands on the hydrated store,
   // not on defaults that hydration would then overwrite. The theme branch below
   // reads localStorage, which is synchronous.
-  void (preferencesReady ?? Promise.resolve())
-    .catch(() => {
-      // Hydration already logs its own failure; the policy must still apply.
-    })
-    .then(() => shell.getEnterprisePolicyFull()).then((policy) => {
+  // Everything device policy changes about this client, in one place: it runs
+  // for the boot fetch and again whenever the local server announces a
+  // different policy.
+  const adoptDevicePolicy = (policy: EnterprisePolicy | null, live: boolean): void => {
     store.getState().setEnterprisePolicy(policy)
+    holdDevicePolicy(policy)
     // Enterprise theme policy: locked → the enforced theme renders now: the
     // CSS variables here, and every useColors()/getColors() consumer through
     // the store's effective-theme selector, which setEnterprisePolicy above
@@ -154,7 +160,38 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
     } else if (themePolicy && !localStorage.getItem('ion_selectedTheme')) {
       rInfo('preferences', 'enterprise managed default theme applied', { theme_id: themePolicy.themeId })
       store.getState().setSelectedTheme(themePolicy.themeId)
+    } else if (live) {
+      // A lock that lifted while the app was open: back to the person's own pick.
+      applyTheme(store.getState().selectedTheme)
     }
+    applyDeviceSettingsPolicy(store, policy)
+  }
+
+  // A policy the local server announces after boot. The store is hydrated
+  // again first, so a setting whose seal lifted shows what the person saved.
+  let adopted: string | null = null
+  const followLivePolicy = (): void => {
+    policyStore.subscribe(() => {
+      if (!policyStore.has(LOCAL_ENVIRONMENT_ID)) return
+      const policy = policyStore.devicePolicy()
+      const next = stableStringify(policy)
+      if (next === adopted) return
+      adopted = next
+      rInfo('preferences', 'device policy changed; applying', { has_policy: policy !== null })
+      void loadPersistedSettings((patch) => store.setState(patch), () => store.getState(), () => {})
+        .catch((err: unknown) => rWarn('preferences', 'settings reload after a policy change failed', { error: String(err) }))
+        .then(() => adoptDevicePolicy(policy, true))
+    })
+  }
+
+  void (preferencesReady ?? Promise.resolve())
+    .catch(() => {
+      // Hydration already logs its own failure; the policy must still apply.
+    })
+    .then(() => shell.getEnterprisePolicyFull()).then((policy) => {
+    adopted = stableStringify(policy)
+    adoptDevicePolicy(policy, false)
+    followLivePolicy()
 
     // Managed environments (spec 14): customFields['ion-desktop'].environments
     // become catalog entries with managed:true. Reconciliation itself is

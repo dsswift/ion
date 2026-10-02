@@ -29,7 +29,7 @@ function stubIon(saveSpy: (s: Record<string, unknown>) => void, deviceSpy: (s: R
   ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     loadSettings: () => Promise.resolve({}),
     saveSettings: (s: Record<string, unknown>) => { saveSpy(s); return Promise.resolve() },
-    hostSetDeviceSetting: (key: string, value: unknown) => { deviceSpy({ [key]: value }); return Promise.resolve() },
+    hostSetDeviceSetting: (key: string, value: unknown) => { deviceSpy({ [key]: value }); return Promise.resolve({ ok: true }) },
   })
 }
 

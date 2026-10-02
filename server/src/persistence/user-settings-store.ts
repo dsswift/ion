@@ -34,6 +34,7 @@ import { join } from 'path'
 import { dataDir } from '../paths'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { readSettings } from './settings-store'
+import { hasSealedSettings, keepStoredUnderSeal, withSealedSettings } from './sealed-settings'
 import { forceFlushTabs } from '../store/session-store-force-flush'
 import { log as _log, warn as _warn } from '../logger'
 
@@ -113,11 +114,15 @@ export function replaceOverlay(subject: string, settings: Record<string, unknown
  * from the overlay: a client used to save its whole document here, so an
  * overlay written before the ownership split can still carry a stale
  * `remoteEnabled` that would shadow the Environment's real value.
+ *
+ * A setting the enterprise policy seals to a value reads as that value for
+ * every subject (`sealed-settings.ts`).
  */
 export function readSettingsForSubject(subject: string): Record<string, unknown> {
   const base = readSettings()
   if (!subject) return base
-  return { ...base, ...stripEnvironmentOwned(readOverlay(subject)) }
+  // The seal goes on last: an overlay value must not shadow a sealed Account setting.
+  return withSealedSettings({ ...base, ...stripEnvironmentOwned(readOverlay(subject)) })
 }
 
 function stripEnvironmentOwned(settings: Record<string, unknown>): Record<string, unknown> {
@@ -146,7 +151,12 @@ export function writeSettingsForSubject(subject: string, patch: Record<string, u
   // The overlay holds personal keys only; an environment-owned key that
   // arrives here is a caller's mistake and is dropped rather than shadowing
   // the Environment document on the next read.
-  const next: OverlayDocument = { subject, settings: stripEnvironmentOwned({ ...readOverlay(subject), ...patch }) }
+  const stored = readOverlay(subject)
+  const merged = { ...stored, ...patch }
+  // A sealed Account setting keeps what this overlay already holds.
+  const kept = hasSealedSettings() ? keepStoredUnderSeal(merged, stored) : []
+  if (kept.length > 0) log('sealed keys kept their stored overlay values', { keys: kept })
+  const next: OverlayDocument = { subject, settings: stripEnvironmentOwned(merged) }
   atomicWriteFileSync(overlayFile(subject), JSON.stringify(next, null, 2))
   log('overlay written', { key_count: Object.keys(next.settings).length })
   // The published `liveResolvedModel` is derived from these keys. Nothing in

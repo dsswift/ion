@@ -9,6 +9,7 @@ import {
 } from "../utils/secretStore";
 import { expandHome } from "../git/ignore-paths";
 import type { ThinkingEffort } from "@ion/shared/types-session";
+import { hasSealedSettings, keepStoredUnderSeal, withSealedSettings } from "./sealed-settings";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("main", msg, fields);
@@ -174,7 +175,8 @@ export const SETTINGS_DEFAULTS = {
   studioBeacon: true,
 };
 
-export function readSettings(): Record<string, any> {
+/** The settings document exactly as it is on disk, with no enterprise seal laid over it. */
+export function readStoredSettings(): Record<string, any> {
   if (!existsSync(settingsFile())) return {};
   try {
     const raw = JSON.parse(readFileSync(settingsFile(), "utf-8"));
@@ -185,8 +187,21 @@ export function readSettings(): Record<string, any> {
   }
 }
 
+/** The settings document as it is in force: what is stored, under the values the enterprise policy seals. */
+export function readSettings(): Record<string, any> {
+  return withSealedSettings(readStoredSettings());
+}
+
 export function writeSettings(data: Record<string, any>): void {
   if (!existsSync(settingsDir())) mkdirSync(settingsDir(), { recursive: true });
+  // A sealed key keeps its stored value: the document a writer read carries
+  // the policy's value in its place, and that must not become the saved one.
+  if (hasSealedSettings()) {
+    const restored = keepStoredUnderSeal(data, readStoredSettings());
+    if (restored.length > 0) {
+      log("settings_store: sealed keys kept their stored values", { keys: restored });
+    }
+  }
   const encrypted = encryptSensitiveSettings(data);
   atomicWriteFileSync(settingsFile(), JSON.stringify(encrypted, null, 2), 0o600);
   // Any settings write may have flipped a hot-path-cached projectable flag.

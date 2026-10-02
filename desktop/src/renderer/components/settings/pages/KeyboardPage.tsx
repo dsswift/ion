@@ -57,7 +57,7 @@ export function KeyboardPage(): React.JSX.Element {
   return (
     <Stack gap={KIT.groupGap}>
       <FormGroup title="Customizations" description={<>Shortcut customizations persist in <code>~/.ion/settings.json</code>.</>} anchor="shortcuts">
-        <FormRow label="Custom bindings" description={customized > 0 ? `${customized} ${customized === 1 ? 'shortcut differs' : 'shortcuts differ'} from the default.` : 'Every shortcut uses its default.'}>
+        <FormRow label="Custom bindings" settingKey="keyboardShortcuts" description={customized > 0 ? `${customized} ${customized === 1 ? 'shortcut differs' : 'shortcuts differ'} from the default.` : 'Every shortcut uses its default.'}>
           {customized > 0 && <Button onClick={resetAllKeyboardShortcuts}>Restore all defaults</Button>}
         </FormRow>
       </FormGroup>
@@ -119,7 +119,7 @@ function ShortcutRow({ entry, chord, isCustom, conflictsWith, onSet, onReset }: 
   }, [capturing, onSet])
 
   return (
-    <FormRow label={entry.description}>
+    <FormRow label={entry.description} settingKey="keyboardShortcuts">
       {conflictsWith && <Tooltip text={`Conflict with: ${conflictsWith}`}><Chip tone="error">conflict</Chip></Tooltip>}
       {isCustom && !conflictsWith && <Chip tone="accent">custom</Chip>}
       <span onMouseDown={(e) => { if (capturing) e.stopPropagation() }}>

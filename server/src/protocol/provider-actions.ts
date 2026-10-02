@@ -18,13 +18,15 @@
  * A `Studio.User` can therefore pick a model to run with; only a
  * `Studio.Admin` can change what the server is configured to reach.
  */
-import type { Scope } from '@ion/shared/studio-wire/types'
+import type { Scope, StudioActionError } from '@ion/shared/studio-wire/types'
 import * as providerApi from '../engine/provider-api'
 import { getProviderSubscription, refreshProviderSubscription, selectProviderSubscription } from '../engine/provider-subscription-api'
 import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
 import { connectionOnHost } from './hello'
+import { currentEnterprisePolicy } from '../enterprise-policy-source'
+import { sealRefusalError, settingsSealRefusal } from './settings-seal'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('provider-actions', msg, fields)
@@ -35,7 +37,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 
 export type ProviderActionOutcome =
   | { ok: true; value: unknown }
-  | { ok: false; error: { code: string; message: string } }
+  | { ok: false; error: StudioActionError }
 
 export interface ProviderActionSpec {
   requiredScope: Scope
@@ -99,10 +101,25 @@ export const PROVIDER_ACTIONS: Record<string, ProviderActionSpec> = {
   'planBashAllowlist.get': wrap('planBashAllowlist.get', 'conversations:read', () =>
     Promise.resolve(readPlanBashAllowlist()),
   ),
-  'planBashAllowlist.set': wrap('planBashAllowlist.set', 'admin', (args) => {
-    writePlanBashAllowlist(Array.isArray(args[0]) ? (args[0] as string[]) : [])
-    return Promise.resolve(null)
-  }),
+  // The list is the `planModeAllowedBashCommands` setting, so the enterprise
+  // settings policy seals this write the way it seals a `settings.save`.
+  'planBashAllowlist.set': {
+    requiredScope: 'admin',
+    handler: async (conn, args) => {
+      const refusal = settingsSealRefusal(conn, currentEnterprisePolicy(), ['planModeAllowedBashCommands'])
+      if (refusal?.code === 'settings_sealed') {
+        warn('plan-bash allowlist write refused by enterprise policy', { connection_id: conn.id, transport: conn.transport })
+        return { ok: false, error: sealRefusalError(refusal) }
+      }
+      try {
+        writePlanBashAllowlist(Array.isArray(args[0]) ? (args[0] as string[]) : [])
+        return { ok: true, value: null }
+      } catch (err) {
+        warn('provider action threw', { connection_id: conn.id, action: 'planBashAllowlist.set', error: String(err) })
+        return { ok: false, error: { code: 'provider_action_failed', message: String(err) } }
+      }
+    },
+  },
 }
 
 /** Exported for the dispatcher's logging; keeps the table the single source of names. */

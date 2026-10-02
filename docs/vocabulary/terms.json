@@ -4011,6 +4011,34 @@
       ]
     },
     {
+      "id": "settings-policy",
+      "term": "Settings Policy",
+      "definition": "An enterprise block that gives each settings key a mutability class: user-adjustable, managed-default, or sealed. One resolver reads it for every write path. The server's namespace governs the settings a server stores; the desktop's namespace is Device Policy and governs the settings a client keeps.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "setting mutability class"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveSettingMutability(",
+          "path": "packages/shared/src/enterprise-settings-policy.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "'settings.policyState':",
+          "path": "server/src/protocol/settings-actions.ts"
+        }
+      ]
+    },
+    {
       "id": "settings-side-panel",
       "term": "Settings Side Panel",
       "definition": "The panel that slides over the right of the Settings content for one add, edit, test, sign-in, or confirm flow, so a list stays one row per item and never grows an inline form that pushes the page down. Escape closes the top-most panel only.",

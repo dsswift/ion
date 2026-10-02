@@ -30,7 +30,7 @@ async function boot(scopes: string[], loaded?: () => boolean) {
       ? remoteSettings
       : { inboxAutoSettleDays: 0, preferredModel: 'claude-sonnet-5', projectSettingsVersion: 1 }),
     saveSettings: (patch: Record<string, unknown>) => { saves.push({ environmentId: addressedTo, patch }); return Promise.resolve() },
-    hostSetDeviceSetting: (key: string, value: unknown) => { deviceWrites.push({ [key]: value }); return Promise.resolve() },
+    hostSetDeviceSetting: (key: string, value: unknown) => { deviceWrites.push({ [key]: value }); return Promise.resolve({ ok: true }) },
   }) as unknown as { hostSendFrame(environmentId: string, frame: StudioFrame): void }
   const send = wire.hostSendFrame.bind(wire)
   wire.hostSendFrame = (environmentId, frame) => { addressedTo = environmentId; send(environmentId, frame) }

@@ -62,19 +62,19 @@ export function InboxSection(): React.JSX.Element {
     <>
       <FormGroup title="Inbox" anchor="auto-settle">
         <ToggleRow
-          label="Auto-settle inactive conversations"
+          label="Auto-settle inactive conversations" settingKey="inboxAutoSettleDays"
           description="Files fully idle conversations into Settled after the chosen number of days. Pending plans, questions, permission requests, and background work never auto-settle. Applies to the whole server."
           checked={shown > 0}
           onChange={(enabled) => request(enabled ? 3 : 0)}
           warning={error ?? undefined}
         />
         {shown > 0 && (
-          <FormRow label="Days of inactivity" description="How long a conversation stays idle before it settles.">
+          <FormRow label="Days of inactivity" settingKey="inboxAutoSettleDays" description="How long a conversation stays idle before it settles.">
             <NumberInput label="Days of inactivity before auto-settle" value={shown} min={1} max={90} onChange={request} />
           </FormRow>
         )}
         <ToggleRow
-          label="Auto-settle merged pull requests"
+          label="Auto-settle merged pull requests" settingKey="inboxAutoSettleOnMerge"
           description="Move conversations with merged pull requests to Settled."
           checked={onMerge}
           onChange={setOnMerge}

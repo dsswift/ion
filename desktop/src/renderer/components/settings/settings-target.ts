@@ -37,6 +37,7 @@ import { bindSettingsTarget, loadPersistedSettings } from '../../preferences-per
 import { isClientOwnedSetting } from '../../preferences-scope-transport'
 import { canManageEnvironment, useEnvironmentSettingsStore } from '../../studio/state/environment-settings-store'
 import { rInfo, rWarn } from '../../rendererLogger'
+import { setSettingLockTarget } from '../../settings-policy'
 
 type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
 
@@ -149,6 +150,7 @@ export function setSettingsTarget(environmentId: string): void {
     ? { environmentId, store: usePreferencesStore, dispose: () => {} }
     : buildEnvironmentStore(environmentId)
   notice = null
+  setSettingLockTarget(environmentId)
   rInfo('settings.target', 'settings target changed', { environment_id: environmentId })
   emit()
 }

@@ -29,6 +29,7 @@ import { SettingsPageView } from './settings/SettingsPageView'
 import { SettingsSearchResults } from './settings/SettingsSearchResults'
 import { searchSettings, type SettingsSearchHit } from './settings/settings-search-index'
 import { clearSettingsTargetNotice, setSettingsTarget, useSettingsTargetNotice } from './settings/settings-target'
+import { clearSettingsPolicyNotice, useSettingsPolicyNotice } from '../settings-policy'
 import { SettingsEnvironmentProvider, SettingsServersProvider, useDefaultEnvironmentId, useSettingsServersState } from './settings/settings-servers'
 import { SettingsNavProvider } from './settings/settings-nav'
 import {
@@ -109,6 +110,7 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   }, [query, filter, searchServer, canManageServers])
 
   const targetNotice = useSettingsTargetNotice()
+  const policyNotice = useSettingsPolicyNotice()
 
   // ── geometry: drag, corner resize, maximize ──────────────────────────
   const [geometry, setGeometry] = useState(resolveSettingsDialogGeometry)
@@ -221,6 +223,11 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
                 {targetNotice && (
                   <div style={{ marginBottom: 12, maxWidth: 760 }}>
                     <Notice tone="warn" action={<IconButton icon={X} label="Dismiss" onClick={clearSettingsTargetNotice} />}>{targetNotice}</Notice>
+                  </div>
+                )}
+                {policyNotice && (
+                  <div style={{ marginBottom: 12, maxWidth: 760 }}>
+                    <Notice tone="warn" action={<IconButton icon={X} label="Dismiss" onClick={clearSettingsPolicyNotice} />}>{policyNotice}</Notice>
                   </div>
                 )}
                 <SidePanelHostProvider host={panelHost}>

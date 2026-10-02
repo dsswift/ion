@@ -56,8 +56,6 @@ const themePolicyMock = vi.hoisted(() => ({
 }))
 vi.mock('../theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
-  isThemeLocked: () =>
-    themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
 }))
 
 import {

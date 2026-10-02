@@ -15,6 +15,8 @@ import { dataDir } from '@ion/server/paths'
 import { join } from 'path'
 import { atomicWriteFileSync } from '@ion/server/utils/atomicWrite'
 import type { EnvironmentTarget, EnvironmentViewFilter } from '@ion/shared/types-environments'
+import { resolveSettingMutability, sealedSettingValues, sealedSettingsMessage, type DeviceSettingWrite } from '@ion/shared/enterprise-settings-policy'
+import { devicePolicy } from './device-policy'
 import { log as _log, warn as _warn } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -79,7 +81,8 @@ export const DEVICE_KEYS: ReadonlyArray<keyof typeof DEVICE_SETTINGS_DEFAULTS> =
   DEVICE_SETTINGS_DEFAULTS,
 ) as Array<keyof typeof DEVICE_SETTINGS_DEFAULTS>
 
-export function readDeviceSettings(): Record<string, unknown> {
+/** `desktop.json` as stored, over the defaults, with no device policy applied. */
+export function readStoredDeviceSettings(): Record<string, unknown> {
   const file = deviceSettingsFile()
   if (!existsSync(file)) {
     log('readDeviceSettings: no desktop.json yet; returning defaults', { file })
@@ -92,6 +95,44 @@ export function readDeviceSettings(): Record<string, unknown> {
     warn('readDeviceSettings: desktop.json unreadable; falling back to defaults', { file, error: (err as Error).message })
     return { ...DEVICE_SETTINGS_DEFAULTS }
   }
+}
+
+/**
+ * The values device policy fixes on this desktop
+ * (`@ion/shared/enterprise-settings-policy`). A policy value whose type does
+ * not match the setting's shipped default is left out: the stored value
+ * stands, and the key stays refused to writers.
+ */
+function sealedDeviceSettings(): Record<string, unknown> {
+  const sealed = sealedSettingValues(devicePolicy(), 'ion-desktop')
+  const defaults: Record<string, unknown> = DEVICE_SETTINGS_DEFAULTS
+  for (const [key, value] of Object.entries(sealed)) {
+    if (!Object.prototype.hasOwnProperty.call(defaults, key)) continue
+    const shipped = defaults[key]
+    if (typeof shipped === typeof value && Array.isArray(shipped) === Array.isArray(value)) continue
+    warn('sealed device setting has a policy value of the wrong type; the stored value stands', { key, expected: typeof shipped, got: typeof value })
+    delete sealed[key]
+  }
+  return sealed
+}
+
+/** The device settings in force: what is stored, under the values device policy seals. */
+export function readDeviceSettings(): Record<string, unknown> {
+  return { ...readStoredDeviceSettings(), ...sealedDeviceSettings() }
+}
+
+/**
+ * A write a person or a renderer asked for. Refused, naming the key and its
+ * class, when device policy seals the key.
+ */
+export function requestDeviceSettingWrite(key: string, value: unknown): DeviceSettingWrite {
+  const mutability = resolveSettingMutability(devicePolicy(), key, 'ion-desktop')
+  if (mutability.class === 'sealed') {
+    warn('device setting write refused by enterprise policy', { key, class: mutability.class, source: mutability.source })
+    return { ok: false, code: 'settings_sealed', key, class: 'sealed', message: sealedSettingsMessage([key]) }
+  }
+  updateDeviceSetting(key, value)
+  return { ok: true }
 }
 
 /**
@@ -113,12 +154,23 @@ export function writeDeviceSettings(data: Record<string, unknown>): void {
   const file = deviceSettingsFile()
   const dir = dataDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  // A sealed key keeps its stored value, so the person's own choice is there
+  // when the seal lifts. A writer that read the document in force holds the
+  // policy's value in its place.
+  const sealed = Object.keys(sealedDeviceSettings())
+  if (sealed.length > 0) {
+    const stored = existsSync(file) ? readStoredDeviceSettings() : {}
+    for (const key of sealed) {
+      if (Object.prototype.hasOwnProperty.call(stored, key)) data[key] = stored[key]
+      else delete data[key]
+    }
+  }
   atomicWriteFileSync(file, JSON.stringify(data, null, 2), 0o644)
   log('writeDeviceSettings: wrote desktop.json', { file, keys: Object.keys(data).length })
 }
 
 export function updateDeviceSetting(key: string, value: unknown): void {
-  const current = readDeviceSettings()
+  const current = readStoredDeviceSettings()
   current[key] = value
   writeDeviceSettings(current)
   log('updateDeviceSetting: wrote one key', { key })

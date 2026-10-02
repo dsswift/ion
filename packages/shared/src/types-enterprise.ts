@@ -174,6 +174,11 @@ export interface IonServerPolicyFields {
   agentSettingsEdits?: {
     allowed: boolean
   }
+  /**
+   * The mutability class of this server's Environment and Account settings,
+   * per key (`enterprise-settings-policy`). Enforced for every connection.
+   */
+  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
 }
 
 /**
@@ -241,4 +246,10 @@ export interface IonDesktopPolicyFields {
    * desktop sees every group.
    */
   hiddenSettingsGroups?: string[]
+  /**
+   * The mutability class of this desktop's Personal and Device settings, per
+   * key (`enterprise-settings-policy`). Device policy: it governs the desktop
+   * it is installed on, never a client visiting from elsewhere.
+   */
+  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
 }
