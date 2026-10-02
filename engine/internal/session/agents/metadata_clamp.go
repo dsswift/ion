@@ -21,14 +21,10 @@
 package agents
 
 import (
-	"fmt"
-	"math/bits"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/dsswift/ion/engine/internal/types"
-	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Default bounds. Three tiers rather than one: a per-snapshot cap alone would
@@ -236,21 +232,7 @@ func clampEntry(state *types.AgentStateUpdate, l MetadataLimits, attr ClampAttri
 	}
 	rep.OriginalBytes = originalBytes
 	rep.ClampedBytes = approxMapBytes(state.Metadata)
-	// The clamp runs on every snapshot projection, and a long-lived agent
-	// whose metadata stays oversized is clamped identically hundreds of
-	// times an hour. The first occurrence of a given (session, agent, keys,
-	// size class) is the WARN; a repeat says nothing new and reads at DEBUG,
-	// so the log keeps the signal and loses the drumbeat.
-	level := utils.LevelDebug
-	if shouldWarnClamp(clampSignature(attr, state.Name, &rep)) {
-		level = utils.LevelWarn
-	}
-	utils.LogWithFields(level, "session.agents", "agent_metadata_clamped", map[string]any{
-		"key": attr.Key, "conversation_id": attr.ConversationID,
-		"agent": state.Name, "scope": rep.Scope, "clamped_keys": rep.ClampedKeys,
-		"dropped_keys": rep.DroppedKeys, "original_bytes": rep.OriginalBytes,
-		"clamped_bytes": rep.ClampedBytes, "limit_bytes": rep.LimitBytes,
-	})
+	logEntryClamp(state, &rep, attr)
 	return &rep
 }
 
@@ -426,11 +408,7 @@ func clampSnapshot(states []types.AgentStateUpdate, l MetadataLimits, attr Clamp
 		Scope: "snapshot", DroppedKeys: dropped,
 		OriginalBytes: original, ClampedBytes: total, LimitBytes: l.MaxSnapshotBytes,
 	}
-	utils.LogWithFields(utils.LevelWarn, "session.agents", "agent_snapshot_clamped", map[string]any{
-		"key": attr.Key, "conversation_id": attr.ConversationID,
-		"agents": len(states), "dropped_keys": len(dropped),
-		"original_bytes": original, "clamped_bytes": total, "limit_bytes": l.MaxSnapshotBytes,
-	})
+	logSnapshotClamp(len(states), rep, attr)
 	return rep
 }
 
@@ -593,50 +571,4 @@ func deepCopyMetadataValue(value any) any {
 	default:
 		return value
 	}
-}
-
-// clampWarnSeen records which clamp signatures have already been warned
-// about. Bounded: once it grows past clampWarnMemoCap it is reset, so a
-// long-running engine re-warns at worst once per cap-worth of distinct
-// signatures rather than growing without limit.
-var (
-	clampWarnMu   sync.Mutex
-	clampWarnSeen = map[string]struct{}{}
-)
-
-const clampWarnMemoCap = 4096
-
-// clampSignature identifies "the same clamp happening again": the session,
-// the agent, which keys were clamped or dropped, and the size class of the
-// original (log2 bucket), so growth by a factor of two re-warns while
-// steady-state repetition does not.
-func clampSignature(attr ClampAttribution, agent string, rep *ClampReport) string {
-	bucket := 0
-	if rep.OriginalBytes > 0 {
-		bucket = bits.Len(uint(rep.OriginalBytes))
-	}
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d", attr.Key, agent, rep.Scope,
-		strings.Join(rep.ClampedKeys, ","), strings.Join(rep.DroppedKeys, ","), bucket)
-}
-
-// shouldWarnClamp reports whether sig has not been warned about yet, and
-// records it. Exported for tests via metadata_clamp_test.go's package access.
-func shouldWarnClamp(sig string) bool {
-	clampWarnMu.Lock()
-	defer clampWarnMu.Unlock()
-	if len(clampWarnSeen) >= clampWarnMemoCap {
-		clampWarnSeen = map[string]struct{}{}
-	}
-	if _, seen := clampWarnSeen[sig]; seen {
-		return false
-	}
-	clampWarnSeen[sig] = struct{}{}
-	return true
-}
-
-// resetClampWarnMemoForTest clears the memo between tests.
-func resetClampWarnMemoForTest() {
-	clampWarnMu.Lock()
-	defer clampWarnMu.Unlock()
-	clampWarnSeen = map[string]struct{}{}
 }

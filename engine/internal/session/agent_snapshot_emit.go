@@ -140,9 +140,8 @@ const clampAdvisoryInterval = 60 * time.Second
 // emitClampAdvisories drains the registry's clamp reports and emits a typed
 // advisory for each, subject to the rate limit.
 //
-// Every clamp is logged at WARN unconditionally by the clamp itself; the rate
-// limit applies only to the wire event. Diagnosing from logs therefore stays
-// complete even when the event stream is throttled.
+// The rate limit here applies only to the wire event. The clamp writes its
+// own log line under its own rule, independent of this one.
 func (m *Manager) emitClampAdvisories(key string, reports []agents.ClampReport) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]

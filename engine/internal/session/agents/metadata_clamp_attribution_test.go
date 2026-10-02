@@ -13,6 +13,8 @@ import (
 // returns the captured field maps for the clamp WARNs.
 func captureClampLogs(t *testing.T) func() []map[string]any {
 	t.Helper()
+	resetClampLogMemoForTest()
+	utils.ResetLogRateLimitForTest()
 	var mu sync.Mutex
 	var got []map[string]any
 	utils.SetTestSink(func(_ utils.LogLevel, _, msg string, fields map[string]any, _, _ string) {
