@@ -20,7 +20,7 @@ import { runRetiredSettingsMigrations } from './persistence/settings-retired-key
 import { migrateToHostIdentity } from './identity/host-identity-migration'
 import { applySubjectMoves, foldLocalConnectionSubjects } from './identity/subject-moves'
 import { migratePairedDevices } from './auth/paired-device-migration'
-import { startDiscovery, stopDiscovery, discovery } from './discovery/runtime'
+import { startDiscovery, stopDiscovery } from './discovery/runtime'
 import { checkEngineVersion } from './engine/version-check'
 import { startHealth, type HealthHandle } from './http/health'
 import { authConfigRoute } from './http/auth-config'
