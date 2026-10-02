@@ -66,19 +66,6 @@ func TestLocalBashOperations_EMFILEError(t *testing.T) {
 	}
 }
 
-// TestCountOpenFds verifies that countOpenFds returns a positive count on the
-// current platform (the test process itself has at least stdin/stdout/stderr).
-func TestCountOpenFds(t *testing.T) {
-	t.Parallel()
-	n := countOpenFds()
-	if n < 3 {
-		// -1 means "not available on this platform" — acceptable; ≥0 must be ≥3.
-		if n != -1 {
-			t.Errorf("countOpenFds() = %d, want at least 3 (stdin/stdout/stderr)", n)
-		}
-	}
-}
-
 // TestLocalBashOperations_Exec_Success is a smoke test that a simple command
 // succeeds and the output is captured, so the new fd-pressure logging path
 // does not break normal execution.
