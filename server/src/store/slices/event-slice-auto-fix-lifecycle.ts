@@ -16,6 +16,7 @@
  * - `error` / `session_dead` — failures, obviously retained.
  * - running dispatched children — work is still in flight; a later terminal
  *   agent_state snapshot retries the decision.
+ * - the git operation still open — the model stopped without resolving it.
  *
  * DECISION TIMING: called POST-COMMIT (after the reducer's set()), because the
  * task_complete reducer clears permissionQueue/elicitationQueue and rewrites
@@ -36,7 +37,7 @@ import type { State } from "../session-store-types";
 import { isMirrorWindow } from "../../lib/window-role";
 import { rDebug, rInfo, rWarn } from "../rendererLogger";
 import { hasPendingWorkInPane } from "./pending-work";
-import { benchReconcileResolution } from '../host-api'
+import { benchReconcileResolution, gitOpState } from '../host-api'
 
 /** Evidence captured inside the task_complete reducer before it clears state. */
 export interface AutoFixCompletionEvidence {
@@ -94,6 +95,9 @@ export function maybeCloseAutoFixTab(
   evidence: AutoFixCompletionEvidence,
   get: () => State,
 ): void {
+  // The mirror reduces the same events the owner does, so it reaches this
+  // decision too. Only the owner may act on it.
+  if (isMirrorWindow()) return;
   const tab = get().tabs.find((t) => t.id === tabId);
   if (!tab || tab.tabRole !== "conflict-auto-fix") return;
 
@@ -215,10 +219,14 @@ async function closeAutoFixTab(
     });
     return;
   }
+  closingTabs.add(tabId);
+  if (!(await operationEnded(tabId, now.workingDirectory))) {
+    closingTabs.delete(tabId);
+    return;
+  }
   rInfo("auto-fix.lifecycle", "closing auto-fix tab after clean completion", {
     tab_id: tabId.slice(0, 8),
   });
-  closingTabs.add(tabId);
 
   // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
   // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
@@ -275,6 +283,43 @@ async function closeAutoFixTab(
       directory: now.workingDirectory,
     });
   }
+}
+
+/**
+ * Whether the git operation the auto-fix was opened to resolve has ended.
+ *
+ * A typed normal completion says the model stopped on its own; it does not say
+ * the work is done. A run that gives up and reports why ends exactly like one
+ * that finished, so the checkout is the only proof. An operation still open, or
+ * a probe that cannot answer, retains the tab: its transcript is the only
+ * record of why the conflict is still there.
+ */
+async function operationEnded(
+  tabId: string,
+  directory: string,
+): Promise<boolean> {
+  const probe = await gitOpState(directory);
+  if (!probe.ok) {
+    rWarn("auto-fix.lifecycle", "retained: operation state unreadable", {
+      tab_id: tabId.slice(0, 8),
+      directory,
+      error: probe.error,
+    });
+    return false;
+  }
+  if (probe.state) {
+    rWarn("auto-fix.lifecycle", "retained: operation still open", {
+      tab_id: tabId.slice(0, 8),
+      directory,
+      operation: probe.state,
+    });
+    return false;
+  }
+  rDebug("auto-fix.lifecycle", "operation ended, close may proceed", {
+    tab_id: tabId.slice(0, 8),
+    directory,
+  });
+  return true;
 }
 
 /** Reconcile only a known bench auto-fix. A plain worktree resolution must not
