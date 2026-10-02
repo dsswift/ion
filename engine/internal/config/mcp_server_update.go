@@ -62,7 +62,8 @@ type McpServerUpdate struct {
 	CredentialsInvalidated bool
 }
 
-// UpdateMcpServer applies a patch to a server already in ~/.ion/engine.json.
+// UpdateMcpServer applies a patch to a server already in the MCP write target
+// (~/.ion/engine.json, or the user's MCP server file on a managed engine surface).
 // A server defined only in a project config is not editable here: the error
 // says so rather than creating a global entry that would shadow it.
 func UpdateMcpServer(name string, patch McpServerPatch) (McpServerUpdate, error) {
@@ -70,9 +71,16 @@ func UpdateMcpServer(name string, patch McpServerPatch) (McpServerUpdate, error)
 	if patch.URL != "" && patch.Command != "" {
 		return result, fmt.Errorf("an MCP server takes a url or a command, not both")
 	}
+	target, err := resolveMcpWriteTarget("mcp_update")
+	if err != nil {
+		return result, err
+	}
+	if err := target.refuseManaged(name, "mcp_update"); err != nil {
+		return result, err
+	}
 
-	path := globalConfigPath()
-	err := durablefile.Transaction(path, 5*time.Second, func(_ string) error {
+	path := target.path
+	err = durablefile.Transaction(path, 5*time.Second, func(_ string) error {
 		raw, err := readRawConfig(path)
 		if err != nil {
 			return err
@@ -119,7 +127,7 @@ func UpdateMcpServer(name string, patch McpServerPatch) (McpServerUpdate, error)
 		if err := writeRawConfig(path, raw); err != nil {
 			return err
 		}
-		utils.LogWithFields(utils.LevelInfo, "config", "mcp server updated in engine.json", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "config", "mcp server updated", map[string]any{
 			"server": name, "path": path, "transport": cfg.Type, "url": cfg.URL, "command": cfg.Command,
 			"oauth_configured": cfg.OAuth != nil, "credentials_invalidated": result.CredentialsInvalidated,
 		})

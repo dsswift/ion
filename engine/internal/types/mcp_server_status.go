@@ -47,6 +47,9 @@ type McpServerStatus struct {
 	// that makes a failing server diagnosable from a client with no access to
 	// the engine host's log file.
 	LastError string `json:"lastError,omitempty"`
+	// Managed is true when a managed engine file defines this server. Such a
+	// server cannot be updated or removed.
+	Managed bool `json:"managed,omitempty"`
 }
 
 // McpOAuthStatus reports the operator-configured OAuth client for one server.

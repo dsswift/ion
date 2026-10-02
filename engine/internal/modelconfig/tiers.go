@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/filelock"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -42,7 +43,7 @@ func SetTier(name, model string, fallbacks []string) (types.ModelTierEntry, erro
 	if err != nil {
 		return types.ModelTierEntry{}, err
 	}
-	err = withModelsConfig(func(config map[string]interface{}) error {
+	err = withModelsConfig("set_model_tier", func(config map[string]interface{}) error {
 		tiers, ok := config["tiers"].(map[string]interface{})
 		if !ok {
 			tiers = make(map[string]interface{})
@@ -74,7 +75,7 @@ func RemoveTier(name string) (bool, error) {
 		return false, fmt.Errorf("model tier name is required")
 	}
 	removed := false
-	err := withModelsConfig(func(config map[string]interface{}) error {
+	err := withModelsConfig("remove_model_tier", func(config map[string]interface{}) error {
 		tiers, ok := config["tiers"].(map[string]interface{})
 		if !ok {
 			return nil
@@ -194,7 +195,13 @@ func modelsConfigPath() string {
 	return filepath.Join(dir, "models.json")
 }
 
-func withModelsConfig(fn func(map[string]interface{}) error) error {
+// withModelsConfig runs one models.json mutation under the file lock. It
+// returns a config.ManagedConfigWriteError, touching nothing, when the managed
+// source owns the model configuration.
+func withModelsConfig(operation string, fn func(map[string]interface{}) error) error {
+	if err := config.RefuseManagedConfigWrite(config.ManagedSurfaceModels, operation); err != nil {
+		return err
+	}
 	path := modelsConfigPath()
 	if path == "" {
 		return fmt.Errorf("resolve home directory")

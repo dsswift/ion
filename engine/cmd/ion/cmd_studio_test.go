@@ -579,3 +579,35 @@ func TestEnsureStudioEngineBackend(t *testing.T) {
 		t.Errorf("note = %q, want the explicit value kept", note)
 	}
 }
+
+func TestEnsureStudioEngineBackend_ManagedEngineConfig_LeavesFileAlone(t *testing.T) {
+	policyDir := t.TempDir()
+	managedPath := filepath.Join(policyDir, "engine.managed.json")
+	if err := os.WriteFile(managedPath, []byte(`{"backend":"api"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(policyDir, "enterprise.json")
+	policy := `{"managedConfig":{"enginePath":` + strconvQuote(managedPath) + `,"schemaVersion":1}}`
+	if err := os.WriteFile(policyPath, []byte(policy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ION_ENTERPRISE_CONFIG", policyPath)
+
+	dir := t.TempDir()
+	note, err := ensureStudioEngineBackend(dir)
+	if err != nil {
+		t.Fatalf("ensureStudioEngineBackend: %v", err)
+	}
+	if !strings.Contains(note, "managed") {
+		t.Errorf("note = %q, want it to say the configuration is managed", note)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "engine.json")); !os.IsNotExist(err) {
+		t.Errorf("engine.json exists (stat err %v), want no write", err)
+	}
+}
+
+// strconvQuote JSON-quotes a path, so a Windows temp path's backslashes survive.
+func strconvQuote(s string) string {
+	quoted, _ := json.Marshal(s) //nolint:errcheck // a string always marshals
+	return string(quoted)
+}

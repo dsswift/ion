@@ -704,6 +704,23 @@
       "trigger",
       "type"
     ],
+    "ManagedConfigSource": [
+      "disableUserMcpServers",
+      "enginePath",
+      "modelsPath",
+      "schemaVersion"
+    ],
+    "ManagedConfigStatus": [
+      "engine",
+      "models",
+      "schemaVersion",
+      "supportedSchemaVersion"
+    ],
+    "ManagedSurfaceStatus": [
+      "checksum",
+      "error",
+      "projected"
+    ],
     "McpOAuthStatus": [
       "authUrl",
       "clientId",
@@ -723,6 +740,7 @@
       "command",
       "connected",
       "lastError",
+      "managed",
       "name",
       "oauth",
       "protocolVersion",

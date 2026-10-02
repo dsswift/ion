@@ -40,6 +40,9 @@ func DefaultConfig() *types.EngineRuntimeConfig {
 //  2. Project config (.ion/engine.json in projectDir)
 //  3. User global config (~/.ion/engine.json)
 //  4. Defaults
+//
+// When enterprise policy declares a managed engine file (managed_projection.go)
+// that file replaces layers 2 and 3 in full.
 func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// Resolve the fully-merged, enterprise-enforced config via the pure
 	// helper, then layer on the process-global side effects LoadConfig owns.
@@ -74,7 +77,7 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 }
 
 // mergeConfigLayers performs the pure layered merge (defaults < global <
-// project) and enterprise enforcement, with NO process-global side effects
+// project, or defaults < managed engine file) and enterprise enforcement, with NO process-global side effects
 // (no log-level mutation, no ConfigureLogging, no backend-alias log line, no
 // provider-backend validation). It is the shared core of both LoadConfig
 // (which layers its side effects on top) and the fresh dispatch-time resolvers
@@ -99,24 +102,45 @@ func mergeConfigLayersWith(projectDir string, enterprise *types.EnterpriseConfig
 	defaults := DefaultConfig()
 	defaults.Profiles = loadProfiles()
 
-	// Load global ~/.ion/engine.json
-	globalConfig := loadJSONConfig(globalConfigPath())
+	// enterprise is the caller's resolved policy (a session's carries its
+	// account policies). The managed files it declares are read here.
+	enterprise, projection := resolveManagedProjection(enterprise)
 
-	// Resolve provider API keys from env
-	resolveEnvProviders(globalConfig)
+	var merged *types.EngineRuntimeConfig
+	if projection.engineOwned {
+		// The managed file is the whole engine configuration, bar the user's
+		// own MCP servers. The global and project files are not read, and a
+		// managed file that did not apply (nil content) leaves only the
+		// defaults.
+		utils.LogWithFields(utils.LevelDebug, "config", "engine config projected from managed source; global and project layers skipped", map[string]any{"project_dir": projectDir, "applied": projection.engine != nil})
+		var userMcp *types.EngineRuntimeConfig
+		if userMcpServersEnabled(enterprise, projection) {
+			// The user's own MCP servers sit below the managed file, so a
+			// managed server wins a name collision.
+			userMcp = loadUserMcpLayer()
+		}
+		merged = MergeConfigs(nil, defaults, userMcp, fromMap(projection.engine))
+	} else {
+		// Load global ~/.ion/engine.json
+		globalConfig := loadJSONConfig(globalConfigPath())
 
-	// Load project-level .ion/engine.json
-	var projectConfig map[string]any
-	if projectDir != "" {
-		projectConfig = loadJSONConfig(filepath.Join(projectDir, ".ion", "engine.json"))
+		// Resolve provider API keys from env
+		resolveEnvProviders(globalConfig)
+
+		// Load project-level .ion/engine.json
+		var projectConfig map[string]any
+		if projectDir != "" {
+			projectConfig = loadJSONConfig(filepath.Join(projectDir, ".ion", "engine.json"))
+		}
+
+		projectLayer := fromMap(projectConfig)
+		dropProjectProtectedOperations(projectLayer, projectDir)
+
+		// Merge: defaults < global < project
+		merged = MergeConfigs(nil, defaults, fromMap(globalConfig), projectLayer)
 	}
 
-	projectLayer := fromMap(projectConfig)
-	dropProjectProtectedOperations(projectLayer, projectDir)
-
-	// Merge: defaults < global < project
-	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), projectLayer)
-
+	// Enforce enterprise config
 	if enterprise != nil {
 		merged = EnforceEnterprise(merged, enterprise)
 	}

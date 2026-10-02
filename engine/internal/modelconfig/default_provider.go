@@ -26,7 +26,7 @@ func DefaultProviderID() string {
 // no provider bias.
 func SetDefaultProvider(providerID string) (string, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	err := withModelsConfig(func(config map[string]interface{}) error {
+	err := withModelsConfig("set_default_provider", func(config map[string]interface{}) error {
 		if providerID == "" {
 			delete(config, "defaultProvider")
 		} else {

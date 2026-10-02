@@ -69,3 +69,53 @@ func TestManagedLocked(t *testing.T) {
 		})
 	}
 }
+
+func TestSendPrompt_ManagedConfigNotApplied_Refused(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	if _, err := mgr.StartSession("locked", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.SetConfig(&types.EngineRuntimeConfig{
+		Enterprise: &types.EnterpriseConfig{
+			ManagedConfigStatus: &types.ManagedConfigStatus{
+				SchemaVersion: 2, SupportedSchemaVersion: 1,
+				Engine: &types.ManagedSurfaceStatus{Error: "unsupported managed config schema version 2; this engine supports version 1"},
+			},
+		},
+	})
+
+	var mu sync.Mutex
+	var codes []string
+	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
+		if ev.Type == "engine_error" {
+			mu.Lock()
+			codes = append(codes, ev.ErrorCode)
+			mu.Unlock()
+		}
+	})
+
+	err := mgr.SendPrompt("locked", "hello", nil)
+	if !errors.Is(err, errManagedConfigInvalid) {
+		t.Fatalf("SendPrompt error = %v, want errManagedConfigInvalid", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(codes) != 1 || codes[0] != managedConfigInvalidErrorCode {
+		t.Fatalf("engine_error codes = %v, want one %q", codes, managedConfigInvalidErrorCode)
+	}
+}
+
+func TestSendPrompt_ManagedConfigApplied_NotRefused(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	mgr.SetConfig(&types.EngineRuntimeConfig{
+		Enterprise: &types.EnterpriseConfig{
+			ManagedConfigStatus: &types.ManagedConfigStatus{
+				SchemaVersion: 1, SupportedSchemaVersion: 1,
+				Engine: &types.ManagedSurfaceStatus{Projected: true, Checksum: "sha256:abc"},
+			},
+		},
+	})
+	if err := mgr.rejectIfManagedLocked("k"); err != nil {
+		t.Fatalf("rejectIfManagedLocked() = %v, want no refusal", err)
+	}
+}

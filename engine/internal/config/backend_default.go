@@ -13,10 +13,15 @@ import (
 // SetBackendIfUnset writes backend as engine.json's top-level "backend" when
 // the file has none (absent or empty). An explicit value is never overridden.
 // It edits the raw map, so every other key survives. Returns whether it wrote
-// and the value found (empty when unset).
+// and the value found (empty when unset). It returns a
+// ManagedConfigWriteError, writing nothing, when the managed source owns the
+// engine configuration.
 func SetBackendIfUnset(path, backend string) (bool, string, error) {
 	wrote := false
 	existing := ""
+	if err := RefuseManagedConfigWrite(ManagedSurfaceEngine, "set_backend_default"); err != nil {
+		return false, "", err
+	}
 	err := durablefile.Transaction(path, 5*time.Second, func(_ string) error {
 		raw, err := readRawConfig(path)
 		if err != nil {

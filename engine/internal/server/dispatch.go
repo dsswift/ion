@@ -704,6 +704,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Implementation in dispatch_enterprise_policy.go.
 		s.dispatchGetEnterprisePolicy(conn, cmd)
 
+	case "get_managed_config_status":
+		s.dispatchGetManagedConfigStatus(conn, cmd)
+
 	case "get_plan_content":
 		// Implementation in dispatch_plan_content.go.
 		s.dispatchGetPlanContent(conn, cmd)

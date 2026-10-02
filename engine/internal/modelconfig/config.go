@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -23,7 +24,13 @@ func LoadModelsConfig() map[string]interface{} {
 // loadModelsConfigErr keeps read-only callers tolerant while giving mutations
 // enough information to refuse replacing a corrupt or unreadable config file.
 // A missing file is an intentional empty configuration and may be created.
+//
+// When enterprise policy declares a managed models file, that file is the
+// whole model configuration and models.json is not read.
 func loadModelsConfigErr() (map[string]interface{}, error) {
+	if managed, owned, err := config.ManagedModelsConfig(); owned {
+		return managed, err
+	}
 	dir := utils.IonDir()
 	if dir == "" {
 		return nil, fmt.Errorf("resolve ion data directory")

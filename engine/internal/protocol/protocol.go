@@ -695,6 +695,10 @@ var validCommands = map[string]bool{
 	// (policy and newConversationDefaults are null when no enterprise config
 	// is present).
 	"get_enterprise_policy": true,
+	// get_managed_config_status: read which managed config files are in force
+	// (schema version, per-surface checksum and error), never their content.
+	// Stateless; the engine replies with { applied, current } in the result data.
+	"get_managed_config_status": true,
 	// resolve_new_conversation_defaults resolves portable global, project, and
 	// enterprise defaults for Path or Paths without starting a session.
 	"resolve_new_conversation_defaults": true,

@@ -76,10 +76,17 @@ type EnterpriseConfig struct {
 	// Overrides lists the lower-layer config values enforcement displaced,
 	// sorted by field. It is stamped by EnforceEnterprise and a policy source
 	// cannot set it. Empty when enforcement changed no lower-layer value.
-	Overrides        []PolicyOverride `json:"overrides,omitempty"`
-	AllowedModels    []string         `json:"allowedModels,omitempty"`
-	BlockedModels    []string         `json:"blockedModels,omitempty"`
-	AllowedProviders []string         `json:"allowedProviders,omitempty"`
+	Overrides []PolicyOverride `json:"overrides,omitempty"`
+	// ManagedConfig projects complete managed files over the engine and model
+	// configuration surfaces. Nil leaves both surfaces to their ordinary
+	// layers and to the typed sealing below, which keeps applying either way.
+	ManagedConfig *ManagedConfigSource `json:"managedConfig,omitempty"`
+	// ManagedConfigStatus is stamped by the loader when ManagedConfig
+	// declares a surface, and nil otherwise. A policy source cannot set it.
+	ManagedConfigStatus *ManagedConfigStatus `json:"managedConfigStatus,omitempty"`
+	AllowedModels       []string             `json:"allowedModels,omitempty"`
+	BlockedModels       []string             `json:"blockedModels,omitempty"`
+	AllowedProviders    []string             `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from
