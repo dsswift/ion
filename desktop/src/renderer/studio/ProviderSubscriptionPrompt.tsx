@@ -12,7 +12,7 @@ import { motion } from 'framer-motion'
 import { ArrowClockwise } from '@phosphor-icons/react'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import type { SubscriptionOption } from '@ion/shared/types-engine-event'
-import { subscriptionProviderName, type ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
+import { subscriptionFailureText, subscriptionProviderName, type ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
 import { usePopoverLayer } from '../components/PopoverLayer'
 import { useColors } from '../theme'
 import { transitions } from '../theme-tokens'
@@ -139,7 +139,7 @@ function PromptDialog({ prompt }: { prompt: SubscriptionPrompt }): React.JSX.Ele
         <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
           {choosing
             ? `Choose the ${name} subscription this account uses. Requests to ${name} fail until one is chosen.`
-            : `The signed-in account has no ${name} subscription. Requests to ${name} fail until it has one. Contact your administrator for access.`}
+            : subscriptionFailureText(status, `The signed-in account has no ${name} subscription. Requests to ${name} fail until it has one. Contact your administrator for access.`)}
           {serverLabel && <div style={{ color: colors.textTertiary, marginTop: 4 }}>Server: {serverLabel}</div>}
         </div>
         {choosing && (

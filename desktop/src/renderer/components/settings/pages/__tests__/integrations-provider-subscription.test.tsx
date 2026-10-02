@@ -67,6 +67,13 @@ describe('ProviderSubscriptionGroup', () => {
     expect(text()).toContain('gateway subscription')
   })
 
+  it("uses the policy's text for a failure state when one is configured", async () => {
+    ion.providerSubscription.mockResolvedValue({ ok: true, subscription: { state: 'none', provider: 'gateway', policyFailure: 'subscription_unavailable', message: 'Open a ticket to request access.' } })
+    await h.render(<ProviderSubscriptionGroup />)
+    expect(text()).toContain('Open a ticket to request access.')
+    expect(text()).not.toContain('Your account has no subscription.')
+  })
+
   it('shows a failed lookup and looks up again on request', async () => {
     ion.providerSubscription.mockResolvedValue({ ok: true, subscription: { state: 'failed', provider: 'gateway', error: 'endpoint returned status 503' } })
     ion.refreshProviderSubscription.mockResolvedValue({ ok: true, subscription: { state: 'applied', provider: 'gateway', selected: options[0], options: [options[0]], source: 'lookup' } })
