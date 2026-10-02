@@ -689,11 +689,11 @@ var validCommands = map[string]bool{
 	// Stateless; no session required. The engine replies with the listing in the
 	// result data.
 	"discover_slash_commands": true,
-	// get_enterprise_policy: read the enterprise NewConversationDefaults policy
-	// so clients can decide whether the new-conversation flow is locked.
+	// get_enterprise_policy: read the enterprise policy the engine resolved.
 	// Stateless (no session key); the engine replies with
-	// { newConversationDefaults } in the result data (null when no enterprise
-	// config / no section is present).
+	// { newConversationDefaults, policy, policyHash } in the result data
+	// (policy and newConversationDefaults are null when no enterprise config
+	// is present).
 	"get_enterprise_policy": true,
 	// resolve_new_conversation_defaults resolves portable global, project, and
 	// enterprise defaults for Path or Paths without starting a session.
