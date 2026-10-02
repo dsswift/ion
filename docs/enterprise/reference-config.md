@@ -161,6 +161,11 @@ itself, which a managed install needs: MDM pins the version, and an app-level
 updater fighting that pin is how a fleet drifts. Without it the desktop checks
 for updates on launch and reports the failure to the operator.
 
+`installer.runningApp` decides what the macOS package does when Ion is open at
+install time. It is not in the reference file because the default, `refuse`,
+is right for an install a person starts. A fleet that pushes unattended sets
+it to `replace`; see [MDM](mdm.md#unattended-install-over-a-running-ion).
+
 ### `auth`
 
 The enterprise block replaces user auth wholesale, so tenant, client ID,

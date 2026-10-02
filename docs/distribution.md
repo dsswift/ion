@@ -85,7 +85,8 @@ some of them can execute code at install time.
 | Install path | Quits a running Ion first | Mechanism |
 |---|---|---|
 | In-app updater | Yes | Stages the zip and dispatches `install-worker.sh`; the explicit Restart stops the desktop and engine before the worker replaces the bundle |
-| `.pkg` (manual / MDM) | No, if Ion is running | `preinstall` refuses before the payload changes and tells the user to quit Ion, then retry; `postinstall` launches Ion for the active console user after a successful install |
+| `.pkg` (manual) | No | `preinstall` refuses before anything is written and tells the user to quit Ion, then retry |
+| `.pkg` (MDM, `installer.runningApp: replace`) | Yes | `preinstall` requests the `SIGUSR1` drain, waits a bounded time, then forces the quit; see [MDM](enterprise/mdm.md#unattended-install-over-a-running-ion) |
 | Source build (`make desktop`) | Yes | A detached coordinator sends the normal `SIGUSR1` drain, waits for Ion to exit, then opens the same `.pkg` |
 
 The source-build coordinator sends `SIGUSR1`: Ion drains active agents,
@@ -93,9 +94,11 @@ flushes renderer tab state, boots out the engine daemon so launchd does not
 restart it, then exits (`desktop/src/main/app-lifecycle.ts`). The coordinator
 waits outside Installer without a timeout and opens the already-built `.pkg`
 only after Ion exits. A manually opened package never stops Ion: its preinstall
-script exits before the payload changes and tells the user to quit Ion, then
-retry. After a successful package install, postinstall opens Ion for the active
-console user. The in-app updater stages the signed zip, dispatches the detached install
+script exits before anything is written and tells the user to quit Ion, then
+retry. Device policy can select the unattended path instead, where the package
+stops Ion itself. Either way the payload lands in a staging directory, and
+postinstall renames the complete bundle into `/Applications`, then opens Ion
+for the active console user. The in-app updater stages the signed zip, dispatches the detached install
 worker, and performs an explicit immediate Restart that closes desktop and
 engine together before the worker replaces the bundle.
 

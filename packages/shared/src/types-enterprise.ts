@@ -197,6 +197,22 @@ export interface IonDesktopPolicyFields {
     themeId: string
     locked?: boolean
   }
+  /**
+   * What the macOS installer package does when Ion is running. The package
+   * scripts read this straight from the Managed Preferences payload
+   * (`desktop/scripts/pkg-scripts/ion-pkg-common.sh`); the running desktop
+   * never consults it.
+   */
+  installer?: {
+    /**
+     * `refuse` (the default) fails the install and leaves Ion running.
+     * `replace` stops Ion, replaces the bundle, and succeeds: the unattended
+     * path for a managed push.
+     */
+    runningApp?: 'refuse' | 'replace'
+    /** Seconds `replace` waits for the graceful drain before forcing the quit. */
+    drainTimeoutSeconds?: number
+  }
   /** Managed declarative desktop automations. Never persisted to user files. */
   automation?: import('./types-automation').EnterpriseAutomationPolicy
   /**

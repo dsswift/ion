@@ -1,22 +1,67 @@
 #!/bin/bash
-# postinstall — launch Ion after Installer has written the complete bundle.
+# postinstall — swap the complete staged bundle into place, then launch Ion.
 #
 # Package scripts run as root. Resolve the active console user and launch in
 # that user's GUI session; an MDM install with no console user remains a
 # successful install and leaves the app closed.
 set -euo pipefail
 
-APP_PATH="/Applications/Ion.app"
-LOG_FILE="/var/log/install.log"
+SCRIPT_NAME="postinstall"
+# shellcheck source=desktop/scripts/pkg-scripts/ion-pkg-common.sh
+. "$(dirname "$0")/ion-pkg-common.sh"
+
+fail() {
+  log "$1"
+  rm -rf "$STAGING_DIR" "$INCOMING_APP"
+  exit 1
+}
+
+if [ ! -x "${STAGED_APP}/Contents/MacOS/${APP_NAME}" ] || [ ! -f "${STAGED_APP}/Contents/Info.plist" ]; then
+  fail "staged application bundle is missing or incomplete: ${STAGED_APP}; the installed bundle was not touched."
+fi
+
+# Ion may have been started while the payload was being written.
+ensure_app_stopped || fail "the installed bundle was not touched."
+
+# A rename is only atomic within one volume. When staging sits on another
+# volume, copy the bundle beside the destination first and rename from there.
+SWAP_SOURCE="$STAGED_APP"
+if [ "$(stat -f '%d' "$STAGING_DIR")" != "$(stat -f '%d' "$APP_PARENT")" ]; then
+  log "staging is on another volume; copying the bundle beside the destination."
+  rm -rf "$INCOMING_APP"
+  ditto "$STAGED_APP" "$INCOMING_APP" || fail "could not copy the staged bundle beside ${APP_PATH}; the installed bundle was not touched."
+  SWAP_SOURCE="$INCOMING_APP"
+fi
+
+HAD_PREVIOUS=false
+if [ -d "$APP_PATH" ]; then
+  rm -rf "$PREVIOUS_APP"
+  mv "$APP_PATH" "$PREVIOUS_APP" || fail "could not set the installed bundle aside; it was not touched."
+  HAD_PREVIOUS=true
+fi
+
+if ! mv "$SWAP_SOURCE" "$APP_PATH"; then
+  if [ "$HAD_PREVIOUS" = true ]; then
+    mv "$PREVIOUS_APP" "$APP_PATH"
+    fail "could not move the new bundle into place; the previous bundle was restored."
+  fi
+  fail "could not move the new bundle into place."
+fi
+
+rm -rf "$PREVIOUS_APP" "$STAGING_DIR" "$INCOMING_APP"
+if [ "$HAD_PREVIOUS" = true ]; then
+  log "replaced ${APP_PATH} with the new bundle."
+else
+  log "installed ${APP_PATH}."
+fi
+
+if [ "${ION_PKG_SKIP_LAUNCH:-0}" = "1" ]; then
+  log "launch skipped."
+  exit 0
+fi
+
 CONSOLE_USER="$(stat -f '%Su' /dev/console)"
 CONSOLE_UID="$(stat -f '%u' /dev/console)"
-
-log() { printf '[Ion postinstall] %s\n' "$1" | tee -a "$LOG_FILE"; }
-
-if [ ! -d "$APP_PATH" ]; then
-  log "installed application bundle is missing: $APP_PATH"
-  exit 1
-fi
 
 if [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
   log "no graphical user is active; leaving Ion closed"
