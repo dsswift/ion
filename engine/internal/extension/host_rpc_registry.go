@@ -66,6 +66,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/task_suspend":       (*Host).rpcTaskSuspend,
 	"ext/get_context_usage":  (*Host).rpcGetContextUsage,
 	"ext/search_history":     (*Host).rpcSearchHistory,
+	"ext/read_conversation":  (*Host).rpcReadConversation,
 	"ext/get_session_memory": (*Host).rpcGetSessionMemory,
 	"ext/set_session_memory": (*Host).rpcSetSessionMemory,
 	"ext/walk_context_files": (*Host).rpcWalkContextFiles,

@@ -729,6 +729,7 @@
     "ext/notify",
     "ext/protected_operation",
     "ext/publish_resource",
+    "ext/read_conversation",
     "ext/read_dispatch_conversation",
     "ext/recall_agent",
     "ext/recall_dispatch",
@@ -798,6 +799,9 @@
         }
       },
       "conversationId": {
+        "kind": "string"
+      },
+      "conversationRecordPath": {
         "kind": "string"
       },
       "cwd": {

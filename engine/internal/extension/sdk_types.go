@@ -26,6 +26,12 @@ type Context struct {
 	// reattaches. Empty when no conversation is active.
 	ConversationID string
 
+	// ConversationRecordPath is the absolute path of the file this session's
+	// conversation record is written to. Empty when no conversation is
+	// active, matching ConversationID. The file exists once the
+	// conversation's first entry has been persisted.
+	ConversationRecordPath string
+
 	// RunID identifies the prompt-to-completion run in flight when the hook
 	// fired. Empty when no run is active (session_start, a schedule or
 	// webhook delivery, extension load).
@@ -320,6 +326,13 @@ type Context struct {
 	// target outside that set is answered with the "unauthorized" outcome,
 	// never with content. Nil when dispatch support is not wired.
 	ReadDispatchConversation func(opts ReadDispatchConversationOpts) (*DispatchConversationResult, error)
+
+	// ReadConversation reads a conversation record by ID from disk and
+	// returns one page of its messages, each carrying its timestamp. The
+	// conversation need not be this session's, and need not still be running.
+	// Offset is zero-based; limit <= 0 returns every message from offset
+	// onward. Read-only. Nil when the context is not bound to a session.
+	ReadConversation func(conversationID string, offset, limit int) (*ConversationRecord, error)
 
 	// GetSessionMemory returns the current session memory content for this
 	// session. Returns empty string when session memory is not active or
@@ -687,4 +700,15 @@ type ToolDefinition struct {
 type CommandDefinition struct {
 	Description string
 	Execute     func(args string, ctx *Context) error
+}
+
+// ConversationRecord is one page of a conversation record, returned by
+// Context.ReadConversation.
+type ConversationRecord struct {
+	// Messages is the page, in record order. Never nil.
+	Messages []types.SessionMessage `json:"messages"`
+	// Total is the record's full message count, independent of the page.
+	Total int `json:"total"`
+	// HasMore reports whether messages remain past this page.
+	HasMore bool `json:"hasMore"`
 }

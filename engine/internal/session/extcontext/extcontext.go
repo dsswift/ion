@@ -314,6 +314,14 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		ctx.ReadDispatchConversation = BuildReadDispatchConversationFunc(sa, registry, dispatchId)
 	}
 
+	// Conversation record access: the record's path and a read by ID. Both
+	// come from the session layer, which owns storage resolution and the
+	// principal access check.
+	if records, ok := sa.(ConversationRecordAccessor); ok {
+		ctx.ConversationRecordPath = records.ConversationRecordPath()
+		ctx.ReadConversation = records.ReadConversation
+	}
+
 	// Wire self-steer: deliver a message to the run that OWNS this context,
 	// letting the engine pick steer-vs-send based on that run's live state.
 	// This is the mechanism that lets a background dispatch's completion reach

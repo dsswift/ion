@@ -72,6 +72,7 @@ import type {
   ToolContent,
   WalkContextFilesOpts,
 } from './types'
+import type { ConversationRecord, ReadConversationOpts } from './types-conversations'
 import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts, RecallDispatchResult } from './types-dispatch-control'
 
 // ---------------------------------------------------------------------------
@@ -333,6 +334,7 @@ function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
     conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
+    conversationRecordPath: typeof ctxData?.conversationRecordPath === 'string' ? ctxData.conversationRecordPath : '',
     // Run identity: the engine omits both keys when no run is in flight, so
     // '' IS the no-active-run shape (same additive pattern as dispatch identity
     // below). traceId is W3C-shaped and safe to put straight into a
@@ -830,6 +832,20 @@ function buildContext(ctxData: any): IonContext {
       },
       async send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void> {
         await request('ext/send_to_session', { targetKey, kind, payload })
+      },
+    },
+    conversations: {
+      async read(conversationId: string, opts?: ReadConversationOpts): Promise<ConversationRecord> {
+        const result = await request('ext/read_conversation', {
+          conversationId,
+          offset: opts?.offset ?? 0,
+          limit: opts?.limit ?? 0,
+        })
+        return {
+          messages: Array.isArray(result?.messages) ? result.messages : [],
+          total: typeof result?.total === 'number' ? result.total : 0,
+          hasMore: result?.hasMore === true,
+        }
       },
     },
     async fireSchedule(id: string): Promise<void> {

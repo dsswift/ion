@@ -120,6 +120,7 @@ Passed to every hook handler, tool execute function, and command execute functio
 interface IonContext {
   sessionKey: string
   conversationId: string
+  conversationRecordPath: string
   depth: number
   dispatchId: string
   cwd: string
@@ -176,6 +177,8 @@ ion.on('session_end', (ctx) => {
 Always delete the session entry on `session_end` to avoid leaking state across long-lived extension processes.
 
 **`conversationId: string`** -- durable conversation identity (`{unix_millis}-{hex}`), stable across engine restarts and reattaches. Use it for resource scoping, audit trails, and persistent identity. Empty when no conversation is active.
+
+**`conversationRecordPath: string`** -- absolute path of the file this conversation's record is written to. The engine supplies it, so an extension never has to rebuild it from the storage layout. Stamp it into a durable artifact when a later reader must be able to find the conversation that produced it. Empty when no conversation is active, the same as `conversationId`. The file exists once the conversation's first turn has been saved.
 
 **`depth: number`** -- dispatch depth of the session that fired the hook: `0` for the root (orchestrator) session, `1` for a directly dispatched child agent, `2` for a grandchild, and so on. This is the explicit root-vs-child discriminator for hooks whose payload carries no agent identity (`session_start`, `session_end`, `turn_start` and friends). A handler that should only act for the root session — a greeting toast, a startup git sync, a one-time bootstrap — branches on `ctx.depth === 0`. Mirrors `AgentInfo.isRoot` on `before_agent_start`, which discriminates per-firing rather than per-session.
 
@@ -1258,6 +1261,26 @@ ion.on('session_message', (ctx, info) => {
 | `extensionName`    | string  | Name of the extension loaded                         |
 | `conversationId`   | string  | Conversation ID for this session                     |
 | `principalSubject` | string  | Owning principal's subject — always the caller's own |
+
+## Reading a conversation record
+
+`ctx.conversations.read` returns a conversation's turns, each with its `timestamp`, by conversation ID. The engine reads the record from disk, so the conversation can be the running one, another live one, or one that ended long ago. The call is read-only.
+
+```typescript
+const record = await ctx.conversations.read(conversationId, { offset: 0, limit: 200 })
+for (const message of record.messages) {
+  // message.role, message.content, message.timestamp (Unix milliseconds)
+}
+if (record.hasMore) {
+  // ask again with offset: 200
+}
+```
+
+`offset` is the zero-based index of the first message. `limit` caps the page; leave it out, or pass `0`, to get every message from `offset` onward. The result carries `messages`, `total` (the record's full message count), and `hasMore`.
+
+Each message is a `ConversationMessage`: `id`, `role` (`user`, `assistant`, `tool`, or `system`), `content`, and `timestamp`, plus the tool fields (`toolName`, `toolId`, `toolInput`, `isError`) on a tool row and the `marker*` fields on a row the engine recorded for a compaction, plan, or steer.
+
+The call rejects when the conversation does not exist, and when [principal partitioning](../configuration/engine-json.md#securityprincipalpartitioning) refuses the calling session access to another principal's conversation. An engine that predates this call rejects it as an unknown method.
 
 ## Intercept
 

@@ -119,13 +119,14 @@ func schemaFromJSONValue(value any) (sdkJSONSchema, error) {
 func contextEnvelopeSchema() sdkJSONSchema {
 	h := NewHost()
 	envelope := h.buildHookEnvelope(&Context{
-		Cwd:            "/workspace",
-		SessionKey:     "session",
-		ConversationID: "conversation",
-		RunID:          "run",
-		TraceID:        "4bf92f3577b34da6a3ce929d0e0e4736",
-		Depth:          1,
-		DispatchId:     "dispatch",
+		Cwd:                    "/workspace",
+		SessionKey:             "session",
+		ConversationID:         "conversation",
+		ConversationRecordPath: "/conversations/conversation.tree.jsonl",
+		RunID:                  "run",
+		TraceID:                "4bf92f3577b34da6a3ce929d0e0e4736",
+		Depth:                  1,
+		DispatchId:             "dispatch",
 		Identity: &auth.ContextIdentity{
 			Kind: "operator", Provider: "provider", Claims: map[string]any{
 				"string": "value", "array": []any{"item"}, "object": map[string]any{"enabled": true}, "number": 1, "null": nil,

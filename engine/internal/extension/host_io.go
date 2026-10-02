@@ -330,6 +330,9 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 	if ctx.ConversationID != "" {
 		ctxMeta["conversationId"] = ctx.ConversationID
 	}
+	if ctx.ConversationRecordPath != "" {
+		ctxMeta["conversationRecordPath"] = ctx.ConversationRecordPath
+	}
 	// Run identity: omit-when-empty, so a hook firing with no run in flight
 	// (session_start, a schedule or webhook delivery) carries neither key and
 	// the SDK's "" default is the accurate reading. traceId is the W3C

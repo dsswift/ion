@@ -440,7 +440,7 @@ Handle these by checking the `method` field on incoming messages alongside the e
 2. **Handle unknown hooks gracefully.** The engine may send any hook to subprocess extensions. Return null for hooks you don't care about.
 3. **Respect the RPC timeout.** The engine drops calls that don't respond within the configured timeout (default: 30 seconds, configurable via `timeouts.extensionRpcMs` in `engine.json`).
 4. **Never write non-JSON to stdout.** Debug output goes to stderr.
-5. **Parse the `_ctx` field** from hook and tool params if you need session context (`cwd`, `sessionKey`, `conversationId`, `model`, `config`, and — for dispatched child sessions only — `depth` and `dispatchId`; both keys are omitted for the root session, so treat absence as `depth: 0`).
+5. **Parse the `_ctx` field** from hook and tool params if you need session context (`cwd`, `sessionKey`, `conversationId`, `conversationRecordPath`, `model`, `config`, and — for dispatched child sessions only — `depth` and `dispatchId`; both keys are omitted for the root session, so treat absence as `depth: 0`).
 6. **Use unique IDs for outgoing requests.** Start from a high number (e.g., 100000) to avoid collisions with engine-assigned IDs.
 
 ## Workspace Context
@@ -567,6 +567,22 @@ Send a structured message to another session. The engine enforces same extension
 ```
 
 Response: `{"jsonrpc":"2.0","id":100014,"result":{"ok":true}}`
+
+### ext/read_conversation
+
+Read one page of a conversation record by conversation ID. The engine reads the record from disk, so the conversation may be the caller's own, another live one, or one that has ended. Read-only. `offset` is the zero-based first message; `limit` caps the page, and `0` (or absent) returns every message from `offset` onward.
+
+```json
+{"jsonrpc":"2.0","id":100014,"method":"ext/read_conversation","params":{"conversationId":"1780093348767-c1c03e998388","offset":0,"limit":200}}
+```
+
+Response:
+
+```json
+{"jsonrpc":"2.0","id":100014,"result":{"messages":[{"id":"e1","role":"user","content":"hi","timestamp":1780093348767}],"total":1,"hasMore":false}}
+```
+
+`total` is the record's full message count. A missing `conversationId` answers `-32602`. An unknown conversation, or one principal partitioning refuses the calling session, answers `-32000`.
 
 ### ext/set_plan_mode
 

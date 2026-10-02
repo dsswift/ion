@@ -4,6 +4,7 @@
 // from ./index.ts.
 
 import type { DispatchControlContext } from './types-dispatch-control'
+import type { ConversationRecord, ReadConversationOpts } from './types-conversations'
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
 
@@ -1386,6 +1387,11 @@ export interface IonContext extends DispatchControlContext {
    *  engine restarts. Use this for resource scoping, audit trails, and
    *  persistent identity. Empty when no conversation is active. */
   conversationId: string
+  /** Absolute path of the file this conversation's record is written to,
+   *  supplied by the engine. Empty when no conversation is active, matching
+   *  {@link IonContext.conversationId}. The file exists once the
+   *  conversation's first turn has been saved. */
+  conversationRecordPath: string
   /**
    * Identifies the prompt-to-completion run in flight when the hook fired.
    * Empty (`''`) when no run is active — `session_start`, a schedule or
@@ -2039,6 +2045,26 @@ export interface IonContext extends DispatchControlContext {
      *  type. The target must have a session_message hook registered.
      *  Same extension type only — the engine enforces this. */
     send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void>
+  }
+
+  /** Conversation records on this engine's host. */
+  conversations: {
+    /**
+     * Read a conversation record by ID: its turns, each with a `timestamp`.
+     * The engine reads the record from disk, so the conversation may be this
+     * one, another live one, or one that has already ended. Read-only.
+     *
+     * Rejects when the conversation does not exist, when the engine's
+     * principal partitioning refuses this session access to it, or when the
+     * engine predates this call.
+     *
+     * @example
+     * ```ts
+     * const record = await ctx.conversations.read(conversationId, { offset: 0, limit: 200 })
+     * const first = record.messages[0]?.timestamp
+     * ```
+     */
+    read(conversationId: string, opts?: ReadConversationOpts): Promise<ConversationRecord>
   }
 
   /**

@@ -80,6 +80,7 @@ Beyond the payload, every hook's context carries the correlation identifiers:
 |---|---|---|
 | `ctx.sessionKey` | One engine session | Never, for a live session |
 | `ctx.conversationId` | The durable conversation, across restarts | No conversation bound |
+| `ctx.conversationRecordPath` | Absolute path of that conversation's record file | No conversation bound |
 | `ctx.runId` | One prompt-to-completion run (engine-native form) | No run in flight |
 | `ctx.traceId` | The same run, as a W3C trace-context trace-id (32 hex) | No run in flight |
 | `ctx.depth` / `ctx.dispatchId` | Sub-agent position within a run | Root session (`0` / `''`) |

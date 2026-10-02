@@ -287,6 +287,7 @@ The execution context passed to all hook handlers, tool execute functions, and c
 type Context struct {
     SessionKey     string
     ConversationID string
+    ConversationRecordPath string
     RunID          string
     TraceID        string
     Depth          int
@@ -317,6 +318,8 @@ type Context struct {
 **`Cwd`** -- working directory for the session.
 
 **`SessionKey`** -- engine session identity for this invocation. `ConversationID` is its durable conversation identity.
+
+**`ConversationRecordPath`** -- absolute path of the file the session's conversation record is written to. Empty when no conversation is active.
 
 **`RunID`** -- engine-native prompt-to-completion run identity. **`TraceID`** is the W3C trace-context identity for that same run. Both are empty when no run is active.
 
@@ -626,6 +629,10 @@ The Go SDK context exposes methods for the resource subsystem, push notification
 
 - **`ctx.Sessions.List()`** -- returns `[]SessionListEntry` with `Key`, `HasActiveRun`, `ExtensionName`, `ConversationID`, `PrincipalSubject`. The engine filters to sessions sharing the CALLING session's own principal (never every session engine-wide, which is what stops one tenant's extension from enumerating another's on a shared multi-tenant engine). It does not filter by extension type -- the caller checks `ExtensionName` itself to find sessions of its own kind.
 - **`ctx.Sessions.Send(targetKey, kind string, payload map[string]interface{})`** -- send a structured message to another session. The engine enforces same extension type; cross-type sends return an error. The receiving session's `session_message` hook fires with `SessionMessageInfo{SenderSessionKey, Kind, Payload}`.
+
+**Conversation records:**
+
+- **`ctx.ReadConversation(conversationID string, offset, limit int)`** -- returns a `*ConversationRecord` (`Messages`, `Total`, `HasMore`): one page of a conversation record read from disk by ID, each message carrying its timestamp. The conversation need not be the session's own or still running. `limit <= 0` returns every message from `offset` onward. Read-only, and subject to the session principal's read access under principal partitioning.
 
 **Intercept:**
 

@@ -84,14 +84,15 @@ func storageRootFor(principal *types.SessionPrincipal) string {
 
 // conversationOwner returns the subject recorded on convID's durable header,
 // and whether a backing file exists at all. Reads the header directly
-// (conversation.Load) rather than trusting resolveDir's index alone, since
+// (conversation.LoadReadOnly, so an ownership check never writes to the
+// record) rather than trusting resolveDir's index alone, since
 // the index only tells us WHERE the file is, not who owns it -- the marker
 // of record is the conversation's own Principal field, stamped at mint.
 func conversationOwner(convID string) (subject string, exists bool) {
 	if !conversation.Exists(convID, "") {
 		return "", false
 	}
-	conv, err := conversation.Load(convID, "")
+	conv, err := conversation.LoadReadOnly(convID)
 	if err != nil || conv == nil || conv.Principal == nil {
 		return "", true
 	}
