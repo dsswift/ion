@@ -83,6 +83,66 @@ export interface PolicyOverride {
 }
 
 /**
+ * The managed files an administrator projects over the engine and model
+ * configuration. Mirrors Go's ManagedConfigSource. A declared surface is owned
+ * in full: the user and project files contribute nothing to it.
+ */
+export interface ManagedConfigSource {
+  /** Absolute path of the managed engine configuration file. */
+  enginePath?: string;
+  /** Absolute path of the managed model configuration file. */
+  modelsPath?: string;
+  schemaVersion: number;
+  /**
+   * Turns off the user's own MCP servers on a managed engine file. By default
+   * a user may add servers beside the managed file's.
+   */
+  disableUserMcpServers?: boolean;
+}
+
+/**
+ * Whether a policy stops users adding their own MCP servers: a managed engine
+ * file is declared, and either policy turned user servers off or the file
+ * could not be applied.
+ */
+export function userMcpServersLocked(
+  policy: EnterprisePolicy | null | undefined,
+): boolean {
+  const engine = policy?.managedConfigStatus?.engine;
+  if (!engine) return false;
+  return (
+    policy?.managedConfig?.disableUserMcpServers === true || !engine.projected
+  );
+}
+
+/** One declared managed surface's outcome. Mirrors Go's ManagedSurfaceStatus. */
+export interface ManagedSurfaceStatus {
+  /** The managed file was read and applied in full. */
+  projected: boolean;
+  /** `sha256:<hex>` of the managed file's bytes. */
+  checksum?: string;
+  /** Why the managed file was not applied. The surface then holds defaults. */
+  error?: string;
+}
+
+/**
+ * How the engine resolved a ManagedConfigSource. Mirrors Go's
+ * ManagedConfigStatus. The engine stamps it; a policy source cannot set it.
+ * It never carries configuration content.
+ */
+export interface ManagedConfigStatus {
+  schemaVersion: number;
+  supportedSchemaVersion: number;
+  /** Absent when no managed engine file is declared. */
+  engine?: ManagedSurfaceStatus;
+  /** Absent when no managed models file is declared. */
+  models?: ManagedSurfaceStatus;
+}
+
+/** The result code of a config write refused because its surface is managed. */
+export const MANAGED_CONFIG_WRITE_REFUSED = "managed_config_write_refused";
+
+/**
  * The full enterprise policy blob from the engine's get_enterprise_policy RPC
  * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
  * Only the fields the desktop consumes are typed here; the blob may carry
@@ -95,6 +155,10 @@ export interface EnterprisePolicy {
   managedMode?: ManagedModeStatus;
   /** Lower-layer config values enforcement displaced, sorted by field. Engine-stamped. */
   overrides?: PolicyOverride[];
+  /** Managed files projected over the engine and model configuration. */
+  managedConfig?: ManagedConfigSource;
+  /** Present only when managedConfig declares a surface. */
+  managedConfigStatus?: ManagedConfigStatus;
   /** Models the enterprise permits. Empty/absent = no restriction. */
   allowedModels?: string[];
   /** Models the enterprise blocks. */

@@ -32,6 +32,8 @@ export interface McpServerStatus {
   protocolVersion?: string;
   capabilities?: string[];
   lastError?: string;
+  /** A managed engine file defines this server; it cannot be updated or removed. */
+  managed?: boolean;
 }
 
 /**
