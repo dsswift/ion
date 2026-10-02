@@ -197,6 +197,7 @@ An error occurred during the run.
 | `retryAfterMs` | number    | Suggested retry delay              |
 | `httpStatus`   | number    | HTTP status code from the provider |
 | `policyFailure` | string   | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the error results from enterprise policy |
+| `extensionName` | string   | The extension the error is about, when it is about one (optional) |
 
 **Produced from:** `ResultEvent` (error)
 

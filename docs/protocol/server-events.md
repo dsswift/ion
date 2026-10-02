@@ -363,6 +363,7 @@ An error signal from the engine. It carries structured classification when the s
 | `retryAfterMs`  | number  | Suggested retry delay in milliseconds          |
 | `httpStatus`    | number  | HTTP status code from the provider             |
 | `policyFailure` | string  | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the error results from enterprise policy. `message` is then the policy's text when one is configured. `errorCode` is unaffected. |
+| `extensionName` | string  | The blocked extension's identifier, when `errorCode` is `extension_blocked`. Present whatever text `message` carries (optional) |
 | `providerSubscription` | object | The [Provider Subscription](#engine_provider_subscription) snapshot taken when a provider request failed. Present only when the request went to the `subscriptionLookup` provider while no looked-up key was applied (any state other than `applied`). It says why the request may have had no key; `message` is unchanged. |
 
 **Error Codes:**
