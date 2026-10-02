@@ -2,7 +2,7 @@ import { IS_REMOTE } from './engine-bridge'
 import { engineBridge } from '../state'
 import { log } from '../logger'
 import type { EngineDirListing, EngineHostInfo, NewConversationDefaultsPolicy } from '@ion/shared/types'
-import type { ResolvedNewConversationDefaults } from '@ion/shared/types-engine'
+import type { ResolvedNewConversationDefaults, SessionPrincipal } from '@ion/shared/types-engine'
 import type { EnterprisePolicy } from '@ion/shared/types-engine'
 
 /** Returns the bridge singleton.
@@ -104,11 +104,16 @@ interface EnterprisePolicyResponse {
  *
  * The result is a read-only runtime constraint: never persisted to user
  * settings, never user-editable, refreshed only by re-calling this function.
+ *
+ * With `principal`, the engine returns the policy that applies to that
+ * principal. Without one it returns the policy the engine process runs under.
  */
-export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
-  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy')
+export async function getEnterprisePolicy(principal?: SessionPrincipal): Promise<EnterprisePolicy | null> {
+  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy', principalPayload(principal))
   if (result.ok && result.data?.policy) {
     log('engine-bridge-fs', 'getEnterprisePolicy: policy loaded', {
+      attributed: principal !== undefined,
+      asset_scopes: result.data.policy.assetScopes?.length ?? 0,
       allowed_models: result.data.policy.allowedModels?.length ?? 0,
       has_custom_fields: result.data.policy.customFields !== undefined,
       retention_days: result.data.policy.conversationRetentionDays ?? null,
@@ -120,12 +125,16 @@ export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
     })
     return result.data.policy
   }
-  log('engine-bridge-fs', 'getEnterprisePolicy: no enterprise policy', { ok: result.ok })
+  log('engine-bridge-fs', 'getEnterprisePolicy: no enterprise policy', { ok: result.ok, attributed: principal !== undefined })
   return null
 }
 
-export async function resolveNewConversationDefaults(path: string): Promise<ResolvedNewConversationDefaults | null> {
-  const result = await bridge().request<ResolvedNewConversationDefaults>('resolve_new_conversation_defaults', { path })
+function principalPayload(principal: SessionPrincipal | undefined): { principal?: SessionPrincipal } {
+  return principal ? { principal } : {}
+}
+
+export async function resolveNewConversationDefaults(path: string, principal?: SessionPrincipal): Promise<ResolvedNewConversationDefaults | null> {
+  const result = await bridge().request<ResolvedNewConversationDefaults>('resolve_new_conversation_defaults', { path, ...principalPayload(principal) })
   if (!result.ok || !result.data) {
     log('engine-bridge-fs', 'resolveNewConversationDefaults failed', { path, error: result.error ?? 'unknown' })
     return null
@@ -157,8 +166,8 @@ export async function getEnterpriseManagedProjects(): Promise<NonNullable<NewCon
  * Returns null when no enterprise config is present or when the engine has
  * not yet started. The renderer treats null as "no enterprise constraint".
  */
-export async function getEnterprisePolicyNewConversationDefaults(): Promise<NewConversationDefaultsPolicy | null> {
-  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy')
+export async function getEnterprisePolicyNewConversationDefaults(principal?: SessionPrincipal): Promise<NewConversationDefaultsPolicy | null> {
+  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy', principalPayload(principal))
   if (result.ok && result.data?.newConversationDefaults) {
     log('engine-bridge-fs', 'getEnterprisePolicyNewConversationDefaults', { locked: result.data.newConversationDefaults.locked, dir: result.data.newConversationDefaults.baseDirectory, profile: result.data.newConversationDefaults.engineProfileId })
     return result.data.newConversationDefaults

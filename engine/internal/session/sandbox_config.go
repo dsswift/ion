@@ -25,12 +25,12 @@ import (
 func buildSandboxConfig(m *Manager, principal *types.SessionPrincipal) *sandbox.Config {
 	var userCfg *types.SandboxConfig
 	var enterpriseCfg *types.SandboxEnterpriseConfig
-	if m.config != nil {
-		if m.config.Security != nil {
-			userCfg = m.config.Security.Sandbox
+	if policyCfg := m.policyConfig(principal); policyCfg != nil {
+		if policyCfg.Security != nil {
+			userCfg = policyCfg.Security.Sandbox
 		}
-		if m.config.Enterprise != nil {
-			enterpriseCfg = m.config.Enterprise.Sandbox
+		if policyCfg.Enterprise != nil {
+			enterpriseCfg = policyCfg.Enterprise.Sandbox
 		}
 	}
 

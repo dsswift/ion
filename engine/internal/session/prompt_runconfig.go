@@ -63,8 +63,9 @@ func (m *Manager) buildRunConfig(
 
 	// Thread the engine's default model so the run loop can fall back
 	// when a requested model doesn't resolve (e.g. unrecognized tier alias).
-	if m.config != nil && m.config.DefaultModel != "" {
-		runCfg.DefaultModel = m.config.DefaultModel
+	policyCfg := m.policyConfig(principal)
+	if policyCfg != nil && policyCfg.DefaultModel != "" {
+		runCfg.DefaultModel = policyCfg.DefaultModel
 	}
 	if m.config != nil {
 		runCfg.PolicyPrunedProviders = m.config.PolicyPrunedProviders
@@ -163,8 +164,8 @@ func (m *Manager) buildRunConfig(
 	// wireExtensionHooks WRAPS this callback: the enterprise check runs
 	// first, extension hooks second — an extension can be stricter than
 	// enterprise policy but can never override an enterprise block.
-	if m.config != nil && m.config.Enterprise != nil {
-		capturedEnterprise := m.config.Enterprise
+	if policyCfg != nil && policyCfg.Enterprise != nil {
+		capturedEnterprise := policyCfg.Enterprise
 		capturedTelem := telemCollector
 		capturedPrincipal := principal
 		runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {

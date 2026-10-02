@@ -25,9 +25,14 @@ Theme selection is **per device**: the desktop's theme is the `selectedTheme` se
 | Root | Scope | Precedence |
 |------|-------|------------|
 | `~/.ion/themes/<pack-id>/` | Per-user | Shadowed by system on id collision |
-| `/Library/Application Support/Ion/themes/<pack-id>/` (macOS) | Machine (MDM drop target) | Wins on id collision |
+| `/Library/Application Support/Ion/themes/<pack-id>/` (macOS) | Machine (MDM drop target) | Wins over the per-user root on id collision |
+| `/Library/Application Support/Ion/accounts/<scope>/themes/<pack-id>/` (macOS) | Some accounts on the machine (MDM drop target) | Wins over both on id collision |
 
-On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/themes`. The directory name must equal the manifest `id` and match `^[a-z0-9][a-z0-9-]{0,63}$`. Packs are discovered at app start, re-scanned on every iOS sync, and watched live (a pack dropped while the app runs applies without a restart).
+On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/themes`. The account root sits beside it on each platform: `%PROGRAMDATA%\Ion\accounts\<scope>\themes` and `/etc/ion/accounts/<scope>/themes`.
+
+A pack in an account root is offered only to accounts whose enterprise policy resolves that scope. An administrator names the scope with `assetScope` on an [account policy](../enterprise/sealed-config.md#account-policies), so two people signed in to one host can each get their own branded pack, even under the same pack id. When several scopes apply, a later one wins an id collision.
+
+ The directory name must equal the manifest `id` and match `^[a-z0-9][a-z0-9-]{0,63}$`. Packs are discovered at app start, re-scanned on every iOS sync, and watched live (a pack dropped while the app runs applies without a restart).
 
 ## Manifest format
 

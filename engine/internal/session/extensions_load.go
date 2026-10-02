@@ -39,9 +39,10 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		}
 
 		// Enterprise required hooks prepended before extension loads
-		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
-			hooks := make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
-			for i, h := range m.config.Enterprise.RequiredHooks {
+		policyCfg := m.policyConfig(s.principal)
+		if policyCfg != nil && policyCfg.Enterprise != nil && len(policyCfg.Enterprise.RequiredHooks) > 0 {
+			hooks := make([]struct{ Event, Handler string }, len(policyCfg.Enterprise.RequiredHooks))
+			for i, h := range policyCfg.Enterprise.RequiredHooks {
 				hooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
 			}
 			host.RegisterRequiredHooks(hooks)
@@ -56,8 +57,8 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		// Enterprise extension allowlist (feature 0011 / D-020, issue #308):
 		// carry the sealed allowlist into the host so Host.Load can enforce it
 		// at the single load chokepoint. Empty means no restriction.
-		if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.ExtensionAllowlist) > 0 {
-			extCfg.ExtensionAllowlist = m.config.Enterprise.ExtensionAllowlist
+		if policyCfg != nil && policyCfg.Enterprise != nil && len(policyCfg.Enterprise.ExtensionAllowlist) > 0 {
+			extCfg.ExtensionAllowlist = policyCfg.Enterprise.ExtensionAllowlist
 		}
 		if err := host.Load(extPath, extCfg); err != nil {
 			stderrTail := host.StderrTail()

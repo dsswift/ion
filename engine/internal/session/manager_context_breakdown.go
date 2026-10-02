@@ -122,8 +122,8 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 		sessionMemory:  s.sessionMemory,
 		runopts:        buildRunOptions(s, "", nil),
 	}
-	if snap.model == "" && m.config != nil {
-		snap.model = m.config.DefaultModel
+	if cfg := m.policyConfig(s.principal); snap.model == "" && cfg != nil {
+		snap.model = cfg.DefaultModel
 	}
 	m.mu.RUnlock()
 

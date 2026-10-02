@@ -38,8 +38,8 @@ func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
 	if windowModel == "" {
 		windowModel = retainedModel
 	}
-	if windowModel == "" && m.config != nil {
-		windowModel = m.config.DefaultModel
+	if cfg := m.policyConfig(s.principal); windowModel == "" && cfg != nil {
+		windowModel = cfg.DefaultModel
 	}
 	ctxWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {

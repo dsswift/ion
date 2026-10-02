@@ -17,6 +17,7 @@ import type { Scope } from '@ion/shared/studio-wire/types'
 import * as reads from '../store/session-reads'
 import { getActiveInstanceMessages } from '../store/session-store-facade'
 import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults, resolveNewConversationDefaults } from '../engine/engine-bridge-fs'
+import { ambientSessionPrincipal } from '../engine/engine-bridge-conversations'
 import { engineBridge, sessionPlane } from '../state'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
@@ -114,14 +115,16 @@ export const SESSION_ACTIONS: Record<string, SessionActionSpec> = {
 
   // Enterprise policy and the new-conversation defaults resolver. Both are
   // reads over the ENVIRONMENT's own engine config, which is exactly what a
-  // remote client needs before it can offer a directory picker.
-  'policy.getFull': wrap('policy.getFull', 'conversations:read', () => getEnterprisePolicy()),
+  // remote client needs before it can offer a directory picker. Each is read
+  // for the calling principal, so an account-scoped policy reaches only the
+  // account it is for.
+  'policy.getFull': wrap('policy.getFull', 'conversations:read', () => getEnterprisePolicy(ambientSessionPrincipal())),
   // The NewConversationDefaults section alone, which the preferences store
   // loads at boot; `policy.getFull` carries it too, but the renderer applies
   // the two on different schedules (see preferences-bootstrap.ts).
-  'policy.getNewConversationDefaults': wrap('policy.getNewConversationDefaults', 'conversations:read', () => getEnterprisePolicyNewConversationDefaults()),
+  'policy.getNewConversationDefaults': wrap('policy.getNewConversationDefaults', 'conversations:read', () => getEnterprisePolicyNewConversationDefaults(ambientSessionPrincipal())),
   'session.resolveNewConversationDefaults': wrap('session.resolveNewConversationDefaults', 'conversations:read', (a) =>
-    resolveNewConversationDefaults(str(a[0])),
+    resolveNewConversationDefaults(str(a[0]), ambientSessionPrincipal()),
   ),
 
   // The active instance's messages for one tab, as the Remote category's

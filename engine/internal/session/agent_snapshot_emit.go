@@ -66,13 +66,13 @@ func (m *Manager) emitAgentSnapshot(key, reason string, force bool, snapshot []t
 	if s == nil || s.agentEmitter == nil {
 		// No session to read a conversation id from; the clamp still logs,
 		// correlated by session key alone.
-		projected, reports := agents.ClampSnapshotCopy(snapshot, m.agentMetadataLimits(),
+		projected, reports := agents.ClampSnapshotCopy(snapshot, m.agentMetadataLimits(nil),
 			agents.ClampAttribution{Key: key})
 		m.publishAgentSnapshot(key, reason, force, projected, reports)
 		return
 	}
 
-	metadataLimits := m.agentMetadataLimits()
+	metadataLimits := m.agentMetadataLimits(s.principal)
 	attr := agents.ClampAttribution{Key: key, ConversationID: s.conversationID}
 	projected, reports := agents.ClampSnapshotCopy(snapshot, metadataLimits, attr)
 	limits := m.agentStateEmitLimits()

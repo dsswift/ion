@@ -113,8 +113,12 @@ func (m *Manager) slashBoundaryServingModel(s *engineSession, opts *types.RunOpt
 	if s != nil && s.lastModel != "" {
 		return s.lastModel
 	}
-	if m.config != nil {
-		return m.config.DefaultModel
+	var principal *types.SessionPrincipal
+	if opts != nil {
+		principal = opts.Principal
+	}
+	if cfg := m.policyConfig(principal); cfg != nil {
+		return cfg.DefaultModel
 	}
 	return ""
 }

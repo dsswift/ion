@@ -136,8 +136,11 @@ export interface HelloDeps {
   serverVersion: string
   engineVersion: () => string
   buildSnapshot: (principal: StudioPrincipalSummary, view: StudioView) => StudioSnapshot
-  /** Waits for the server's first policy read, so a welcome never carries a policy that is merely not loaded yet. */
-  getEnterprisePolicy: () => EnterprisePolicy | null | Promise<EnterprisePolicy | null>
+  /**
+   * The policy for the principal being welcomed. Waits for the server's first
+   * policy read, so a welcome never carries a policy that is merely not loaded yet.
+   */
+  getEnterprisePolicy: (principal: StudioPrincipalSummary, claims?: Record<string, unknown>) => EnterprisePolicy | null | Promise<EnterprisePolicy | null>
   /** The relays a paired client is told about on every welcome. Absent: none are told. */
   advertisedRelays?: () => EnvironmentRelay[]
   /** The LAN addresses this server answers on. See `studio_welcome.directAddresses`. */
@@ -269,7 +272,7 @@ export async function handleHello(conn: Connection, hello: Extract<StudioFrame, 
   conn.authExpiresAt = auth.expiresAt ?? null
   registerPrincipal(auth.principal, auth.claims)
 
-  const enterprisePolicy = await deps.getEnterprisePolicy()
+  const enterprisePolicy = await deps.getEnterprisePolicy(auth.principal, auth.claims)
   const snapshot = deps.buildSnapshot(auth.principal, conn.view)
 
   conn.send({

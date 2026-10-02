@@ -31,12 +31,16 @@ import (
 // is customFields['ion-desktop'].environments, additively unioned with
 // whatever the machine layer already declared there (machine wins a URL
 // collision). See enterprise_user.go for the full per-user-layer contract.
+//
+// The machine policy may itself carry accountPolicies. Those that match the
+// engine's own OS account are composed in here; those that name a principal
+// stay on the result for ResolveEnterpriseForPrincipal. See account_policy.go.
 func LoadEnterpriseConfig() *types.EnterpriseConfig {
 	return loadEnterpriseConfig(runtime.GOOS)
 }
 
 func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
-	cfg := loadMachineEnterpriseConfig(goos)
+	cfg := resolveProcessAccountScope(loadMachineEnterpriseConfig(goos))
 	return mergeUserEnvironmentLayer(cfg, goos)
 }
 
@@ -257,6 +261,12 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 		result.CustomFields = overlay.CustomFields
 	}
 	result.Messages = mergePolicyMessages(result.Messages, overlay.Messages)
+	// AccountPolicies accumulate, so each drop-in can carry one group's policy.
+	if len(overlay.AccountPolicies) > 0 {
+		merged := make([]types.AccountPolicy, 0, len(result.AccountPolicies)+len(overlay.AccountPolicies))
+		merged = append(merged, result.AccountPolicies...)
+		result.AccountPolicies = append(merged, overlay.AccountPolicies...)
+	}
 	return &result
 }
 

@@ -23,6 +23,7 @@
 
 import { log as _log } from './logger'
 import { enterprisePolicyCache } from './state'
+import { newConversationDefaultsFor } from './enterprise-policy-principal'
 import { broadcast } from './broadcast'
 import { handleSettingsChangeForClientTools } from './studio-client-tool-sync'
 import { writeSettings } from './persistence/settings-store'
@@ -71,7 +72,9 @@ export function broadcastDesktopSettingsSnapshot(reason: string): void {
   // whether it may change the Environment depends on its own scopes.
   let sent = 0
   for (const conn of conns) {
-    const event = buildDesktopSettingsSnapshot(conn.principal!.subject, conn.scopes, enterprisePolicyCache.newConversationDefaults)
+    const subject = conn.principal!.subject
+    const defaults = newConversationDefaultsFor(subject)
+    const event = buildDesktopSettingsSnapshot(subject, conn.scopes, defaults === undefined ? enterprisePolicyCache.newConversationDefaults : defaults)
     if (sendThinEventTo(conn, event)) sent++
   }
   log('settings_broadcast: sent', { reason, connections: conns.length, sent })

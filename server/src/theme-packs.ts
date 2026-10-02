@@ -3,12 +3,17 @@
  * desktop/iOS color theme packs.
  *
  * Discovery, not enumeration: the pool is whatever pack directories exist.
- * Two roots are scanned:
- *   - user:   ~/.ion/themes                          (user-installed packs)
- *   - system: /Library/Application Support/Ion/themes (machine-scope MDM
- *             drops; per-platform equivalents below)
- * A system pack whose id collides with a user pack shadows it — enterprise
- * wins. Built-in theme ids are reserved and refused (see theme-pack-types).
+ * These roots are scanned, in this order:
+ *   - user:    ~/.ion/themes                          (user-installed packs)
+ *   - system:  /Library/Application Support/Ion/themes (machine-scope MDM
+ *              drops; per-platform equivalents below)
+ *   - account: one `accounts/<scope>/themes` directory beside the system
+ *              root for each asset scope the enterprise policy resolves for
+ *              this account. A pack there reaches only the accounts whose
+ *              policy names that scope.
+ * A later root shadows an earlier one on an id collision, so enterprise wins
+ * and an account-scoped pack wins over a machine-wide one. Built-in theme ids
+ * are reserved and refused (see theme-pack-types).
  *
  * Manifest validation is shared with the renderer + tests
  * (`shared/theme-pack-types.ts`). Asset reads are containment-guarded: a
@@ -18,8 +23,9 @@
  */
 import { createHash } from 'crypto'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from 'fs'
-import { extname, join, resolve, sep } from 'path'
+import { dirname, extname, join, resolve, sep } from 'path'
 import { dataDir } from './paths'
+import { currentEnterprisePolicy } from './enterprise-policy-source'
 import { log as _log } from './logger'
 import { darkColors } from './renderer/theme/palette-dark'
 import {
@@ -67,6 +73,30 @@ export function systemThemesRoot(): string {
   if (process.platform === 'win32') return join(process.env.PROGRAMDATA ?? 'C:\\ProgramData', 'Ion', 'themes')
   return '/etc/ion/themes'
 }
+
+/** One directory segment, the same shape the engine accepts for a scope. */
+const ASSET_SCOPE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
+
+/**
+ * Account-scope roots for the asset scopes this account's enterprise policy
+ * resolves, in policy order. They sit beside the system root, so only an
+ * administrator can write them.
+ */
+export function accountThemesRoots(): string[] {
+  const scopes = currentEnterprisePolicy()?.assetScopes ?? []
+  const roots: string[] = []
+  for (const scope of scopes) {
+    if (typeof scope !== 'string' || !ASSET_SCOPE_RE.test(scope)) {
+      log('asset scope ignored: not a valid scope name', { scope: String(scope) })
+      continue
+    }
+    roots.push(join(dirname(systemThemesRoot()), 'accounts', scope, 'themes'))
+  }
+  return roots
+}
+
+/** Where each scanned pack lives on disk, by pack id. Rebuilt by every scan. */
+let packDirs = new Map<string, string>()
 
 // ─── Scan ───
 
@@ -129,7 +159,7 @@ function validateAssets(
   return out
 }
 
-function scanRoot(root: string, source: 'user' | 'system', into: Map<string, LoadedThemePack>): void {
+function scanRoot(root: string, source: 'user' | 'system', into: Map<string, LoadedThemePack>, packDirsInto: Map<string, string>): void {
   if (!existsSync(root)) return
   let dirs: string[] = []
   try {
@@ -173,8 +203,9 @@ function scanRoot(root: string, source: 'user' | 'system', into: Map<string, Loa
       continue
     }
     if (into.has(dir) && source === 'system') {
-      log('system pack shadows user pack', { pack_id: dir })
+      log('system pack shadows an earlier pack', { pack_id: dir, root })
     }
+    packDirsInto.set(dir, packDir)
     into.set(dir, {
       manifest: result.pack,
       source,
@@ -187,12 +218,18 @@ function scanRoot(root: string, source: 'user' | 'system', into: Map<string, Loa
 
 function scan(): LoadedThemePack[] {
   const found = new Map<string, LoadedThemePack>()
-  // User first, then system — system overwrites on collision (enterprise wins).
-  scanRoot(userThemesRoot(), 'user', found)
-  scanRoot(systemThemesRoot(), 'system', found)
+  const dirs = new Map<string, string>()
+  // User first, then system, then this account's scopes. A later root
+  // overwrites on collision (enterprise wins; an account scope wins last).
+  scanRoot(userThemesRoot(), 'user', found, dirs)
+  scanRoot(systemThemesRoot(), 'system', found, dirs)
+  const accountRoots = accountThemesRoots()
+  for (const root of accountRoots) scanRoot(root, 'system', found, dirs)
+  packDirs = dirs
   const packs = [...found.values()].sort((a, b) => a.manifest.id.localeCompare(b.manifest.id))
   log('scanned', {
     count: packs.length,
+    account_roots: accountRoots.length,
     ids: packs.map((p) => p.manifest.id).join(','),
   })
   return packs
@@ -217,7 +254,7 @@ function fingerprint(packs: LoadedThemePack[]): string {
 }
 
 /**
- * Re-scan both roots. Returns true when the pack set changed; on change,
+ * Re-scan every root. Returns true when the pack set changed; on change,
  * every registered listener fires (renderer push, settings-snapshot
  * rebroadcast, iOS theme-manifest rebroadcast).
  */
@@ -250,14 +287,14 @@ let watchers: FSWatcher[] = []
 let rescanTimer: NodeJS.Timeout | null = null
 
 /**
- * Watch both roots for pack installs/removals/edits (MDM drops land while
+ * Watch every root for pack installs/removals/edits (MDM drops land while
  * the app runs). Events are debounced into one rescan. The user root may
  * not exist yet on first launch — watch what exists; a later install is
  * still caught by the sync-time rescan in the remote handlers.
  */
 export function startThemePackWatcher(): void {
   stopThemePackWatcher()
-  for (const root of [userThemesRoot(), systemThemesRoot()]) {
+  for (const root of [userThemesRoot(), systemThemesRoot(), ...accountThemesRoots()]) {
     if (!existsSync(root)) continue
     try {
       const w = watch(root, { recursive: true }, () => {
@@ -303,7 +340,11 @@ export function customThemeChoices(): Array<{ value: string; label: string }> {
 }
 
 function assetDataUrl(pack: LoadedThemePack, asset: LoadedThemeAsset): string | null {
-  const packDir = join(pack.source === 'user' ? userThemesRoot() : systemThemesRoot(), pack.manifest.id)
+  const packDir = packDirs.get(pack.manifest.id)
+  if (!packDir) {
+    log('asset read refused: pack not in the current scan', { pack_id: pack.manifest.id })
+    return null
+  }
   const bytes = readThemeAssetBytes(packDir, asset.relPath)
   if (!bytes) return null
   return `data:${asset.mime};base64,${bytes.toString('base64')}`
@@ -449,6 +490,7 @@ export function readIosThemeAsset(
  * temp directories) so each test starts from a clean scan. */
 export function resetThemePacksForTest(roots?: { user: string; system: string }): void {
   cache = null
+  packDirs = new Map()
   changeListeners.clear()
   stopThemePackWatcher()
   rootOverrides = roots ?? null

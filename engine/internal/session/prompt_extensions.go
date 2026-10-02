@@ -31,9 +31,9 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	if m.config != nil && m.config.Timeouts != nil {
 		rpcTimeout = m.config.Timeouts.ExtensionRpc()
 	}
-	if m.config != nil && m.config.Enterprise != nil && len(m.config.Enterprise.RequiredHooks) > 0 {
-		requiredHooks = make([]struct{ Event, Handler string }, len(m.config.Enterprise.RequiredHooks))
-		for i, h := range m.config.Enterprise.RequiredHooks {
+	if policyCfg := m.policyConfig(s.principal); policyCfg != nil && policyCfg.Enterprise != nil && len(policyCfg.Enterprise.RequiredHooks) > 0 {
+		requiredHooks = make([]struct{ Event, Handler string }, len(policyCfg.Enterprise.RequiredHooks))
+		for i, h := range policyCfg.Enterprise.RequiredHooks {
 			requiredHooks[i] = struct{ Event, Handler string }{Event: h.Event, Handler: h.Handler}
 		}
 	}

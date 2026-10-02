@@ -27,6 +27,24 @@
       ]
     },
     {
+      "id": "account-policy",
+      "term": "Account Policy",
+      "definition": "Enterprise policy an administrator scopes to specific accounts on a host that serves more than one person. It lives inside the machine policy, matches by operating-system account or by Session Principal, and composes under the machine policy: it can restrict further and never relax.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type AccountPolicy struct",
+          "path": "engine/internal/types/config_account_policy.go"
+        }
+      ]
+    },
+    {
       "id": "account-setting",
       "term": "Account Setting",
       "definition": "A setting that belongs to one person but only makes sense on one Environment, because it names models or directories that exist there. It is stored in that server's per-identity overlay. Studio labels it Yours on this server.",

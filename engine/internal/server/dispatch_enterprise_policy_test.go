@@ -316,20 +316,12 @@ func TestGetEnterprisePolicy_FullBlobNullWhenNoConfig(t *testing.T) {
 func TestGetEnterprisePolicy_CarriesOverrides(t *testing.T) {
 	mb := newMockBackend()
 	srv := newShortPathTestServer(t, mb)
-	srv.SetConfig(&types.EngineRuntimeConfig{
-		Enterprise: &types.EnterpriseConfig{
-			Overrides: []types.PolicyOverride{{
-				Field: "providers.gateway.baseURL", Reason: types.PolicyOverrideProviderPinned,
-				UserValue: "https://rogue.example.org", EffectiveValue: "https://gateway.example.org",
-			}},
-		},
-	})
-
+	srv.SetConfig(&types.EngineRuntimeConfig{Enterprise: &types.EnterpriseConfig{
+		Overrides: []types.PolicyOverride{{Field: "providers.gateway.baseURL", Reason: types.PolicyOverrideProviderPinned, UserValue: "https://rogue.example.org", EffectiveValue: "https://gateway.example.org"}},
+	}})
 	conn := dialServer(t, srv)
 	t.Cleanup(func() { conn.Close() })
-
 	sendJSON(t, conn, map[string]interface{}{"cmd": "get_enterprise_policy", "requestId": "req-ent-overrides"})
-
 	rawPolicy, _, ok := fullPolicyResult(t, readLines(t, conn, 3, 2*time.Second))
 	if !ok {
 		t.Fatalf("expected ok=true, got ok=false")
@@ -340,11 +332,72 @@ func TestGetEnterprisePolicy_CarriesOverrides(t *testing.T) {
 	if err := json.Unmarshal(rawPolicy, &decoded); err != nil {
 		t.Fatalf("decode policy: %v", err)
 	}
-	want := []map[string]string{{
-		"field": "providers.gateway.baseURL", "reason": "managed_provider_pinned",
-		"userValue": "https://rogue.example.org", "effectiveValue": "https://gateway.example.org",
-	}}
+	want := []map[string]string{{"field": "providers.gateway.baseURL", "reason": "managed_provider_pinned", "userValue": "https://rogue.example.org", "effectiveValue": "https://gateway.example.org"}}
 	if !reflect.DeepEqual(decoded.Overrides, want) {
 		t.Fatalf("overrides mismatch\n got: %v\nwant: %v", decoded.Overrides, want)
+	}
+}
+
+// TestGetEnterprisePolicy_PerPrincipal pins that the policy returned is the
+// one resolved for the principal the command names, that two principals get
+// different policies from one engine, and that the reply never carries the
+// account policy list.
+func TestGetEnterprisePolicy_PerPrincipal(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	srv.SetConfig(&types.EngineRuntimeConfig{Enterprise: &types.EnterpriseConfig{
+		AllowedModels:   []string{"model-a", "model-b"},
+		AccountPolicies: []types.AccountPolicy{{Name: "contractors", Match: types.AccountMatch{Subjects: []string{"contractor@example.com"}}, AssetScope: "contractors", Policy: &types.EnterpriseConfig{AllowedModels: []string{"model-a"}}}},
+	}})
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+	read := func(requestID string, principal map[string]interface{}) (map[string]json.RawMessage, string) {
+		t.Helper()
+		cmd := map[string]interface{}{"cmd": "get_enterprise_policy", "requestId": requestID}
+		if principal != nil {
+			cmd["principal"] = principal
+		}
+		sendJSON(t, conn, cmd)
+		result := findResult(t, readLines(t, conn, 3, 2*time.Second))
+		if result == nil || !result.OK {
+			t.Fatalf("%s: no ok result", requestID)
+		}
+		raw, err := json.Marshal(result.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var data struct {
+			Policy     map[string]json.RawMessage `json:"policy"`
+			PolicyHash string                     `json:"policyHash"`
+		}
+		if err := json.Unmarshal(raw, &data); err != nil {
+			t.Fatal(err)
+		}
+		return data.Policy, data.PolicyHash
+	}
+	contractor, contractorHash := read("req-contractor", map[string]interface{}{"subject": "contractor@example.com", "provider": "entra", "kind": "operator"})
+	other, otherHash := read("req-other", map[string]interface{}{"subject": "it@example.com", "provider": "entra", "kind": "operator"})
+	unattributed, _ := read("req-none", nil)
+	if got := string(contractor["allowedModels"]); got != `["model-a"]` {
+		t.Errorf("contractor allowedModels = %s", got)
+	}
+	if got := string(contractor["assetScopes"]); got != `["contractors"]` {
+		t.Errorf("contractor assetScopes = %s", got)
+	}
+	for name, policy := range map[string]map[string]json.RawMessage{"other": other, "unattributed": unattributed} {
+		if got := string(policy["allowedModels"]); got != `["model-a","model-b"]` {
+			t.Errorf("%s allowedModels = %s, want the machine list", name, got)
+		}
+		if _, present := policy["assetScopes"]; present {
+			t.Errorf("%s reply carries another account's asset scope", name)
+		}
+	}
+	for name, policy := range map[string]map[string]json.RawMessage{"contractor": contractor, "other": other, "unattributed": unattributed} {
+		if _, present := policy["accountPolicies"]; present {
+			t.Errorf("%s reply carries the account policy list", name)
+		}
+	}
+	if contractorHash == otherHash {
+		t.Error("two different policies must hash differently")
 	}
 }

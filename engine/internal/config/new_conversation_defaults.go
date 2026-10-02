@@ -23,8 +23,11 @@ type ResolvedNewConversationDefaults struct {
 // ResolveNewConversationDefaults resolves the layered default policy for path.
 // It is safe to call per request: unlike LoadConfig it has no process-global
 // logging side effects. An empty path deliberately resolves global defaults.
-func ResolveNewConversationDefaults(path string) ResolvedNewConversationDefaults {
-	cfg := mergeConfigLayers(path)
+//
+// principal is the account the defaults are for; the enterprise block used is
+// the one resolved for it.
+func ResolveNewConversationDefaults(path string, principal ...*types.SessionPrincipal) ResolvedNewConversationDefaults {
+	cfg := mergeConfigLayersFor(path, principal)
 	result := resolveNewConversationDefaults(path, cfg)
 	utils.LogWithFields(utils.LevelDebug, "config", "resolved new conversation defaults", map[string]any{
 		"path": path, "profile_name": result.ProfileName, "profile_id": result.ProfileID,
@@ -39,7 +42,7 @@ func resolveNewConversationDefaults(path string, cfg *types.EngineRuntimeConfig)
 		return result
 	}
 	policy := *cfg.NewConversationDefaults
-	for _, project := range ManagedProjects() {
+	for _, project := range managedProjects(cfg.Enterprise) {
 		if path != project.Directory {
 			continue
 		}
@@ -82,7 +85,10 @@ func resolveNewConversationDefaults(path string, cfg *types.EngineRuntimeConfig)
 // A malformed duplicate or multiple defaults is ignored as a whole so an MDM
 // mistake cannot make a client choose an arbitrary project.
 func ManagedProjects() []types.ManagedProjectPolicy {
-	enterprise := LoadEnterpriseConfig()
+	return managedProjects(LoadEnterpriseConfig())
+}
+
+func managedProjects(enterprise *types.EnterpriseConfig) []types.ManagedProjectPolicy {
 	if enterprise == nil || enterprise.NewConversationDefaults == nil {
 		return nil
 	}
@@ -116,12 +122,12 @@ func ManagedProjects() []types.ManagedProjectPolicy {
 
 // boundary. This is the authority boundary: clients may use the resolver for a
 // picker, but they cannot bypass a lock by sending different profile paths.
-func ApplyNewConversationDefaults(sessionConfig types.EngineConfig) (types.EngineConfig, error) {
+func ApplyNewConversationDefaults(sessionConfig types.EngineConfig, principal ...*types.SessionPrincipal) (types.EngineConfig, error) {
 	projectDirectory := sessionConfig.ProjectDirectory
 	if projectDirectory == "" {
 		projectDirectory = sessionConfig.WorkingDirectory
 	}
-	resolved := ResolveNewConversationDefaults(projectDirectory)
+	resolved := ResolveNewConversationDefaults(projectDirectory, principal...)
 	if !resolved.ProfileLocked {
 		return sessionConfig, nil
 	}

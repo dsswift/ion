@@ -14,9 +14,9 @@
  */
 export interface ResourceLimits {
   /** Maximum concurrent engine sessions. Absent = unlimited. */
-  maxSessions?: number
+  maxSessions?: number;
   /** Maximum concurrently-running dispatched agents per session. Absent = unlimited. */
-  maxAgentsPerSession?: number
+  maxAgentsPerSession?: number;
 }
 
 /**
@@ -25,10 +25,10 @@ export interface ResourceLimits {
  * usually absent from the enterprise block.
  */
 export interface EnterpriseProviderDefinition {
-  apiKey?: string
-  baseURL?: string
-  authHeader?: string
-  backend?: string
+  apiKey?: string;
+  baseURL?: string;
+  authHeader?: string;
+  backend?: string;
 }
 
 /**
@@ -36,8 +36,8 @@ export interface EnterpriseProviderDefinition {
  * Mirrors Go's ExtensionAllowlistEntry.
  */
 export interface ExtensionAllowlistEntry {
-  id: string
-  sha256?: string
+  id: string;
+  sha256?: string;
 }
 
 /**
@@ -46,11 +46,11 @@ export interface ExtensionAllowlistEntry {
  * source cannot set it.
  */
 export interface ManagedModeStatus {
-  managed: boolean
+  managed: boolean;
   /** No machine policy resolved. The engine refuses every prompt. */
-  policyAbsent?: boolean
+  policyAbsent?: boolean;
   /** ION_ENTERPRISE_CONFIG was set and ignored. */
-  overrideRefused?: boolean
+  overrideRefused?: boolean;
 }
 
 /**
@@ -59,13 +59,13 @@ export interface ManagedModeStatus {
  * engine may add codes, so an unknown one is a plain string.
  */
 export type PolicyOverrideReason =
-  | 'managed_provider_pinned'
-  | 'provider_not_allowed'
-  | 'model_not_allowed'
-  | 'model_blocked'
-  | 'mcp_server_denied'
-  | 'mcp_server_not_allowed'
-  | (string & {})
+  | "managed_provider_pinned"
+  | "provider_not_allowed"
+  | "model_not_allowed"
+  | "model_blocked"
+  | "mcp_server_denied"
+  | "mcp_server_not_allowed"
+  | (string & {});
 
 /**
  * One user or project config value that enterprise enforcement replaced or
@@ -74,12 +74,12 @@ export type PolicyOverrideReason =
  */
 export interface PolicyOverride {
   /** Config path in engine.json spelling, e.g. `providers.<key>.baseURL`. */
-  field: string
-  reason: PolicyOverrideReason
+  field: string;
+  reason: PolicyOverrideReason;
   /** The displaced value. Absent for a removed entry and for a secret field. */
-  userValue?: string
+  userValue?: string;
   /** The value in effect. Absent when removed outright and for a secret field. */
-  effectiveValue?: string
+  effectiveValue?: string;
 }
 
 /**
@@ -92,15 +92,15 @@ export interface PolicyOverride {
  */
 export interface EnterprisePolicy {
   /** Present only on an installation carrying the managed-mode marker. */
-  managedMode?: ManagedModeStatus
+  managedMode?: ManagedModeStatus;
   /** Lower-layer config values enforcement displaced, sorted by field. Engine-stamped. */
-  overrides?: PolicyOverride[]
+  overrides?: PolicyOverride[];
   /** Models the enterprise permits. Empty/absent = no restriction. */
-  allowedModels?: string[]
+  allowedModels?: string[];
   /** Models the enterprise blocks. */
-  blockedModels?: string[]
+  blockedModels?: string[];
   /** Providers the enterprise permits. Empty/absent = no restriction. */
-  allowedProviders?: string[]
+  allowedProviders?: string[];
   /**
    * Enterprise-pinned provider definitions (feature 0004). Each entry replaces
    * the user-layer provider for the same key (baseURL/authHeader/backend) at
@@ -108,39 +108,45 @@ export interface EnterprisePolicy {
    * engine enforces this in EnforceEnterprise; the desktop reads the blob as a
    * read-only runtime constraint. Keyed by provider id.
    */
-  providers?: Record<string, EnterpriseProviderDefinition>
+  providers?: Record<string, EnterpriseProviderDefinition>;
   /**
    * Enterprise-owned engine identity config. `requireOperatorIdentity` blocks
    * every session until an interactive operator grant is valid.
    */
   auth?: {
-    identityProvider?: string
-    requireOperatorIdentity?: boolean
-    oauth?: Record<string, unknown>
-  }
+    identityProvider?: string;
+    requireOperatorIdentity?: boolean;
+    oauth?: Record<string, unknown>;
+  };
   /**
    * Extension loading allowlist (feature 0011 / D-020, issue #308). When
    * non-empty, only listed extensions load; an optional per-entry sha256 pins
    * the entry-point integrity. Empty/absent = no restriction. Enforced engine-
    * side at extension load.
    */
-  extensionAllowlist?: ExtensionAllowlistEntry[]
+  extensionAllowlist?: ExtensionAllowlistEntry[];
   /** Session/agent concurrency caps (sealed ceiling, enforced engine-side). */
-  resourceLimits?: ResourceLimits
+  resourceLimits?: ResourceLimits;
   /**
    * TTL in days for locally persisted conversations (D-018). The desktop's
    * cleanup job deletes conversations older than this. Absent = no retention
    * policy (conversations kept indefinitely).
    */
-  conversationRetentionDays?: number
+  conversationRetentionDays?: number;
   newConversationDefaults?: {
-    baseDirectory?: string
-    profileName?: string
-    profileLocked?: boolean
-    engineProfileId?: string
-    locked?: boolean
-    projects?: Array<{ directory: string; name?: string; default?: boolean; profileName?: string; profileLocked?: boolean }>
-  }
+    baseDirectory?: string;
+    profileName?: string;
+    profileLocked?: boolean;
+    engineProfileId?: string;
+    locked?: boolean;
+    projects?: Array<{
+      directory: string;
+      name?: string;
+      default?: boolean;
+      profileName?: string;
+      profileLocked?: boolean;
+    }>;
+  };
   /**
    * Suppresses the desktop's operator notifications for
    * engine_telemetry_health observations (issue #379). The desktop still
@@ -149,19 +155,27 @@ export interface EnterprisePolicy {
    * `installTelemetryHealthConsumer`, not captured once, so a policy change
    * takes effect immediately.
    */
-  disableTelemetryHealthNotifications?: boolean
+  disableTelemetryHealthNotifications?: boolean;
   /**
    * Opaque client-config namespace. Desktop-specific constraints live under
    * customFields['ion-desktop'] by convention; the engine passes this
    * through without validating or interpreting it.
    */
-  customFields?: Record<string, unknown>
+  customFields?: Record<string, unknown>;
+  /**
   /**
    * Replacement text per Policy Failure identifier (see policy-failure.ts).
    * The engine applies it to the failures it reports; a client applies it to
    * the failures it words itself.
    */
-  messages?: Record<string, string>
+  messages?: Record<string, string>;
+  /**
+   * Administrator-defined asset scopes that apply to the account this policy
+   * was resolved for, in policy order. Stamped by the engine from the account
+   * policies that matched; a consumer maps a scope to its own on-disk
+   * location (theme packs: `accounts/<scope>/themes` beside the system root).
+   */
+  assetScopes?: string[];
 }
 
 /**
@@ -178,13 +192,13 @@ export interface IonServerPolicyFields {
    * saved value. Absent means the server's admins decide.
    */
   agentSettingsEdits?: {
-    allowed: boolean
-  }
+    allowed: boolean;
+  };
   /**
    * The mutability class of this server's Environment and Account settings,
    * per key (`enterprise-settings-policy`). Enforced for every connection.
    */
-  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
+  settingsPolicy?: import("./enterprise-settings-policy").SettingsPolicyFields;
 }
 
 /**
@@ -195,7 +209,7 @@ export interface IonServerPolicyFields {
  */
 export interface IonDesktopPolicyFields {
   /** When true, the auto-updater is fully disabled (enterprise-pinned version; D-012). */
-  disableAutoUpdate?: boolean
+  disableAutoUpdate?: boolean;
   /**
    * Enterprise theme enforcement. `themeId` names a built-in theme or an
    * MDM-installed theme pack (system root, see main/theme-packs.ts).
@@ -205,9 +219,9 @@ export interface IonDesktopPolicyFields {
    * user may still change it.
    */
   themePolicy?: {
-    themeId: string
-    locked?: boolean
-  }
+    themeId: string;
+    locked?: boolean;
+  };
   /**
    * What the macOS installer package does when Ion is running. The package
    * scripts read this straight from the Managed Preferences payload
@@ -220,18 +234,18 @@ export interface IonDesktopPolicyFields {
      * `replace` stops Ion, replaces the bundle, and succeeds: the unattended
      * path for a managed push.
      */
-    runningApp?: 'refuse' | 'replace'
+    runningApp?: "refuse" | "replace";
     /** Seconds `replace` waits for the graceful drain before forcing the quit. */
-    drainTimeoutSeconds?: number
-  }
+    drainTimeoutSeconds?: number;
+  };
   /** Managed declarative desktop automations. Never persisted to user files. */
-  automation?: import('./types-automation').EnterpriseAutomationPolicy
+  automation?: import("./types-automation").EnterpriseAutomationPolicy;
   /**
    * Which servers this desktop may add to its own catalog (`mode`, `allowed`,
    * `locked`; see `deriveDesktopEnvironmentPolicy`). Device policy: it
    * governs this machine only and never travels to another client.
    */
-  environmentPolicy?: Record<string, unknown>
+  environmentPolicy?: Record<string, unknown>;
   /**
    * Managed catalog entries (manifest C11, engine children 02/03): servers
    * IT provisions for this machine (machine layer) or this specific person
@@ -241,7 +255,7 @@ export interface IonDesktopPolicyFields {
    * additive only, never a source of removal or lock. Shape mirrors
    * `EnvironmentTarget` (`types-environments.ts`) minus the local-only kind.
    */
-  environments?: Array<Record<string, unknown>>
+  environments?: Array<Record<string, unknown>>;
   /**
    * Task 10 settings partition: additional settings-dialog groups to hide
    * from the LOCAL desktop connection specifically (group ids from
@@ -251,11 +265,11 @@ export interface IonDesktopPolicyFields {
    * which is otherwise trusted to see everything. Absent/empty = the local
    * desktop sees every group.
    */
-  hiddenSettingsGroups?: string[]
+  hiddenSettingsGroups?: string[];
   /**
    * The mutability class of this desktop's Personal and Device settings, per
    * key (`enterprise-settings-policy`). Device policy: it governs the desktop
    * it is installed on, never a client visiting from elsewhere.
    */
-  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
+  settingsPolicy?: import("./enterprise-settings-policy").SettingsPolicyFields;
 }

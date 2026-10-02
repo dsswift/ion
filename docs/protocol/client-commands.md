@@ -65,6 +65,8 @@ Resolve global, project, and enterprise new-conversation defaults without creati
 
 The single result data is one resolved record. The batch result data is `{ "defaults": [...] }` in request order.
 
+An optional `principal` (a SessionPrincipal) resolves the defaults for that account, with every matching [account policy](../enterprise/sealed-config.md#account-policies) applied.
+
 ---
 
 ### send_prompt
@@ -711,6 +713,7 @@ Read the enterprise policy the engine resolved. Stateless -- no session key is r
 |-------------|----------------------------|----------|------------------------------|
 | `cmd`       | `"get_enterprise_policy"`  | yes      | Command discriminator        |
 | `requestId` | string                     | no       | Correlates with ServerResult |
+| `principal` | SessionPrincipal           | no       | The account to resolve the policy for. Every [account policy](../enterprise/sealed-config.md#account-policies) that matches this principal is composed into the reply. Omitted: the reply is the policy the engine process runs under. |
 
 ```json
 {"cmd":"get_enterprise_policy","requestId":"r41"}
@@ -721,7 +724,7 @@ Read the enterprise policy the engine resolved. Stateless -- no session key is r
 | Field                     | Type         | Description                                                                                                   |
 |---------------------------|--------------|---------------------------------------------------------------------------------------------------------------|
 | `newConversationDefaults` | object\|null | The enterprise `NewConversationDefaults` policy object, or `null` when no enterprise config is loaded or no `NewConversationDefaults` section is present. |
-| `policy`                  | object\|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. On a managed installation it is never `null` and carries `managedMode` (`managed`, `policyAbsent`, `overrideRefused`); see [Managed mode](../enterprise/mdm.md#managed-mode). `overrides` lists the user and project config values enforcement displaced; see [Policy override notices](../enterprise/sealed-config.md#policy-override-notices). |
+| `policy`                  | object|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. On a managed installation it is never `null` and carries `managedMode` (`managed`, `policyAbsent`, `overrideRefused`); see [Managed mode](../enterprise/mdm.md#managed-mode). `overrides` lists the user and project config values enforcement displaced; see [Policy override notices](../enterprise/sealed-config.md#policy-override-notices). It never carries `accountPolicies`. `assetScopes` lists the asset scopes of the account policies that matched. |
 | `policyHash`              | string       | SHA-256 hex digest of `policy`'s canonical JSON. Stable across two calls with an unchanged policy; changes whenever the policy does. Lets a consumer detect a policy change without deep-comparing the whole blob. |
 
 ```json

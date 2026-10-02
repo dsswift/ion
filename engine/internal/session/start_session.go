@@ -8,7 +8,6 @@ import (
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
@@ -49,7 +48,7 @@ func (m *Manager) startSession(
 		defer func() { m.releaseForkKey(key, reservation) }()
 	}
 	var err error
-	config, err = ionconfig.ApplyNewConversationDefaults(config)
+	config, err = ionconfig.ApplyNewConversationDefaults(config, principal)
 	if err != nil {
 		utils.LogWithFields(utils.LevelWarn, "session", "startsession rejected by locked profile policy", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "error": err.Error()})
 		return nil, err
@@ -115,6 +114,11 @@ func (m *Manager) startSession(
 		if principal != nil {
 			s.principal = principal
 			promoteSessionPrincipalProcessWide(principal)
+		}
+		if principalChanged {
+			// Permission policy follows the account the session acts as.
+			m.wireSessionPermissions(s, principal)
+			m.wirePermissionDecisionTelemetry(s)
 		}
 		m.mu.Unlock()
 		if toolGateChanged {
@@ -219,7 +223,7 @@ func (m *Manager) startSession(
 		identityPolicy:   policy,
 		conversationID:   convID,
 		bindingPending:   !convExists,
-		agents:           m.newAgentRegistry(),
+		agents:           m.newAgentRegistry(principal),
 		agentEmitter:     &agentEmitter{},
 		childPIDs:        make(map[int]struct{}),
 		pending:          pending.New(),
@@ -272,16 +276,8 @@ func (m *Manager) startSession(
 		s.procRegistry = reg
 	}
 
-	// Wire permissions from config (default allow-all when no policy configured)
-	if m.config != nil && m.config.Permissions != nil {
-		s.permEngine = permissions.NewEngine(m.config.Permissions)
-	} else {
-		s.permEngine = permissions.NewEngine(&permissions.DefaultPolicy)
-	}
-	// G01: Wire LLM classifier for "ask" mode
-	if s.permEngine != nil && m.config != nil && m.config.Permissions != nil && m.config.Permissions.Mode == "ask" {
-		s.permEngine.SetClassifier(permissions.NewLlmClassifier(""))
-	}
+	// Wire permissions from the config that applies to this session's account.
+	m.wireSessionPermissions(s, principal)
 
 	// Wire telemetry from config
 	if m.config != nil && m.config.Telemetry != nil && m.config.Telemetry.Enabled {
@@ -376,8 +372,8 @@ func (m *Manager) startSession(
 			if windowModel == "" {
 				windowModel = retainedModel
 			}
-			if windowModel == "" && m.config != nil {
-				windowModel = m.config.DefaultModel
+			if cfg := m.policyConfig(principal); windowModel == "" && cfg != nil {
+				windowModel = cfg.DefaultModel
 			}
 			ctxWindow := conversation.DefaultContext
 			if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {

@@ -336,20 +336,21 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 // applyConfigDefaults fills opts fields from manager-level config when
 // the session/overrides did not specify them.
 func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
-	if m.config == nil {
+	cfg := m.policyConfig(opts.Principal)
+	if cfg == nil {
 		return
 	}
 	if opts.Model == "" {
-		opts.Model = m.config.DefaultModel
+		opts.Model = cfg.DefaultModel
 		utils.LogWithFields(utils.LevelInfo, "session", "no model specified for run, applied engine.json defaultModel", map[string]any{
-			"default_model": m.config.DefaultModel,
+			"default_model": cfg.DefaultModel,
 		})
 	}
-	if opts.MaxTurns <= 0 && m.config.Limits.MaxTurns != nil {
-		opts.MaxTurns = *m.config.Limits.MaxTurns
+	if opts.MaxTurns <= 0 && cfg.Limits.MaxTurns != nil {
+		opts.MaxTurns = *cfg.Limits.MaxTurns
 	}
-	if opts.MaxBudgetUsd <= 0 && m.config.Limits.MaxBudgetUsd != nil {
-		opts.MaxBudgetUsd = *m.config.Limits.MaxBudgetUsd
+	if opts.MaxBudgetUsd <= 0 && cfg.Limits.MaxBudgetUsd != nil {
+		opts.MaxBudgetUsd = *cfg.Limits.MaxBudgetUsd
 	}
 	// Engine-wide thinking default — the weakest layer of the precedence
 	// chain (engine.json ← session config ← per-prompt effort). A nil
@@ -365,15 +366,15 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	// would arrive here as the same nil, silently inheriting the default.
 	// buildRunOptions runs first, so a copy of the config value is safe to
 	// share only if never mutated downstream — take a defensive copy.
-	if opts.Thinking == nil && m.config.Thinking != nil && !opts.ThinkingCleared {
-		cp := *m.config.Thinking
+	if opts.Thinking == nil && cfg.Thinking != nil && !opts.ThinkingCleared {
+		cp := *cfg.Thinking
 		opts.Thinking = &cp
 		utils.LogWithFields(utils.LevelInfo, "session", "applied engine.json thinking default", map[string]any{
 			"enabled": cp.Enabled, "reason": cp.Effort, "count": cp.BudgetTokens,
 		})
 	}
-	if m.config.Compaction != nil {
-		cc := m.config.Compaction
+	if cfg.Compaction != nil {
+		cc := cfg.Compaction
 		if opts.CompactThreshold <= 0 && cc.Threshold > 0 {
 			opts.CompactThreshold = cc.Threshold
 		}
@@ -417,10 +418,10 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 			opts.CompactMemoryMaxTokens = cc.MemoryMaxTokens
 		}
 	}
-	if m.config.Limits.SuppressSystemMessages != nil && *m.config.Limits.SuppressSystemMessages {
+	if cfg.Limits.SuppressSystemMessages != nil && *cfg.Limits.SuppressSystemMessages {
 		opts.SuppressSystemMessages = true
 	}
-	if m.config.Limits.DisablePlanModeReminder != nil && *m.config.Limits.DisablePlanModeReminder {
+	if cfg.Limits.DisablePlanModeReminder != nil && *cfg.Limits.DisablePlanModeReminder {
 		opts.DisablePlanModeReminder = true
 	}
 	// Plan-mode Bash allowlist is ENGINE POLICY, resolved FRESH from
@@ -436,41 +437,41 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	// it, in which case we fall back to the boot-cached value (itself
 	// typically nil = block). Both branches are logged per logging policy.
 	if len(opts.PlanModeAllowedBashCommands) == 0 {
-		if cmds, found := ionconfig.ResolvePlanModeBashAllowlist(opts.ProjectPath); found {
+		if cmds, found := ionconfig.ResolvePlanModeBashAllowlist(opts.ProjectPath, opts.Principal); found {
 			opts.PlanModeAllowedBashCommands = cmds
 			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "bash allowlist resolved fresh from engine.json", map[string]any{
 				"count":     len(cmds),
 				"allowlist": cmds,
 			})
-		} else if len(m.config.Limits.PlanModeAllowedBashCommands) > 0 {
-			opts.PlanModeAllowedBashCommands = m.config.Limits.PlanModeAllowedBashCommands
+		} else if len(cfg.Limits.PlanModeAllowedBashCommands) > 0 {
+			opts.PlanModeAllowedBashCommands = cfg.Limits.PlanModeAllowedBashCommands
 			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "bash allowlist fell back to boot-cached config", map[string]any{
-				"count":     len(m.config.Limits.PlanModeAllowedBashCommands),
-				"allowlist": m.config.Limits.PlanModeAllowedBashCommands,
+				"count":     len(cfg.Limits.PlanModeAllowedBashCommands),
+				"allowlist": cfg.Limits.PlanModeAllowedBashCommands,
 			})
 		} else {
 			utils.LogWithFields(utils.LevelDebug, "session.plan_mode", "no bash allowlist in engine config (Bash blocked in plan mode)", nil)
 		}
 	}
 	if len(opts.PlanModeAllowedMcpTools) == 0 {
-		if tools, found := ionconfig.ResolvePlanModeMcpAllowlist(opts.ProjectPath); found {
+		if tools, found := ionconfig.ResolvePlanModeMcpAllowlist(opts.ProjectPath, opts.Principal); found {
 			opts.PlanModeAllowedMcpTools = tools
 			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "MCP allowlist resolved fresh from engine.json", map[string]any{"count": len(tools), "allowlist": tools})
-		} else if len(m.config.Limits.PlanModeAllowedMcpTools) > 0 {
-			opts.PlanModeAllowedMcpTools = m.config.Limits.PlanModeAllowedMcpTools
+		} else if len(cfg.Limits.PlanModeAllowedMcpTools) > 0 {
+			opts.PlanModeAllowedMcpTools = cfg.Limits.PlanModeAllowedMcpTools
 		}
 	}
-	if m.config.Limits.DisableTurnLimitWarning != nil && *m.config.Limits.DisableTurnLimitWarning {
+	if cfg.Limits.DisableTurnLimitWarning != nil && *cfg.Limits.DisableTurnLimitWarning {
 		opts.DisableTurnLimitWarning = true
 	}
-	if m.config.Limits.DisableMaxTokenContinue != nil && *m.config.Limits.DisableMaxTokenContinue {
+	if cfg.Limits.DisableMaxTokenContinue != nil && *cfg.Limits.DisableMaxTokenContinue {
 		opts.DisableMaxTokenContinue = true
 	}
-	if m.config.Limits.DisableSkillSystemPrompt != nil && *m.config.Limits.DisableSkillSystemPrompt {
+	if cfg.Limits.DisableSkillSystemPrompt != nil && *cfg.Limits.DisableSkillSystemPrompt {
 		opts.DisableSkillSystemPrompt = true
 	}
-	if m.config.WebSearch != nil && m.config.WebSearch.Mode != "" {
-		opts.WebSearchMode = m.config.WebSearch.Mode
+	if cfg.WebSearch != nil && cfg.WebSearch.Mode != "" {
+		opts.WebSearchMode = cfg.WebSearch.Mode
 	}
 }
 

@@ -701,36 +701,8 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchResolveNewConversationDefaults(conn, cmd)
 
 	case "get_enterprise_policy":
-		// Full enterprise policy passthrough (D-004). The engine is the
-		// single authoritative reader of MDM/system-level config sources
-		// (registry, plist, env, drop-ins); clients receive the merged
-		// EnterpriseConfig here instead of parsing OS-specific sources
-		// themselves. The blob is a DUMB passthrough: client-specific
-		// configuration lives under customFields keyed by convention
-		// (e.g. customFields["ion-desktop"]) and the engine neither
-		// validates nor interprets it — ownership of those keys is the
-		// client's. newConversationDefaults stays duplicated as a
-		// top-level key for consumers built against the original
-		// single-policy response shape (additive evolution: existing
-		// decoders keep working, new consumers read the full policy).
-		var newConversationDefaults interface{}
-		var enterprisePolicy interface{}
-		if s.config != nil && s.config.Enterprise != nil {
-			enterprisePolicy = s.config.Enterprise
-			if s.config.Enterprise.NewConversationDefaults != nil {
-				newConversationDefaults = s.config.Enterprise.NewConversationDefaults
-			}
-		}
-		s.sendResult(conn, cmd, nil, map[string]interface{}{
-			"newConversationDefaults": newConversationDefaults,
-			"policy":                  enterprisePolicy,
-			// policyHash (manifest C2) is a SHA-256 hex digest of the merged
-			// policy's canonical JSON. Stable across two calls with an
-			// unchanged policy; changes whenever the policy does. Lets a
-			// consumer (the server, a client cache) detect a policy change
-			// without deep-comparing the whole blob.
-			"policyHash": canonicalPolicyHash(enterprisePolicy),
-		})
+		// Implementation in dispatch_enterprise_policy.go.
+		s.dispatchGetEnterprisePolicy(conn, cmd)
 
 	case "get_plan_content":
 		// Implementation in dispatch_plan_content.go.

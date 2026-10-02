@@ -85,6 +85,17 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 // config map (injecting provider keys from the environment), which is part of
 // producing a correct merged config, not a process-global side effect.
 func mergeConfigLayers(projectDir string) *types.EngineRuntimeConfig {
+	return mergeConfigLayersWith(projectDir, LoadEnterpriseConfig())
+}
+
+// mergeConfigLayersFor is mergeConfigLayers for one session: enterprise
+// enforcement uses the policy resolved for principal, so a fresh
+// dispatch-time read honors the account policies that apply to it.
+func mergeConfigLayersFor(projectDir string, principal []*types.SessionPrincipal) *types.EngineRuntimeConfig {
+	return mergeConfigLayersWith(projectDir, LoadEnterpriseConfigFor(firstPrincipal(principal)))
+}
+
+func mergeConfigLayersWith(projectDir string, enterprise *types.EnterpriseConfig) *types.EngineRuntimeConfig {
 	defaults := DefaultConfig()
 	defaults.Profiles = loadProfiles()
 
@@ -106,8 +117,6 @@ func mergeConfigLayers(projectDir string) *types.EngineRuntimeConfig {
 	// Merge: defaults < global < project
 	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), projectLayer)
 
-	// Load and enforce enterprise config
-	enterprise := LoadEnterpriseConfig()
 	if enterprise != nil {
 		merged = EnforceEnterprise(merged, enterprise)
 	}
