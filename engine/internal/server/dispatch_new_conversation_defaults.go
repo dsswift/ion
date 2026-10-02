@@ -17,7 +17,7 @@ func (s *Server) dispatchResolveNewConversationDefaults(conn net.Conn, cmd *prot
 	}
 	resolved := make([]ionconfig.ResolvedNewConversationDefaults, 0, len(paths))
 	for _, path := range paths {
-		resolved = append(resolved, ionconfig.ResolveNewConversationDefaults(path))
+		resolved = append(resolved, ionconfig.ResolveNewConversationDefaults(path, cmd.Principal))
 	}
 	utils.LogWithFields(utils.LevelInfo, "server", "resolved new conversation defaults", map[string]any{
 		"count": len(resolved), "batch": cmd.Paths != nil,

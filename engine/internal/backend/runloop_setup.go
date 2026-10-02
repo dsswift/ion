@@ -46,7 +46,7 @@ import (
 // machine keeps the full union (see docs/enterprise/sealed-config.md
 // § "Plan-mode Bash allowlist").
 func effectiveBashAllowlist(opts types.RunOptions) []string {
-	return config.ClampPlanModeBashToEnterprise(unionPromptBashAllowlist(opts))
+	return config.ClampPlanModeBashToEnterprise(unionPromptBashAllowlist(opts), opts.Principal)
 }
 
 // unionPromptBashAllowlist computes the un-clamped union of the session
@@ -90,7 +90,7 @@ func effectiveMcpAllowlist(opts types.RunOptions) []string {
 			}
 		}
 	}
-	return config.ClampPlanModeMcpToolsToEnterprise(tools)
+	return config.ClampPlanModeMcpToolsToEnterprise(tools, opts.Principal)
 }
 
 func mcpToolAllowed(name string, allowlist []string) bool {

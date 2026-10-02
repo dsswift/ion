@@ -280,7 +280,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// preserves the model across desktop restarts where the tab UUID changes
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
-	if s.lastModel != "" && !hasExplicitModel && opts.ResolvedSlashModelAlias == "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
+	if s.lastModel != "" && !hasExplicitModel && opts.ResolvedSlashModelAlias == "" && m.config != nil && opts.Model == m.policyConfig(opts.Principal).DefaultModel && opts.Model != s.lastModel {
 		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}
@@ -421,11 +421,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	// G07: Enterprise model enforcement (fast check, under initial lock).
-	if m.config != nil && m.config.Enterprise != nil {
-		if !ionconfig.IsModelAllowed(opts.Model, m.config.Enterprise) {
+	if policyCfg := m.policyConfig(opts.Principal); policyCfg != nil && policyCfg.Enterprise != nil {
+		if !ionconfig.IsModelAllowed(opts.Model, policyCfg.Enterprise) {
 			if s.telemetry != nil {
 				source := "allowlist"
-				for _, b := range m.config.Enterprise.BlockedModels {
+				for _, b := range policyCfg.Enterprise.BlockedModels {
 					if b == opts.Model {
 						source = "denylist"
 						break
@@ -541,7 +541,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.emit(key, types.EngineEvent{Type: "engine_working_message", EventMessage: ""})
 
 	m.fireModelSelect(s, key, extGroup, skipExtensions, &opts)
-	if m.config != nil && m.config.Enterprise != nil && !ionconfig.IsModelAllowed(opts.Model, m.config.Enterprise) {
+	if policyCfg := m.policyConfig(opts.Principal); policyCfg != nil && policyCfg.Enterprise != nil && !ionconfig.IsModelAllowed(opts.Model, policyCfg.Enterprise) {
 		m.mu.Lock()
 		s.clearRunIdentity()
 		m.unbindRunLocked(requestID)

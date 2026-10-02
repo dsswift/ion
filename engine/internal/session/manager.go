@@ -27,6 +27,8 @@ type Manager struct {
 	// commandPatterns is the compiled enterprise dangerous-command pattern
 	// set, rebuilt by SetConfig.
 	commandPatterns []sandbox.CompiledPattern
+	// policies holds the config resolved per principal (policy_config.go).
+	policies policyCache
 
 	// runKeyBindings maps an active run's requestID -> its session key,
 	// independent of engineSession.requestID. It exists because event routing

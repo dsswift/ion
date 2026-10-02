@@ -78,7 +78,7 @@ func (m *Manager) startPoll(s *engineSession, key, owner string, request tools.P
 	if attempts <= 0 || attempts > cfg.MaxAttempts {
 		attempts = cfg.MaxAttempts
 	}
-	model := selectPollModel(m, cfg, request)
+	model := selectPollModel(m, cfg, request, s.principal)
 	id := fmt.Sprintf("poll-%d-%d", pollCounter.Add(1), time.Now().UnixMilli())
 	poll := &activePoll{state: types.PollState{PollID: id, Intent: request.Intent, DeadlineAt: time.Now().Add(deadline).UnixMilli()}, checkCommand: request.CheckCommand, model: model, interval: interval, deadline: time.Now().Add(deadline), maxAttempts: attempts, cwd: cwd, owner: owner}
 	if s.activePolls == nil {
@@ -104,14 +104,14 @@ func (m *Manager) pollConfig() types.PollConfig {
 // caller request, then the operator's poll.model, then the tier chain in
 // resolvePollModel. The conversation's model is not a rung — see
 // resolvePollModel for why.
-func selectPollModel(m *Manager, cfg types.PollConfig, request tools.PollRequest) string {
+func selectPollModel(m *Manager, cfg types.PollConfig, request tools.PollRequest, principal ...*types.SessionPrincipal) string {
 	if request.Model != "" {
 		return request.Model
 	}
 	if cfg.Model != "" {
 		return cfg.Model
 	}
-	return m.resolvePollModel()
+	return m.resolvePollModel(principal...)
 }
 
 // resolvePollModel picks the poll child's model when neither the caller nor the
@@ -127,7 +127,7 @@ func selectPollModel(m *Manager, cfg types.PollConfig, request tools.PollRequest
 //
 // An empty return is valid and means "no engine default configured"; the shared
 // dispatch seam applies its own DefaultModel fallback in that case.
-func (m *Manager) resolvePollModel() string {
+func (m *Manager) resolvePollModel(principal ...*types.SessionPrincipal) string {
 	for _, tier := range types.PollModelTierPreference {
 		entry, ok := modelconfig.LookupTier(tier)
 		if !ok {
@@ -137,9 +137,14 @@ func (m *Manager) resolvePollModel() string {
 		utils.LogWithFields(utils.LevelInfo, "session.poll", "poll model resolved from tier", map[string]any{"tier": entry.Name, "model": entry.Model})
 		return entry.Model
 	}
+	// The engine default is the one the acting principal's policy allows.
 	var fallback string
-	if m.config != nil {
-		fallback = m.config.DefaultModel
+	var acting *types.SessionPrincipal
+	if len(principal) > 0 {
+		acting = principal[0]
+	}
+	if cfg := m.policyConfig(acting); cfg != nil {
+		fallback = cfg.DefaultModel
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.poll", "poll model fell back to engine default", map[string]any{"model": fallback, "tiers_tried": types.PollModelTierPreference})
 	return fallback

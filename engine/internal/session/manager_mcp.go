@@ -100,7 +100,7 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 		// need a daemon restart. Resolution runs the full layered merge plus
 		// enterprise enforcement, so denylisted and non-allowlisted servers are
 		// already pruned here.
-		mcpServers := ionconfig.ResolveMcpServers(s.config.WorkingDirectory)
+		mcpServers := ionconfig.ResolveMcpServers(s.config.WorkingDirectory, s.principal)
 		if len(mcpServers) == 0 {
 			return
 		}
@@ -325,8 +325,9 @@ func (m *Manager) ReconnectMcpServer(ctx context.Context, name string) int {
 		s, ok := m.sessions[key]
 		var workingDir string
 		var everConnected bool
+		var principal *types.SessionPrincipal
 		if ok {
-			workingDir = s.config.WorkingDirectory
+			workingDir, principal = s.config.WorkingDirectory, s.principal
 			everConnected = s.mcpConnectDone
 		}
 		m.mu.RUnlock()
@@ -345,7 +346,7 @@ func (m *Manager) ReconnectMcpServer(ctx context.Context, name string) int {
 			continue
 		}
 
-		servers := ionconfig.ResolveMcpServers(workingDir)
+		servers := ionconfig.ResolveMcpServers(workingDir, principal)
 		cfg, configured := servers[name]
 		if !configured {
 			// Not an error: the server may be absent from this session's

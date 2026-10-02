@@ -21,12 +21,16 @@ import (
 // Nil-safe on every layer. A Manager with no config at all resolves to the
 // compiled defaults rather than to "unbounded" — an absent config file must
 // not be a way to switch the bound off.
-func (m *Manager) agentMetadataLimits() agents.MetadataLimits {
+func (m *Manager) agentMetadataLimits(principal *types.SessionPrincipal) agents.MetadataLimits {
 	resolved := types.AgentStateMetadataDefaults()
 
-	if m != nil && m.config != nil {
-		resolved = m.config.Limits.AgentStateMetadata.Resolved()
-		if ep := m.config.Enterprise; ep != nil && ep.Limits != nil {
+	var cfg *types.EngineRuntimeConfig
+	if m != nil {
+		cfg = m.policyConfig(principal)
+	}
+	if cfg != nil {
+		resolved = cfg.Limits.AgentStateMetadata.Resolved()
+		if ep := cfg.Enterprise; ep != nil && ep.Limits != nil {
 			before := resolved
 			resolved = ep.Limits.AgentStateMetadata.ApplyCeiling(resolved)
 			if before != resolved {
@@ -53,6 +57,6 @@ func (m *Manager) agentMetadataLimits() agents.MetadataLimits {
 }
 
 // newAgentRegistry builds a session's agent registry with the resolved bounds.
-func (m *Manager) newAgentRegistry() *agents.Registry {
-	return agents.NewRegistryWithLimits(m.agentMetadataLimits())
+func (m *Manager) newAgentRegistry(principal *types.SessionPrincipal) *agents.Registry {
+	return agents.NewRegistryWithLimits(m.agentMetadataLimits(principal))
 }

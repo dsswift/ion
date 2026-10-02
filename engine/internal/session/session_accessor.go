@@ -422,7 +422,9 @@ func (a *sessionAccessor) OutstandingPollIDs(owner string) []string {
 	return a.m.OutstandingPollIDsFor(a.key, owner)
 }
 
-func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
+func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig {
+	return a.m.policyConfig(a.s.principal)
+}
 
 // WorkspaceChecker returns the root run's selected containment checker for
 // extension-originated dispatches that bypass the root AgentSpawner.

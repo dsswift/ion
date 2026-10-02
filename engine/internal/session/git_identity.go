@@ -17,8 +17,8 @@ import (
 // identity by accident (see backend.checkGitIdentityRequired).
 func (m *Manager) wireGitIdentity(s *engineSession, key string, principal *types.SessionPrincipal, runCfg *backend.RunConfig) {
 	var gitCfg *types.GitConfig
-	if m.config != nil {
-		gitCfg = m.config.Git
+	if policyCfg := m.policyConfig(principal); policyCfg != nil {
+		gitCfg = policyCfg.Git
 	}
 	gitAuthor, gitResolved := resolveGitIdentity(gitCfg, principal)
 

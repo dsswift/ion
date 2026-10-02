@@ -32,9 +32,11 @@ import (
 // slice is non-nil (see merge.go).
 //
 // projectDir is the run's working directory; passing "" resolves global-only
-// (the headless default when no project is in scope).
-func ResolvePlanModeBashAllowlist(projectDir string) ([]string, bool) {
-	merged := mergeConfigLayers(projectDir)
+// (the headless default when no project is in scope). principal is the
+// session's principal; the enterprise ceiling applied is the one resolved for
+// it.
+func ResolvePlanModeBashAllowlist(projectDir string, principal ...*types.SessionPrincipal) ([]string, bool) {
+	merged := mergeConfigLayersFor(projectDir, principal)
 	cmds := merged.Limits.PlanModeAllowedBashCommands
 	found := cmds != nil
 	utils.LogWithFields(utils.LevelDebug, "config", "resolved plan-mode bash allowlist fresh", map[string]any{
@@ -62,11 +64,11 @@ func ResolvePlanModeBashAllowlist(projectDir string) ([]string, bool) {
 // Call this at the point where the effective run-time list is assembled so all
 // three sources are clamped by one gate. Every dropped entry is recorded as an
 // enforcement action.
-func ClampPlanModeBashToEnterprise(cmds []string) []string {
+func ClampPlanModeBashToEnterprise(cmds []string, principal ...*types.SessionPrincipal) []string {
 	if len(cmds) == 0 {
 		return cmds
 	}
-	enterprise := LoadEnterpriseConfig()
+	enterprise := LoadEnterpriseConfigFor(firstPrincipal(principal))
 	if enterprise == nil || enterprise.Limits == nil || enterprise.Limits.PlanModeAllowedBashCommands == nil {
 		// No policy on this axis: the caller's list stands.
 		return cmds
@@ -75,11 +77,11 @@ func ClampPlanModeBashToEnterprise(cmds []string) []string {
 }
 
 // ClampPlanModeMcpToolsToEnterprise applies the enterprise MCP plan-mode ceiling.
-func ClampPlanModeMcpToolsToEnterprise(tools []string) []string {
+func ClampPlanModeMcpToolsToEnterprise(tools []string, principal ...*types.SessionPrincipal) []string {
 	if len(tools) == 0 {
 		return tools
 	}
-	enterprise := LoadEnterpriseConfig()
+	enterprise := LoadEnterpriseConfigFor(firstPrincipal(principal))
 	if enterprise == nil || enterprise.Limits == nil || enterprise.Limits.PlanModeAllowedMcpTools == nil {
 		return tools
 	}
@@ -87,8 +89,8 @@ func ClampPlanModeMcpToolsToEnterprise(tools []string) []string {
 }
 
 // ResolvePlanModeMcpAllowlist reads the named MCP plan-mode allowlist fresh.
-func ResolvePlanModeMcpAllowlist(projectDir string) ([]string, bool) {
-	merged := mergeConfigLayers(projectDir)
+func ResolvePlanModeMcpAllowlist(projectDir string, principal ...*types.SessionPrincipal) ([]string, bool) {
+	merged := mergeConfigLayersFor(projectDir, principal)
 	tools := merged.Limits.PlanModeAllowedMcpTools
 	found := tools != nil
 	utils.LogWithFields(utils.LevelDebug, "config", "resolved plan-mode MCP allowlist fresh", map[string]any{"project_dir": projectDir, "found": found, "count": len(tools), "allowlist": tools})

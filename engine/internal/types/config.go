@@ -209,6 +209,15 @@ type EnterpriseConfig struct {
 	// changes whether a failure happens or how it is coded. Keys the engine
 	// does not report are passed through for consumers that define their own.
 	Messages map[string]string `json:"messages,omitempty"`
+	// AccountPolicies scopes further policy to specific accounts on a host
+	// that serves more than one person. Each matching entry composes under
+	// the rest of this policy and may only restrict it. A resolved policy
+	// handed to a consumer never carries this list.
+	AccountPolicies []AccountPolicy `json:"accountPolicies,omitempty"`
+	// AssetScopes is stamped by the resolver with the AssetScope of every
+	// account policy that matched, in declaration order. A policy source
+	// cannot set it.
+	AssetScopes []string `json:"assetScopes,omitempty"`
 }
 
 // EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys

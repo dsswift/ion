@@ -41,9 +41,10 @@ import (
 // callers connect exactly what policy permits.
 //
 // projectDir is the session's working directory; passing "" resolves
-// global-only (the headless default when no project is in scope).
-func ResolveMcpServers(projectDir string) map[string]types.McpServerConfig {
-	merged := mergeConfigLayers(projectDir)
+// global-only (the headless default when no project is in scope). principal is
+// the session's principal; the policy enforced is the one resolved for it.
+func ResolveMcpServers(projectDir string, principal ...*types.SessionPrincipal) map[string]types.McpServerConfig {
+	merged := mergeConfigLayersFor(projectDir, principal)
 	servers := merged.McpServers
 	names := make([]string, 0, len(servers))
 	for name := range servers {

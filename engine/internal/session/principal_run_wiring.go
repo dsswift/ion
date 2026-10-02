@@ -20,7 +20,7 @@ func (m *Manager) wirePrincipalRun(s *engineSession, key string, principal *type
 	// partitioning is off or the session is unattributed (principalboundary.New).
 	runCfg.SandboxCfg = buildSandboxConfig(m, principal)
 	// The enterprise dangerous-command patterns apply with or without it.
-	runCfg.CommandPatterns = m.commandPatterns
+	runCfg.CommandPatterns = m.policyView(principal).patterns
 	if principal != nil {
 		runCfg.PrincipalBoundary = principalboundary.New(principal.Subject, conversation.PartitioningEnforcement())
 	}
