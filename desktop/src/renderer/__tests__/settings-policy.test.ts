@@ -20,8 +20,6 @@ async function load() {
   const policy = await import('../settings-policy')
   const { applyDeviceSettingsPolicy } = await import('../settings-policy-apply')
   const { policyStore } = await import('../studio/connection/policy-store')
-  const { _resetManagedDefaultsForTest } = await import('../managed-defaults')
-  _resetManagedDefaultsForTest()
   deviceWrites.length = 0
   serverSaves.length = 0
   return { store: usePreferencesStore, policy, applyDeviceSettingsPolicy, policyStore }
@@ -94,20 +92,5 @@ describe('applyDeviceSettingsPolicy', () => {
     const before = store.getState().terminalFontSize
     applyDeviceSettingsPolicy(store, device({ keys: { terminalFontSize: { class: 'sealed', value: 'large' } } }))
     expect(store.getState().terminalFontSize).toBe(before)
-  })
-
-  it('supplies a managed default once, and again only when the policy value changes', async () => {
-    const { store, applyDeviceSettingsPolicy } = await load()
-    const first = device({ keys: { terminalFontSize: { class: 'managed-default', value: 16 } } })
-    applyDeviceSettingsPolicy(store, first)
-    expect(store.getState().terminalFontSize).toBe(16)
-    expect(deviceWrites).toContainEqual({ terminalFontSize: 16 })
-    // The person changes it; the same policy leaves their choice alone.
-    store.getState().setTerminalFontSize(12)
-    applyDeviceSettingsPolicy(store, first)
-    expect(store.getState().terminalFontSize).toBe(12)
-    // A new policy value is supplied.
-    applyDeviceSettingsPolicy(store, device({ keys: { terminalFontSize: { class: 'managed-default', value: 18 } } }))
-    expect(store.getState().terminalFontSize).toBe(18)
   })
 })

@@ -15,7 +15,7 @@ import {
 } from './managed-defaults'
 import { rInfo, rWarn } from './rendererLogger'
 
-type ManagedState = Pick<PreferencesState, 'selectedTheme' | 'defaultBaseDirectory' | 'defaultEngineProfileId' | 'enterprisePolicy' | 'enterpriseNewConversationDefaults'>
+type ManagedState = Pick<PreferencesState, 'selectedTheme' | 'defaultBaseDirectory' | 'defaultEngineProfileId' | 'terminalFontSize' | 'enterprisePolicy' | 'enterpriseNewConversationDefaults'>
 
 /** A preference store and the two settings documents behind it, as one installation across launches. */
 function installation(initial: Partial<ManagedState> = {}) {
@@ -23,6 +23,7 @@ function installation(initial: Partial<ManagedState> = {}) {
     selectedTheme: 'ion-dark',
     defaultBaseDirectory: '',
     defaultEngineProfileId: '',
+    terminalFontSize: 13,
     enterprisePolicy: null,
     enterpriseNewConversationDefaults: null,
     ...initial,
@@ -30,6 +31,7 @@ function installation(initial: Partial<ManagedState> = {}) {
   const client: Record<string, unknown> = {}
   const server: Record<string, unknown> = {}
   const saves: Array<Record<string, unknown>> = []
+  const clientWrites: Array<Record<string, unknown>> = []
   const store = {
     getState: () => state as PreferencesState,
     setState: (patch: Partial<PreferencesState>) => { state = { ...state, ...patch } },
@@ -40,14 +42,24 @@ function installation(initial: Partial<ManagedState> = {}) {
     save: (patch) => {
       saves.push(patch)
       for (const [key, value] of Object.entries(patch)) {
-        if (key === 'selectedTheme' || key === CLIENT_WATERMARKS_KEY) client[key] = value
+        if (key === 'selectedTheme' || key === 'terminalFontSize' || key === CLIENT_WATERMARKS_KEY) client[key] = value
         else server[key] = value
       }
     },
+    writeClientSetting: (key, value) => { clientWrites.push({ [key]: value }) },
   }
   return {
     state: () => state,
     saves,
+    clientWrites,
+    /** Loads a device policy whose `settingsPolicy` block carries these keys. */
+    loadSettingsPolicy: (keys: Record<string, { class: string; value?: unknown }>) => {
+      state = {
+        ...state,
+        enterprisePolicy: { customFields: { 'ion-desktop': { settingsPolicy: { keys } } } } as unknown as PreferencesState['enterprisePolicy'],
+      }
+      return reconcileManagedDefaults(store as never, io)
+    },
     client,
     server,
     io,
@@ -143,6 +155,48 @@ describe('new-conversation managed defaults', () => {
     await install.load({ baseDirectory: '/corp', engineProfileId: 'dev', locked: true })
     expect(install.state().defaultBaseDirectory).toBe('/mine')
     expect(install.saves).toEqual([])
+  })
+})
+
+describe('settings-policy managed defaults', () => {
+  it('supplies a value once, and again only when the policy value changes', async () => {
+    const install = installation()
+    await install.loadSettingsPolicy({ terminalFontSize: { class: 'managed-default', value: 16 } })
+    expect(install.state().terminalFontSize).toBe(16)
+    // One save, with the watermark beside the preference.
+    expect(install.saves).toEqual([{ terminalFontSize: 16, [CLIENT_WATERMARKS_KEY]: { terminalFontSize: '16' } }])
+    // The person changes it; the same policy leaves their choice alone.
+    install.userSets({ terminalFontSize: 12 })
+    await install.loadSettingsPolicy({ terminalFontSize: { class: 'managed-default', value: 16 } })
+    expect(install.state().terminalFontSize).toBe(12)
+    expect(install.saves).toHaveLength(1)
+    // A new policy value is supplied.
+    await install.loadSettingsPolicy({ terminalFontSize: { class: 'managed-default', value: 18 } })
+    expect(install.state().terminalFontSize).toBe(18)
+  })
+
+  it('does not supply or record a value of the wrong shape', async () => {
+    const install = installation()
+    await install.loadSettingsPolicy({ terminalFontSize: { class: 'managed-default', value: 'large' } })
+    expect(install.state().terminalFontSize).toBe(13)
+    expect(install.saves).toEqual([])
+  })
+
+  it('writes a setting the preference store does not hold to this client', async () => {
+    const install = installation()
+    await install.loadSettingsPolicy({ studioExampleFlag: { class: 'managed-default', value: true } })
+    expect(install.clientWrites).toEqual([{ studioExampleFlag: true }])
+    expect(install.client[CLIENT_WATERMARKS_KEY]).toEqual({ studioExampleFlag: 'true' })
+    await install.loadSettingsPolicy({ studioExampleFlag: { class: 'managed-default', value: true } })
+    expect(install.clientWrites).toHaveLength(1)
+  })
+
+  it('applies a theme entry once, through the theme row', async () => {
+    const install = installation({ selectedTheme: 'ion-light' })
+    await install.loadSettingsPolicy({ selectedTheme: { class: 'managed-default', value: 'acme' } })
+    expect(install.state().selectedTheme).toBe('acme')
+    expect(install.client[CLIENT_WATERMARKS_KEY]).toEqual({ selectedTheme: 'acme' })
+    expect(applyTheme).toHaveBeenCalledTimes(1)
   })
 })
 

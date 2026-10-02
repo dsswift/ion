@@ -6,6 +6,10 @@
  * This module is the table of preferences in the class and the one routine
  * that reconciles all of them against the loaded policy.
  *
+ * A `settingsPolicy` entry of class `managed-default` puts any other setting
+ * this client keeps in the class. Its watermark is the signature of the
+ * policy value, since that value may be of any type.
+ *
  * The watermark is saved through the settings funnel, in the same place as
  * the preference it belongs to: a client-owned preference keeps its watermark
  * on this client, a server-owned one keeps it in the person's settings on
@@ -19,13 +23,18 @@ import {
   sanitizeManagedDefaultWatermarks,
   type ManagedDefaultWatermarks,
 } from "@ion/shared/managed-defaults";
+import {
+  managedDefaultSettingValues,
+  stableStringify,
+} from "@ion/shared/enterprise-settings-policy";
 import { deriveEnterpriseThemePolicy } from "@ion/shared/enterprise-theme-policy";
 import { host } from "./host/host-instance";
 import type { ShellApi } from "./host/shell-api";
 import { saveSettings } from "./preferences-persist";
 import { isClientOwnedSetting } from "./preferences-scope-transport";
+import { sameShape } from "./settings-policy-apply";
 import { applyTheme } from "./theme-tokens";
-import { rDebug, rInfo, rWarn } from "./rendererLogger";
+import { rDebug, rError, rInfo, rWarn } from "./rendererLogger";
 
 /** Watermarks for preferences this client keeps. A Device setting. */
 export const CLIENT_WATERMARKS_KEY = "managedDefaultsApplied";
@@ -91,9 +100,23 @@ export interface ManagedDefaultsIo {
   readClient(): Promise<Record<string, unknown>>;
   readServer(): Promise<Record<string, unknown>>;
   save(patch: Record<string, unknown>): void;
+  /** Stores a client setting the preference store does not hold. */
+  writeClientSetting(key: string, value: unknown): void;
 }
 
 const hostIo: ManagedDefaultsIo = {
+  writeClientSetting: (key, value) => {
+    // The Studio surface's own keys have their own funnel; the rest is device state.
+    const write = key.startsWith("studio")
+      ? host.shell.studioSetSetting(key, value)
+      : host.setDeviceSetting(key, value);
+    void Promise.resolve(write).catch((err: unknown) =>
+      rError("preferences", "managed default not supplied", {
+        key,
+        error: String(err),
+      }),
+    );
+  },
   readClient: () => host.deviceSettings(),
   readServer: async () => {
     const load = (host as { shell?: Partial<Pick<ShellApi, "loadSettings">> })
@@ -131,12 +154,19 @@ async function reconcile(
         decision,
       });
   }
+  // A table row's own policy reader already covers a `settingsPolicy` entry
+  // for its key, so those keys are left to the table.
+  const supplied = Object.entries(
+    managedDefaultSettingValues(state.enterprisePolicy, "ion-desktop"),
+  ).filter(([key]) => !MANAGED_DEFAULT_FIELDS.some((f) => f.key === key));
   // An unmanaged or fully locked installation reads nothing.
-  if (unlocked.length === 0) return;
+  if (unlocked.length === 0 && supplied.length === 0) return;
 
-  const needsClient = unlocked.some(
-    ({ field }) => watermarksKeyFor(field.key) === CLIENT_WATERMARKS_KEY,
-  );
+  const needsClient =
+    supplied.length > 0 ||
+    unlocked.some(
+      ({ field }) => watermarksKeyFor(field.key) === CLIENT_WATERMARKS_KEY,
+    );
   const needsServer = unlocked.some(
     ({ field }) => watermarksKeyFor(field.key) === ACCOUNT_WATERMARKS_KEY,
   );
@@ -156,6 +186,8 @@ async function reconcile(
 
   const patch: Record<string, unknown> = {};
   const statePatch: Partial<Pick<PreferencesState, ManagedPreferenceKey>> = {};
+  const suppliedPatch: Record<string, unknown> = {};
+  const unheld: Array<[key: string, value: unknown]> = [];
   const applied: ManagedDefaultField[] = [];
   for (const { field, value } of unlocked) {
     const watermarksKey = watermarksKeyFor(field.key);
@@ -193,9 +225,57 @@ async function reconcile(
       },
     );
   }
-  if (applied.length === 0) return;
-  store.setState(statePatch);
+  const held = store.getState() as unknown as Record<string, unknown>;
+  for (const [key, value] of supplied) {
+    const signature = stableStringify(value);
+    const previousSignature = watermarks[CLIENT_WATERMARKS_KEY][key] ?? null;
+    if (
+      decideManagedDefault({
+        policyValue: signature,
+        locked: false,
+        applied: previousSignature,
+      }) === "keep"
+    ) {
+      rDebug(
+        "preferences",
+        "enterprise managed default unchanged; preference left alone",
+        { key },
+      );
+      continue;
+    }
+    if (key in held && typeof held[key] !== "function") {
+      if (!sameShape(held[key], value)) {
+        rWarn(
+          "preferences",
+          "managed default has a policy value of the wrong shape; not supplied",
+          { key, expected: typeof held[key], got: typeof value },
+        );
+        continue;
+      }
+      suppliedPatch[key] = value;
+      patch[key] = value;
+    } else {
+      unheld.push([key, value]);
+    }
+    watermarks[CLIENT_WATERMARKS_KEY] = {
+      ...watermarks[CLIENT_WATERMARKS_KEY],
+      [key]: signature,
+    };
+    patch[CLIENT_WATERMARKS_KEY] = watermarks[CLIENT_WATERMARKS_KEY];
+    rInfo(
+      "preferences",
+      "enterprise managed default applied; preference overwritten",
+      {
+        key,
+        first_application: previousSignature === null,
+        held_by_store: key in suppliedPatch,
+      },
+    );
+  }
+  if (Object.keys(patch).length === 0) return;
+  store.setState({ ...statePatch, ...suppliedPatch } as Partial<PreferencesState>);
   io.save(patch);
+  for (const [key, value] of unheld) io.writeClientSetting(key, value);
   for (const field of applied) {
     const value = statePatch[field.key];
     if (value !== undefined) field.afterApply?.(value);
