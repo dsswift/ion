@@ -115,6 +115,7 @@ function conflictTemplateValues(
     benchContext: inBench
       ? [
           "This is an integration bench.",
+          "The merge is resolved here, in the bench: while it is open the bench permits edits to the conflicted files, `git checkout --ours -- <path>` or `git checkout --theirs -- <path>` on them, `git add`, and a standalone `git merge --continue`, and refuses every other write.",
           "Before reasoning about the merge, call BenchResolutionHistory for the conflicted paths: the same file often conflicts once per member, and a previous resolution of it carries the reasoning git rerere cannot replay across members.",
           "Read each side with BenchMemberFile rather than opening a member worktree directly, because a worktree holds work done since its pin and the bench merges the pin.",
           "Use WorkspaceAttribution to decide which member owns a hunk when that is unclear.",

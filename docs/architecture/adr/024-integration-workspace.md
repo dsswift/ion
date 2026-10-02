@@ -391,7 +391,12 @@ While the machinery-prepared merge is open, both enforcement halves carve out
 exactly the resolution surface and nothing else. The desktop guard passes the
 conflict-resolution IPC and merge abort. Engine workspace containment passes
 `Write`/`Edit` on **unmerged paths only** because an edit to a conflicted path
-during resolution is the reviewable artifact that becomes the recording. Merge
+during resolution is the reviewable artifact that becomes the recording. Taking
+one side whole passes on the same terms: `git checkout --ours -- <path>` or
+`git checkout --theirs -- <path>` is allowed when every pathspec reaches a
+conflicted file, and every other `checkout` form stays refused. A refusal issued
+while the merge is open names this surface instead of the member-worktree
+redirect, which cannot resolve a merge open in the bench itself. Merge
 completion has a stricter invariant: `git merge --continue` must be a standalone
 call in the model response, the index must contain no unmerged entries, and
 `git diff --cached --check` must accept the staged resolution. This prevents a

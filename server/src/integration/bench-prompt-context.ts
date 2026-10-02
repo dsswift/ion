@@ -284,7 +284,7 @@ function format(bc: BenchContext): string {
   if (bc.baseSha) b += ` at ${bc.baseSha}`
   b += ", with each member's pinned contribution merged on top.\n"
 
-  b += '\nThe bench is disposable: its branch is recreated from scratch on every assembly, so a file written here and a commit made here are both destroyed by the next assembly and reach nobody. File writes and history-writing git commands are refused in the bench for that reason. Reading, building, testing, and staging are unaffected — running the assembled combination is what the bench is for.\n'
+  b += '\nThe bench is disposable: its branch is recreated from scratch on every assembly, so a file written here and a commit made here are both destroyed by the next assembly and reach nobody. File writes and history-writing git commands are refused in the bench for that reason. The one exception is a conflict-resolution merge the bench itself left open: while it is open, resolving its conflicted files, staging them, and running `git merge --continue` are permitted here. Reading, building, testing, and staging are unaffected — running the assembled combination is what the bench is for.\n'
 
   if (bc.members.length > 0) {
     b += '\nMembers, in merge order — each owns the content its pinned range contributed:\n'

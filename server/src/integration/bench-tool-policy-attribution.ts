@@ -132,8 +132,11 @@ export const ATTRIBUTION_HINT =
  * The refusal message for a write into a bench, naming the owning member(s)
  * so the edit can be redirected rather than merely retried.
  */
-export function benchWriteReason(target: string, bench: IntegrationWorkspace, owners: BenchOwner[]): string {
+export function benchWriteReason(target: string, bench: IntegrationWorkspace, owners: BenchOwner[], mergeOpen = false): string {
   let b = `Refused: ${target} is inside the integration bench ${bench.benchPath}. A bench is reassembled from scratch on every assembly, so an edit made here is destroyed by the next assembly and never reaches anyone.`
+  if (mergeOpen) {
+    b += ` A conflict-resolution merge is open in this bench, but this file is not one of its conflicted paths, and only those are writable here.${OPEN_MERGE_SURFACE}`
+  }
   if (owners.length === 0) {
     b += ` No enrolled member changes this file, so it comes from the source branch ${bench.sourceBranch}: make the change in a worktree cut from ${bench.sourceBranch} and land it.`
   } else if (owners.length === 1) {
@@ -153,8 +156,23 @@ export function benchWriteReason(target: string, bench: IntegrationWorkspace, ow
   return b
 }
 
-/** The refusal for a history verb inside a bench. */
-export function benchHistoryReason(subcommand: string, bench: IntegrationWorkspace): string {
+/**
+ * What a bench permits while its conflict-resolution merge is open. A refusal
+ * issued mid-merge carries it, because the generic remediation ("commit in the
+ * member worktree") cannot resolve a merge that is open in the bench itself.
+ */
+const OPEN_MERGE_SURFACE =
+  ' To resolve the open merge in this bench: edit the conflicted files (Write and Edit pass on unmerged paths), or take one side whole with `git checkout --ours -- <conflicted path>` or `git checkout --theirs -- <conflicted path>`; stage each resolved file with `git add`; then run exactly `git merge --continue` as a standalone call in a turn of its own. `git merge --abort` abandons the merge.'
+
+/**
+ * The refusal for a history verb inside a bench. While a conflict-resolution
+ * merge is open it names the resolution surface instead of the member-worktree
+ * redirect.
+ */
+export function benchHistoryReason(subcommand: string, bench: IntegrationWorkspace, mergeOpen = false): string {
+  if (mergeOpen) {
+    return `Refused: \`git ${subcommand}\` inside the integration bench ${bench.benchPath}. A conflict-resolution merge is open in this bench and resolving it here is permitted, but not through this command.${OPEN_MERGE_SURFACE} Every other history-writing git command stays refused, because the bench branch is recreated from scratch on every assembly. Reading, building, and testing are unaffected.`
+  }
   return `Refused: \`git ${subcommand}\` inside the integration bench ${bench.benchPath}. A bench branch is recreated from scratch on every assembly, so a commit made here is destroyed by the next assembly and a push would publish a synthetic merge of other people's in-flight work. Commit in the member worktree that owns the change — writes and commits in an enrolled member worktree are permitted from this bench conversation — then update that member in the bench. Reading, building, testing, and staging are unaffected.${ATTRIBUTION_HINT}`
 }
 
