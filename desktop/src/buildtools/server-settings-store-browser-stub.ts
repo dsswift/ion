@@ -139,6 +139,11 @@ export function updateEngineConfig(
 ): boolean {
   rejectWrite("updateEngineConfig");
 }
+// The stub reads no engine.json, so there is nothing for a managed file to replace.
+export function setManagedEngineConfigSource(_source: { path: string | null } | null): void {}
+export class ManagedEngineConfigError extends Error {
+  readonly code = "managed_config_write_refused";
+}
 export function ensureHybridBackendConfig(): boolean {
   rejectWrite("ensureHybridBackendConfig");
 }
