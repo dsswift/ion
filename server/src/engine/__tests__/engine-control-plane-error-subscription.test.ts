@@ -90,6 +90,25 @@ describe('engine_error — Provider Subscription state', () => {
     expect(errors[1]).not.toHaveProperty('policyFailure')
   })
 
+  it('carries the blocked extension and the error code with a blocked load', () => {
+    const event = {
+      type: 'engine_error',
+      message: 'Extensions are managed here. Request one through the catalog.',
+      errorCode: 'extension_blocked',
+      policyFailure: 'extension_blocked',
+      extensionName: 'example-ext',
+    } as EngineEvent
+    handleEngineEvent(ctx, 'tab-001', makeTab(), event)
+    expect(errors[0]).toMatchObject({
+      message: 'Extensions are managed here. Request one through the catalog.',
+      errorCode: 'extension_blocked',
+      policyFailure: 'extension_blocked',
+      extensionName: 'example-ext',
+    })
+    fail()
+    expect(errors[1]).not.toHaveProperty('extensionName')
+  })
+
   it('carries the policy failure identifier with a blocked tool result', () => {
     const results: Array<Record<string, unknown>> = []
     ctx.emit = (eventName: string, ...args: unknown[]) => {

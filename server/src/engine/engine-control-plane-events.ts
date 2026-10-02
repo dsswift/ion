@@ -265,6 +265,7 @@ export function handleEngineEvent(
         state: event.providerSubscription?.state ?? "",
         error_code: event.errorCode ?? "",
         policy_failure: event.policyFailure ?? "",
+        extension: event.extensionName ?? "",
       });
       ctx.emit("event", tabId, {
         type: "error",
@@ -273,6 +274,8 @@ export function handleEngineEvent(
         stderrTail: event.stderrTail ?? [],
         ...(event.providerSubscription ? { providerSubscription: event.providerSubscription } : {}),
         ...(event.policyFailure ? { policyFailure: event.policyFailure } : {}),
+        ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+        ...(event.extensionName ? { extensionName: event.extensionName } : {}),
       } as NormalizedEvent);
       break;
     }
