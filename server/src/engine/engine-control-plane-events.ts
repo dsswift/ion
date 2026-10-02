@@ -114,6 +114,7 @@ export function handleEngineEvent(
         tool_id: event.toolId,
         is_error: event.isError,
         background_task_id: event.backgroundTaskId ?? "",
+        policy_failure: event.policyFailure ?? "",
       });
       ctx.emit("event", tabId, {
         type: "tool_result",
@@ -124,6 +125,7 @@ export function handleEngineEvent(
         // store keeps a row carrying it running until that work ends, and
         // the background-work list matches live tasks to rows by it.
         ...(event.backgroundTaskId ? { backgroundTaskId: event.backgroundTaskId } : {}),
+        ...(event.policyFailure ? { policyFailure: event.policyFailure } : {}),
       } as NormalizedEvent);
       break;
 
@@ -261,6 +263,8 @@ export function handleEngineEvent(
         tab_id: tabId,
         error: event.message,
         state: event.providerSubscription?.state ?? "",
+        error_code: event.errorCode ?? "",
+        policy_failure: event.policyFailure ?? "",
       });
       ctx.emit("event", tabId, {
         type: "error",
@@ -268,6 +272,7 @@ export function handleEngineEvent(
         isError: true,
         stderrTail: event.stderrTail ?? [],
         ...(event.providerSubscription ? { providerSubscription: event.providerSubscription } : {}),
+        ...(event.policyFailure ? { policyFailure: event.policyFailure } : {}),
       } as NormalizedEvent);
       break;
     }
