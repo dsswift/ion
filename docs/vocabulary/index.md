@@ -89,6 +89,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
+- [Dispatch Conversation Read](#term-dispatch-conversation-read)
 - [Dispatch History](#term-dispatch-history)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
@@ -508,6 +509,20 @@ A consumer-supplied identifier registered as an alternate name for a dispatch's 
 - **Implementations:**
   - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry_alias.go`
   - `sdk` / `code` / `go`: `ClientDispatchID string` in `sdk/go/context_dispatch.go`
+
+#### Dispatch Conversation Read {#term-dispatch-conversation-read}
+
+A bounded, cursor-paged read of the conversation a dispatch wrote, open only to the context that created the dispatch directly or transitively. The engine settles that from its own dispatch lineage, live or retained, and refuses a target it cannot tie to a dispatch the caller owns. A page holds messages with their text, tool calls, and tool results in written order, plus whether the dispatch is still running or how it ended.
+
+- **ID:** `dispatch-conversation-read`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `parent-scoped conversation read`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) ResolveOwnedConversation` in `engine/internal/session/extcontext/dispatch_registry_conversation.go`
+  - `sdk` / `code` / `go`: `func (c *Context) ReadDispatchConversation` in `sdk/go/context_dispatch_conversation.go`
 
 #### Dispatch History {#term-dispatch-history}
 
@@ -3238,6 +3253,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `new conversation flow` → [New Conversation Picker](#term-new-conversation-picker)
 - Alias: `office canvas` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `outbound engine event` → [Engine event](#term-engine-event)
+- Alias: `parent-scoped conversation read` → [Dispatch Conversation Read](#term-dispatch-conversation-read)
 - Alias: `peer connection` → [Connection](#term-connection)
 - Alias: `permission request` → [Permission](#term-permission)
 - Alias: `phone actions` → [Phone Action List](#term-phone-action-list)

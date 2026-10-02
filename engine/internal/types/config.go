@@ -520,6 +520,11 @@ type EngineRuntimeConfig struct {
 	// retains. Nil means the compiled defaults. See DispatchHistoryConfig.
 	DispatchHistory *DispatchHistoryConfig `json:"dispatchHistory,omitempty"`
 
+	// DispatchConversationRead bounds one page of a lineage-scoped dispatch
+	// conversation read. Nil means the compiled defaults. See
+	// DispatchConversationReadConfig.
+	DispatchConversationRead *DispatchConversationReadConfig `json:"dispatchConversationRead,omitempty"`
+
 	// ThinkingPolicy holds the engine-wide operator policy for extended
 	// thinking. It is distinct from Thinking, which configures default per-run
 	// behavior. See ThinkingPolicyConfig.

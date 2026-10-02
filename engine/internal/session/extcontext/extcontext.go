@@ -323,6 +323,9 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		ctx.ListDispatchHistory = func() ([]extension.DispatchHistoryEntry, error) {
 			return DispatchHistoryEntries(registry.OwnedHistory(dispatchId)), nil
 		}
+
+		// Conversation read for the same owned set, live and terminal.
+		ctx.ReadDispatchConversation = BuildReadDispatchConversationFunc(sa, registry, dispatchId)
 	}
 
 	// Wire self-steer: deliver a message to the run that OWNS this context,

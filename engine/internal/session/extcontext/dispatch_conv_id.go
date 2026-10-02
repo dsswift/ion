@@ -18,8 +18,9 @@ import (
 // recordChildConvID writes the child conversation ID into the parent's
 // agent-state metadata (both the conversationIds list and the singular
 // conversationId), updates the structured dispatches[] entry while the dispatch
-// is still running, and emits an agent snapshot. Called once when the child's
-// first SessionInitEvent arrives.
+// is still running, emits an agent snapshot, and records the ID on the
+// dispatch's persisted record. Called once when the child's first
+// SessionInitEvent arrives.
 func recordChildConvID(sa SessionAccessor, agentID, childSessionID, agentName string, start time.Time) {
 	elapsedSoFar := time.Since(start).Seconds()
 	sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
@@ -43,5 +44,6 @@ func recordChildConvID(sa SessionAccessor, agentID, childSessionID, agentName st
 		agents.UpdateDispatchEntry(state.Metadata, agentID, "running", elapsedSoFar, childSessionID)
 	})
 	sa.EmitAgentSnapshot("dispatch_conversation_id")
+	sa.PersistDispatchConversationID(agentID, childSessionID)
 	utils.LogWithFields(utils.LevelInfo, "server", "captured child conversation id early", map[string]any{"agent_name": agentName, "child_session_i_d": childSessionID, "session_key": sa.SessionKey()})
 }

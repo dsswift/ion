@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// Pins the TypeScript SDK side of ambiguous name resolution and terminal
-// dispatch history: the fields the engine answers with must reach the caller.
+// Pins the TypeScript SDK side of ambiguous name resolution, terminal dispatch
+// history, and the dispatch conversation read: the fields the engine answers
+// with must reach the caller.
 
 const { lineHandlers } = vi.hoisted(() => ({
   lineHandlers: [] as Array<(line: string) => void>,
@@ -36,6 +37,7 @@ async function runTool(
   method: string,
   response: unknown,
   error?: { code: number; message: string; data?: unknown },
+  inspectParams?: (params: Record<string, unknown> | undefined) => void,
 ): Promise<unknown> {
   const writes: string[] = []
   vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
@@ -60,6 +62,7 @@ async function runTool(
   const frames = (): Frame[] => writes.map((write) => JSON.parse(write) as Frame)
   const call = frames().find((frame) => frame.method === method)
   expect(call, `${method} was not sent`).toBeDefined()
+  inspectParams?.(call!.params)
   line!(JSON.stringify(error
     ? { jsonrpc: '2.0', id: call!.id, error }
     : { jsonrpc: '2.0', id: call!.id, result: response }))
@@ -112,6 +115,63 @@ describe('TypeScript SDK name resolution and dispatch history', () => {
       { dispatches: [entry] },
     )
     expect(result).toEqual([entry])
+  })
+
+  it('returns a typed dispatch conversation page and sends the read options', async () => {
+    const page = {
+      outcome: 'ok', conversationId: 'conv-1', dispatchId: 'd-1', agentName: 'worker',
+      status: 'running', terminal: false, nextCursor: 'c-2', hasMore: true, totalEntries: 7,
+      limits: { entries: 5, bytes: 4096, maxEntries: 200, maxBytes: 262144 },
+      entries: [{
+        id: 'e-1', role: 'assistant', timestamp: 10,
+        blocks: [
+          { type: 'text', text: 'reading' },
+          { type: 'tool_call', toolCallId: 't-1', toolName: 'Read', input: { path: '/a' } },
+        ],
+      }],
+    }
+    const opts = { conversationId: 'conv-1', cursor: 'c-1', limit: 5, maxBytes: 4096 }
+    const result = await runTool(
+      (ctx) => ctx.readDispatchConversation(opts),
+      'ext/read_dispatch_conversation',
+      page,
+      undefined,
+      (params) => expect(params).toEqual(opts),
+    )
+    expect(result).toEqual(page)
+  })
+
+  it('keeps a refused dispatch conversation read as a typed outcome', async () => {
+    const refused = { outcome: 'unauthorized', terminal: false, entries: [], hasMore: false, totalEntries: 0 }
+    const result = await runTool(
+      (ctx) => ctx.readDispatchConversation({ conversationId: 'conv-sibling' }),
+      'ext/read_dispatch_conversation',
+      refused,
+    )
+    expect(result).toEqual(refused)
+  })
+
+  it('reports an engine without the dispatch conversation read as unsupported', async () => {
+    const result = await runTool(
+      (ctx) => ctx.readDispatchConversation({ dispatchId: 'd-1' }),
+      'ext/read_dispatch_conversation',
+      undefined,
+      { code: -32601, message: 'Method not found' },
+    )
+    expect(result).toEqual({ outcome: 'unsupported', terminal: false, entries: [], hasMore: false, totalEntries: 0 })
+  })
+
+  it('still rejects a dispatch conversation read that fails in the engine', async () => {
+    const result = await runTool(
+      (ctx) => ctx.readDispatchConversation({ dispatchId: 'd-1' }).then(
+        () => 'resolved',
+        (err: Error) => `rejected: ${err.message}`,
+      ),
+      'ext/read_dispatch_conversation',
+      undefined,
+      { code: -32000, message: 'conversation file is corrupt' },
+    )
+    expect(result).toBe('rejected: conversation file is corrupt')
   })
 
   it('surfaces a steer that raced completion with its terminal entry', async () => {

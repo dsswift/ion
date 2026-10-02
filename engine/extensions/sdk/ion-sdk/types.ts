@@ -830,8 +830,8 @@ export interface HistoryMatch {
  *   child is producing right now; large and growing means it is wedged. `0`
  *   means no activity observed yet (child still starting).
  * - `childConversationId`: the child session's conversation ID once known.
- *   Read the child's live transcript (or harvest partial work) from the
- *   conversation store by this ID.
+ *   Read the child's live transcript (or harvest partial work) by this ID with
+ *   {@link IonContext.readDispatchConversation}.
  * - `waitingOn`: complete async work set holding a suspended dispatch parked.
  *   `taskIds` are notifying Bash tasks; `childDispatchIds` are child dispatches.
  * - `pendingChildren`: compatibility projection of `waitingOn.childDispatchIds`.
@@ -880,6 +880,118 @@ export interface DispatchHistoryEntry {
   durationMs: number
   toolCount: number
   childConversationId?: string
+}
+
+/**
+ * Options for {@link IonContext.readDispatchConversation}. Name the target by
+ * `conversationId`, by `dispatchId`, or by both, in which case both must name
+ * the same dispatch.
+ *
+ * - `cursor`: the `nextCursor` of an earlier page. Omit to read from the start.
+ * - `limit`: the most entries wanted. Omit for the engine default. A value
+ *   above the engine maximum is lowered to it.
+ * - `maxBytes`: the serialized-byte budget wanted for the page's entries. Omit
+ *   for the engine default. A value above the engine maximum is lowered to it.
+ */
+export interface ReadDispatchConversationOpts {
+  conversationId?: string
+  dispatchId?: string
+  cursor?: string
+  limit?: number
+  maxBytes?: number
+}
+
+/**
+ * One content block of a {@link DispatchConversationEntry}.
+ *
+ * - `type`: `"text"`, `"thinking"`, `"tool_call"`, or `"tool_result"`. Any
+ *   other kind of block keeps its own type name (for example `"image"`).
+ * - `text`: the body of a text or thinking block.
+ * - `toolCallId`: joins a `tool_call` block to its `tool_result` block.
+ * - `toolName`: the tool a `tool_call` invokes, and on a `tool_result` the name
+ *   of the call it answers.
+ * - `input`: a `tool_call`'s arguments.
+ * - `content` / `isError`: a `tool_result`'s output and whether it failed.
+ * - `truncated` / `originalBytes`: set when `text`, `content`, or `input` was
+ *   cut to fit the page's byte budget, with the size before the cut.
+ */
+export interface DispatchConversationBlock {
+  type: string
+  text?: string
+  toolCallId?: string
+  toolName?: string
+  input?: Record<string, unknown>
+  content?: string
+  isError?: boolean
+  truncated?: boolean
+  originalBytes?: number
+}
+
+/**
+ * One message of a dispatch's conversation. `id` is stable across reads and
+ * unique in the conversation. `blocks` are in the order they were written, so
+ * assistant text, tool calls, and tool results keep their interleaving.
+ */
+export interface DispatchConversationEntry {
+  id: string
+  role: string
+  timestamp: number
+  blocks: DispatchConversationBlock[]
+}
+
+/** The bounds a {@link IonContext.readDispatchConversation} call ran under. */
+export interface DispatchConversationLimits {
+  /** Entry bound applied to this page. */
+  entries: number
+  /** Serialized-byte bound applied to this page. */
+  bytes: number
+  /** The most entries a caller may ask for. */
+  maxEntries: number
+  /** The largest byte budget a caller may ask for. */
+  maxBytes: number
+}
+
+/**
+ * One page of a dispatch's conversation, or the reason there is none. Branch
+ * on `outcome`:
+ *
+ * - `"ok"`: `entries` holds the page.
+ * - `"unauthorized"`: the target is not the conversation of a dispatch this
+ *   context created, directly or transitively, or its lineage could not be
+ *   established. Nothing about the target is disclosed.
+ * - `"unavailable"`: this context owns the dispatch, and its conversation
+ *   cannot be read. `unavailableReason` is `"not_created"` (the child never
+ *   started a conversation) or `"not_found"` (its record is gone).
+ * - `"invalid_cursor"`: the cursor does not name an entry of the conversation.
+ *   Read again without a cursor.
+ * - `"unsupported"`: the engine predates this method. Set by the SDK.
+ *
+ * The dispatch fields (`conversationId`, `dispatchId`, `agentName`, `status`,
+ * `terminal`, `reason`, `exitCode`) are set whenever this context owns the
+ * dispatch. `status` is `"running"` or `"suspended"` while the dispatch is
+ * live, and its final status (`"done"`, `"error"`, `"cancelled"`, `"lost"`)
+ * once `terminal` is true. `reason` is the terminal reason and is never part
+ * of the transcript.
+ *
+ * `nextCursor` resumes after the last entry returned so far. Pass it back to
+ * read only what was written since, including on a live conversation whose
+ * current page reports `hasMore: false`.
+ */
+export interface DispatchConversationResult {
+  outcome: 'ok' | 'unauthorized' | 'unavailable' | 'invalid_cursor' | 'unsupported'
+  unavailableReason?: 'not_created' | 'not_found'
+  conversationId?: string
+  dispatchId?: string
+  agentName?: string
+  status?: 'running' | 'suspended' | 'done' | 'error' | 'cancelled' | 'lost'
+  terminal: boolean
+  reason?: string
+  exitCode?: number
+  entries: DispatchConversationEntry[]
+  nextCursor?: string
+  hasMore: boolean
+  totalEntries: number
+  limits?: DispatchConversationLimits
 }
 
 /** Complete task and child wait metadata for a parked dispatch. */
@@ -1740,6 +1852,28 @@ export interface IonContext extends DispatchControlContext {
    * not support this RPC (older engine builds).
    */
   listDispatchHistory(): Promise<DispatchHistoryEntry[]>
+
+  /**
+   * Returns one bounded page of the conversation of a dispatch this context
+   * owns, while it runs or after it ends: the root context owns every
+   * dispatch, a dispatched agent only its strict descendants. The engine
+   * decides ownership from its own dispatch lineage.
+   *
+   * A refusal resolves with a typed `outcome` rather than rejecting. Against
+   * an engine that does not support this RPC the outcome is `"unsupported"`.
+   *
+   * ```ts
+   * let cursor: string | undefined
+   * do {
+   *   const page = await ctx.readDispatchConversation({ conversationId, cursor })
+   *   if (page.outcome !== 'ok') break
+   *   for (const entry of page.entries) inspect(entry)
+   *   cursor = page.nextCursor
+   *   if (!page.hasMore) break
+   * } while (cursor)
+   * ```
+   */
+  readDispatchConversation(opts: ReadDispatchConversationOpts): Promise<DispatchConversationResult>
 
   /**
    * One-shot lightweight inference call. Fires a single round-trip to

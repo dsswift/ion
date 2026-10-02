@@ -659,6 +659,19 @@ func (m *Manager) persistLostNoticeState(conversationID, agentID, state string) 
 	})
 }
 
+// persistDispatchConversationID records the child conversation a running
+// dispatch is writing, so the link from dispatch to conversation is durable
+// before the dispatch reaches a terminal record.
+func (m *Manager) persistDispatchConversationID(conversationID, agentID, childConversationID string) {
+	if childConversationID == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "persistdispatchconversationid: no child conversation id (no-op)", map[string]any{"run_id": agentID})
+		return
+	}
+	m.updatePersistedDispatch(conversationID, agentID, func(d *conversation.AgentDispatchData) {
+		d.ConversationID = childConversationID
+	})
+}
+
 // persistRecallIntent marks a dispatch as intentionally recalled. It is kept
 // separate from lifecycle status because a process death can occur before a
 // terminal callback writes its superseding entry.

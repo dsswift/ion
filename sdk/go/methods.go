@@ -42,6 +42,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/ack_dispatch_lost":             "Context.AckDispatchLost",
 		"ext/list_dispatch_state":           "Context.ListDispatchState",
 		"ext/list_dispatch_history":         "Context.ListDispatchHistory",
+		"ext/read_dispatch_conversation":    "Context.ReadDispatchConversation",
 		"ext/set_dispatch_context_defaults": "Context.SetDispatchContextDefaults",
 
 		// Dynamic tools.

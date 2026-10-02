@@ -727,6 +727,7 @@
     "ext/notify",
     "ext/protected_operation",
     "ext/publish_resource",
+    "ext/read_dispatch_conversation",
     "ext/recall_agent",
     "ext/recall_dispatch",
     "ext/register_agent_spec",

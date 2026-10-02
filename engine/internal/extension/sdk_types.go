@@ -314,6 +314,13 @@ type Context struct {
 	// support is not wired.
 	ListDispatchHistory func() ([]DispatchHistoryEntry, error)
 
+	// ReadDispatchConversation returns one bounded page of the conversation
+	// of a dispatch this context owns, live or ended: the root context owns
+	// every dispatch, a dispatched agent only its strict descendants. A
+	// target outside that set is answered with the "unauthorized" outcome,
+	// never with content. Nil when dispatch support is not wired.
+	ReadDispatchConversation func(opts ReadDispatchConversationOpts) (*DispatchConversationResult, error)
+
 	// GetSessionMemory returns the current session memory content for this
 	// session. Returns empty string when session memory is not active or
 	// no summary has been generated yet.
@@ -589,8 +596,8 @@ type DispatchStateEntry struct {
 	// activity has been observed yet.
 	LastActivityMs int64 `json:"lastActivityMs"`
 	// ChildConversationID is the child session's conversation ID once known.
-	// Lets a consumer read the child's live transcript (or harvest partial
-	// work) directly from the conversation store.
+	// Context.ReadDispatchConversation reads the child's live transcript (or
+	// harvests partial work) by this ID.
 	ChildConversationID string `json:"childConversationId,omitempty"`
 	// PendingChildren is retained for compatibility. WaitingOn carries the
 	// complete task-and-child wait metadata for parked dispatches.

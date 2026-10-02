@@ -214,6 +214,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.DispatchHistory != nil {
 		dst.DispatchHistory = src.DispatchHistory
 	}
+	if src.DispatchConversationRead != nil {
+		dst.DispatchConversationRead = src.DispatchConversationRead
+	}
 
 	// LogLevel: a higher layer's value replaces a lower one.
 	if src.LogLevel != "" {
