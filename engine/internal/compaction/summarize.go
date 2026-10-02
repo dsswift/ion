@@ -164,9 +164,10 @@ func summarize(ctx context.Context, text, model string, maxTokens int, attachAut
 				response.WriteString(ev.Delta.Text)
 			}
 		case "message_delta":
-			// Accumulate output token counts from the final delta.
+			// Accumulate token counts from the final delta.
 			if ev.DeltaUsage != nil {
 				usage.OutputTokens += ev.DeltaUsage.OutputTokens
+				usage.MergeInputDelta(ev.DeltaUsage)
 			}
 		}
 	}

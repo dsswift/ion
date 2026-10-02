@@ -250,6 +250,27 @@ type LlmUsage struct {
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 }
 
+// MergeInputDelta folds the input-side counters of a message_delta usage
+// report into u. A stream may report prompt accounting on message_start, on
+// message_delta, or on both; a message_delta value is the total for the whole
+// request, so a non-zero counter replaces the one already held and a zero
+// counter leaves it alone. Output tokens are not touched. A nil delta is a
+// no-op.
+func (u *LlmUsage) MergeInputDelta(delta *LlmUsage) {
+	if delta == nil {
+		return
+	}
+	if delta.InputTokens > 0 {
+		u.InputTokens = delta.InputTokens
+	}
+	if delta.CacheReadInputTokens > 0 {
+		u.CacheReadInputTokens = delta.CacheReadInputTokens
+	}
+	if delta.CacheCreationInputTokens > 0 {
+		u.CacheCreationInputTokens = delta.CacheCreationInputTokens
+	}
+}
+
 // --- LLM Stream Events (Anthropic-canonical SSE shape) ---
 
 // LlmStreamEventStreamReset is an in-band marker injected by the retry

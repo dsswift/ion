@@ -138,11 +138,10 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}
 
 	var (
-		contentIndex    int
-		inTextBlock     bool
-		currentToolID   string
-		totalInputToks  int
-		totalOutputToks int
+		contentIndex  int
+		inTextBlock   bool
+		currentToolID string
+		usage         *types.LlmUsage
 	)
 
 	rawCh, rawErr := ParseSSEStream(resp.Body)
@@ -173,17 +172,19 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 			return pe
 		}
 
+		// Usage. With stream_options.include_usage the totals arrive on a
+		// final chunk whose choices array is empty, so this is read before
+		// the empty-choices skip below.
+		if chunk.Usage != nil {
+			u := chunk.Usage.llmUsage()
+			usage = &u
+		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}
 		choice := chunk.Choices[0]
 		delta := choice.Delta
-
-		// Usage
-		if chunk.Usage != nil {
-			totalInputToks = chunk.Usage.PromptTokens
-			totalOutputToks = chunk.Usage.CompletionTokens
-		}
 
 		// Text content
 		if delta.Content != "" {
@@ -329,10 +330,6 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 					Type:       "message_delta",
 					StopReason: &stopReason,
 				},
-				DeltaUsage: &types.LlmUsage{
-					InputTokens:  totalInputToks,
-					OutputTokens: totalOutputToks,
-				},
 			}); err != nil {
 				return err
 			}
@@ -348,6 +345,25 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		return FromOpenAIError(fmt.Errorf("sse read: %w", err), 0, "")
 	}
 
+	// Usage is reported once, after the stream is fully read: the totals can
+	// arrive after the finish_reason chunk, and a consumer that adds up
+	// message_delta output tokens must see them exactly once.
+	if usage == nil {
+		utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream ended with no usage reported", map[string]any{"provider": p.id, "model": opts.Model})
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "OpenAI", "do stream usage", map[string]any{
+			"provider": p.id, "model": opts.Model,
+			"input_tokens": usage.InputTokens, "cache_read_input_tokens": usage.CacheReadInputTokens, "output_tokens": usage.OutputTokens,
+		})
+		if err := sendEvent(ctx, events, types.LlmStreamEvent{
+			Type:       "message_delta",
+			Delta:      &types.LlmStreamDelta{Type: "message_delta"},
+			DeltaUsage: usage,
+		}); err != nil {
+			return err
+		}
+	}
+
 	// message_stop
 	return sendEvent(ctx, events, types.LlmStreamEvent{Type: "message_stop"})
 }
@@ -357,6 +373,8 @@ func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[strin
 		"model":    opts.Model,
 		"stream":   true,
 		"messages": formatOpenAIMessages(opts.System, opts.Messages),
+		// A streamed chat completion reports no token usage unless asked.
+		"stream_options": map[string]any{"include_usage": true},
 	}
 
 	// max_completion_tokens is optional on the OpenAI API: when the engine has
@@ -766,9 +784,4 @@ func parseOpenAIImageOut(im openaiImageOut) (mediaType, base64Data string) {
 type openaiFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
-}
-
-type openaiUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
 }

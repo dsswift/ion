@@ -113,11 +113,10 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}
 
 	var (
-		contentIndex    int
-		inTextBlock     bool
-		currentToolID   string
-		totalInputToks  int
-		totalOutputToks int
+		contentIndex  int
+		inTextBlock   bool
+		currentToolID string
+		usage         types.LlmUsage
 	)
 
 	rawCh, rawErr := ParseSSEStream(resp.Body)
@@ -135,8 +134,8 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		}
 
 		if chunk.UsageMetadata != nil {
-			totalInputToks = chunk.UsageMetadata.PromptTokenCount
-			totalOutputToks = chunk.UsageMetadata.CandidatesTokenCount
+			// promptTokenCount includes the cached content tokens.
+			usage = splitCachedPrompt(chunk.UsageMetadata.PromptTokenCount, chunk.UsageMetadata.CachedContentTokenCount, chunk.UsageMetadata.CandidatesTokenCount)
 		}
 
 		if len(chunk.Candidates) == 0 {
@@ -252,8 +251,9 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 				Type:  "message_delta",
 				Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason},
 				DeltaUsage: &types.LlmUsage{
-					InputTokens:  totalInputToks,
-					OutputTokens: totalOutputToks,
+					InputTokens:          usage.InputTokens,
+					CacheReadInputTokens: usage.CacheReadInputTokens,
+					OutputTokens:         usage.OutputTokens,
 				},
 			}); err != nil {
 				return err
@@ -453,6 +453,7 @@ type geminiFunctionCall struct {
 }
 
 type geminiUsage struct {
-	PromptTokenCount     int `json:"promptTokenCount"`
-	CandidatesTokenCount int `json:"candidatesTokenCount"`
+	PromptTokenCount        int `json:"promptTokenCount"`
+	CandidatesTokenCount    int `json:"candidatesTokenCount"`
+	CachedContentTokenCount int `json:"cachedContentTokenCount"`
 }

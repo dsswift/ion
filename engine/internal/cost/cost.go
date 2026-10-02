@@ -61,10 +61,8 @@ func TurnCost(model string, usage types.LlmUsage) float64 {
 		cacheReadRate = info.CostPer1kInput * cacheReadFallbackMultiplier
 	}
 
-	// The provider sends all three token buckets. The base InputTokens field
-	// from Anthropic carries only the non-cached portion of the prompt when
-	// cache-read or cache-creation tokens are also reported; OpenAI and
-	// others that don't support caching report zero for the cache buckets.
+	// InputTokens is the non-cached portion of the prompt; the cache-read and
+	// cache-creation portions are separate buckets, each priced at its own rate.
 	regularInput := float64(usage.InputTokens) / 1000.0 * info.CostPer1kInput
 	cacheCreate := float64(usage.CacheCreationInputTokens) / 1000.0 * cacheCreateRate
 	cacheRead := float64(usage.CacheReadInputTokens) / 1000.0 * cacheReadRate
