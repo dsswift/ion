@@ -22,6 +22,8 @@ Otherwise the engine reads its platform-native source:
 
 Within a platform the listed sources are merged, not raced: a later source overlays the earlier ones field by field.
 
+A host that serves more than one person can scope further policy to specific accounts. That policy is still part of the machine source listed above: see [Account policies](sealed-config.md#account-policies).
+
 This page describes the **machine layer** -- the sole policy enforcer. A second,
 additive-only **per-user layer** lets IT provision which Ion Studio Servers a specific
 person should see, without giving a person-writable file any power to loosen policy. See

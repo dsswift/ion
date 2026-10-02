@@ -300,6 +300,126 @@ The error's `message` is engine text by default. Set `messages.extension_blocked
 
 The `id` an extension matched is its trusted identity. The engine keys each extension's section of [application config](../configuration/engine-json.md#application-config-document) on it. The name an extension reports about itself at startup does not change it.
 
+## Account policies
+
+A host that serves more than one person can carry different policy for different accounts. The rest of this page describes one policy for the whole machine. `accountPolicies` adds policy that applies only to the accounts an entry selects.
+
+```jsonc
+{
+  "allowedModels": ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+  "accountPolicies": [
+    {
+      "name": "contractors",
+      "match": { "osGroups": ["Contractors"] },
+      "assetScope": "contractors",
+      "policy": {
+        "allowedModels": ["claude-haiku-4-5-20251001"],
+        "permissions": { "mode": "ask" },
+        "resourceLimits": { "maxAgentsPerSession": 2 }
+      }
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Optional label, used in the engine log. |
+| `match` | Which accounts the entry applies to. See [Matching an account](#matching-an-account). |
+| `assetScope` | Optional. Names a scope for on-disk assets delivered to the matched accounts only. One lowercase directory name: `^[a-z0-9][a-z0-9-]{0,63}$`. See [Account-scoped assets](#account-scoped-assets). |
+| `policy` | The policy for the matched accounts. It uses the same keys as the machine policy. |
+
+### Where account policies are read from
+
+Account policies are part of the machine policy. The engine reads them from the same administrator-controlled source as everything else on this page (see [MDM Deployment](mdm.md#source-resolution-order)) and from nowhere else. No per-user location is a source: the per-user layer still contributes only `customFields['ion-desktop'].environments`, and an `accountPolicies` key written there is ignored and logged.
+
+On Linux and Windows each drop-in file can carry its own `accountPolicies`. The lists accumulate across files, so one group's policy can live in one file.
+
+### Matching an account
+
+Every non-empty `match` field must match. An empty field matches anything, and a `match` with every field empty selects every account.
+
+| Field | Matches |
+|-------|---------|
+| `osUsers` | The operating-system account the engine runs as, by user name or stable id (a uid, or a SID on Windows). On Windows `DOMAIN\name` and the bare `name` both match. Names compare without regard to case. |
+| `osGroups` | Any group that account belongs to, by group name or stable id (a gid, or a SID on Windows). On Windows the groups come from the sign-in token, so a directory group with no local group entry still matches by SID. |
+| `subjects`, `providers`, `claims` | The session's principal, exactly as [`toolRestrictions.principals`](#per-principal-fields-toolrestrictionsprincipals) matches it. |
+
+The two kinds of field are trusted differently. The engine reads the OS account from the operating system, so nothing a client sends can change it. A principal reaches the engine from the client that started the session, so a principal match is as trustworthy as that client. On a host where each person runs their own engine, match by `osUsers` or `osGroups`. Match by principal on a shared server that verifies each person before it starts their sessions.
+
+An entry applies at one of two scopes:
+
+- **Process scope.** An entry that names only `osUsers` or `osGroups` is resolved once, for the engine process. Every field in its `policy` applies.
+- **Session scope.** An entry that names `subjects`, `providers`, or `claims` is resolved for each session, against that session's principal. Two sessions for different principals on one engine each get their own policy, and neither sees the other's. A session with no principal matches no such entry and gets the process policy.
+
+A session-scoped entry can only carry the fields the engine applies per session. These configure things that exist once per engine process, so the engine ignores them in a session-scoped entry and logs a warning: `auth`, `subscriptionLookup`, `providers`, `allowedProviders`, `pluginAllowlist`, `pluginDenylist`, `pluginForceInstalled`, `telemetry`, `systemMetrics`, `applicationConfig`, `protectedOperations`, `conversationEvents`, `network`, `logging`, `security`, `thinking`, and `resourceLimits.maxSessions`. Put them in an entry that matches by OS account only.
+
+### How an account policy composes with the machine policy
+
+The machine policy is the ceiling. An account policy can restrict further. It can never relax a machine constraint. A value that would relax one is ignored, logged as `account policy value ignored`, and the machine value stands.
+
+Matching entries apply in the order written: process-scope entries first, then session-scope entries. Each one composes with the result of the ones before it, so the same inputs always give the same policy.
+
+Every field belongs to one of four classes.
+
+**Allowlists: the account list is cut down to what the machine list permits.**
+
+| Field | Rule |
+|-------|------|
+| `allowedModels`, `allowedProviders`, `toolRestrictions.allow` | An account entry that is not in the machine list is ignored. |
+| `mcpAllowlist`, `pluginAllowlist` | An account entry is kept when the machine list names it or a machine pattern matches it. An account pattern is kept only when the machine list names the same pattern. |
+| `extensionAllowlist` | An account entry is kept when the machine list names the same `id`. A machine `sha256` stands. An account `sha256` applies where the machine entry has none. |
+| `limits.planModeAllowedBashCommands`, `limits.planModeAllowedMcpTools` | The account list is intersected with the machine list by the same [prefix rule](#prefix-matching-runs-one-direction). An empty result means none are allowed. |
+
+When the machine does not set an allowlist, the account list applies as written. When no account entry is inside the machine list, the account list is a mistake: the engine ignores it whole and the machine list stands. The plan-mode lists are the exception, because for them an empty list is a real value.
+
+**Deny lists and additive lists: union.**
+
+| Field | Rule |
+|-------|------|
+| `blockedModels`, `mcpDenylist`, `pluginDenylist`, `toolRestrictions.deny` | Both lists apply. |
+| `pluginForceInstalled`, `requiredHooks`, `toolRestrictions.principals` | Both lists apply. |
+| `permissions.dangerousPatterns`, `permissions.readOnlyPaths`, `sandbox.additionalDenyPaths`, `sandbox.additionalDangerousPatterns` | Both lists apply. |
+| `permissions.rules` | An account `deny` rule is evaluated before the machine rules. An account `ask` rule is evaluated after them, and is ignored when the mode is `deny`. An account `allow` rule is ignored. |
+| `permissions.tierRules` | The stricter decision wins for a tier both set. An account `allow` for a tier the machine does not set is ignored. |
+| `protectedOperations` | The account adds operations. A machine operation of the same name stands. |
+
+**One-way switches and bounds: the stricter value wins.**
+
+| Field | Rule |
+|-------|------|
+| `permissions.mode` | `allow` < `ask` < `deny`. |
+| `sandbox.required`, `security.requirePrincipalPartitioning`, `git.required`, `thinking.disabled`, `telemetry.enabled`, `conversationEvents.enabled`, `auth.requireOperatorIdentity`, `newConversationDefaults.locked`, `newConversationDefaults.profileLocked`, `disableTelemetryHealthNotifications` | On when either sets it. |
+| `sandbox.allowDisable` | Allowed only when both allow it. |
+| `security.minEnforcement` | The stricter level. |
+| `resourceLimits.maxSessions`, `resourceLimits.maxAgentsPerSession`, `limits.agentStateMetadata`, `conversationRetentionDays` | The lower number. |
+
+**Managed values: the account value wins when present.** These supply endpoints, defaults, and identity. Differing per account is their purpose, so they are not constraints the machine holds as a ceiling.
+
+| Field | Rule |
+|-------|------|
+| `newConversationDefaults`, `subscriptionLookup`, `systemMetrics`, `applicationConfig`, `logging`, `auth`, `telemetry`, `conversationEvents` | The account block replaces the machine block. A one-way switch inside it keeps the stricter value, as above. |
+| `network` | `proxy` and `customCaCerts` are each replaced when the account sets them. |
+| `git.machine` | Replaced when the account sets it. |
+| `providers` | The account adds or replaces provider definitions by key. A key the machine `allowedProviders` excludes is ignored. |
+| `customFields` | Merged key by key. Nested objects merge; any other value is replaced. |
+
+### Account-scoped assets
+
+An asset an administrator installs for the whole machine reaches every account on it. `assetScope` lets an asset reach some accounts only.
+
+The engine does not read assets. It reports, on the resolved policy, the `assetScopes` of every account policy that matched the account. A consumer maps a scope to its own on-disk location. Ion Studio looks for theme packs in `accounts/<scope>/themes` beside the machine themes root, so a pack installed there is offered only to accounts whose policy names that scope. See [Theme Packs](../design/theme-packs.md#install-locations).
+
+`assetScopes` is set by the engine. A policy source cannot set it.
+
+### What a consumer sees
+
+`get_enterprise_policy` returns the resolved policy for the account it is asked about. The reply never carries `accountPolicies`, so one account's reply does not reveal another account's policy. See [`get_enterprise_policy`](../protocol/client-commands.md#get_enterprise_policy).
+
+### A host with no account policies
+
+Nothing changes. With no `accountPolicies` in the machine policy, the machine policy applies exactly as before and no configuration is needed.
+
 ## Custom fields
 
 The `customFields` map is a pass-through for organization-specific metadata. The engine does not interpret these values. Extensions can read them from the config context for custom enterprise logic.

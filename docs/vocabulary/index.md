@@ -47,6 +47,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 
 - [APNs pusher](#term-apns-pusher)
 - [Abort Marker](#term-abort-marker)
+- [Account Policy](#term-account-policy)
 - [Account Setting](#term-account-setting)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
@@ -894,6 +895,19 @@ The engine's listener abstraction. It accepts a connection over a Unix socket or
   - `engine` / `code` / `go`: `type Transport interface` in `engine/internal/transport/transport.go`
 
 ### public-contract
+
+#### Account Policy {#term-account-policy}
+
+Enterprise policy an administrator scopes to specific accounts on a host that serves more than one person. It lives inside the machine policy, matches by operating-system account or by Session Principal, and composes under the machine policy: it can restrict further and never relax.
+
+- **ID:** `account-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type AccountPolicy struct` in `engine/internal/types/config_account_policy.go`
 
 #### Client command {#term-client-command}
 
