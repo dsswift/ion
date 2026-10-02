@@ -156,6 +156,12 @@ export interface EnterprisePolicy {
    * through without validating or interpreting it.
    */
   customFields?: Record<string, unknown>
+  /**
+   * Replacement text per Policy Failure identifier (see policy-failure.ts).
+   * The engine applies it to the failures it reports; a client applies it to
+   * the failures it words itself.
+   */
+  messages?: Record<string, string>
 }
 
 /**

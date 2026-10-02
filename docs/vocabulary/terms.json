@@ -872,6 +872,39 @@
       ]
     },
     {
+      "id": "conversation-record-read",
+      "term": "Conversation record read",
+      "definition": "The extension call that returns a conversation's messages with their timestamps by conversation identifier, read from disk so a conversation that has ended is readable. It pages by offset and limit, never writes to the record, and is subject to the calling session's read access under principal partitioning.",
+      "domain": "harness-sdk",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (h *Host) rpcReadConversation",
+          "path": "engine/internal/extension/host_rpc_conversation.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (a *ConversationsAPI) Read",
+          "path": "sdk/go/conversations.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "conversations",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "conversation-status",
       "term": "Conversation status",
       "definition": "The current run state of a conversation, with its model, permission mode, context use, and pending work. The engine computes it. Clients render it and never derive it.",
@@ -3037,6 +3070,41 @@
       ]
     },
     {
+      "id": "park-check-in",
+      "term": "Park Check-In",
+      "definition": "One periodic wake of a dispatch that is parked on work it started. The dispatcher declares the interval; each time it passes with the awaited work still running, the engine resumes the parked dispatch for one turn with a prompt the dispatcher supplies, so the agent can inspect, steer, or recall that work. The dispatch parks again when the turn ends with the work still outstanding.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "dispatch check-in"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DispatchParkCheckInInfo struct",
+          "path": "engine/internal/extension/sdk_types_dispatch.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DispatchParkCheckInInfo struct",
+          "path": "sdk/go/context_dispatch.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface DispatchParkCheckInInfo",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "peer",
       "term": "Peer",
       "definition": "One end of a relay channel. A channel holds at most two peers, and each peer holds one role.",
@@ -3198,6 +3266,49 @@
           "language": "swift",
           "symbol": "struct ModelPickerSheet",
           "path": "ios/IonRemote/Views/ModelPickerSheet.swift"
+        }
+      ]
+    },
+    {
+      "id": "policy-failure",
+      "term": "Policy Failure",
+      "definition": "A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "policy message",
+        "configurable error message"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "var PolicyFailureIDs",
+          "path": "engine/internal/types/policy_failure.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func PolicyMessage",
+          "path": "engine/internal/config/policy_messages.go"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "policyMessage",
+          "path": "packages/shared/src/policy-failure.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "func failureText",
+          "path": "ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift"
         }
       ]
     },
@@ -4961,7 +5072,7 @@
           "presentation": "code",
           "language": "go",
           "symbol": "func IsToolAllowedFor",
-          "path": "engine/internal/config/merge.go"
+          "path": "engine/internal/config/policy_checks.go"
         }
       ]
     },

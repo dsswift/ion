@@ -72,6 +72,7 @@ import type {
   ToolContent,
   WalkContextFilesOpts,
 } from './types'
+import type { ConversationRecord, ReadConversationOpts } from './types-conversations'
 import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts, RecallDispatchResult } from './types-dispatch-control'
 
 // ---------------------------------------------------------------------------
@@ -333,6 +334,7 @@ function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
     conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
+    conversationRecordPath: typeof ctxData?.conversationRecordPath === 'string' ? ctxData.conversationRecordPath : '',
     // Run identity: the engine omits both keys when no run is in flight, so
     // '' IS the no-active-run shape (same additive pattern as dispatch identity
     // below). traceId is W3C-shaped and safe to put straight into a
@@ -478,7 +480,7 @@ function buildContext(ctxData: any): IonContext {
       const {
         onEvent, onComplete, onError, onRecall,
         onToolStart, onToolEnd, onToolError, onUsage, onTextDelta, onPlanProposal,
-        onChildQuestion, waitForCompletion, background: _background,
+        onChildQuestion, onParkCheckIn, waitForCompletion, background: _background,
         ...rpcOpts
       } = opts
 
@@ -492,6 +494,8 @@ function buildContext(ctxData: any): IonContext {
         callbackId,
         waitForCompletion: isForeground,
         background: !isForeground,
+        // The engine asks for a check-in prompt only when told someone answers.
+        ...(onParkCheckIn ? { parkCheckInAsk: true } : {}),
       }
 
       // Build the list of lifecycle callback entries. Each entry pairs a
@@ -515,6 +519,26 @@ function buildContext(ctxData: any): IonContext {
             requestId: info.requestId,
             answer: result?.answer,
             cancelled: result?.cancelled ?? false,
+          })
+        } : undefined],
+        // dispatch_park_checkin: the engine waits for the answer before it
+        // decides whether to wake the parked dispatch. A handler failure
+        // answers with a skip so the dispatch simply stays parked.
+        ['dispatch_park_checkin', onParkCheckIn ? async (info: any) => {
+          let reply: { prompt?: string; skip?: boolean } | undefined
+          try {
+            reply = await onParkCheckIn(info)
+          } catch (err) {
+            log.error('park check-in handler failed; skipping this check-in', {
+              dispatchId: info.dispatchId, error: String(err),
+            })
+            reply = { skip: true }
+          }
+          await request('ext/answer_dispatch_park_checkin', {
+            dispatchId: info.dispatchId,
+            requestId: info.requestId,
+            prompt: reply?.prompt,
+            skip: reply?.skip ?? false,
           })
         } : undefined],
       ]
@@ -609,6 +633,9 @@ function buildContext(ctxData: any): IonContext {
     },
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
+    },
+    async answerDispatchParkCheckIn(dispatchId: string, requestId: string, reply: { prompt?: string; skip?: boolean }): Promise<void> {
+      await request('ext/answer_dispatch_park_checkin', { dispatchId, requestId, prompt: reply.prompt, skip: reply.skip ?? false })
     },
     async ackDispatchLost(dispatchId: string): Promise<void> {
       await request('ext/ack_dispatch_lost', { dispatchId })
@@ -805,6 +832,20 @@ function buildContext(ctxData: any): IonContext {
       },
       async send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void> {
         await request('ext/send_to_session', { targetKey, kind, payload })
+      },
+    },
+    conversations: {
+      async read(conversationId: string, opts?: ReadConversationOpts): Promise<ConversationRecord> {
+        const result = await request('ext/read_conversation', {
+          conversationId,
+          offset: opts?.offset ?? 0,
+          limit: opts?.limit ?? 0,
+        })
+        return {
+          messages: Array.isArray(result?.messages) ? result.messages : [],
+          total: typeof result?.total === 'number' ? result.total : 0,
+          hasMore: result?.hasMore === true,
+        }
       },
     },
     async fireSchedule(id: string): Promise<void> {

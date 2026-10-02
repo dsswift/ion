@@ -77,6 +77,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation events](#term-conversation-events)
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
+- [Conversation record read](#term-conversation-record-read)
 - [Conversation status](#term-conversation-status)
 - [Corpus Index](#term-corpus-index)
 - [Corpus Root](#term-corpus-root)
@@ -149,12 +150,14 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Pairing Link](#term-pairing-link)
 - [Pane Find](#term-pane-find)
 - [Panel](#term-panel)
+- [Park Check-In](#term-park-check-in)
 - [Peer](#term-peer)
 - [Peer role](#term-peer-role)
 - [Permission](#term-permission)
 - [Personal Preference](#term-personal-preference)
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
+- [Policy Failure](#term-policy-failure)
 - [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
 - [Port Forward](#term-port-forward)
@@ -624,6 +627,21 @@ A delegated CLI compacting its own native session. Distinct from Compaction: Ion
   - `engine` / `code` / `go`: `EntryNativeCompaction` in `engine/internal/conversation/conversation.go`
   - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `packages/shared/src/compaction-marker.ts`
 
+#### Park Check-In {#term-park-check-in}
+
+One periodic wake of a dispatch that is parked on work it started. The dispatcher declares the interval; each time it passes with the awaited work still running, the engine resumes the parked dispatch for one turn with a prompt the dispatcher supplies, so the agent can inspect, steer, or recall that work. The dispatch parks again when the turn ends with the work still outstanding.
+
+- **ID:** `park-check-in`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `dispatch check-in`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type DispatchParkCheckInInfo struct` in `engine/internal/extension/sdk_types_dispatch.go`
+  - `sdk` / `code` / `go`: `type DispatchParkCheckInInfo struct` in `sdk/go/context_dispatch.go`
+  - `sdk` / `code` / `typescript`: `export interface DispatchParkCheckInInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
+
 #### Permission {#term-permission}
 
 The decision about whether a tool call may run. The engine classifies the call and asks the consumer when a rule requires it.
@@ -639,6 +657,22 @@ The decision about whether a tool call may run. The engine classifies the call a
   - `engine` / `wire` / `go`: `type PermissionRequestEvent struct` in `engine/internal/types/normalized_event.go`
   - `desktop` / `ui` / `typescript`: `PermissionCard` in `desktop/src/renderer/components/PermissionCard.tsx`
   - `ios` / `ui` / `swift`: `struct PermissionCardView` in `ios/IonRemote/Views/PermissionCardView.swift`
+
+#### Policy Failure {#term-policy-failure}
+
+A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.
+
+- **ID:** `policy-failure`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `policy message`, `configurable error message`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `wire` / `go`: `var PolicyFailureIDs` in `engine/internal/types/policy_failure.go`
+  - `engine` / `code` / `go`: `func PolicyMessage` in `engine/internal/config/policy_messages.go`
+  - `server` / `code` / `typescript`: `policyMessage` in `packages/shared/src/policy-failure.ts`
+  - `ios` / `wire` / `swift`: `func failureText` in `ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift`
 
 #### Poll {#term-poll}
 
@@ -828,7 +862,7 @@ A per-principal backstop that refuses a tool call whose path falls outside the s
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `code` / `go`: `func New` in `engine/internal/principalboundary/checker.go`
-  - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/merge.go`
+  - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/policy_checks.go`
 
 #### Webhook {#term-webhook}
 
@@ -1114,6 +1148,21 @@ The path that carries a schedule firing or an inbound webhook into an extension 
 - **Implementations:**
   - `sdk` / `code` / `typescript`: `export async function dispatchFireAsync` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
   - `engine` / `wire` / `go`: `DeliveryId` in `engine/internal/protocol/protocol.go`
+
+#### Conversation record read {#term-conversation-record-read}
+
+The extension call that returns a conversation's messages with their timestamps by conversation identifier, read from disk so a conversation that has ended is readable. It pages by offset and limit, never writes to the record, and is subject to the calling session's read access under principal partitioning.
+
+- **ID:** `conversation-record-read`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (h *Host) rpcReadConversation` in `engine/internal/extension/host_rpc_conversation.go`
+  - `sdk` / `code` / `go`: `func (a *ConversationsAPI) Read` in `sdk/go/conversations.go`
+  - `sdk` / `code` / `typescript`: `conversations` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 #### Protected operation {#term-protected-operation}
 
@@ -3107,6 +3156,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Policy Failure | None | None | None | `func failureText` | Desktop, Studio, Overlay |
 | Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
@@ -3202,6 +3252,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `command envelope` → [Client command](#term-client-command)
 - Alias: `compact boundary` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `composer` → [Input Bar](#term-input-bar)
+- Alias: `configurable error message` → [Policy Failure](#term-policy-failure)
 - Alias: `context compaction` → [Compaction](#term-compaction)
 - Alias: `context menu` → [Menu](#term-menu)
 - Alias: `conversation attachment` → [Attachment](#term-attachment)
@@ -3216,6 +3267,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
 - Alias: `desktop_transcript_patch` → [Transcript Patch](#term-transcript-patch)
 - Alias: `device token` → [Push address](#term-push-address)
+- Alias: `dispatch check-in` → [Park Check-In](#term-park-check-in)
 - Alias: `dispatch split` → [Dispatch Split Pane](#term-dispatch-split-pane)
 - Alias: `draft input` → [Composer Draft](#term-composer-draft)
 - Alias: `drain checkpoint` → [Steer Drain Checkpoint](#term-steer-drain-checkpoint)
@@ -3258,6 +3310,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `permission request` → [Permission](#term-permission)
 - Alias: `phone actions` → [Phone Action List](#term-phone-action-list)
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
+- Alias: `policy message` → [Policy Failure](#term-policy-failure)
 - Alias: `popover picker` → [Picker](#term-picker)
 - Alias: `port forwarding` → [Port Forward](#term-port-forward)
 - Alias: `profile` → [Engine profile](#term-engine-profile)

@@ -287,6 +287,7 @@ The execution context passed to all hook handlers, tool execute functions, and c
 type Context struct {
     SessionKey     string
     ConversationID string
+    ConversationRecordPath string
     RunID          string
     TraceID        string
     Depth          int
@@ -317,6 +318,8 @@ type Context struct {
 **`Cwd`** -- working directory for the session.
 
 **`SessionKey`** -- engine session identity for this invocation. `ConversationID` is its durable conversation identity.
+
+**`ConversationRecordPath`** -- absolute path of the file the session's conversation record is written to. Empty when no conversation is active.
 
 **`RunID`** -- engine-native prompt-to-completion run identity. **`TraceID`** is the W3C trace-context identity for that same run. Both are empty when no run is active.
 
@@ -508,6 +511,8 @@ type DispatchAgentOpts struct {
     PlanFilePath     string         `json:"planFilePath,omitempty"`     // override plan file path
     PlanModeTools    []string       `json:"planModeTools,omitempty"`    // override allowed tools during plan mode
     RequireToolUse   *bool          `json:"requireToolUse,omitempty"`   // tri-state work expectation (see below)
+    ParkCheckInIntervalMs int       `json:"parkCheckInIntervalMs,omitempty"` // periodic wake while parked (see below)
+    ParkCheckInAsk   bool           `json:"parkCheckInAsk,omitempty"`   // dispatcher answers dispatch_park_checkin
     ContextPolicy    *ContextPolicy `json:"contextPolicy,omitempty"`    // per-dispatch context-layer override
 }
 
@@ -524,6 +529,18 @@ type DispatchAgentResult struct {
     PlanExited   bool    `json:"planExited,omitempty"`   // true when child called ExitPlanMode
 }
 ```
+
+**`ParkCheckInIntervalMs` is the park check-in.** A dispatch that ends its
+turn with work of its own still running (child dispatches, background
+commands, polls) parks until that work settles. With an interval declared, the
+engine instead wakes the parked dispatch for one turn every interval, with a
+prompt classified `checkin`, so the agent can inspect, steer, or recall what it
+is waiting on. When that turn ends with the work still outstanding the dispatch
+parks again and the interval restarts. The prompt comes from the dispatcher's
+`OnParkCheckIn` callback (set `ParkCheckInAsk` on the wire); a reply with
+`Skip`, an empty prompt, an error, or no answer in time leaves the dispatch
+parked for another interval. With no callback the engine delivers a generic
+prompt naming the awaited work. Zero, the default, means no check-ins.
 
 **`RequireToolUse` is the work gate.** `nil` declares no expectation, so the
 engine reports `ToolCount` and judges nothing — the zero value, which keeps
@@ -612,6 +629,10 @@ The Go SDK context exposes methods for the resource subsystem, push notification
 
 - **`ctx.Sessions.List()`** -- returns `[]SessionListEntry` with `Key`, `HasActiveRun`, `ExtensionName`, `ConversationID`, `PrincipalSubject`. The engine filters to sessions sharing the CALLING session's own principal (never every session engine-wide, which is what stops one tenant's extension from enumerating another's on a shared multi-tenant engine). It does not filter by extension type -- the caller checks `ExtensionName` itself to find sessions of its own kind.
 - **`ctx.Sessions.Send(targetKey, kind string, payload map[string]interface{})`** -- send a structured message to another session. The engine enforces same extension type; cross-type sends return an error. The receiving session's `session_message` hook fires with `SessionMessageInfo{SenderSessionKey, Kind, Payload}`.
+
+**Conversation records:**
+
+- **`ctx.ReadConversation(conversationID string, offset, limit int)`** -- returns a `*ConversationRecord` (`Messages`, `Total`, `HasMore`): one page of a conversation record read from disk by ID, each message carrying its timestamp. The conversation need not be the session's own or still running. `limit <= 0` returns every message from `offset` onward. Read-only, and subject to the session principal's read access under principal partitioning.
 
 **Intercept:**
 

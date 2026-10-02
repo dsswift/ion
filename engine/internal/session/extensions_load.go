@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -66,35 +66,39 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			// this extension" apart from a genuine load failure (crash, bad
 			// manifest, transpile error).
 			errorCode := "extension_load_failed"
-			if errors.Is(err, extension.ErrExtensionBlocked) {
+			message := fmt.Sprintf("extension load failed: %s", err.Error())
+			policyFailure := ""
+			blockedExtension := ""
+			var blocked *extension.BlockedError
+			if errors.As(err, &blocked) {
 				errorCode = "extension_blocked"
-				utils.LogWithFields(utils.LevelInfo, "session", "extension blocked by enterprise allowlist", map[string]any{"ext_path": extPath, "error": err.Error()})
+				policyFailure = types.PolicyFailureExtensionBlocked
+				// The identifier and reason come from the block itself, never
+				// from the text: the text shown may be the policy's own.
+				blockedExtension = blocked.Identifier
+				if m.config != nil {
+					message = ionconfig.PolicyMessage(ionconfig.EnterpriseMessages(m.config.Enterprise), policyFailure, message)
+				}
+				utils.LogWithFields(utils.LevelInfo, "session", "extension blocked by enterprise allowlist", map[string]any{"ext_path": extPath, "extension": blocked.Identifier, "reason": blocked.Reason, "error": err.Error()})
 				// Enforcement audit event (feature 0010 audit clause). Nil-safe
 				// on the session collector.
 				if s.telemetry != nil {
-					reason := "name"
-					if strings.Contains(err.Error(), "reason: hash") {
-						reason = "hash"
-					}
 					s.telemetry.Event(telemetry.EnforcementExtensionBlocked, map[string]any{
-						// host.Name() is the manifest-resolved identifier (manifest.Name
-						// else dir basename) — the same identifier checkExtensionAllowlist
-						// checked. filepath.Base(filepath.Dir(extPath)) would give the
-						// directory name, which differs from the manifest name when
-						// extension.json declares a different name than the directory.
-						"subject": host.Name(),
+						"subject": blocked.Identifier,
 						"source":  "allowlist",
-						"reason":  reason,
+						"reason":  blocked.Reason,
 					}, nil)
 				}
 			} else {
 				utils.LogWithFields(utils.LevelError, "session", "extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
 			}
 			m.emit(key, types.EngineEvent{
-				Type:         "engine_error",
-				EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
-				ErrorCode:    errorCode,
-				StderrTail:   stderrTail,
+				Type:          "engine_error",
+				EventMessage:  message,
+				ErrorCode:     errorCode,
+				PolicyFailure: policyFailure,
+				ExtensionName: blockedExtension,
+				StderrTail:    stderrTail,
 			})
 			continue
 		}

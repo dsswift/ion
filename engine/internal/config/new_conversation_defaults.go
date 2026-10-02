@@ -126,7 +126,7 @@ func ApplyNewConversationDefaults(sessionConfig types.EngineConfig) (types.Engin
 		return sessionConfig, nil
 	}
 	if resolved.ProfileName != "" && resolved.ProfileID == "" {
-		return sessionConfig, fmt.Errorf("locked profile %q is not configured on this host", resolved.ProfileName)
+		return sessionConfig, NewPolicyError(EnterpriseMessages(LoadEnterpriseConfig()), types.PolicyFailureProfileLocked, fmt.Errorf("locked profile %q is not configured on this host", resolved.ProfileName))
 	}
 	// Empty profile is the explicit plain-conversation lock. Do not retain
 	// caller-provided extensions in either locked branch.

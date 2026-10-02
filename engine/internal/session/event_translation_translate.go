@@ -34,7 +34,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
 
 	case *types.ToolResultEvent:
-		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images, ToolBackgroundTaskID: e.BackgroundTaskID}
+		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images, ToolBackgroundTaskID: e.BackgroundTaskID, PolicyFailure: e.PolicyFailure}
 
 	case *types.ImageContentEvent:
 		// A single image produced during the run — tool-returned or
@@ -167,6 +167,8 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			ContextWindow: e.ContextWindow,
 
 			ProviderSubscription: e.ProviderSubscription,
+			PolicyFailure:        e.PolicyFailure,
+			ExtensionName:        e.ExtensionName,
 		}
 
 	case *types.UsageEvent:

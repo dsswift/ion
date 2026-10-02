@@ -282,11 +282,7 @@ func (b *ApiBackend) executeTools(
 					IsError:   true,
 				}
 				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_blocked", result.Reason)
-				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-					ToolID:  block.ID,
-					Content: "Blocked: " + result.Reason,
-					IsError: true,
-				}})
+				b.emitBlockedToolResult(run, block.ID, result)
 				return nil
 			}
 		}

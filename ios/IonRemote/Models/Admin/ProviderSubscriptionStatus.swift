@@ -27,6 +27,19 @@ struct ProviderSubscriptionStatus: Codable, Equatable, Sendable {
     let resolvedAt: Int64?
     /// The most recent lookup failure.
     let error: String?
+    /// The Policy Failure identifier of the state; present when it is `none`
+    /// or `failed`.
+    var policyFailure: String? = nil
+    /// The enterprise policy's text for `policyFailure`; absent when none is
+    /// configured.
+    var message: String? = nil
+
+    /// What a failure state says: the enterprise policy's text for it when
+    /// one is configured, `fallback` otherwise.
+    func failureText(_ fallback: String) -> String {
+        guard let message, !message.isEmpty else { return fallback }
+        return message
+    }
 
     enum State {
         static let disabled = "disabled"

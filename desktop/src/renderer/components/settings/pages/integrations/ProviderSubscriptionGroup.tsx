@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { ArrowClockwise, Check } from '@phosphor-icons/react'
 import type { ProviderSubscriptionStatus } from '@ion/shared/types-engine-event'
-import { subscriptionProviderName, type ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
+import { subscriptionFailureText, subscriptionProviderName, type ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
 import { useSettingsShell } from '../../settings-shell'
 import { Button, FormGroup, FormRow, Inline, Select } from '../../kit'
 import { rError, rInfo, rWarn } from '../../../../rendererLogger'
@@ -28,9 +28,9 @@ function describeState(status: ProviderSubscriptionStatus): string {
     case 'selection_required':
       return 'Choose the subscription your account uses.'
     case 'none':
-      return 'Your account has no subscription. Contact your administrator for access.'
+      return subscriptionFailureText(status, 'Your account has no subscription. Contact your administrator for access.')
     case 'failed':
-      return 'The subscription lookup failed. Any key entered by hand is still in use.'
+      return subscriptionFailureText(status, 'The subscription lookup failed. Any key entered by hand is still in use.')
     case 'disabled':
       return ''
   }

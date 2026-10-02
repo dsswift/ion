@@ -58,6 +58,9 @@ type ErrorInfo struct {
 	Retryable    bool   `json:"retryable,omitempty"`
 	RetryAfterMs int64  `json:"retryAfterMs,omitempty"`
 	HTTPStatus   int    `json:"httpStatus,omitempty"`
+	// PolicyFailure is the Policy Failure identifier when the error results
+	// from enterprise policy. Empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
 }
 
 // --- Session management ---

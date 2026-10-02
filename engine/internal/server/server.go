@@ -721,6 +721,10 @@ func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err erro
 	}
 	if err != nil {
 		result.Error = err.Error()
+		var policyErr *types.PolicyError
+		if errors.As(err, &policyErr) {
+			result.PolicyFailure = policyErr.Failure
+		}
 	}
 	if data != nil {
 		result.Data = data

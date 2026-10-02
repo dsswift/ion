@@ -34,6 +34,8 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, unlinkSync } from 'fs'
 import { engineBridge } from '../state'
+import { enterprisePolicyCache } from '../enterprise-policy-publish'
+import { policyMessage } from '@ion/shared/policy-failure'
 import { log as _log } from '../logger'
 import { getConfiguredOidcClientId } from '@ion/server/oauth/entra-auth'
 
@@ -196,7 +198,8 @@ export async function signIn(requester?: AuthUrlRequester): Promise<{ identity: 
       return { identity, authorizationUrl }
     }
   }
-  throw new Error('Entra sign-in cancelled or timed out')
+  log('entra_auth: sign-in cancelled or timed out')
+  throw new Error(policyMessage(enterprisePolicyCache.policy?.messages, 'authentication_failed', 'Entra sign-in cancelled or timed out'))
 }
 
 export interface EntraDeviceSignIn {

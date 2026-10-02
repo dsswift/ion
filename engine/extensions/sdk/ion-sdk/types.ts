@@ -4,6 +4,7 @@
 // from ./index.ts.
 
 import type { DispatchControlContext } from './types-dispatch-control'
+import type { ConversationRecord, ReadConversationOpts } from './types-conversations'
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
 
@@ -178,6 +179,14 @@ export interface DispatchAgentOpts {
    * which kind of dispatch it issued.
    */
   requireToolUse?: boolean
+  /**
+   * Wakes this dispatch for one turn every interval while it is parked on
+   * work it started (child dispatches, background commands, polls) and that
+   * work is still running. The woken turn is classified `checkin`; when it
+   * ends with the work still outstanding the dispatch parks again. Omit or
+   * set to 0 for no check-ins.
+   */
+  parkCheckInIntervalMs?: number
   onEvent?: (event: EngineEvent) => void
 
   // --- Async dispatch ---
@@ -377,6 +386,15 @@ export interface DispatchAgentOpts {
    * to let the child terminate; omit for default termination behavior.
    */
   onChildQuestion?: (info: DispatchChildQuestionInfo) => Promise<DispatchChildQuestionAnswer>
+
+  /**
+   * Fires each time a parked dispatch's check-in interval elapses (see
+   * `parkCheckInIntervalMs`). Return `{ prompt }` to wake the parked agent
+   * with that message, or `{ skip: true }` to leave it parked for another
+   * interval. When omitted, the engine delivers its own generic prompt. The
+   * engine waits a bounded time for the answer.
+   */
+  onParkCheckIn?: (info: DispatchParkCheckInInfo) => Promise<DispatchParkCheckInReply> | DispatchParkCheckInReply
 
   /**
    * Per-dispatch context-layer override (level 4 of the four-level context
@@ -716,6 +734,44 @@ export interface DispatchChildQuestionInfo {
 export interface DispatchChildQuestionAnswer {
   answer?: string
   cancelled?: boolean
+}
+
+/**
+ * Payload for {@link DispatchAgentOpts.onParkCheckIn}: a parked dispatch whose
+ * check-in interval elapsed with its awaited work still running.
+ */
+export interface DispatchParkCheckInInfo {
+  /** Canonical agent name (the name field from DispatchAgentOpts). */
+  name: string
+  callbackId?: string
+  /** Engine-assigned dispatch ID of the parked dispatch. */
+  dispatchId: string
+  /** Engine-assigned request ID; the SDK runtime echoes it back with the answer. */
+  requestId: string
+  /** Dispatch nesting depth of the parked dispatch (1 = direct child of the root session). */
+  depth: number
+  /** How long the current park has lasted. */
+  parkedMs: number
+  /** 1-based number of this check-in within the current park. */
+  checkInCount: number
+  /** The work the dispatch parked on. */
+  awaitingDispatchIds?: string[]
+  awaitingTaskIds?: string[]
+  awaitingPollIds?: string[]
+  /**
+   * Live state of each awaited child dispatch still in flight. This callback
+   * runs outside any hook or tool context, where `listDispatchState` is
+   * unavailable, so the engine supplies it here.
+   */
+  awaitingDispatches?: DispatchEntry[]
+}
+
+/** Return value of {@link DispatchAgentOpts.onParkCheckIn}. */
+export interface DispatchParkCheckInReply {
+  /** The message the parked agent is woken with. Empty is a skip. */
+  prompt?: string
+  /** Leave the dispatch parked for another interval. */
+  skip?: boolean
 }
 
 export interface DiscoverAgentsOpts {
@@ -1331,6 +1387,11 @@ export interface IonContext extends DispatchControlContext {
    *  engine restarts. Use this for resource scoping, audit trails, and
    *  persistent identity. Empty when no conversation is active. */
   conversationId: string
+  /** Absolute path of the file this conversation's record is written to,
+   *  supplied by the engine. Empty when no conversation is active, matching
+   *  {@link IonContext.conversationId}. The file exists once the
+   *  conversation's first turn has been saved. */
+  conversationRecordPath: string
   /**
    * Identifies the prompt-to-completion run in flight when the hook fired.
    * Empty (`''`) when no run is active — `session_start`, a schedule or
@@ -1637,6 +1698,16 @@ export interface IonContext extends DispatchControlContext {
    * @param cancelled  - When true, the child run terminates instead of resuming.
    */
   answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void>
+  /**
+   * Answer a pending park check-in. Normally called by the SDK runtime after
+   * the `onParkCheckIn` callback resolves; harnesses implementing custom
+   * dispatch wiring may call it directly.
+   *
+   * @param dispatchId - The dispatch ID of the parked dispatch.
+   * @param requestId  - The engine-assigned id echoed from the check-in notification.
+   * @param reply      - The prompt to wake the dispatch with, or a skip.
+   */
+  answerDispatchParkCheckIn(dispatchId: string, requestId: string, reply: DispatchParkCheckInReply): Promise<void>
   /** Acknowledge durable delivery of a lost-dispatch notice. */
   ackDispatchLost(dispatchId: string): Promise<void>
   /**
@@ -1976,6 +2047,26 @@ export interface IonContext extends DispatchControlContext {
     send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void>
   }
 
+  /** Conversation records on this engine's host. */
+  conversations: {
+    /**
+     * Read a conversation record by ID: its turns, each with a `timestamp`.
+     * The engine reads the record from disk, so the conversation may be this
+     * one, another live one, or one that has already ended. Read-only.
+     *
+     * Rejects when the conversation does not exist, when the engine's
+     * principal partitioning refuses this session access to it, or when the
+     * engine predates this call.
+     *
+     * @example
+     * ```ts
+     * const record = await ctx.conversations.read(conversationId, { offset: 0, limit: 200 })
+     * const first = record.messages[0]?.timestamp
+     * ```
+     */
+    read(conversationId: string, opts?: ReadConversationOpts): Promise<ConversationRecord>
+  }
+
   /**
    * Trigger an immediate fire of the named schedule job. Reuses the engine's
    * existing fireJob machinery (in-flight guard, single-concurrency
@@ -2312,6 +2403,8 @@ export interface ErrorInfo {
   retryable?: boolean
   retryAfterMs?: number
   httpStatus?: number
+  /** The Policy Failure identifier when the error results from enterprise policy. */
+  policyFailure?: string
 }
 
 /** Payload for `turn_start` and `turn_end`. */

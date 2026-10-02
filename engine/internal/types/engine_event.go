@@ -35,6 +35,9 @@ type EngineEvent struct {
 	Level         string `json:"level,omitempty"`
 	ErrorCode     string `json:"errorCode,omitempty"`
 	ErrorCategory string `json:"errorCategory,omitempty"`
+	// PolicyFailure is the Policy Failure identifier on an engine_error or
+	// engine_tool_end that results from enterprise policy. Empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
 	Retryable     bool   `json:"retryable,omitempty"`
 	RetryAfterMs  int64  `json:"retryAfterMs,omitempty"`
 	HttpStatus    int    `json:"httpStatus,omitempty"`
@@ -450,7 +453,9 @@ type EngineEvent struct {
 	CompactingStrategy       string `json:"strategy,omitempty"`
 	CompactingMicroOnly      bool   `json:"microOnly,omitempty"`
 
-	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent
+	// engine_extension_died, engine_extension_respawned, engine_extension_dead_permanent.
+	// Also the blocked extension's identifier on an engine_error with
+	// errorCode=extension_blocked.
 	ExtensionName string `json:"extensionName,omitempty"`
 	AttemptNumber int    `json:"attemptNumber,omitempty"`
 

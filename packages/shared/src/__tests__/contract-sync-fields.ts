@@ -28,7 +28,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   tool_call: ["index", "toolId", "toolName"],
   tool_call_update: ["partialInput", "toolId"],
   tool_call_complete: ["index"],
-  tool_result: ["backgroundTaskId", "content", "images", "isError", "toolId"],
+  tool_result: ["backgroundTaskId", "content", "images", "isError", "policyFailure", "toolId"],
   task_update: ["message"],
   task_complete: [
     "conversationTurns",
@@ -47,9 +47,11 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "contextTokens",
     "contextWindow",
     "errorCode",
+    "extensionName",
     "httpStatus",
     "isError",
     "message",
+    "policyFailure",
     "providerSubscription",
     "retryAfterMs",
     "retryable",
@@ -426,7 +428,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   McpOAuthStatus: ["authUrl", "clientId", "hasClientSecret", "resource", "scope", "tokenUrl"],
   // Provider Subscription snapshot carried by engine_provider_subscription.
   // It names subscriptions by id and label; the key never reaches a client.
-  ProviderSubscriptionStatus: ["error", "options", "provider", "providerDisplayName", "resolvedAt", "selected", "source", "state"],
+  ProviderSubscriptionStatus: ["error", "message", "options", "policyFailure", "provider", "providerDisplayName", "resolvedAt", "selected", "source", "state"],
   SubscriptionOption: ["id", "label"],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The server's prompt pipeline reads this off the wire to populate a

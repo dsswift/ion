@@ -112,6 +112,7 @@ vi.mock('../../persistence/settings-store', async (importOriginal) => ({ ...(awa
 // ---------------------------------------------------------------------------
 
 import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, signIn, signOut } from '../entra-flow'
+import { enterprisePolicyCache } from '../../enterprise-policy-publish'
 import {
   setEgressUser,
   getEgressUser,
@@ -225,6 +226,27 @@ describe('signIn', () => {
     expect(authorizationUrl).toBe('https://login.microsoftonline.com/x/authorize?state=s')
     expect(identity.user).toBe('josh@corp.example.com')
   }, 15_000)
+
+  it('words a sign-in that never completes with the policy text when one is configured', async () => {
+    vi.useFakeTimers()
+    try {
+      for (const [messages, want] of [
+        [undefined, 'Entra sign-in cancelled or timed out'],
+        [{ authentication_failed: 'Sign-in failed. Call the help desk.' }, 'Sign-in failed. Call the help desk.'],
+      ] as const) {
+        bridgeState.responses.clear()
+        queueResponse('oidc_begin_login', { ok: true, data: { authorizationUrl: 'https://login.example.com/authorize' } })
+        queueResponse('oidc_identity', { ok: true, data: { signedIn: false } })
+        enterprisePolicyCache.policy = messages ? { messages } : null
+        const attempt = expect(signIn()).rejects.toThrow(want)
+        await vi.advanceTimersByTimeAsync(6 * 60 * 1000)
+        await attempt
+      }
+    } finally {
+      enterprisePolicyCache.policy = null
+      vi.useRealTimers()
+    }
+  })
 
   it('E2-b: throws when the engine has no identity provider configured', async () => {
     queueResponse('oidc_begin_login', { ok: false, error: 'no OIDC identity provider configured' })

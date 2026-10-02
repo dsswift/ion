@@ -198,6 +198,22 @@ type DispatchAgentOpts struct {
 	// which it issued.
 	RequireToolUse *bool `json:"requireToolUse,omitempty"`
 
+	// ParkCheckInIntervalMs declares a periodic check-in for this dispatch
+	// while it is parked on work it started (child dispatches, background
+	// commands, polls). Every interval that passes with the awaited work
+	// still outstanding, the engine wakes the parked dispatch for one turn
+	// with a check-in prompt, classified InjectionKindCheckIn. When that turn
+	// ends with the work still running the dispatch parks again and the
+	// interval restarts. Zero (the default) means no check-ins: the dispatch
+	// stays parked until its awaited work settles or the park ceiling elapses.
+	ParkCheckInIntervalMs int `json:"parkCheckInIntervalMs,omitempty"`
+
+	// ParkCheckInAsk declares that the dispatcher answers the
+	// dispatch_park_checkin notification with the prompt to deliver (or a
+	// skip). When false the engine delivers its own generic prompt naming the
+	// awaited work. The SDKs set this when an OnParkCheckIn callback is given.
+	ParkCheckInAsk bool `json:"parkCheckInAsk,omitempty"`
+
 	// ImplementationPhase marks this dispatch as the "implement" half of a
 	// plan-then-implement flow: the plan is already approved and the child
 	// must execute it directly. When true, the engine skips injecting the
@@ -329,6 +345,13 @@ type DispatchAgentOpts struct {
 	// answer and resume the child; (_, true, nil) to cancel the child's
 	// question (run terminates); (_, _, err) on error (run terminates).
 	OnChildQuestion func(info DispatchChildQuestionInfo) (answer string, cancelled bool, err error) `json:"-"`
+
+	// OnParkCheckIn fires each time a parked dispatch's check-in interval
+	// elapses (see ParkCheckInIntervalMs). The dispatcher returns the prompt
+	// the parked agent is woken with, or Skip to leave it parked for another
+	// interval. An error leaves it parked, exactly as a skip does. When nil,
+	// the engine delivers its generic prompt.
+	OnParkCheckIn func(info DispatchParkCheckInInfo) (DispatchParkCheckInReply, error) `json:"-"`
 }
 
 // DispatchAgentResult holds the outcome of a dispatched agent.
@@ -594,4 +617,42 @@ type DispatchChildQuestionInfo struct {
 	Question string `json:"question"`
 	// Depth is the dispatch nesting depth of the child (1 = direct child of orchestrator).
 	Depth int `json:"depth"`
+}
+
+// DispatchParkCheckInInfo describes a parked dispatch whose check-in interval
+// elapsed with its awaited work still outstanding. Surfaced to the dispatcher
+// via OnParkCheckIn.
+type DispatchParkCheckInInfo struct {
+	// Name is the parked agent's name.
+	Name string `json:"name"`
+	// CallbackID is the SDK-generated identifier for routing pre-stub callbacks.
+	CallbackID string `json:"callbackId,omitempty"`
+	// DispatchID is the parked dispatch's unique identifier.
+	DispatchID string `json:"dispatchId"`
+	// Depth is the parked dispatch's nesting depth (1 = direct child of the
+	// root session).
+	Depth int `json:"depth"`
+	// ParkedMs is how long the current park has lasted.
+	ParkedMs int64 `json:"parkedMs"`
+	// CheckInCount is the 1-based number of this check-in within the current
+	// park. It restarts at 1 each time the dispatch parks again.
+	CheckInCount int `json:"checkInCount"`
+	// AwaitingDispatchIDs, AwaitingTaskIDs, and AwaitingPollIDs are the work
+	// the dispatch parked on.
+	AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+	AwaitingTaskIDs     []string `json:"awaitingTaskIds,omitempty"`
+	AwaitingPollIDs     []string `json:"awaitingPollIds,omitempty"`
+	// AwaitingDispatches is the live state of each awaited child dispatch
+	// that is still in flight, read when the interval elapsed. A dispatch
+	// callback runs outside any hook or tool context, where the dispatcher
+	// cannot query dispatch state itself, so the engine supplies it here.
+	AwaitingDispatches []DispatchStateEntry `json:"awaitingDispatches,omitempty"`
+}
+
+// DispatchParkCheckInReply is the dispatcher's answer to a park check-in.
+type DispatchParkCheckInReply struct {
+	// Prompt is the message the parked agent is woken with. Empty is a skip.
+	Prompt string `json:"prompt,omitempty"`
+	// Skip leaves the dispatch parked for another interval.
+	Skip bool `json:"skip,omitempty"`
 }

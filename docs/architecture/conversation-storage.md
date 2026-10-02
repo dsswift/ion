@@ -18,6 +18,10 @@ A conversation with ID `<id>` produces up to three files:
 
 Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
 
+## Reaching a record from an extension
+
+An extension never rebuilds these paths. The engine puts the absolute path of the running conversation's `.tree.jsonl` on the hook context as `conversationRecordPath`, and answers `ext/read_conversation` with a record's messages and their timestamps by conversation ID. `conversation.RecordPath` and `conversation.ReadMessagesPaginated` in `engine/internal/conversation/record.go` are the source of truth. See [Reading a conversation record](../extensions/sdk-typescript.md#reading-a-conversation-record).
+
 ## Files a conversation owns
 
 Everything that belongs to one conversation, and to no other, lives in a folder named after it, beside its file pair. Moving or deleting the conversation moves or deletes exactly these files. `engine/internal/conversation/owned_files.go` is the source of truth for the paths.

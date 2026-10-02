@@ -297,6 +297,11 @@ type Host struct {
 	// not contend on a single mutex.
 	childQuestions sync.Map
 
+	// parkCheckIns maps a park check-in key (dispatchId + ":" + requestId) to
+	// a chan DispatchParkCheckInReply, the same block-and-answer shape as
+	// childQuestions. See host_park_checkin.go.
+	parkCheckIns sync.Map
+
 	// boundSessionID and boundConversationID are set when the host is
 	// associated with a session, and are stamped on all extension log
 	// notifications so cross-surface log correlation works. Guarded by

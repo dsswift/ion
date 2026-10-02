@@ -74,6 +74,7 @@ func buildSurfaceManifest() surfaceManifest {
 		"HTTPAPI":              reflect.TypeOf(&HTTPAPI{}),
 		"ApplicationConfigAPI": reflect.TypeOf(&ApplicationConfigAPI{}),
 		"SessionsAPI":          reflect.TypeOf(&SessionsAPI{}),
+		"ConversationsAPI":     reflect.TypeOf(&ConversationsAPI{}),
 		"WebhooksAPI":          reflect.TypeOf(&WebhooksAPI{}),
 		"ScheduleAPI":          reflect.TypeOf(&ScheduleAPI{}),
 		"ResourcesAPI":         reflect.TypeOf(&ResourcesAPI{}),

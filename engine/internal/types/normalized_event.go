@@ -242,6 +242,9 @@ type ToolResultEvent struct {
 	// BackgroundTaskID correlates this tool result with an asynchronous task:
 	// Bash background task ID or Agent dispatch ID. Additive (omitempty).
 	BackgroundTaskID string `json:"backgroundTaskId,omitempty"`
+	// PolicyFailure is the Policy Failure identifier when enterprise policy
+	// refused the call. Empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
 }
 
 func (ToolResultEvent) eventType() string { return EventToolResult }
@@ -340,6 +343,12 @@ type ErrorEvent struct {
 	// subscription lookup's provider while no looked-up key was applied, so
 	// a consumer can tell that failure from any other. Nil otherwise.
 	ProviderSubscription *ProviderSubscriptionStatus `json:"providerSubscription,omitempty"`
+	// PolicyFailure is the Policy Failure identifier when the error results
+	// from enterprise policy. Empty otherwise.
+	PolicyFailure string `json:"policyFailure,omitempty"`
+	// ExtensionName is the extension the error is about, when it is about
+	// one. Empty otherwise.
+	ExtensionName string `json:"extensionName,omitempty"`
 }
 
 func (ErrorEvent) eventType() string { return EventError }

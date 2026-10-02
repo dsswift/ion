@@ -164,6 +164,8 @@ export type EngineEvent =
        *  Poll, or an asynchronous agent dispatch. Mirror of the Go
        *  EngineEvent ToolBackgroundTaskID. */
       backgroundTaskId?: string;
+      /** The Policy Failure identifier when enterprise policy refused the call. */
+      policyFailure?: string;
     }
   // engine_image_content — a single image produced during a run, either
   // tool-returned (imageSource 'tool', imageToolId set to the producing tool
@@ -200,6 +202,10 @@ export type EngineEvent =
       stderrTail?: string[];
       /** The Provider Subscription snapshot of a failed provider request; set only when the request went to the lookup's provider with no looked-up key applied. */
       providerSubscription?: ProviderSubscriptionStatus;
+      /** The Policy Failure identifier when the error results from enterprise policy. */
+      policyFailure?: string;
+      /** The blocked extension's identifier when errorCode is extension_blocked. */
+      extensionName?: string;
     }
   | {
       type: "engine_permission_request";

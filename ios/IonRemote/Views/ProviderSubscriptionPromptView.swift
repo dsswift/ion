@@ -104,6 +104,6 @@ struct ProviderSubscriptionPromptCard: View {
         let name = ProviderSubscriptionRows.providerName(attention.status)
         return attention.state == ProviderSubscriptionStatus.State.selectionRequired
             ? "Choose the \(name) subscription this account uses. Requests to \(name) fail until one is chosen."
-            : "The signed-in account has no \(name) subscription. Requests to \(name) fail until it has one. Contact your administrator for access."
+            : attention.status.failureText("The signed-in account has no \(name) subscription. Requests to \(name) fail until it has one. Contact your administrator for access.")
     }
 }

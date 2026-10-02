@@ -10,6 +10,16 @@ import (
 	"fmt"
 )
 
+// dispatchWireOpts is DispatchAgentOpts as sent to the engine, plus the fields
+// the SDK derives from the caller's callbacks.
+type dispatchWireOpts struct {
+	DispatchAgentOpts
+	// ParkCheckInAsk tells the engine this extension answers each park
+	// check-in with the prompt to deliver. Without it the engine delivers its
+	// own generic prompt and never asks.
+	ParkCheckInAsk bool `json:"parkCheckInAsk,omitempty"`
+}
+
 // DispatchAgent runs a child agent session.
 //
 // Dispatch is asynchronous by default: it returns a stub carrying the dispatch
@@ -35,7 +45,10 @@ func (c *Context) DispatchAgent(ctx context.Context, opts DispatchAgentOpts) (Di
 	}
 
 	var out DispatchAgentResult
-	err := c.sdk.call(ctx, "ext/dispatch_agent", wireOpts, &out)
+	err := c.sdk.call(ctx, "ext/dispatch_agent", dispatchWireOpts{
+		DispatchAgentOpts: wireOpts,
+		ParkCheckInAsk:    opts.OnParkCheckIn != nil,
+	}, &out)
 	if err != nil {
 		terminal.cleanup()
 		c.sdk.logger.Error("dispatch failed", map[string]any{"agent": opts.Name, "error": err.Error()})
@@ -188,6 +201,18 @@ func (c *Context) AnswerDispatchQuestion(ctx context.Context, dispatchID, reques
 		"requestId":  requestID,
 		"answer":     answer,
 		"cancelled":  cancelled,
+	}, nil)
+}
+
+// AnswerDispatchParkCheckIn answers a park check-in. Normally handled for you
+// by DispatchAgentOpts.OnParkCheckIn; call it directly only when answering out
+// of band.
+func (c *Context) AnswerDispatchParkCheckIn(ctx context.Context, dispatchID, requestID string, reply DispatchParkCheckInReply) error {
+	return c.sdk.call(ctx, "ext/answer_dispatch_park_checkin", map[string]any{
+		"dispatchId": dispatchID,
+		"requestId":  requestID,
+		"prompt":     reply.Prompt,
+		"skip":       reply.Skip,
 	}, nil)
 }
 

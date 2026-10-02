@@ -3,6 +3,7 @@ import {
   describeSubscriptionFailure,
   nextSubscriptionAttention,
   subscriptionAttentionState,
+  subscriptionFailureText,
 } from "../provider-subscription";
 import type { ProviderSubscriptionStatus, SubscriptionState } from "../types-engine-event-model";
 
@@ -53,6 +54,13 @@ describe("describeSubscriptionFailure", () => {
   it("names the provider and the state", () => {
     expect(describeSubscriptionFailure(selectionRequired)).toContain("No Gateway subscription is chosen yet");
     expect(describeSubscriptionFailure(none)).toContain("no gateway subscription");
+  });
+
+  it("uses the policy's text for a missing subscription when one is configured", () => {
+    const configured = { ...none, policyFailure: "subscription_unavailable", message: "Open a ticket to request access." };
+    expect(describeSubscriptionFailure(configured)).toBe("Open a ticket to request access.");
+    expect(subscriptionFailureText(configured, "default")).toBe("Open a ticket to request access.");
+    expect(subscriptionFailureText(none, "default")).toBe("default");
   });
 
   it("says nothing for any other state", () => {

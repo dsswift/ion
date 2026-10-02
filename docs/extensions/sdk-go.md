@@ -370,14 +370,15 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 | Area                | Methods                                                                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
+| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
-| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AckDispatchLost` |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
+| Conversation records | `Conversations().Read`                                                                                                                |
 | Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
 | Processes           | `RegisterProcess`, `DeregisterProcess`, `ListProcesses`, `TerminateProcess`, `CleanStaleProcesses`                                     |
 | Other               | `HTTP()`, `ProtectedOperation`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                 |
@@ -393,6 +394,8 @@ res, err := ctx.ProtectedOperation(c, "publish-metric", map[string]any{"value": 
 `DispatchAgentResult.ToolCount` reports how many tool calls the child made across its whole run — every LLM turn, including suspend/revive iterations. It is always populated, whether or not an expectation was declared: it is an observed fact about the run, not a verdict on it. A `0` on an `ExitCode: 0` dispatch is the signature of a child that answered its task instead of performing it. Read this rather than reconstructing a count from your own `OnToolStart` bookkeeping; the engine counts the same calls it executes.
 
 `DispatchAgentOpts.RequireToolUse` declares whether a dispatch is expected to produce work. It is a `*bool` because the three states differ: `nil` declares nothing (the engine reports `ToolCount` and judges nothing — the default, so existing callers are unchanged), `&true` means a zero-tool completion is not success, and `&false` is an explicit exemption for analysis and advisory dispatches. Under `&true` the engine gives the child **one** continuation naming the expectation; if the retry also calls no tools the dispatch returns `ExitCode: 3` with delivered status `declined`, distinct from both success and failure — a consumer that retries failures must not retry it. The child's own final text is preserved in `Output` after the verdict. The engine never infers the expectation from task text; only the caller knows which kind of dispatch it issued.
+
+`DispatchAgentOpts.ParkCheckInIntervalMs` wakes a parked dispatch for one turn every interval while the work it is waiting on (child dispatches, background commands, polls) is still running, so the agent can inspect, steer, or recall it. The woken turn is classified `checkin`; when it ends with the work still outstanding the dispatch parks again and the interval restarts. `OnParkCheckIn` supplies the prompt: return `DispatchParkCheckInReply{Prompt: ...}` to wake the agent, or `{Skip: true}` (or an error) to leave it parked for another interval. With no callback the engine delivers a generic prompt naming the awaited work. Zero, the default, means no check-ins.
 
 On an asynchronous dispatch a declined outcome arrives through `OnError` rather than `OnComplete`, because its exit code is non-zero; read `DispatchError.ExitCode` to tell `3` from a genuine failure.
 
@@ -473,6 +476,21 @@ err := ctx.SetRunRecovery(context.Background(), ion.RunRecoveryConfig{
     Enabled:     &enabled,
     MaxAttempts: 3,
 })
+```
+
+`ConversationRecordPath` is the absolute path of the file this conversation's record is written to. The engine supplies it, so an extension never rebuilds it from the storage layout. It is `""` when no conversation is active, the same as `ConversationID`, and the file exists once the conversation's first turn has been saved.
+
+`Conversations().Read` returns a conversation's turns by ID, each with its `Timestamp` in Unix milliseconds. The engine reads the record from disk, so the conversation can be the running one or one that has already ended. `Offset` is the zero-based first message; `Limit` caps the page, and zero returns every message from `Offset` onward. The call is read-only. It returns an error when the conversation does not exist or when principal partitioning refuses the session access to it.
+
+```go
+record, err := ctx.Conversations().Read(rpcCtx, conversationID, ion.ReadConversationOpts{Offset: 0, Limit: 200})
+if err != nil {
+	return err
+}
+for _, message := range record.Messages {
+	_ = message.Timestamp
+}
+// record.Total is the full message count; record.HasMore says whether to page on.
 ```
 
 At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.

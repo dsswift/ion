@@ -1126,18 +1126,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						}
 					}
 
-					// Bound the park. The revive signal is what normally
-					// releases it; this ceiling is the backstop for a lost or
-					// misrouted wake, which otherwise blocks on reviveCh
-					// forever and strands every ancestor parked on this
-					// dispatch — an eternal park no log line ever reported as
-					// a failure. See dispatchParkTimeout.
-					parkTimer := time.NewTimer(dispatchParkTimeout(sa))
-
-					// Block until revived (or recalled, or the ceiling elapses).
-					select {
-					case <-reviveCh:
-						parkTimer.Stop()
+					// Block until revived, checked in on, recalled, or the
+					// park ceiling elapses. See parkWait.
+					wake := newParkWait(ctx, sa, registry, &opts, agentID, childDepth, reviveCh, suspendSig).wait()
+					switch wake.reason {
+					case parkWakeRevived, parkWakeCheckIn:
 						// Revived — restart the LLM run as a RESUME, never a
 						// replay. Two mutations on runOpts before the loop
 						// re-enters startChild (root cause K, the
@@ -1162,7 +1155,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						}
 						var drained []ChildResultRecord
 						var drainedPolls []PollResultRecord
-						if registry != nil {
+						if registry != nil && wake.reason == parkWakeRevived {
 							drained = registry.DrainChildResults(agentID)
 							drainedPolls = registry.DrainPollResults(agentID)
 						}
@@ -1172,6 +1165,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						// recorded" prompt and reported that its verdict never
 						// arrived.
 						switch {
+						case wake.reason == parkWakeCheckIn:
+							runOpts.Prompt = wake.prompt
+							runOpts.InjectionKind = string(types.InjectionKindCheckIn)
 						case len(drained) > 0:
 							runOpts.Prompt = buildReviveResumePrompt(drained)
 							runOpts.InjectionKind = reviveInjectionKind(drained)
@@ -1192,6 +1188,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							"conversation_id": runOpts.ConversationID,
 							"count":           len(drained),
 							"poll_count":      len(drainedPolls),
+							"wake":            string(wake.reason),
 						})
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
@@ -1211,15 +1208,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						})
 						sa.EmitAgentSnapshot("dispatch_revive")
 						continue
-					case <-ctx.Done():
-						parkTimer.Stop()
+					case parkWakeRecalled:
 						// Recalled while suspended.
 						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason})
 						recalled.Store(true)
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
 						}
-					case <-parkTimer.C:
+					case parkWakeTimedOut:
 						// The awaited work never signalled. Go terminal with an
 						// error rather than parking forever: the terminal path
 						// records the result and fires the completion

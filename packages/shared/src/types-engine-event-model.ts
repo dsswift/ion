@@ -83,6 +83,10 @@ export interface ProviderSubscriptionStatus {
   resolvedAt?: number;
   /** The most recent lookup failure. Can accompany "applied" when a refresh failed. */
   error?: string;
+  /** The Policy Failure identifier of the state; present when it is none or failed. */
+  policyFailure?: string;
+  /** The enterprise policy's text for policyFailure; absent when none is configured. */
+  message?: string;
 }
 
 export type EngineEventModel =

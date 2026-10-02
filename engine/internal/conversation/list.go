@@ -375,21 +375,7 @@ func LoadMessagesPaginated(id, dir string, offset, limit int) (*PaginatedMessage
 		return nil, err
 	}
 
-	total := len(all)
-	if offset >= total {
-		return &PaginatedMessages{Messages: []types.SessionMessage{}, Total: total, HasMore: false}, nil
-	}
-
-	end := total
-	if limit > 0 && offset+limit < total {
-		end = offset + limit
-	}
-
-	return &PaginatedMessages{
-		Messages: all[offset:end],
-		Total:    total,
-		HasMore:  end < total,
-	}, nil
+	return paginateMessages(all, offset, limit), nil
 }
 
 // LoadChainMessages loads multiple conversations by ID and concatenates

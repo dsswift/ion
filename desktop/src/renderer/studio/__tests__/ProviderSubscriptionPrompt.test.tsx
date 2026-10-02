@@ -101,6 +101,12 @@ describe('ProviderSubscriptionPrompt', () => {
     expect(text()).toContain('There is still no subscription.')
   })
 
+  it("uses the policy's text for no subscription when one is configured", async () => {
+    await mount({ ...none, policyFailure: 'subscription_unavailable', message: 'Open a ticket to request access.' })
+    expect(text()).toContain('Open a ticket to request access.')
+    expect(text()).not.toContain('Contact your administrator')
+  })
+
   it('closes when a lookup finds the subscription', async () => {
     ion.refreshProviderSubscription.mockResolvedValue({ ok: true, subscription: applied })
     await mount(none)

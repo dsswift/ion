@@ -300,21 +300,7 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 			snap := registry.OwnedSnapshot(dispatchId)
 			entries := make([]extension.DispatchStateEntry, len(snap))
 			for i, s := range snap {
-				entries[i] = extension.DispatchStateEntry{
-					DispatchID:          s.DispatchID,
-					Name:                s.Name,
-					Status:              s.Status,
-					ParentDispatchID:    s.ParentDispatchID,
-					Depth:               s.Depth,
-					StartedAt:           s.StartedAt.UTC().Format(time.RFC3339Nano),
-					ElapsedMs:           s.ElapsedMs,
-					ToolCount:           s.ToolCount,
-					LastWork:            s.LastWork,
-					LastActivityMs:      s.LastActivityMs,
-					ChildConversationID: s.ChildConversationID,
-					PendingChildren:     s.PendingChildren,
-					WaitingOn:           mapDispatchWaitingOn(s.WaitingOn),
-				}
+				entries[i] = mapDispatchStateEntry(s)
 			}
 			return entries, nil
 		}
@@ -326,6 +312,14 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 
 		// Conversation read for the same owned set, live and terminal.
 		ctx.ReadDispatchConversation = BuildReadDispatchConversationFunc(sa, registry, dispatchId)
+	}
+
+	// Conversation record access: the record's path and a read by ID. Both
+	// come from the session layer, which owns storage resolution and the
+	// principal access check.
+	if records, ok := sa.(ConversationRecordAccessor); ok {
+		ctx.ConversationRecordPath = records.ConversationRecordPath()
+		ctx.ReadConversation = records.ReadConversation
 	}
 
 	// Wire self-steer: deliver a message to the run that OWNS this context,
@@ -536,6 +530,25 @@ func steerSelfWithKind(
 		return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
 	}
 	return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+}
+
+// mapDispatchStateEntry converts a registry snapshot entry to its SDK shape.
+func mapDispatchStateEntry(s DispatchStateEntry) extension.DispatchStateEntry {
+	return extension.DispatchStateEntry{
+		DispatchID:          s.DispatchID,
+		Name:                s.Name,
+		Status:              s.Status,
+		ParentDispatchID:    s.ParentDispatchID,
+		Depth:               s.Depth,
+		StartedAt:           s.StartedAt.UTC().Format(time.RFC3339Nano),
+		ElapsedMs:           s.ElapsedMs,
+		ToolCount:           s.ToolCount,
+		LastWork:            s.LastWork,
+		LastActivityMs:      s.LastActivityMs,
+		ChildConversationID: s.ChildConversationID,
+		PendingChildren:     s.PendingChildren,
+		WaitingOn:           mapDispatchWaitingOn(s.WaitingOn),
+	}
 }
 
 func mapDispatchWaitingOn(waiting *DispatchWaitingOn) *extension.DispatchWaitingOn {

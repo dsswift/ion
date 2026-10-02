@@ -438,13 +438,15 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			}
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
+			refusal := ionconfig.NewPolicyError(m.policyMessagesLocked(), types.PolicyFailureModelNotAllowed, fmt.Errorf("model %q not allowed by enterprise policy", opts.Model))
 			m.mu.Unlock()
 			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
 			m.emit(key, types.EngineEvent{
-				Type:         "engine_error",
-				EventMessage: fmt.Sprintf("model %q not allowed by enterprise policy", opts.Model),
+				Type:          "engine_error",
+				EventMessage:  refusal.Message,
+				PolicyFailure: refusal.Failure,
 			})
-			return fmt.Errorf("model %q not allowed by enterprise policy", opts.Model)
+			return refusal
 		}
 	}
 
@@ -547,11 +549,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		utils.LogWithFields(utils.LevelWarn, "session", "model_select chose model blocked by enterprise policy", map[string]any{
 			"key": key, "model": opts.Model,
 		})
+		refusal := m.policyError(types.PolicyFailureModelNotAllowed, fmt.Errorf("model %q not allowed by enterprise policy", opts.Model))
 		m.emit(key, types.EngineEvent{
-			Type:         "engine_error",
-			EventMessage: fmt.Sprintf("model %q not allowed by enterprise policy", opts.Model),
+			Type:          "engine_error",
+			EventMessage:  refusal.Message,
+			PolicyFailure: refusal.Failure,
 		})
-		return fmt.Errorf("model %q not allowed by enterprise policy", opts.Model)
+		return refusal
 	}
 	refreshSlashModelProvenance(&opts, key)
 	normalizeSlashThinkingForResolvedModel(&opts, overrides)

@@ -55,6 +55,14 @@ export function nextSubscriptionAttention(
 }
 
 /**
+ * What a failure state says: the enterprise policy's text for it when one is
+ * configured, `fallback` otherwise.
+ */
+export function subscriptionFailureText(status: ProviderSubscriptionStatus, fallback: string): string {
+  return status.message || fallback;
+}
+
+/**
  * What a failed provider request says when the Provider Subscription state
  * explains it, or null when it does not.
  */
@@ -67,5 +75,8 @@ export function describeSubscriptionFailure(
   if (state === "selection_required") {
     return `No ${name} subscription is chosen yet, so this request had no subscription key. Choose a subscription, then try again.`;
   }
-  return `The signed-in account has no ${name} subscription, so this request had no subscription key. Contact your administrator for access.`;
+  return subscriptionFailureText(
+    status,
+    `The signed-in account has no ${name} subscription, so this request had no subscription key. Contact your administrator for access.`,
+  );
 }

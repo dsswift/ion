@@ -400,6 +400,7 @@
         "errorCode",
         "httpStatus",
         "message",
+        "policyFailure",
         "retryAfterMs",
         "retryable"
       ],
@@ -699,6 +700,7 @@
   },
   "extRequests": [
     "ext/ack_dispatch_lost",
+    "ext/answer_dispatch_park_checkin",
     "ext/answer_dispatch_question",
     "ext/await_application_config",
     "ext/call_tool",
@@ -727,6 +729,7 @@
     "ext/notify",
     "ext/protected_operation",
     "ext/publish_resource",
+    "ext/read_conversation",
     "ext/read_dispatch_conversation",
     "ext/recall_agent",
     "ext/recall_dispatch",
@@ -796,6 +799,9 @@
         }
       },
       "conversationId": {
+        "kind": "string"
+      },
+      "conversationRecordPath": {
         "kind": "string"
       },
       "cwd": {

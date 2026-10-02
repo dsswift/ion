@@ -578,7 +578,16 @@ Only `name` and `task` are required. All other fields are optional.
 | `"requireToolUse": false` | Explicit exemption. Analysis, summarization, and advisory dispatches legitimately produce text and call nothing. |
 | *(omitted)* | No expectation declared. The engine reports `toolCount` and passes no judgement. This is the default, so a client that never sends the field is unchanged. |
 
-The field is tri-state on the wire: omit it to declare nothing. The engine never infers the expectation from the task text — a summarization dispatch and an edit dispatch are indistinguishable to it, and only the caller knows which it issued.
+**Checking in on a parked dispatch:**
+
+| Field | Effect |
+|-------|--------|
+| `"parkCheckInIntervalMs": 600000` | While this dispatch is parked on work it started (child dispatches, background commands, polls) and that work is still running, the engine wakes it for one turn every interval with a prompt classified `checkin`. When that turn ends with the work still outstanding the dispatch parks again. Omitted or `0` means no check-ins. |
+| `"parkCheckInAsk": true` | The client answers each `dispatch_park_checkin` notification through `ext/answer_dispatch_park_checkin` with the prompt to deliver (`{dispatchId, requestId, prompt}`) or a skip (`{dispatchId, requestId, skip: true}`). Without it the engine delivers a generic prompt naming the awaited work and sends no notification. |
+
+A skip, an empty prompt, or no answer within the engine's reply window leaves the dispatch parked for another interval.
+
+The `requireToolUse` field is tri-state on the wire: omit it to declare nothing. The engine never infers the expectation from the task text — a summarization dispatch and an edit dispatch are indistinguishable to it, and only the caller knows which it issued.
 
 **Capping injected context:**
 

@@ -17,6 +17,10 @@ var notFormats = map[string]string{
 	// A marker that a one-time repair sweep ran over a conversation file; the
 	// file's schema is conversation.CurrentVersion.
 	"conversation.recoveryRepairVersion": "repair-sweep marker",
+	// The version inside an opaque transcript page cursor. The engine both
+	// mints and reads it, and refuses one it does not recognize, so the caller
+	// restarts paging; nothing is stored and no peer decodes it.
+	"conversation.transcriptCursorVersion": "opaque page token the engine mints and reads back",
 	// The version the engine reports for itself as an MCP client; no peer
 	// accepts or refuses on it.
 	"mcp.clientImplementationVersion": "self-identification",

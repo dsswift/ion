@@ -279,14 +279,18 @@ jobs:
   # (studio-server-checksums adds the installer script once).
   # install-studio-server.sh and `ion studio update` download exactly these. The engine binary is the signed release
   # asset for engine/VERSION (never rebuilt here); when this same release
-  # also ships the engine, build-engine runs first.
+  # also ships the engine, build-engine and publish-engine run first.
+  # Waiting on publish-engine keeps the download away from the moment the
+  # engine release goes from draft to public: a lookup that straddles that
+  # change finds the release under neither state. A skipped or failed
+  # publish-engine leaves the release in one state, so the bundle still builds.
   #
   # node-pty ships prebuilds for macOS only and compiles on Linux, so each
   # bundle is packaged on a runner of its own platform (see
   # scripts/package-studio-server.sh).
   build-studio-server:
     if: always() && contains(fromJSON(inputs.release_report).components, 'server') && !contains(needs.build-engine.result, 'failure')
-    needs: [build-engine]
+    needs: [build-engine, publish-engine]
     strategy:
       fail-fast: false
       matrix:

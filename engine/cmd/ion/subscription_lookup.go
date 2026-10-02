@@ -31,6 +31,9 @@ func startSubscriptionLookup(cfg *types.EngineRuntimeConfig, resolver *auth.Reso
 	keys := discoveringKeys{resolver: resolver, providerConfigs: cfg.Providers}
 	manager := subscription.NewManager(lookup, subscription.HTTPFetcher, subscription.NewFileStoreCache(), keys, srv.BroadcastProviderSubscription)
 	manager.SetProviderDisplayName(providerCfg.DisplayName)
+	if cfg.Enterprise != nil {
+		manager.SetPolicyMessages(cfg.Enterprise.Messages)
+	}
 	srv.SetSubscriptionManager(manager)
 	resolver.SetSubscriptionStatusSource(manager.Status)
 	manager.Start()
