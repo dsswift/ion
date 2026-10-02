@@ -47,6 +47,8 @@ export type NormalizedEvent =
       isError: boolean;
       images?: Array<{ path: string; mediaType: string; source?: string }>;
       backgroundTaskId?: string;
+      /** The Policy Failure identifier when enterprise policy refused the call. */
+      policyFailure?: string;
     }
   | { type: "task_update"; message: AssistantMessagePayload }
   | {
@@ -78,6 +80,8 @@ export type NormalizedEvent =
       stderrTail?: string[];
       /** The Provider Subscription snapshot of a failed provider request; set only when the request went to the lookup's provider with no looked-up key applied. */
       providerSubscription?: import("./types-engine-event-model").ProviderSubscriptionStatus;
+      /** The Policy Failure identifier when the error results from enterprise policy. */
+      policyFailure?: string;
     }
   | {
       type: "session_dead";
