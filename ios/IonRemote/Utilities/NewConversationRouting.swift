@@ -5,12 +5,10 @@ import Foundation
 // Pure routing logic for the single "New Conversation" entry point
 // (conversation unification #256).
 //
-// Mirrors `resolveNewConversationAction` in
-// desktop/src/renderer/components/new-conversation-routing.ts.
 // Extracted into its own module so it can be unit-tested without any
 // SwiftUI, view-model, or network dependencies.
 //
-// State machine (highest to lowest precedence, matching desktop):
+// State machine (highest to lowest precedence):
 //   0. Enterprise-locked: policy present and locked=true -> use mandated
 //      baseDirectory + profileId. Empty profileId means plain.
 //      The enterprise policy reaches iOS over the wire via the
@@ -20,9 +18,10 @@ import Foundation
 //      (no policy projected) the branch is skipped.
 //   1. Zero engine profiles -> plain conversation, no picker.
 //   2. defaultEngineProfileId is non-empty AND the profile exists
-//      -> use that profile directly, no picker.
-//      (Empty defaultEngineProfileId = "use plain conversation as default"
-//       on desktop; falls through to picker here to match intent.)
+//      -> use that profile directly, no picker. An unlocked enterprise
+//      policy reaches this state through that preference, which it seeds
+//      as a managed default.
+//      (Empty defaultEngineProfileId falls through to the picker.)
 //   3. Otherwise -> show the extended picker (plain option + profiles).
 
 /// The resolved action the UI should take when the user taps "New Conversation".
@@ -38,11 +37,9 @@ enum NewConversationAction: Equatable {
     case locked(baseDirectory: String, profileId: String)
 }
 
-/// Enterprise new-conversation policy. Mirrors `NewConversationDefaultsPolicy` in
-/// `desktop/src/shared/types-session.ts`. Projected by the desktop as
-/// `newConversationPolicy` in the `desktop_settings_snapshot` event, decoded in
-/// `NormalizedEvent+EngineDecoder.swift`, stored on
-/// `SessionViewModel.enterpriseNewConversationPolicy`, and consumed in `TabListView`.
+/// Enterprise new-conversation policy, as the routing below reads it. Built
+/// from the `newConversationPolicy` field of the `desktop_settings_snapshot`
+/// event.
 struct NewConversationDefaultsPolicy: Equatable {
     var locked: Bool
     var baseDirectory: String
