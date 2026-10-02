@@ -19,6 +19,9 @@ struct McpServerStatus: Codable, Equatable, Identifiable, Sendable {
     let authenticated: Bool
     let toolCount: Int?
     let lastError: String?
+    /// The organization's managed engine file defines this server, so it
+    /// cannot be edited or removed. Absent means it can.
+    var managed: Bool?
 
     var id: String { name }
 }

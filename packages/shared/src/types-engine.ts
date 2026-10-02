@@ -564,7 +564,8 @@ export type { EngineEvent } from './types-engine-event'
 export type { ContextBreakdownCategory, ContextBreakdownPayload, ModelBreakdown } from './types-context-breakdown'
 
 // Enterprise policy types (ResourceLimits, EnterpriseProviderDefinition,
-// ExtensionAllowlistEntry, EnterprisePolicy, IonDesktopPolicyFields) moved
+// ExtensionAllowlistEntry, EnterprisePolicy, IonDesktopPolicyFields, and the
+// managed config types) moved
 // to types-enterprise.ts at the 600-line cap split; re-exported here so
 // existing imports keep working.
 export type {
@@ -573,4 +574,7 @@ export type {
   ExtensionAllowlistEntry,
   EnterprisePolicy,
   IonDesktopPolicyFields,
+  ManagedConfigSource,
+  ManagedConfigStatus,
+  ManagedSurfaceStatus,
 } from './types-enterprise'

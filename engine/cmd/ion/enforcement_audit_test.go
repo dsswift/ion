@@ -14,6 +14,9 @@ func TestEnforcementEventName(t *testing.T) {
 		config.EnforcementProviderPruned: telemetry.EnforcementProviderPruned,
 		config.EnforcementProviderPinned: telemetry.EnforcementProviderPinned,
 		config.EnforcementMcpPruned:      telemetry.EnforcementMcpPruned,
+
+		config.EnforcementManagedConfigInvalid:      telemetry.EnforcementManagedConfigInvalid,
+		config.EnforcementManagedConfigWriteRefused: telemetry.EnforcementManagedConfigWriteRefused,
 	}
 	for kind, want := range cases {
 		if got := enforcementEventName(kind); got != want {
@@ -82,5 +85,29 @@ func TestDrainEnforcementActions_NilCollectorStillClears(t *testing.T) {
 
 	if again := config.DrainEnforcementActions(); len(again) != 0 {
 		t.Errorf("nil-collector drain must still clear the recorder, got %d", len(again))
+	}
+}
+
+// TestInstallEnforcementSink_EmitsLaterActionsAsTheyHappen pins that an action
+// recorded after startup reaches telemetry without waiting for a drain.
+func TestInstallEnforcementSink_EmitsLaterActionsAsTheyHappen(t *testing.T) {
+	_ = config.DrainEnforcementActions()
+	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	installEnforcementSink(col)
+	t.Cleanup(func() { config.SetEnforcementSink(nil) })
+
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{"rogue": {BaseURL: "https://rogue.example"}},
+	}
+	_ = config.EnforceEnterprise(cfg, &types.EnterpriseConfig{AllowedProviders: []string{"anthropic"}})
+
+	emitted := false
+	for _, e := range col.BufferedEvents() {
+		if e.Name == telemetry.EnforcementProviderPruned {
+			emitted = true
+		}
+	}
+	if !emitted {
+		t.Error("expected the sink to emit enforcement.provider_pruned without a drain")
 	}
 }

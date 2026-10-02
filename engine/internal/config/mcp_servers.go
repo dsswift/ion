@@ -7,8 +7,9 @@ package config
 //   - ResolveMcpServers reads the merged, enterprise-enforced server map fresh
 //     at call time. Session start uses it so a server added mid-daemon-life
 //     applies to the next session without a daemon restart.
-//   - AddMcpServer / RemoveMcpServer edit ~/.ion/engine.json in place. They
-//     operate on the raw decoded map rather than a typed struct so that every
+//   - AddMcpServer / RemoveMcpServer edit ~/.ion/engine.json in place, or the
+//     user's MCP server file when a managed file owns the engine
+//     configuration (mcp_user_store.go). They operate on the raw decoded map rather than a typed struct so that every
 //     key the engine does not know about — a newer field, an operator comment
 //     convention, anything a future version adds — survives the write.
 //     Round-tripping through EngineRuntimeConfig would silently drop them.
@@ -131,7 +132,8 @@ func CheckMcpServerAllowed(name string, cfg types.McpServerConfig) error {
 	return nil
 }
 
-// AddMcpServer writes a server entry into ~/.ion/engine.json, replacing any
+// AddMcpServer writes a server entry into the MCP write target (~/.ion/engine.json,
+// or the user's MCP server file on a managed engine surface), replacing any
 // entry already stored under the same name.
 //
 // Only the mcpServers key is touched. Every other top-level key, and every
@@ -144,8 +146,15 @@ func AddMcpServer(name string, cfg types.McpServerConfig) error {
 	if err := CheckMcpServerAllowed(name, cfg); err != nil {
 		return err
 	}
+	target, err := resolveMcpWriteTarget("mcp_add")
+	if err != nil {
+		return err
+	}
+	if err := target.refuseManaged(name, "mcp_add"); err != nil {
+		return err
+	}
 
-	path := globalConfigPath()
+	path := target.path
 	return durablefile.Transaction(path, 5*time.Second, func(_ string) error {
 		raw, err := readRawConfig(path)
 		if err != nil {
@@ -174,17 +183,24 @@ func AddMcpServer(name string, cfg types.McpServerConfig) error {
 		if err := writeRawConfig(path, raw); err != nil {
 			return err
 		}
-		utils.LogWithFields(utils.LevelInfo, "config", "mcp server written to engine.json", map[string]any{"server": name, "path": path, "transport": cfg.Type, "url": cfg.URL, "command": cfg.Command, "replaced": replaced, "total": len(servers)})
+		utils.LogWithFields(utils.LevelInfo, "config", "mcp server written", map[string]any{"server": name, "path": path, "transport": cfg.Type, "url": cfg.URL, "command": cfg.Command, "replaced": replaced, "total": len(servers)})
 		return nil
 	})
 }
 
-// RemoveMcpServer deletes a server entry from ~/.ion/engine.json. Removing a
+// RemoveMcpServer deletes a server entry from the MCP write target. Removing a
 // name that is not present is an error rather than a silent success: a
 // consumer that mistyped a name must hear about it instead of being told the
 // removal worked.
 func RemoveMcpServer(name string) error {
-	path := globalConfigPath()
+	target, err := resolveMcpWriteTarget("mcp_remove")
+	if err != nil {
+		return err
+	}
+	if err := target.refuseManaged(name, "mcp_remove"); err != nil {
+		return err
+	}
+	path := target.path
 	return durablefile.Transaction(path, 5*time.Second, func(_ string) error {
 		raw, err := readRawConfig(path)
 		if err != nil {
@@ -202,12 +218,12 @@ func RemoveMcpServer(name string) error {
 		if err := writeRawConfig(path, raw); err != nil {
 			return err
 		}
-		utils.LogWithFields(utils.LevelInfo, "config", "mcp server removed from engine.json", map[string]any{"server": name, "path": path, "remaining": len(servers)})
+		utils.LogWithFields(utils.LevelInfo, "config", "mcp server removed", map[string]any{"server": name, "path": path, "remaining": len(servers)})
 		return nil
 	})
 }
 
-// readRawConfig decodes engine.json into a raw map, preserving every key.
+// readRawConfig decodes a config file into a raw map, preserving every key.
 // A missing file yields an empty map so the first `ion mcp add` on a fresh
 // install works. A malformed file is an error: overwriting it would destroy
 // whatever the operator was mid-way through editing.
@@ -215,7 +231,7 @@ func readRawConfig(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			utils.LogWithFields(utils.LevelInfo, "config", "engine.json does not exist; creating it", map[string]any{"path": path})
+			utils.LogWithFields(utils.LevelInfo, "config", "config file does not exist; creating it", map[string]any{"path": path})
 			return make(map[string]any), nil
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -235,9 +251,8 @@ func readRawConfig(path string) (map[string]any, error) {
 
 // writeRawConfig serializes the raw config map and writes it atomically.
 //
-// Atomicity matters: engine.json holds provider credentials and enterprise
-// state, and a partial write from an interrupted process would leave the
-// daemon unable to start.
+// Atomicity matters: these files hold credentials, and a partial write from
+// an interrupted process would leave the daemon unable to start.
 func writeRawConfig(path string, raw map[string]any) error {
 	data, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
@@ -248,8 +263,7 @@ func writeRawConfig(path string, raw map[string]any) error {
 		return err
 	}
 	// On Windows the 0o600 above is not a permission -- see RestrictToOwner.
-	// engine.json holds provider credentials and enterprise state, so a
-	// failure to narrow the ACL is worth surfacing to the caller rather than
+	// The file holds credentials, so a failure to narrow the ACL is worth surfacing to the caller rather than
 	// only logging.
 	if err := utils.RestrictToOwner(path); err != nil {
 		return fmt.Errorf("restrict %s to owner: %w", path, err)

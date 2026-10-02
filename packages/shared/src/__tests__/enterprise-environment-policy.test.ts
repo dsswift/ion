@@ -49,3 +49,20 @@ describe('deriveDesktopEnvironmentPolicy', () => {
   })
 
 })
+
+describe('userMcpServersLocked', () => {
+  const status = (projected: boolean) => ({ schemaVersion: 1, supportedSchemaVersion: 1, engine: { projected } })
+
+  it('leaves adding open with no policy, no managed engine file, or a managed file that allows it', async () => {
+    const { userMcpServersLocked } = await import('../types-enterprise')
+    expect(userMcpServersLocked(null)).toBe(false)
+    expect(userMcpServersLocked({ managedConfigStatus: { schemaVersion: 1, supportedSchemaVersion: 1, models: { projected: true } } })).toBe(false)
+    expect(userMcpServersLocked({ managedConfig: { enginePath: '/m/engine.json', schemaVersion: 1 }, managedConfigStatus: status(true) })).toBe(false)
+  })
+
+  it('locks adding when policy turns user servers off or the managed file did not apply', async () => {
+    const { userMcpServersLocked } = await import('../types-enterprise')
+    expect(userMcpServersLocked({ managedConfig: { enginePath: '/m/engine.json', schemaVersion: 1, disableUserMcpServers: true }, managedConfigStatus: status(true) })).toBe(true)
+    expect(userMcpServersLocked({ managedConfig: { enginePath: '/m/engine.json', schemaVersion: 1 }, managedConfigStatus: status(false) })).toBe(true)
+  })
+})

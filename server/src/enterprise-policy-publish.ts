@@ -7,6 +7,8 @@
 import { createHash } from 'crypto'
 import type { EnterprisePolicy } from '@ion/shared/types-engine'
 import { log } from './logger'
+import { managedEngineConfigSource } from './managed-config'
+import { setManagedEngineConfigSource } from './persistence/settings-store'
 
 /**
  * Enterprise policy cache (D-004), read from the engine's
@@ -56,6 +58,9 @@ export function enterprisePolicyHash(policy: EnterprisePolicy | null): string {
 export function publishEnterprisePolicy(policy: EnterprisePolicy | null): void {
   const changed = enterprisePolicyHash(policy) !== enterprisePolicyHash(enterprisePolicyCache.policy)
   enterprisePolicyCache.policy = policy
+  // A managed engine file replaces engine.json for this server's own reads
+  // and writes of it.
+  setManagedEngineConfigSource(managedEngineConfigSource(policy))
   if (!settled) {
     markSettled('read')
     return

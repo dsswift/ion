@@ -37,7 +37,7 @@ struct McpServerDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { editing = true }
-                    .disabled(model.server(named: name) == nil || model.busyName == name || !session.allows(.mcpUpdate))
+                    .disabled(model.server(named: name) == nil || model.server(named: name)?.managed == true || model.busyName == name || !session.allows(.mcpUpdate))
             }
         }
         .confirmationDialog("Remove \(name)?", isPresented: $confirmRemove, titleVisibility: .visible) {
@@ -115,9 +115,11 @@ struct McpServerDetailView: View {
             } label: {
                 Label("Remove Server", systemImage: "trash")
             }
-            .disabled(busy || !session.allows(.mcpRemove))
+            .disabled(busy || server.managed == true || !session.allows(.mcpRemove))
         } footer: {
-            if let reason = session.denialReason(.mcpLogin) {
+            if server.managed == true {
+                Text("Your organization set up this server. It cannot be edited or removed here.")
+            } else if let reason = session.denialReason(.mcpLogin) {
                 Text(reason)
             } else {
                 Text("Signing in opens the provider's page here. The engine on \(model.serverLabel) keeps the token and refreshes it.")

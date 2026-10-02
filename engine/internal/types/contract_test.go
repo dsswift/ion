@@ -192,6 +192,12 @@ func buildManifest() contractManifest {
 		// PolicyOverride is an element of EnterpriseConfig.Overrides, carried
 		// inside the get_enterprise_policy blob.
 		"PolicyOverride": reflect.TypeOf(PolicyOverride{}),
+		// Managed config projection: the source block and the engine-stamped
+		// status, both carried inside the get_enterprise_policy blob; the
+		// status is also the get_managed_config_status payload.
+		"ManagedConfigSource":  reflect.TypeOf(ManagedConfigSource{}),
+		"ManagedConfigStatus":  reflect.TypeOf(ManagedConfigStatus{}),
+		"ManagedSurfaceStatus": reflect.TypeOf(ManagedSurfaceStatus{}),
 		// Client-supplied workspace descriptor carried on EngineConfig and
 		// per-prompt ClientCommand. Tracked so cross-language mirrors stay
 		// in sync with the engine's hook-dispatch payload shape.

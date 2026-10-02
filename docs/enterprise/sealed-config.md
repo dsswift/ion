@@ -8,6 +8,8 @@ sidebar_position: 3
 
 Enterprise configuration is not just another config layer. It is a constraint layer. Values set at the enterprise level cannot be weakened by user or project configuration. The engine enforces this by applying enterprise config after the three-layer merge (defaults, user, project) is complete.
 
+Sealing constrains the settings it names. To own a whole configuration file instead, including settings added in later engine releases, use [managed configuration files](managed-config.md). The two work together.
+
 ## Sealing semantics
 
 Different field types have different sealing behaviors:

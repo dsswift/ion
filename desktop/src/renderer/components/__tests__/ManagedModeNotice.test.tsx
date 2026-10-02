@@ -22,4 +22,15 @@ describe('managedModeMessages', () => {
       'override-refused',
     ])
   })
+
+  it('says a managed configuration file could not be applied, managed marker or not', () => {
+    const invalid = { schemaVersion: 2, supportedSchemaVersion: 1, engine: { projected: false, error: 'unsupported' } }
+    expect(managedModeMessages(undefined, invalid).map((m) => m.kind)).toEqual(['managed-config-invalid'])
+    expect(managedModeMessages({ managed: true, policyAbsent: true }, invalid).map((m) => m.kind)).toEqual(['managed-config-invalid', 'policy-absent'])
+  })
+
+  it('says nothing about a managed configuration that applied', () => {
+    const applied = { schemaVersion: 1, supportedSchemaVersion: 1, engine: { projected: true, checksum: 'sha256:abc' } }
+    expect(managedModeMessages(undefined, applied)).toEqual([])
+  })
 })

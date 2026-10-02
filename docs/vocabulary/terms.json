@@ -2623,6 +2623,38 @@
       ]
     },
     {
+      "id": "managed-config-projection",
+      "term": "Managed Config Projection",
+      "definition": "Enterprise policy naming a managed engine file, a managed models file, or both, each of which becomes the whole configuration for its surface. The user and project files contribute nothing to an owned surface, a key the managed file leaves out resolves to the built-in default, and every write to the surface is refused, except that a user may keep MCP servers of their own in a separate file unless policy turns that off. Typed sealing still applies on top.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func resolveManagedProjection",
+          "path": "engine/internal/config/managed_projection.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ManagedConfigStatus",
+          "path": "engine/internal/types/config_managed.go"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "managedEngineConfigSource",
+          "path": "server/src/managed-config.ts"
+        }
+      ]
+    },
+    {
       "id": "managed-default",
       "term": "Managed Default",
       "definition": "An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.",

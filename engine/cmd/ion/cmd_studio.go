@@ -498,6 +498,10 @@ const studioEngineBackend = "hybrid"
 func ensureStudioEngineBackend(dataDir string) (string, error) {
 	path := filepath.Join(dataDir, "engine.json")
 	wrote, existing, err := config.SetBackendIfUnset(path, studioEngineBackend)
+	var managed *config.ManagedConfigWriteError
+	if errors.As(err, &managed) {
+		return "engine configuration is managed; the backend is left to the managed file", nil
+	}
 	if err != nil {
 		return "", err
 	}

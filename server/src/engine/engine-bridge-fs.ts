@@ -122,6 +122,8 @@ export async function getEnterprisePolicy(principal?: SessionPrincipal): Promise
       policy_absent: result.data.policy.managedMode?.policyAbsent === true,
       override_refused: result.data.policy.managedMode?.overrideRefused === true,
       overrides: result.data.policy.overrides?.length ?? 0,
+      managed_engine_config: result.data.policy.managedConfigStatus?.engine?.projected ?? null,
+      managed_models_config: result.data.policy.managedConfigStatus?.models?.projected ?? null,
     })
     return result.data.policy
   }

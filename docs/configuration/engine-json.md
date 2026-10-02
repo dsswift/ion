@@ -8,6 +8,8 @@ sidebar_position: 2
 
 This document covers every field in `engine.json`, used at both the user level (`~/.ion/engine.json`) and the project level (`.ion/engine.json`).
 
+When enterprise policy names a [managed engine file](../enterprise/managed-config.md), the engine reads that file in place of both the user-level and the project-level file.
+
 ## Required configuration
 
 Ion ships with no default model. Before the engine can run a prompt, you must either set `defaultModel` in `engine.json` or pass `--model` on the command line. You also need credentials for the provider that model maps to (a `*_API_KEY` env var, an entry under `providers.<id>.apiKey`, or no key at all if the provider is local). See [models.json Reference](models.md) for registering custom models and tier aliases.
@@ -335,6 +337,8 @@ __pycache__/**
 Out-of-tree paths are deliberately out of scope. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess; the engine watcher exists to give every loaded extension a single coalesced view of in-tree changes without N extensions each spinning up their own watcher. See [`workspace_file_changed`](../hooks/reference.md#file-changes-2) in the Hook Reference for the hook payload and the rationale behind the engine-owned watcher.
 
 ## mcpServers
+
+When enterprise policy names a managed engine file, servers a user adds are stored in `~/.ion/mcp/servers.json` in place of this file. See [User MCP servers](../enterprise/managed-config.md#user-mcp-servers).
 
 Map of server name to MCP server configuration. Each entry defines a connection to a [Model Context Protocol](https://modelcontextprotocol.io/) server.
 

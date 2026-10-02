@@ -29,6 +29,7 @@ import { McpServerFormPanel } from './McpServerFormPanel'
 import { signInFromThisMachine } from './mcp-remote-sign-in'
 import { host } from '../../../../host/host-instance'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { userMcpServersLocked } from '@ion/shared/types-enterprise'
 
 function endpointOf(server: McpServerStatus): string {
   return server.url || server.command || ''
@@ -43,7 +44,9 @@ export function McpSection(): React.JSX.Element {
   // The picked server's MCP servers, not this machine's.
   const { shell, on, environmentId } = useSettingsShell()
   const serverLabel = useSettingsEnvironment().label
-  const removedByPolicy = removedMcpServers(useEnvironmentEnterprisePolicy(environmentId))
+  const policy = useEnvironmentEnterprisePolicy(environmentId)
+  const removedByPolicy = removedMcpServers(policy)
+  const addLocked = userMcpServersLocked(policy)
   const [servers, setServers] = useState<McpServerStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -213,6 +216,7 @@ export function McpSection(): React.JSX.Element {
           Your organization does not allow {removedByPolicy.length === 1 ? 'this MCP server' : 'these MCP servers'}, so {removedByPolicy.length === 1 ? 'its' : 'their'} configuration on {serverLabel} is not in effect: {removedByPolicy.join(', ')}.
         </Notice>
       )}
+      {addLocked && <Notice tone="accent">Your organization manages the MCP servers on {serverLabel}. You cannot add your own.</Notice>}
       <ErrorText>{errorMsg}</ErrorText>
       <DataList
         label="MCP servers"
@@ -236,10 +240,10 @@ export function McpSection(): React.JSX.Element {
         rowMenu={(s) => [
           { label: s.authenticated ? 'Re-authorize' : 'Authorize', icon: SignIn, disabled: busyName === s.name, onSelect: () => handleAuthorize(s.name) },
           s.authenticated && { label: 'Sign out', icon: SignOut, disabled: busyName === s.name, onSelect: () => handleSignOut(s.name) },
-          { label: 'Edit', icon: PencilSimple, disabled: busyName === s.name, onSelect: () => { setErrorMsg(null); setPanel({ kind: 'edit', name: s.name }) } },
-          { label: 'Remove', icon: Trash, danger: true, disabled: busyName === s.name, onSelect: () => setPanel({ kind: 'remove', name: s.name }) },
+          !s.managed && { label: 'Edit', icon: PencilSimple, disabled: busyName === s.name, onSelect: () => { setErrorMsg(null); setPanel({ kind: 'edit', name: s.name }) } },
+          !s.managed && { label: 'Remove', icon: Trash, danger: true, disabled: busyName === s.name, onSelect: () => setPanel({ kind: 'remove', name: s.name }) },
         ]}
-        actions={<Button variant="primary" icon={Plus} onClick={() => { setErrorMsg(null); setPanel({ kind: 'add' }) }}>Add server</Button>}
+        actions={addLocked ? undefined : <Button variant="primary" icon={Plus} onClick={() => { setErrorMsg(null); setPanel({ kind: 'add' }) }}>Add server</Button>}
         empty={<EmptyState icon={Plugs} title="No MCP servers configured yet." detail="Add a remote URL or a local command. The engine connects it on the next conversation." />}
       />
       <McpDetailPanel
@@ -288,8 +292,8 @@ function McpDetailPanel({ server, busy, notice, error, onClose, onAuthorize, onS
       subtitle={server.transport ? `${server.transport} server` : undefined}
       onClose={onClose}
       footer={<>
-        <Button variant="danger" icon={Trash} disabled={busy} onClick={() => onRemove(server.name)}>Remove</Button>
-        <Button icon={PencilSimple} disabled={busy} onClick={() => onEdit(server.name)}>Edit</Button>
+        {!server.managed && <Button variant="danger" icon={Trash} disabled={busy} onClick={() => onRemove(server.name)}>Remove</Button>}
+        {!server.managed && <Button icon={PencilSimple} disabled={busy} onClick={() => onEdit(server.name)}>Edit</Button>}
         {server.authenticated && <Button icon={SignOut} disabled={busy} onClick={() => onSignOut(server.name)}>Sign out</Button>}
         <Button variant="primary" icon={SignIn} disabled={busy} onClick={() => onAuthorize(server.name)}>{server.authenticated ? 'Re-authorize' : 'Authorize'}</Button>
       </>}
@@ -304,6 +308,7 @@ function McpDetailPanel({ server, busy, notice, error, onClose, onAuthorize, onS
             {server.connected && (server.toolCount ?? 0) > 0 && <Muted>{server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}</Muted>}
           </Inline>
         </Field>
+        {server.managed && <Field label="Managed"><Muted>Your organization set up this server. It cannot be edited or removed here.</Muted></Field>}
         {server.transport !== 'stdio' && (
           <Field label="OAuth client">
             {server.oauth?.clientId ? <Muted mono>{server.oauth.clientId}</Muted> : <Muted>From discovery</Muted>}

@@ -23,7 +23,11 @@ type ServerResult struct {
 	// PolicyFailure is the Policy Failure identifier when the command failed
 	// because of enterprise policy. Empty otherwise.
 	PolicyFailure string `json:"policyFailure,omitempty"`
-	Data          any    `json:"data,omitempty"`
+	// Code is a machine-readable reason for a failed command, set when the
+	// failure has one (a write refused by policy). Additive; most failures
+	// carry only Error.
+	Code string `json:"code,omitempty"`
+	Data any    `json:"data,omitempty"`
 	// NewKey is set only for fork_session responses (top-level, not wrapped in data).
 	NewKey string `json:"newKey,omitempty"`
 	// ConversationID identifies the durable independent conversation created by

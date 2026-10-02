@@ -193,6 +193,8 @@ export function send(bridge: EngineBridge, msg: any): boolean {
 export interface BridgeRequestResult<T> {
   ok: boolean;
   error?: string;
+  /** The engine's machine-readable reason for a refusal, when it gave one. */
+  code?: string;
   data?: T;
   unanswered?: true;
 }
@@ -232,7 +234,7 @@ function sendWithResponse<T>(
     bridge.requestCallbacks.set(requestId, (result) => {
       clearTimeout(timer);
       bridge.consecutiveTimeouts = 0;
-      resolve({ ok: result.ok, error: result.error, data: result.data as T, ...(result.unanswered ? { unanswered: true } : {}) });
+      resolve({ ok: result.ok, error: result.error, ...(result.code ? { code: result.code } : {}), data: result.data as T, ...(result.unanswered ? { unanswered: true } : {}) });
     });
 
     if (!send(bridge, msg)) {

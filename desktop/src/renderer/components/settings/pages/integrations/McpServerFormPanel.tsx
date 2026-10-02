@@ -146,7 +146,7 @@ export function McpServerFormPanel({ server, open, busy, error, onClose, onAdd, 
     <SidePanel
       open={open}
       title={server ? `Edit ${server.name}` : 'Add an MCP server'}
-      subtitle={editing ? 'Saved to ~/.ion/engine.json. Settings not shown here are kept.' : 'Written to ~/.ion/engine.json. It connects on the next conversation you start.'}
+      subtitle={editing ? 'Settings not shown here are kept.' : 'It connects on the next conversation you start.'}
       onClose={onClose}
       footer={<>
         <Button onClick={onClose}>Cancel</Button>

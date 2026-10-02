@@ -361,6 +361,13 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   // Policy override notice. An element of EnterpriseConfig.Overrides, carried
   // inside the get_enterprise_policy blob.
   PolicyOverride: ["effectiveValue", "field", "reason", "userValue"],
+  // Managed config projection. Mirrors Go's ManagedConfigSource,
+  // ManagedConfigStatus, and ManagedSurfaceStatus in
+  // internal/types/config_managed.go; carried inside the
+  // get_enterprise_policy blob.
+  ManagedConfigSource: ["disableUserMcpServers", "enginePath", "modelsPath", "schemaVersion"],
+  ManagedConfigStatus: ["engine", "models", "schemaVersion", "supportedSchemaVersion"],
+  ManagedSurfaceStatus: ["checksum", "error", "projected"],
   // Client-supplied workspace context. Mirrors Go's ClientWorkspaceContext.
   ClientWorkspaceContext: ["bench", "cwd", "data", "kind", "text"],
   // Client tool gate declaration (EngineConfig.toolGate). Mirrors Go's
@@ -415,6 +422,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "command",
     "connected",
     "lastError",
+    "managed",
     "name",
     "protocolVersion",
     "capabilities",

@@ -9,7 +9,12 @@ import {
 } from "../utils/secretStore";
 import { expandHome } from "../git/ignore-paths";
 import type { ThinkingEffort } from "@ion/shared/types-session";
-import { hasSealedSettings, keepStoredUnderSeal, withSealedSettings } from "./sealed-settings";
+import { MANAGED_CONFIG_WRITE_REFUSED } from "@ion/shared/types-enterprise";
+import {
+  hasSealedSettings,
+  keepStoredUnderSeal,
+  withSealedSettings,
+} from "./sealed-settings";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("main", msg, fields);
@@ -66,7 +71,8 @@ export const SETTINGS_DEFAULTS = {
   // proportional font made every column far too wide and the terminal wrapped
   // at roughly a third of its pane. Cascadia Code ships with Windows Terminal
   // and Consolas with Windows itself.
-  terminalFontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace',
+  terminalFontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace',
   terminalFontSize: 13,
   // Show dotfiles and OS-hidden entries in the file explorer. Off by default
   // so a tree opens on the operator's own files rather than on AppData and
@@ -131,7 +137,15 @@ export const SETTINGS_DEFAULTS = {
   // repoRemote (spec 10): the project's canonical `host/org/repo` identity,
   // lazily resolved from `git remote get-url origin` the first time a
   // transfer needs it (server/src/transfer/repo-remote.ts). Absent until then.
-  projects: {} as Record<string, { name?: string; addedManually: boolean; lastUsedAt: number; repoRemote?: string }>,
+  projects: {} as Record<
+    string,
+    {
+      name?: string;
+      addedManually: boolean;
+      lastUsedAt: number;
+      repoRemote?: string;
+    }
+  >,
   // Per-conversation thinking effort default for effort-based models.
   // 'medium' is the ship default: it is the level that buys real reasoning
   // without pinning every trivial turn to the model's deepest budget, which
@@ -165,7 +179,13 @@ export const SETTINGS_DEFAULTS = {
     dispatchSplitRatio: 0.45,
   },
   // Studio surface records by conversation plus core tabs pinned across them.
-  studioSurface: { version: 4, pinnedTabs: ['plan'], notification: null, conversations: {}, scratchProjects: {} },
+  studioSurface: {
+    version: 4,
+    pinnedTabs: ["plan"],
+    notification: null,
+    conversations: {},
+    scratchProjects: {},
+  },
   studioComposerStash: { version: 1, projects: {} },
   // Ambient soundscape in the Studio window (procedurally synthesized; mute toggle
   // in the control bar — office users need one-click silence).
@@ -199,19 +219,30 @@ export function writeSettings(data: Record<string, any>): void {
   if (hasSealedSettings()) {
     const restored = keepStoredUnderSeal(data, readStoredSettings());
     if (restored.length > 0) {
-      log("settings_store: sealed keys kept their stored values", { keys: restored });
+      log("settings_store: sealed keys kept their stored values", {
+        keys: restored,
+      });
     }
   }
   const encrypted = encryptSensitiveSettings(data);
-  atomicWriteFileSync(settingsFile(), JSON.stringify(encrypted, null, 2), 0o600);
+  atomicWriteFileSync(
+    settingsFile(),
+    JSON.stringify(encrypted, null, 2),
+    0o600,
+  );
   // Any settings write may have flipped a hot-path-cached projectable flag.
   // Invalidate the cache here, at the single write helper, so the next read
   // re-pulls from disk. Cheap (clears a primitive); correctness over saving
   // one disk read.
   const streamedBefore = streamThinkingCache;
   invalidateStreamThinkingToRemoteCache();
-  if (streamedBefore !== null && streamedBefore !== shouldStreamThinkingToRemote()) {
-    log("settings_store: streamThinkingToRemote changed", { enabled: !streamedBefore });
+  if (
+    streamedBefore !== null &&
+    streamedBefore !== shouldStreamThinkingToRemote()
+  ) {
+    log("settings_store: streamThinkingToRemote changed", {
+      enabled: !streamedBefore,
+    });
     for (const listener of [...streamThinkingListeners]) listener();
   }
 }
@@ -233,7 +264,9 @@ const streamThinkingListeners = new Set<() => void>();
  * Returns the unsubscribe. The transcript publishers re-publish their rows,
  * so thinking text a phone was not sent appears when the setting turns on.
  */
-export function onStreamThinkingToRemoteChange(listener: () => void): () => void {
+export function onStreamThinkingToRemoteChange(
+  listener: () => void,
+): () => void {
   streamThinkingListeners.add(listener);
   return () => streamThinkingListeners.delete(listener);
 }
@@ -292,17 +325,72 @@ export function readClaudeCompat(): boolean {
  * Returns undefined when none is recorded or the stored value is not a
  * non-empty string.
  */
-export function readWorktreeBranchDefault(repoPath: string): string | undefined {
+export function readWorktreeBranchDefault(
+  repoPath: string,
+): string | undefined {
   const raw = readSettings().worktreeBranchDefaults;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const v = (raw as Record<string, unknown>)[repoPath];
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+/**
+ * The managed engine file that replaces engine.json, when enterprise policy
+ * declares one. `path` is null when the managed file did not apply: the
+ * engine then runs on its defaults, so there is nothing to read.
+ */
+export interface ManagedEngineConfigSource {
+  path: string | null;
+}
+
+let managedEngineConfig: ManagedEngineConfigSource | null = null;
+
+/**
+ * Tells this module that a managed file owns the engine configuration (null
+ * when none does). While set, reads come from the managed file and every
+ * write throws ManagedEngineConfigError.
+ */
+export function setManagedEngineConfigSource(
+  source: ManagedEngineConfigSource | null,
+): void {
+  const changed =
+    (managedEngineConfig?.path ?? "") !== (source?.path ?? "") ||
+    (managedEngineConfig === null) !== (source === null);
+  managedEngineConfig = source;
+  if (changed)
+    log("settings: managed engine config source set", {
+      managed: source !== null,
+      applied: source?.path != null,
+    });
+}
+
+/** A write to engine.json refused because a managed file owns the engine configuration. */
+export class ManagedEngineConfigError extends Error {
+  readonly code = MANAGED_CONFIG_WRITE_REFUSED;
+  constructor() {
+    super(
+      "Engine configuration is managed by your organization. The change was not saved.",
+    );
+    this.name = "ManagedEngineConfigError";
+  }
+}
+
+function refuseManagedEngineConfigWrite(operation: string): void {
+  if (managedEngineConfig === null) return;
+  warn(
+    "settings: engine config write refused; the engine configuration is managed",
+    { operation },
+  );
+  throw new ManagedEngineConfigError();
+}
+
 export function readEngineConfig(): Record<string, any> {
+  if (managedEngineConfig !== null && managedEngineConfig.path === null)
+    return {};
+  const file = managedEngineConfig?.path ?? engineConfigFile();
   try {
-    if (existsSync(engineConfigFile())) {
-      return JSON.parse(readFileSync(engineConfigFile(), "utf-8"));
+    if (existsSync(file)) {
+      return JSON.parse(readFileSync(file, "utf-8"));
     }
   } catch (err) {
     // A corrupt engine.json silently yields empty config and downstream reads
@@ -313,6 +401,7 @@ export function readEngineConfig(): Record<string, any> {
 }
 
 export function writeEngineConfig(config: Record<string, any>): void {
+  refuseManagedEngineConfigWrite("write");
   if (!existsSync(settingsDir())) mkdirSync(settingsDir(), { recursive: true });
   atomicWriteFileSync(
     engineConfigFile(),
@@ -332,16 +421,19 @@ export function writeEngineConfig(config: Record<string, any>): void {
  * the write is skipped (avoids config churn that would force an unnecessary
  * daemon restart). Any other return (void, undefined, true) writes.
  *
- * Returns true when engine.json was written, false when skipped.
+ * Returns true when engine.json was written, false when skipped. Throws
+ * ManagedEngineConfigError, before the mutator runs, when a managed file owns
+ * the engine configuration.
  */
 export function updateEngineConfig(
   mutator: (config: Record<string, any>) => boolean | void,
 ): boolean {
-  const cfg = readEngineConfig()
-  const result = mutator(cfg)
-  if (result === false) return false
-  writeEngineConfig(cfg)
-  return true
+  refuseManagedEngineConfigWrite("update");
+  const cfg = readEngineConfig();
+  const result = mutator(cfg);
+  if (result === false) return false;
+  writeEngineConfig(cfg);
+  return true;
 }
 
 /**
@@ -355,11 +447,11 @@ export function updateEngineConfig(
  */
 export function ensureHybridBackendConfig(): boolean {
   return updateEngineConfig((cfg) => {
-    if (cfg.backend === 'hybrid') return false
-    const previous = cfg.backend ?? '(unset)'
-    cfg.backend = 'hybrid'
-    log('settings_store: engine backend set to hybrid', { previous })
-  })
+    if (cfg.backend === "hybrid") return false;
+    const previous = cfg.backend ?? "(unset)";
+    cfg.backend = "hybrid";
+    log("settings_store: engine backend set to hybrid", { previous });
+  });
 }
 
 /**
@@ -411,7 +503,8 @@ export function loadSessionLabels(): Record<string, string> {
 
 export function saveSessionLabels(labels: Record<string, string>): void {
   try {
-    if (!existsSync(settingsDir())) mkdirSync(settingsDir(), { recursive: true });
+    if (!existsSync(settingsDir()))
+      mkdirSync(settingsDir(), { recursive: true });
     atomicWriteFileSync(
       sessionLabelsFile(),
       JSON.stringify(labels, null, 2),
@@ -445,7 +538,8 @@ export function saveSessionChains(data: {
   reverse: Record<string, string>;
 }): void {
   try {
-    if (!existsSync(settingsDir())) mkdirSync(settingsDir(), { recursive: true });
+    if (!existsSync(settingsDir()))
+      mkdirSync(settingsDir(), { recursive: true });
     atomicWriteFileSync(
       sessionChainsFile(),
       JSON.stringify(data, null, 2),

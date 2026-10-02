@@ -66,6 +66,8 @@ Ion Studio shows a notice above the composer for each condition. The engine stam
 
 The marker and the policy are read when the engine starts. After restoring policy on a locked device, restart the engine.
 
+The marker says the installation is managed. It does not make the user's configuration files managed. To own those, see [Managed configuration files](managed-config.md).
+
 ### Placing the marker
 
 ```bash

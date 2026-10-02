@@ -134,6 +134,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
 - [Local Principal](#term-local-principal)
+- [Managed Config Projection](#term-managed-config-projection)
 - [Managed Default](#term-managed-default)
 - [Managed-Mode Marker](#term-managed-mode-marker)
 - [Menu](#term-menu)
@@ -568,6 +569,21 @@ One of the parts a conversation event is delivered as when its size exceeds the 
 - **Implementations:**
   - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
   - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
+
+#### Managed Config Projection {#term-managed-config-projection}
+
+Enterprise policy naming a managed engine file, a managed models file, or both, each of which becomes the whole configuration for its surface. The user and project files contribute nothing to an owned surface, a key the managed file leaves out resolves to the built-in default, and every write to the surface is refused, except that a user may keep MCP servers of their own in a separate file unless policy turns that off. Typed sealing still applies on top.
+
+- **ID:** `managed-config-projection`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func resolveManagedProjection` in `engine/internal/config/managed_projection.go`
+  - `engine` / `code` / `go`: `type ManagedConfigStatus` in `engine/internal/types/config_managed.go`
+  - `server` / `code` / `typescript`: `managedEngineConfigSource` in `server/src/managed-config.ts`
 
 #### Managed-Mode Marker {#term-managed-mode-marker}
 

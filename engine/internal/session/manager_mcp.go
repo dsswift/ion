@@ -220,6 +220,7 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 	}
 	sort.Strings(names)
 
+	managed := ionconfig.ManagedMcpServerNames()
 	statuses := make([]types.McpServerStatus, 0, len(servers))
 	for _, name := range names {
 		cfg := servers[name]
@@ -234,6 +235,7 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 			Connected:     isConnected,
 			Authenticated: mcp.IsAuthenticated(name),
 			ToolCount:     toolCount,
+			Managed:       managed[name],
 		}
 		if isConnected {
 			if conn := connectedConns[name]; conn != nil {

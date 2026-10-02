@@ -11,9 +11,10 @@ import "sync"
 // exists. It must stay pure — config does not import telemetry (and must not,
 // to avoid an import cycle). So load-time enforcement actions are appended here
 // and drained into the collector once telemetry initializes at serve startup
-// (cmd/ion/cmd_serve.go). Subsequent config reloads append again and drain on
-// the next pass via the same hook. The recorder is bounded so a headless
-// library consumer that never wires a drain does not grow it without limit.
+// (cmd/ion/cmd_serve.go). After that drain the serve process installs a sink
+// (SetEnforcementSink), so later actions are delivered as they happen. The
+// recorder is bounded so a headless library consumer that wires neither does
+// not grow it without limit.
 
 // EnforcementActionKind identifies the class of enforcement action recorded.
 // It is a config-local enum: the mapping to telemetry event names lives at the
@@ -39,6 +40,12 @@ const (
 	// EnforcementManagedOverrideRefused: ION_ENTERPRISE_CONFIG was ignored
 	// because the installation is marked managed.
 	EnforcementManagedOverrideRefused EnforcementActionKind = "managed_override_refused"
+	// EnforcementManagedConfigInvalid: a declared managed config file did not
+	// apply, so its surface resolves to defaults and prompts are refused.
+	EnforcementManagedConfigInvalid EnforcementActionKind = "managed_config_invalid"
+	// EnforcementManagedConfigWriteRefused: a write to a surface the managed
+	// source owns was refused before it reached disk.
+	EnforcementManagedConfigWriteRefused EnforcementActionKind = "managed_config_write_refused"
 )
 
 // EnforcementAction is one recorded enforcement action. Subject names the
@@ -59,33 +66,41 @@ const enforcementRecorderMaxActions = 1024
 var (
 	enforcementMu      sync.Mutex
 	enforcementActions []EnforcementAction
+	enforcementSink    func(EnforcementAction)
 )
 
-// recordEnforcement appends an enforcement action. Called only from this
-// package; safe for concurrent use. When the recorder
-// is at its cap, the oldest action is dropped (FIFO) so the most recent
-// enforcement state is always retained.
-func recordEnforcement(kind EnforcementActionKind, subject, source string, fields map[string]any) {
+// SetEnforcementSink installs fn to receive every action recorded from now
+// on, in place of buffering it. Nil restores buffering. Actions already
+// buffered stay until DrainEnforcementActions takes them.
+func SetEnforcementSink(fn func(EnforcementAction)) {
 	enforcementMu.Lock()
-	defer enforcementMu.Unlock()
-	if len(enforcementActions) >= enforcementRecorderMaxActions {
-		// Drop oldest to stay bounded.
-		enforcementActions = enforcementActions[1:]
-	}
-	enforcementActions = append(enforcementActions, EnforcementAction{
-		Kind:    kind,
-		Subject: subject,
-		Source:  source,
-		Fields:  fields,
-	})
+	enforcementSink = fn
+	enforcementMu.Unlock()
 }
 
-// DrainEnforcementActions returns all recorded enforcement actions and clears
-// the recorder. Called once at serve startup (cmd/ion/cmd_serve.go, via
-// drainEnforcementActions) to emit one telemetry event per action. There is no
-// config-reload path that drains again — the engine has no reload watcher — so
-// actions recorded after startup surface on the next start. The recorder is
-// bounded FIFO, so that is a delay rather than a leak. Safe for concurrent use.
+// recordEnforcement hands an enforcement action to the sink, or appends it
+// when no sink is installed. Called only from this package; safe for
+// concurrent use. When the recorder is at its cap, the oldest action is
+// dropped (FIFO) so the most recent enforcement state is always retained.
+func recordEnforcement(kind EnforcementActionKind, subject, source string, fields map[string]any) {
+	action := EnforcementAction{Kind: kind, Subject: subject, Source: source, Fields: fields}
+	enforcementMu.Lock()
+	sink := enforcementSink
+	if sink == nil {
+		if len(enforcementActions) >= enforcementRecorderMaxActions {
+			// Drop oldest to stay bounded.
+			enforcementActions = enforcementActions[1:]
+		}
+		enforcementActions = append(enforcementActions, action)
+	}
+	enforcementMu.Unlock()
+	if sink != nil {
+		sink(action)
+	}
+}
+
+// DrainEnforcementActions returns all buffered enforcement actions and clears
+// the recorder. Safe for concurrent use.
 func DrainEnforcementActions() []EnforcementAction {
 	enforcementMu.Lock()
 	defer enforcementMu.Unlock()

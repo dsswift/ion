@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -40,8 +41,16 @@ func LoadEnterpriseConfig() *types.EnterpriseConfig {
 }
 
 func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
-	cfg := resolveProcessAccountScope(loadMachineEnterpriseConfig(goos))
-	return mergeUserEnvironmentLayer(cfg, goos)
+	cfg, _ := loadEnterpriseAndProjection(goos)
+	return cfg
+}
+
+// loadEnterpriseAndProjection resolves enterprise config and, in the same
+// pass, reads the managed files it declares (managed_projection.go), so the
+// stamped ManagedConfigStatus and the returned content describe one read.
+func loadEnterpriseAndProjection(goos string) (*types.EnterpriseConfig, managedProjection) {
+	cfg := loadMachineEnterpriseConfig(goos)
+	return resolveManagedProjection(mergeUserEnvironmentLayer(cfg, goos))
 }
 
 // loadMachineEnterpriseConfig resolves the machine-level enterprise config
@@ -112,8 +121,17 @@ func readMacOS() *types.EnterpriseConfig {
 // shape into different Go types (a typed EnterpriseConfig vs. a permissive
 // map[string]any).
 func plutilToJSON(plistPath string) []byte {
-	if _, err := os.Stat(plistPath); err != nil {
+	info, err := os.Stat(plistPath)
+	if err != nil {
 		return nil
+	}
+	// Enterprise config is re-read on every config and model-config
+	// resolution. An unchanged plist is converted once.
+	plutilMu.Lock()
+	cached, hit := plutilCache[plistPath]
+	plutilMu.Unlock()
+	if hit && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+		return cached.out
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -124,8 +142,23 @@ func plutilToJSON(plistPath string) []byte {
 		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to read macos plist", map[string]any{"path": plistPath, "error": err.Error()})
 		return nil
 	}
+	plutilMu.Lock()
+	plutilCache[plistPath] = plutilResult{size: info.Size(), modTime: info.ModTime(), out: out}
+	plutilMu.Unlock()
 	return out
 }
+
+// plutilResult is one converted plist, keyed by the file state it came from.
+type plutilResult struct {
+	size    int64
+	modTime time.Time
+	out     []byte
+}
+
+var (
+	plutilMu    sync.Mutex
+	plutilCache = map[string]plutilResult{}
+)
 
 // readLinux reads enterprise config from /etc/ion/config.json + /etc/ion/config.d/*.json.
 func readLinux() *types.EnterpriseConfig {
@@ -192,6 +225,9 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	}
 	if overlay.Auth != nil {
 		result.Auth = overlay.Auth
+	}
+	if overlay.ManagedConfig != nil {
+		result.ManagedConfig = overlay.ManagedConfig
 	}
 	// ExtensionAllowlist: whole-slice replace, existing convention.
 	if len(overlay.ExtensionAllowlist) > 0 {

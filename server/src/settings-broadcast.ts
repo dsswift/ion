@@ -26,7 +26,7 @@ import { enterprisePolicyCache } from './state'
 import { newConversationDefaultsFor } from './enterprise-policy-principal'
 import { broadcast } from './broadcast'
 import { handleSettingsChangeForClientTools } from './studio-client-tool-sync'
-import { writeSettings } from './persistence/settings-store'
+import { ManagedEngineConfigError, writeSettings } from './persistence/settings-store'
 import { writePlanBashAllowlist } from './plan-bash-allowlist-store'
 import { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
 import { getEnterpriseThemePolicy } from './theme-policy'
@@ -157,8 +157,15 @@ export function persistAndBroadcastSettings(
     if (!ENGINE_CONFIG_BACKED_KEYS.has(key)) continue
     const value = next[key]
     if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
-      writePlanBashAllowlist(value as string[])
-      engineBackedChanged = true
+      try {
+        writePlanBashAllowlist(value as string[])
+        engineBackedChanged = true
+      } catch (err) {
+        if (!(err instanceof ManagedEngineConfigError)) throw err
+        // The rest of this settings write still applies. The next snapshot
+        // carries the managed value back to the client that sent this one.
+        log('settings_broadcast: engine-backed key write refused; engine configuration is managed', { key })
+      }
     } else {
       log('settings_broadcast: engine-backed key has non-string-array value, skipping', { key })
     }

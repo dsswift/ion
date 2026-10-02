@@ -410,6 +410,7 @@ func cmdServe(flags map[string]string) {
 	// actions into config's package-level recorder. Now that telemetry is
 	// initialized, drain them so each enforcement action becomes one audit event.
 	drainEnforcementActions(srv.Telemetry())
+	installEnforcementSink(srv.Telemetry())
 
 	// Start async model discovery (fetches /v1/models from each provider).
 	// Results cached and used by list_models; falls back to hardcoded catalog.

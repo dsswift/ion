@@ -22,6 +22,7 @@ import type { Scope, StudioActionError } from '@ion/shared/studio-wire/types'
 import * as providerApi from '../engine/provider-api'
 import { getProviderSubscription, refreshProviderSubscription, selectProviderSubscription } from '../engine/provider-subscription-api'
 import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
+import { ManagedEngineConfigError } from '../persistence/settings-store'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
 import { connectionOnHost } from './hello'
@@ -57,7 +58,8 @@ function wrap(
         return { ok: true, value: (await run(args, conn)) ?? null }
       } catch (err) {
         warn('provider action threw', { connection_id: conn.id, action: name, error: String(err) })
-        return { ok: false, error: { code: 'provider_action_failed', message: String(err) } }
+        const code = err instanceof ManagedEngineConfigError ? err.code : 'provider_action_failed'
+        return { ok: false, error: { code, message: err instanceof ManagedEngineConfigError ? err.message : String(err) } }
       }
     },
   }

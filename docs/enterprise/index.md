@@ -24,6 +24,7 @@ Enterprise config is designed for IT admins who need to enforce organizational p
 | Network | Proxy settings, custom CA certificates, TLS config | [Network](network.md) |
 | Telemetry | Enforce telemetry collection and export destinations | [Telemetry](telemetry.md) |
 | Failure messages | Replace the text shown when policy refuses something, per failure | [Policy messages](policy-messages.md) |
+| Managed files | Replace the whole engine and model configuration with managed files the user cannot change | [Managed configuration files](managed-config.md) |
 | New-conversation defaults | Mandate working directory and engine profile for new conversations; optionally lock to prevent user override | [New-conversation policy](new-conversation-policy.md) |
 
 A complete, working file to copy — with what each block enforces and which keys silently do nothing — is in [Reference config](reference-config.md).
