@@ -132,6 +132,7 @@ export const classicColors: ColorPalette = {
   sendBg: "#d97757",
   sendHover: "#c96442",
   sendDisabled: "rgba(217, 119, 87, 0.3)",
+  sendPressed: "#b5583a",
 
   // Modal backdrop scrim
   scrim: "rgba(0, 0, 0, 0.4)",
@@ -168,9 +169,29 @@ export const classicColors: ColorPalette = {
   // Disabled button color
   btnDisabled: "#42423d",
 
-  // Text on accent backgrounds
+  // Text on accent fills (accent / accentHover / accentPressed)
   textOnAccent: "#ffffff",
   textOnAccentMuted: "rgba(255, 255, 255, 0.7)",
+
+  // Foreground by surface role. Each token names the fill it is drawn on, so
+  // a theme sets every pairing independently.
+  // Neutral surface (surfaceSecondary and its neighbours).
+  textOnSurface: "#ffffff",
+  textOnSurfaceMuted: "rgba(255, 255, 255, 0.7)",
+  // Danger fill (stopBg / stopHover).
+  textOnDanger: "#ffffff",
+  textOnDangerMuted: "rgba(255, 255, 255, 0.7)",
+  // Warning fill (statusWarning).
+  textOnWarning: "#ffffff",
+  textOnWarningMuted: "rgba(255, 255, 255, 0.7)",
+  // Info fill (infoText used as a solid background).
+  textOnInfo: "#242422",
+  // Running fill (statusRunning used as a solid background).
+  textOnRunning: "#ccc9c0",
+  // Send button glyph (sendBg / sendHover).
+  sendFg: "#ffffff",
+  // Agent name pill, whose fill is the agent's own color.
+  agentPillText: "#ffffff",
 
   // Button hover (CSS-only stack buttons)
   btnHoverColor: "#c0bdb2",

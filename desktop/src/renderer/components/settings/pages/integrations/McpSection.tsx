@@ -18,6 +18,8 @@ import type { McpServerStatus } from '@ion/shared/types-engine-event'
 import { useSettingsShell } from '../../settings-shell'
 import { useSettingsEnvironment } from '../../settings-servers'
 import { describeMcpActionError } from './mcp-action-error'
+import { useEnvironmentEnterprisePolicy } from '../../use-environment-enterprise-policy'
+import { removedMcpServers } from '../../policy-override-notices'
 import {
   Button, CellText, Chip, DataList, EmptyState, ErrorText, Field, MonoLine, Muted, Notice, SidePanel, Stack, StatusDot, Inline,
 } from '../../kit'
@@ -41,6 +43,7 @@ export function McpSection(): React.JSX.Element {
   // The picked server's MCP servers, not this machine's.
   const { shell, on, environmentId } = useSettingsShell()
   const serverLabel = useSettingsEnvironment().label
+  const removedByPolicy = removedMcpServers(useEnvironmentEnterprisePolicy(environmentId))
   const [servers, setServers] = useState<McpServerStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -205,6 +208,11 @@ export function McpSection(): React.JSX.Element {
     <Stack gap={10}>
       {authorizing}
       {notice && <Notice tone="warn">{notice}</Notice>}
+      {removedByPolicy.length > 0 && (
+        <Notice tone="warn">
+          Your organization does not allow {removedByPolicy.length === 1 ? 'this MCP server' : 'these MCP servers'}, so {removedByPolicy.length === 1 ? 'its' : 'their'} configuration on {serverLabel} is not in effect: {removedByPolicy.join(', ')}.
+        </Notice>
+      )}
       <ErrorText>{errorMsg}</ErrorText>
       <DataList
         label="MCP servers"

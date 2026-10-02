@@ -27,6 +27,7 @@
     "Log",
     "Notify",
     "ProtectedOperation",
+    "ReadDispatchConversation",
     "RecallAgent",
     "RecallAgentByName",
     "RecallDispatch",

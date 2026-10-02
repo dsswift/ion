@@ -54,6 +54,35 @@ export interface ManagedModeStatus {
 }
 
 /**
+ * Why enterprise enforcement displaced a lower-layer config value. Mirrors
+ * Go's PolicyOverrideReason. A stable code a client maps to its own text; the
+ * engine may add codes, so an unknown one is a plain string.
+ */
+export type PolicyOverrideReason =
+  | 'managed_provider_pinned'
+  | 'provider_not_allowed'
+  | 'model_not_allowed'
+  | 'model_blocked'
+  | 'mcp_server_denied'
+  | 'mcp_server_not_allowed'
+  | (string & {})
+
+/**
+ * One user or project config value that enterprise enforcement replaced or
+ * removed. Mirrors Go's PolicyOverride. Present only when the value in effect
+ * differs from the one the lower layer supplied.
+ */
+export interface PolicyOverride {
+  /** Config path in engine.json spelling, e.g. `providers.<key>.baseURL`. */
+  field: string
+  reason: PolicyOverrideReason
+  /** The displaced value. Absent for a removed entry and for a secret field. */
+  userValue?: string
+  /** The value in effect. Absent when removed outright and for a secret field. */
+  effectiveValue?: string
+}
+
+/**
  * The full enterprise policy blob from the engine's get_enterprise_policy RPC
  * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
  * Only the fields the desktop consumes are typed here; the blob may carry
@@ -64,6 +93,8 @@ export interface ManagedModeStatus {
 export interface EnterprisePolicy {
   /** Present only on an installation carrying the managed-mode marker. */
   managedMode?: ManagedModeStatus
+  /** Lower-layer config values enforcement displaced, sorted by field. Engine-stamped. */
+  overrides?: PolicyOverride[]
   /** Models the enterprise permits. Empty/absent = no restriction. */
   allowedModels?: string[]
   /** Models the enterprise blocks. */
@@ -143,6 +174,11 @@ export interface IonServerPolicyFields {
   agentSettingsEdits?: {
     allowed: boolean
   }
+  /**
+   * The mutability class of this server's Environment and Account settings,
+   * per key (`enterprise-settings-policy`). Enforced for every connection.
+   */
+  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
 }
 
 /**
@@ -165,6 +201,22 @@ export interface IonDesktopPolicyFields {
   themePolicy?: {
     themeId: string
     locked?: boolean
+  }
+  /**
+   * What the macOS installer package does when Ion is running. The package
+   * scripts read this straight from the Managed Preferences payload
+   * (`desktop/scripts/pkg-scripts/ion-pkg-common.sh`); the running desktop
+   * never consults it.
+   */
+  installer?: {
+    /**
+     * `refuse` (the default) fails the install and leaves Ion running.
+     * `replace` stops Ion, replaces the bundle, and succeeds: the unattended
+     * path for a managed push.
+     */
+    runningApp?: 'refuse' | 'replace'
+    /** Seconds `replace` waits for the graceful drain before forcing the quit. */
+    drainTimeoutSeconds?: number
   }
   /** Managed declarative desktop automations. Never persisted to user files. */
   automation?: import('./types-automation').EnterpriseAutomationPolicy
@@ -194,4 +246,10 @@ export interface IonDesktopPolicyFields {
    * desktop sees every group.
    */
   hiddenSettingsGroups?: string[]
+  /**
+   * The mutability class of this desktop's Personal and Device settings, per
+   * key (`enterprise-settings-policy`). Device policy: it governs the desktop
+   * it is installed on, never a client visiting from elsewhere.
+   */
+  settingsPolicy?: import('./enterprise-settings-policy').SettingsPolicyFields
 }

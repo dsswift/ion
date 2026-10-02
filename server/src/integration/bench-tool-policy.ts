@@ -11,7 +11,8 @@
  *     unmerged paths;
  *   - a Bash command whose PROVEN destination is inside a bench and invokes a
  *     history-writing git verb is refused, except the standalone exact merge
- *     drivers while a machinery-prepared merge is open;
+ *     drivers and a side checkout of conflicted paths while a
+ *     machinery-prepared merge is open;
  *   - a bench-cwd conversation writing OUTSIDE the bench is judged by the
  *     bench-origin rules: enrolled member worktrees pass (that is the
  *     named remediation), the source checkout and non-member worktrees refuse.
@@ -36,15 +37,18 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { realpathSyncPortable as realpathSync } from '../fs-realpath'
 import { dataDir } from '../paths'
-import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import { loadWorkspaces } from './bench-store'
 import {
-  resolveBashDestinations, effectiveDir, type BashSegment,
+  resolveBashDestinations, effectiveDir, type BashSegment, type GitOperation,
 } from './bench-bash-destinations'
 import {
-  attributeOwners, benchHistoryReason, benchRelativePath, benchSourceCheckoutReason,
+  attributeOwners, benchHistoryReason, benchSourceCheckoutReason,
   benchWriteReason, nonMemberWorktreeReason, runGit,
 } from './bench-tool-policy-attribution'
+import {
+  coversOnlyConflicts, isUnmergedPath, mergeInProgress, parseSideCheckout,
+} from './bench-tool-policy-merge'
 import { log as _log, warn as _warn } from '../logger'
 import type { IntegrationWorkspace } from '@ion/shared/types'
 import { stripEngineBridgePrefix } from '@ion/shared/tool-names'
@@ -179,13 +183,14 @@ function checkWriteTarget(target: string, cwd: string, benches: IntegrationWorks
     // Resolve-once carve-out: an edit to a path that is UNMERGED in the
     // bench's in-progress merge is the resolution itself — the artifact git
     // rerere records when the merge commits.
-    if (mergeInProgress(bench.benchPath) && isUnmergedPath(bench.benchPath, canonicalTarget, canonicalBench)) {
+    const mergeOpen = mergeInProgress(bench.benchPath)
+    if (mergeOpen && isUnmergedPath(bench.benchPath, canonicalTarget, canonicalBench)) {
       log('bench write allowed: resolve-once carve-out', { bench_path: bench.benchPath, target: canonicalTarget })
       return null
     }
     const owners = attributeOwners(bench, canonicalTarget, canonicalBench)
-    const reason = benchWriteReason(canonicalTarget, bench, owners)
-    warn('bench write refused', { bench_path: bench.benchPath, target: canonicalTarget, owners: owners.map((o) => o.branchName) })
+    const reason = benchWriteReason(canonicalTarget, bench, owners, mergeOpen)
+    warn('bench write refused', { bench_path: bench.benchPath, target: canonicalTarget, owners: owners.map((o) => o.branchName), merge_open: mergeOpen })
     return { reason }
   }
 
@@ -313,7 +318,8 @@ function checkBash(command: string, cwd: string, benches: IntegrationWorkspace[]
       }
       continue
     }
-    for (const sub of seg.gitSubcommands) {
+    for (const op of seg.gitOperations) {
+      const sub = op.subcommand
       if (!HISTORY_WRITING_SUBCOMMANDS.has(sub)) continue
       // Resolve-once carve-out: only standalone merge drivers may act on an
       // open bench merge. Continue additionally requires a resolved index and
@@ -323,11 +329,31 @@ function checkBash(command: string, cwd: string, benches: IntegrationWorkspace[]
         if (refusal === null) continue
         return refusal
       }
-      warn('bench history verb refused', { bench_path: bench.benchPath, subcommand: sub, dir: gitDir })
-      return { reason: benchHistoryReason(sub, bench) }
+      if (sub === 'checkout' && resolutionCheckoutAllowed(op, bench, gitDir)) continue
+      const mergeOpen = mergeInProgress(bench.benchPath)
+      warn('bench history verb refused', { bench_path: bench.benchPath, subcommand: sub, dir: gitDir, merge_open: mergeOpen })
+      return { reason: benchHistoryReason(sub, bench, mergeOpen) }
     }
   }
   return null
+}
+
+/**
+ * The side-checkout carve-out: `git checkout --ours|--theirs -- <paths>` while
+ * a machinery-prepared merge is open, when every pathspec reaches a conflicted
+ * file. Taking one side whole is a resolution, exactly like an edit to an
+ * unmerged path. Pathspecs resolve against the directory the invocation runs
+ * in, as git resolves them.
+ */
+function resolutionCheckoutAllowed(op: GitOperation, bench: IntegrationWorkspace, gitDir: string): boolean {
+  const checkout = parseSideCheckout(op)
+  if (!checkout) return false
+  const targets = checkout.pathspecs.map((p) => canonicalize(isAbsolute(p) ? p : join(gitDir, p)))
+  const allowed = coversOnlyConflicts(bench.benchPath, canonicalize(bench.benchPath), targets)
+  const fields = { bench_path: bench.benchPath, side: checkout.side, pathspecs: checkout.pathspecs, dir: gitDir }
+  if (allowed) log('bench side checkout allowed: resolve-once carve-out', fields)
+  else warn('bench side checkout refused: not confined to an open merge\'s conflicted paths', fields)
+  return allowed
 }
 
 function segmentWritesHistory(seg: BashSegment): boolean {
@@ -398,45 +424,6 @@ function extractStdout(err: unknown): string {
 
 function nonEmptyLines(value: string): string[] {
   return value.split('\n').map((l) => l.trim()).filter((l) => l !== '')
-}
-
-// ─── Merge-state probes (fail CLOSED) ───────────────────────────────────────
-
-/**
- * True when a merge is open in the bench (MERGE_HEAD exists). `--git-path`
- * because a bench is a linked worktree whose state lives under the common
- * dir; a hardcoded `.git/MERGE_HEAD` join would miss it. Fails CLOSED for the
- * carve-outs that call it: an unreadable probe reports "no merge", so the
- * check refuses exactly as it would without the carve-out — the conservative
- * direction for a permission widening.
- */
-function mergeInProgress(benchPath: string): boolean {
-  try {
-    const raw = runGit(benchPath, ['rev-parse', '--git-path', 'MERGE_HEAD']).trim()
-    if (raw === '') return false
-    const p = isAbsolute(raw) ? raw : resolve(benchPath, raw)
-    return existsSync(p)
-  } catch (err) {
-    log('merge-in-progress probe failed, treating as none', { bench_path: benchPath, error: String(err) })
-    return false
-  }
-}
-
-/**
- * Whether target is one of the bench merge's unmerged paths. Only meaningful
- * while mergeInProgress; fails closed.
- */
-function isUnmergedPath(benchPath: string, canonicalTarget: string, canonicalBenchPath: string): boolean {
-  let out = ''
-  try {
-    out = runGit(benchPath, ['diff', '--name-only', '--diff-filter=U'])
-  } catch (err) {
-    log('unmerged-path probe failed, treating as not unmerged', { bench_path: benchPath, error: String(err) })
-    return false
-  }
-  const rel = benchRelativePath(canonicalTarget, canonicalBenchPath)
-  if (rel === null) return false
-  return out.split('\n').some((line) => line.trim() === rel)
 }
 
 // ─── Containment primitives ──────────────────────────────────────────────────

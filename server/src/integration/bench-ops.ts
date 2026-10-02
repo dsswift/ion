@@ -25,6 +25,8 @@ import {
 import { assembleBench } from './bench-assemble'
 import { dryRunCollision } from './bench-dry-run'
 import { captureContribution, contributedTreeHash } from './bench-snapshot'
+import { abortResolutionOf, readResolutionOpen } from './bench-resolution-open'
+import { repositoryManager } from '../git/repositoryManager'
 import { lookupWorktreeLandedAt } from '../worktree/registry'
 import { triggerWorktreePinAdvance } from '../worktree/pin-advance-trigger'
 import { triggerBenchAutomation } from './bench-automation-trigger'
@@ -160,17 +162,27 @@ export async function addMember(
   }
 }
 
-/** Remove a member. The worktree itself is untouched. */
-export function removeMember(
+/**
+ * Remove a member. The worktree itself is untouched. A resolution merge open
+ * for that member's pin is aborted with it; see `abortResolutionOf`.
+ */
+export async function removeMember(
   repoPath: string,
   sourceBranch: string,
   worktreePath: string,
-): IntegrationWorkspace | null {
+): Promise<IntegrationWorkspace | null> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return null
+  const removed = ws.members.find((m) => m.worktreePath === worktreePath)
+  const aborted = removed
+    ? await repositoryManager.get(ws.repoPath).queue.enqueueMutation(
+      () => abortResolutionOf(ws.benchPath, removed.pinnedSha),
+    )
+    : false
   const next = {
     ...ws,
     members: ws.members.filter((m) => m.worktreePath !== worktreePath),
+    resolutionOpen: aborted ? undefined : ws.resolutionOpen,
   }
   persist(next)
   log('member removed', {
@@ -511,7 +523,11 @@ export async function refreshStaleness(repoPath: string, sourceBranch: string): 
     if (pin !== m.pin || current !== m.currentTreeHash) moved++
     members.push({ ...m, currentTreeHash: current, pin })
   }
-  const next = { ...ws, members }
+  // The bench's own open merge is the other fact this poll owns: it is live git
+  // state no assembly or member verdict records.
+  const resolutionOpen = await readResolutionOpen(ws.benchPath)
+  if (resolutionOpen?.unmergedPaths !== ws.resolutionOpen?.unmergedPaths) moved++
+  const next = { ...ws, members, resolutionOpen }
   // Persist and log only when the evaluation actually changed something. This
   // runs on a poll while the worktree panel is open (every few seconds), and
   // an unconditional write turned that poll into an endless stream of
@@ -525,6 +541,7 @@ export async function refreshStaleness(repoPath: string, sourceBranch: string): 
       gone: members.filter((m) => m.pin === 'gone').length,
       conflicted: members.filter((m) => m.merge === 'conflicted').length,
       obstructed: members.filter((m) => m.merge === 'obstructed').length,
+      resolution_open: resolutionOpen ? resolutionOpen.unmergedPaths : null,
     })
   }
   return next

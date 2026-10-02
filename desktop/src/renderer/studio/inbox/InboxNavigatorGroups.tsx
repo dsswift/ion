@@ -1,10 +1,10 @@
 import { isStringRecord, serverSettingOf } from "../state/use-server-setting";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { isWorktreeSealed } from '@ion/shared/worktree-seal'
 import { CaretDown, CaretRight, Folder } from "@phosphor-icons/react";
 import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useColors } from "../../theme";
-import { rError, rInfo } from "../../rendererLogger";
+import { rError, rInfo, rWarn } from "../../rendererLogger";
 import { WorktreePipelinePanel } from "../../components/WorktreePipelinePanel";
 import {
   collectAllDirConversations,
@@ -12,10 +12,12 @@ import {
 } from "@ion/shared/worktree-conversations";
 import { benchMemberSummary } from "@ion/shared/worktree-list";
 import type { TabState } from "@ion/shared/types";
-import type { InboxNavigatorProject } from "./inbox-navigator";
+import { inboxGroupRowKey, inboxProjectRowKey, type InboxNavigatorProject } from "./inbox-navigator";
+import { tabListKey } from "../connection/tab-environment";
 import type { InboxRowVariant } from "./InboxRow";
 import {
   collapsedInboxRows,
+  duplicateKeys,
   isInboxTabWorking,
   nextInboxConversation,
   worktreeChildRows,
@@ -175,7 +177,7 @@ export function InboxNavigatorGroups({
     collapsedInboxRows(items, activeTabId, workingTabIds);
   for (const projectNode of projects) {
     const { project } = projectNode;
-    const projectKey = `project:${project.key}`;
+    const projectKey = inboxProjectRowKey(projectNode);
     const projectCollapsed = collapsed.has(projectKey);
     const projectTabs = [
       ...projectNode.flatTabs,
@@ -194,7 +196,7 @@ export function InboxNavigatorGroups({
     const occupantRow = (tab: TabState): React.JSX.Element => {
       const sourceBranch = projectTerminalBranches.get(tab.id);
       return sourceBranch
-        ? <InboxBenchTerminalRow key={`terminal:${tab.id}`} tabId={tab.id} sourceBranch={sourceBranch} label={tab.customTitle || tab.title} />
+        ? <InboxBenchTerminalRow key={`terminal:${tabListKey(tab)}`} tabId={tab.id} sourceBranch={sourceBranch} label={tab.customTitle || tab.title} />
         : row(tab, variant, project.name);
     };
     const cycleProject = (): void => {
@@ -262,7 +264,7 @@ export function InboxNavigatorGroups({
     }
 
     for (const group of projectNode.groups) {
-      const groupKey = `group:${variant}:${group.key}`;
+      const groupKey = inboxGroupRowKey(projectNode, group, variant);
       const isCollapsed = collapsed.has(groupKey);
       if (group.kind === "bench" && group.workspace) {
         const workspace = group.workspace;
@@ -524,5 +526,16 @@ export function InboxNavigatorGroups({
       />,
     );
   }
+  // React cannot remove a row whose key a later sibling repeats: the row
+  // stays on screen after its data is gone. Every key here is built to be
+  // unique, so a repeat is a defect, and it is reported with the keys.
+  const repeatedKeys = duplicateKeys(parts.map((part) => String(part.key))).join("\n");
+  useEffect(() => {
+    if (repeatedKeys === "") return;
+    rWarn("inbox.navigator", "rows share a key", {
+      variant,
+      keys: repeatedKeys.split("\n"),
+    });
+  }, [repeatedKeys, variant]);
   return parts;
 }

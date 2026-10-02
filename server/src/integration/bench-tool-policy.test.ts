@@ -387,6 +387,62 @@ describe('resolve-once carve-out lifecycle', () => {
     expect(evaluateToolGate(write(join(benchPath, 'shared.txt'), benchPath))).not.toBeNull()
   })
 
+  it('lets a side checkout resolve conflicted paths only while the merge is open', () => {
+    // Closed: no merge to resolve, so checkout is a plain refused history verb
+    // with the member-worktree redirect.
+    let r = evaluateToolGate(bash('git checkout --theirs -- shared.txt', benchPath))
+    expect(r!.reason).toContain('member worktree')
+    expect(r!.reason).not.toContain('git merge --continue')
+
+    startConflictedMerge()
+    mkdirSync(join(benchPath, 'sub'))
+
+    // Open: taking one side of a conflicted path IS the resolution.
+    for (const command of [
+      'git checkout --theirs -- shared.txt',
+      'git checkout --ours shared.txt',
+      'git checkout --theirs -- .',
+      `git -C ${benchPath} checkout --ours -- shared.txt`,
+      `git checkout --theirs -- ${join(benchPath, 'shared.txt')}`,
+      'cd sub && git checkout --theirs -- ../shared.txt',
+      'git checkout --theirs -- shared.txt && git add shared.txt',
+    ]) {
+      expect(evaluateToolGate(bash(command, benchPath)), command).toBeNull()
+    }
+
+    // Still refused mid-merge: anything that can move the branch, reach a
+    // clean path, or hide its target — and the refusal names the way through.
+    writeFileSync(join(benchPath, 'clean.txt'), 'x\n')
+    for (const command of [
+      'git checkout feature',
+      'git checkout -b other',
+      'git checkout --theirs',
+      'git checkout --ours --theirs -- shared.txt',
+      'git checkout --theirs -f -- shared.txt',
+      'git checkout --theirs -- clean.txt',
+      'git checkout --theirs -- shared.txt clean.txt',
+      'git checkout --theirs -- sub',
+      'git checkout --theirs -- $FILES',
+      'git checkout --theirs -- *.txt',
+      'git checkout --theirs -- ../outside.txt',
+    ]) {
+      r = evaluateToolGate(bash(command, benchPath))
+      expect(r, command).not.toBeNull()
+      expect(r!.reason, command).toContain('git checkout --theirs -- <conflicted path>')
+      expect(r!.reason, command).toContain('git merge --continue')
+      expect(r!.reason, command).not.toContain('member worktree')
+    }
+
+    // A refused edit to a clean path mid-merge names the same surface.
+    r = evaluateToolGate(write(join(benchPath, 'clean.txt'), benchPath))
+    expect(r!.reason).toContain('not one of its conflicted paths')
+    expect(r!.reason).toContain('git merge --continue')
+
+    // Closed again once the merge ends.
+    git(benchPath, ['merge', '--abort'])
+    expect(evaluateToolGate(bash('git checkout --theirs -- shared.txt', benchPath))).not.toBeNull()
+  })
+
   it('refuses continue when sibling tool calls share the turn', () => {
     startConflictedMerge()
     writeFileSync(join(benchPath, 'shared.txt'), 'resolved\n')

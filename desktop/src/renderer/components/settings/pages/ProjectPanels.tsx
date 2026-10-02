@@ -78,7 +78,7 @@ export function ProjectDetailPanel({ project, job, ops, verbs, onClose, onMove, 
             <FormRow label="Profile" description="What New Conversation starts with in this project." anchor="project-profile">
               <ProjectProfileSelect dir={project.dir} displayName={project.displayName} />
             </FormRow>
-            <FormRow label="Workspace folders" description="Folders every checkout of this project mounts beside it." stacked anchor="workspace-folders">
+            <FormRow label="Workspace folders" settingKey="workspaceFolders" description="Folders every checkout of this project mounts beside it." stacked anchor="workspace-folders">
               <WorkspaceFolders dir={project.dir} displayName={project.displayName} />
             </FormRow>
           </FormGroup>

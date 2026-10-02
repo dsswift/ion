@@ -5,7 +5,7 @@
  * in the imperative engine outside the component tree.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { rError, rInfo } from "../../rendererLogger";
+import { rError, rInfo, rWarn } from "../../rendererLogger";
 import type {
   StudioSettings,
   StudioThemeListEntry,
@@ -44,6 +44,13 @@ export interface VisualizerRootProps {
    * loop. Event ingestion (AgentCache) is NOT paused — only render/sim.
    */
   handleRef?: React.MutableRefObject<VisualizerHandle | null>;
+}
+
+/** Save one Studio setting. A refusal (a sealed setting) or a failure is logged; the view keeps its state for this session. */
+function saveStudioSetting(key: string, value: unknown): void {
+  void host.shell.studioSetSetting(key, value).catch((err: unknown) => {
+    rWarn("studio", "studio setting not saved", { key, error: String(err) });
+  });
 }
 
 export function VisualizerRoot({
@@ -263,6 +270,9 @@ export function VisualizerRoot({
       void persistSeed(newSeed).then(() => {
         settings.studioSeed = newSeed.trim();
         rebuildScene(activeRef.current);
+      }).catch((err: unknown) => {
+        // Refused (a sealed setting) or failed: the office keeps its seed.
+        rWarn("studio", "studio seed not changed", { error: String(err) });
       });
     },
     [rebuildScene],
@@ -279,7 +289,7 @@ export function VisualizerRoot({
           : prev;
       const next = Math.max(1, Math.min(6, base + delta));
       engineRef.current?.setZoom(next);
-      void host.shell.studioSetSetting("studioZoom", next);
+      saveStudioSetting("studioZoom", next);
       return next;
     });
   }, []);
@@ -287,7 +297,7 @@ export function VisualizerRoot({
   const onZoomFit = useCallback(() => {
     engineRef.current?.zoomToFit();
     setZoomState(0);
-    void host.shell.studioSetSetting("studioZoom", 0);
+    saveStudioSetting("studioZoom", 0);
   }, []);
 
   // Canvas interactions: drag to pan (manual zoom), hover for agent info.
@@ -440,14 +450,16 @@ export function VisualizerRoot({
     setSoundOn((prev) => {
       const next = !prev;
       soundRef.current.enabled = next;
-      void host.shell.studioSetSetting("studioSound", next);
+      saveStudioSetting("studioSound", next);
       return next;
     });
   }, []);
 
   const onSelectTheme = useCallback(
     (id: string) => {
-      void host.shell.studioSetSetting("studioTheme", id).then(async () => {
+      void host.shell.studioSetSetting("studioTheme", id).then(async (saved) => {
+        // Not saved (the validator said no): the scene keeps the theme it has.
+        if (!saved) return;
         // Full theme swap: reload the pack and rebuild the scene against it.
         try {
           const theme = await loadTheme(hostAssetSource(), id, {
@@ -469,6 +481,9 @@ export function VisualizerRoot({
           });
           setPhase({ kind: "error", message: String(err) });
         }
+      }).catch((err: unknown) => {
+        // Refused (a sealed setting) or failed: the scene keeps the theme it has.
+        rWarn("studio", "studio theme not changed", { theme_id: id, error: String(err) });
       });
     },
     [rebuildScene, zoom],
@@ -544,7 +559,7 @@ export function VisualizerRoot({
             const next = !heatOn;
             setHeatOn(next);
             engineRef.current?.setHeatOverlay(next);
-            void host.shell.studioSetSetting("studioHeat", next);
+            saveStudioSetting("studioHeat", next);
           }}
           zoom={zoom}
           problems={problems}

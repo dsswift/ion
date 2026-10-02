@@ -189,6 +189,9 @@ func buildManifest() contractManifest {
 		// (feature 0011 / D-020, issue #308), carried inside the
 		// get_enterprise_policy blob. Tracked so Go↔TS drift is caught by CI.
 		"ExtensionAllowlistEntry": reflect.TypeOf(ExtensionAllowlistEntry{}),
+		// PolicyOverride is an element of EnterpriseConfig.Overrides, carried
+		// inside the get_enterprise_policy blob.
+		"PolicyOverride": reflect.TypeOf(PolicyOverride{}),
 		// Client-supplied workspace descriptor carried on EngineConfig and
 		// per-prompt ClientCommand. Tracked so cross-language mirrors stay
 		// in sync with the engine's hook-dispatch payload shape.

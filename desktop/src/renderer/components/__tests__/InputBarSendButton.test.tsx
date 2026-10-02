@@ -5,7 +5,7 @@
  * - disabled → `sendDisabled` background at 0.45 opacity, cursor default,
  *   and a fully inert click (onClick never fires).
  * - enabled hover → `sendHover` background; click fires onClick.
- * - enabled pressed → `accentPressed` background + scale(0.97).
+ * - enabled pressed → `sendPressed` background + scale(0.97).
  * - the button carries `.ion-focusable` for the keyboard focus ring.
  *
  * The component takes `colors` as a prop, so no theme wiring is needed —
@@ -35,8 +35,8 @@ const COLORS = {
   sendBg: 'blue',
   sendHover: 'green',
   sendDisabled: 'gray',
-  accentPressed: 'purple',
-  textOnAccent: 'white',
+  sendPressed: 'purple',
+  sendFg: 'white',
 } as any
 
 function render(props: { disabled?: boolean; onClick: () => void }) {
@@ -99,7 +99,7 @@ describe('SendButton interactive states', () => {
     }
   })
 
-  it('enabled: pressed applies accentPressed + scale(0.97), released on mouseup', () => {
+  it('enabled: pressed applies sendPressed + scale(0.97), released on mouseup', () => {
     const onClick = vi.fn()
     const { button, cleanup } = render({ onClick })
     try {

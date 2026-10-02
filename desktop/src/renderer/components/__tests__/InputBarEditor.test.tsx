@@ -66,8 +66,10 @@ const colors = {
   sendDisabled: "gray",
   sendHover: "green",
   accentPressed: "purple",
+  sendPressed: "purple",
   sendBg: "blue",
   textOnAccent: "white",
+  sendFg: "white",
 } as never;
 
 vi.mock("@ion/server/store/sessionStore", () => ({

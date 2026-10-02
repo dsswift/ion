@@ -8,7 +8,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('../../../lib/window-role', () => ({ isMirrorWindow: () => false }))
+const windowRole = vi.hoisted(() => ({ mirror: false }))
+vi.mock('../../../lib/window-role', () => ({ isMirrorWindow: () => windowRole.mirror }))
 vi.mock('../../rendererLogger', () => ({
   rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
@@ -24,12 +25,15 @@ vi.mock('../event-slice-done-move', () => ({
 }))
 
 const mockBenchReconcileResolution = vi.fn(async (..._a: any[]) => ({ reconciled: true }))
+const mockGitOpState = vi.fn(async (..._a: any[]): Promise<{ ok: boolean; state?: string | null; error?: string }> => ({ ok: true, state: null }))
 vi.mock('../../host-api', () => ({
   echoUserTurnToStudio: vi.fn(),
+  gitOpState: (...args: any[]) => mockGitOpState(...args),
   benchReconcileResolution: (...args: any[]) => mockBenchReconcileResolution(...args),
 }))
 
 import {
+  maybeCloseAutoFixTab,
   reportAutoFixCompletion,
   retryAutoFixCloseOnTerminalChildren,
   cancelAutoFixClose,
@@ -85,21 +89,21 @@ afterEach(() => {
 })
 
 describe('auto-fix close decision', () => {
-  it('closes after a typed normal completion (deferred)', () => {
+  it('closes after a typed normal completion (deferred)', async () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
     reportAutoFixCompletion('fix-tab', evidence(), get as never)
     expect(closeTab).not.toHaveBeenCalled() // deferred, not immediate
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
   })
 
-  it('makes duplicate completion reports close exactly once', () => {
+  it('makes duplicate completion reports close exactly once', async () => {
     const closeTab = vi.fn()
     const get = makeState({ closeTab })
     reportAutoFixCompletion('fix-tab', evidence(), get as never)
     reportAutoFixCompletion('fix-tab', evidence(), get as never)
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(closeTab).toHaveBeenCalledTimes(1)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
   })
@@ -137,17 +141,17 @@ describe('auto-fix close decision', () => {
     expect(closeTab).not.toHaveBeenCalled()
   })
 
-  it('defers while children run, then closes when the retry finds them terminal', () => {
+  it('defers while children run, then closes when the retry finds them terminal', async () => {
     const closeTab = vi.fn()
     const running = makeState({ runningAgents: true, closeTab })
     reportAutoFixCompletion('fix-tab', evidence(), running as never)
-    vi.advanceTimersByTime(5000)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(closeTab).not.toHaveBeenCalled()
 
     // Children reach terminal state; the agent_state post-commit hook retries.
     const done = makeState({ runningAgents: false, closeTab })
     retryAutoFixCloseOnTerminalChildren('fix-tab', done as never)
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
   })
 
@@ -185,11 +189,11 @@ describe('auto-fix close decision', () => {
  * panel still said conflict.
  */
 describe('auto-fix close refreshes the worktree surfaces it changed', () => {
-  it('refreshes the repo of a worktree fix after closing', () => {
+  it('refreshes the repo of a worktree fix after closing', async () => {
     const refreshWorkspaceViews = vi.fn(async (..._a: any[]) => {})
     const get = makeState({ worktreeRepoPath: '/repo', refreshWorkspaceViews })
     reportAutoFixCompletion('fix-tab', evidence(), get as never)
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(refreshWorkspaceViews).toHaveBeenCalledWith('/repo')
   })
 
@@ -243,16 +247,82 @@ describe('auto-fix close refreshes the worktree surfaces it changed', () => {
     expect(refreshWorkspaceViews).not.toHaveBeenCalled()
   })
 
-  it('closes without refreshing when no repo can be resolved', () => {
+  it('closes without refreshing when no repo can be resolved', async () => {
     // A plain checkout with no worktree metadata and no bench: there are no
     // worktree surfaces to refresh, which is not a failure. The close still runs.
     const closeTab = vi.fn()
     const refreshWorkspaceViews = vi.fn(async (..._a: any[]) => {})
     const get = makeState({ worktreeRepoPath: null, closeTab, refreshWorkspaceViews })
     reportAutoFixCompletion('fix-tab', evidence(), get as never)
-    vi.advanceTimersByTime(1500)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(closeTab).toHaveBeenCalledWith('fix-tab')
     expect(refreshWorkspaceViews).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A normal completion is the model stopping, not the conflict being gone. A run
+ * that gives up and explains why ends `normal` with no denials, so the checkout
+ * decides: an operation still open keeps the tab and its transcript.
+ */
+describe('auto-fix close requires the operation to have ended', () => {
+  afterEach(() => {
+    windowRole.mirror = false
+    mockGitOpState.mockReset().mockResolvedValue({ ok: true, state: null })
+  })
+
+  it('retains the tab when the merge is still open after a normal completion', async () => {
+    mockGitOpState.mockResolvedValue({ ok: true, state: 'merging' })
+    mockBenchReconcileResolution.mockClear()
+    const closeTab = vi.fn()
+    const refreshWorkspaceViews = vi.fn(async (..._a: any[]) => {})
+    const get = makeState({
+      closeTab,
+      workingDirectory: '/ion/integration/ion-josh',
+      worktreeRepoPath: null,
+      benchWorkspaces: new Map([['/repo', [{ benchPath: '/ion/integration/ion-josh' }]]]),
+      refreshWorkspaceViews,
+    })
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+
+    expect(mockGitOpState).toHaveBeenCalledWith('/ion/integration/ion-josh')
+    expect(closeTab).not.toHaveBeenCalled()
+    expect(mockBenchReconcileResolution).not.toHaveBeenCalled()
+    expect(refreshWorkspaceViews).not.toHaveBeenCalled()
+  })
+
+  it('retains the tab when the operation state cannot be read', async () => {
+    mockGitOpState.mockResolvedValue({ ok: false, error: 'spawn git ENOENT' })
+    const closeTab = vi.fn()
+    const get = makeState({ closeTab })
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(closeTab).not.toHaveBeenCalled()
+  })
+
+  it('closes on a later completion once the operation has ended', async () => {
+    mockGitOpState.mockResolvedValueOnce({ ok: true, state: 'rebasing' })
+    const closeTab = vi.fn()
+    const get = makeState({ closeTab })
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(closeTab).not.toHaveBeenCalled()
+
+    reportAutoFixCompletion('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(closeTab).toHaveBeenCalledWith('fix-tab')
+  })
+
+  it('never evaluates a close in a mirror window', async () => {
+    windowRole.mirror = true
+    mockGitOpState.mockClear()
+    const closeTab = vi.fn()
+    const get = makeState({ closeTab })
+    maybeCloseAutoFixTab('fix-tab', evidence(), get as never)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(mockGitOpState).not.toHaveBeenCalled()
+    expect(closeTab).not.toHaveBeenCalled()
   })
 })
 

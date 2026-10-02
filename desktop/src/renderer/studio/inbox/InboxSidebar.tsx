@@ -14,7 +14,7 @@ import { inboxProjectFor } from './inbox-grouping'
 import { partitionSettled } from './settled-history'
 import { SettledHistoryView } from './SettledHistoryView'
 import { InboxNavigatorGroups } from './InboxNavigatorGroups'
-import { buildInboxNavigator, inboxNavigatorProjectFor, type InboxNavigatorOptions, type InboxNavigatorProject } from './inbox-navigator'
+import { buildInboxNavigator, inboxGroupRowKey, inboxNavigatorProjectFor, inboxProjectRowKey, type InboxNavigatorOptions, type InboxNavigatorProject } from './inbox-navigator'
 import { buildProjectScopeResolver, normalizeProjectSelection } from './project-identity'
 import { useProjectsByEnvironment } from '../connection/environment-projects'
 import { onCatalogChange, readCatalog } from '../connection/catalog'
@@ -193,12 +193,19 @@ export function InboxSidebar(): React.JSX.Element {
     if (next.has(key)) next.delete(key); else next.add(key)
     return next
   })
+  // Read from the page, so the log shows what is drawn rather than what the navigator asked for.
+  const worktreeHeaderCount = (): number => sidebarRef.current?.querySelectorAll('[data-testid^="inbox-worktree-header-"]').length ?? 0
   const collapseAll = (): void => {
-    const keys = allProjects.flatMap((project) => [`project:${project.project.key}`, ...project.groups.map((group) => `group:card:${group.key}`), ...project.groups.map((group) => `group:slim:${group.key}`)])
-    setActiveCollapsed(new Set(keys.filter((key) => key.includes(':card:') || key.startsWith('project:'))))
-    setSnoozedCollapsed(new Set(keys.filter((key) => key.includes(':slim:') || key.startsWith('project:'))))
+    const keysFor = (variant: InboxRowVariant): Set<string> => new Set(allProjects.flatMap((node) => [inboxProjectRowKey(node), ...node.groups.map((group) => inboxGroupRowKey(node, group, variant))]))
+    const active = keysFor('card')
+    rInfo('inbox', 'collapse all', { key_count: active.size, project_count: allProjects.length, environment_filter: environmentFilter, worktree_header_count: worktreeHeaderCount() })
+    setActiveCollapsed(active)
+    setSnoozedCollapsed(keysFor('slim'))
   }
-  const expandAll = (): void => { setActiveCollapsed(new Set()); setSnoozedCollapsed(new Set()) }
+  const expandAll = (): void => {
+    rInfo('inbox', 'expand all', { project_count: allProjects.length, environment_filter: environmentFilter, worktree_header_count: worktreeHeaderCount() })
+    setActiveCollapsed(new Set()); setSnoozedCollapsed(new Set())
+  }
   const row = (tab: TabState, variant: InboxRowVariant, projectName: string): React.JSX.Element => <InboxRow key={inboxRowKey(tab, variant)} tab={tab} variant={variant} projectName={projectName} benches={benches} inventory={inventory} rightBoundaryRef={sidebarRef} unread={partition.meta.get(tab.id)?.unread ?? false} woke={partition.meta.get(tab.id)?.wokeAt != null} backgroundLiveness={partition.meta.get(tab.id)?.backgroundLiveness ?? null} />
   const openSettledReview = (tab: TabState): void => {
     const state = useSessionStore.getState()

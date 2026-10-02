@@ -40,6 +40,7 @@ import type {
   DiscoveredContext,
   DispatchAgentOpts,
   DispatchAgentResult,
+  DispatchConversationResult,
   DispatchEntry,
   DispatchHistoryEntry,
   ElicitOptions,
@@ -57,6 +58,7 @@ import type {
   LLMCallResult,
   NotifyOpts,
   ProcessInfo,
+  ReadDispatchConversationOpts,
   RunOnceOpts,
   RunOnceResult,
   SessionListEntry,
@@ -654,6 +656,20 @@ function buildContext(ctxData: any): IonContext {
       } catch {
         // silent-ok: an engine without ext/list_dispatch_history has no history to return
         return []
+      }
+    },
+    async readDispatchConversation(opts: ReadDispatchConversationOpts): Promise<DispatchConversationResult> {
+      try {
+        const result = await request('ext/read_dispatch_conversation', opts)
+        return { ...result, entries: result?.entries ?? [] }
+      } catch (err) {
+        // An engine without ext/read_dispatch_conversation answers -32601.
+        // That is a capability answer, so it becomes an outcome. Any other
+        // failure is a real error and still rejects.
+        if (err instanceof IonRpcError && err.code === -32601) {
+          return { outcome: 'unsupported', terminal: false, entries: [], hasMore: false, totalEntries: 0 }
+        }
+        throw err
       }
     },
     async discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]> {

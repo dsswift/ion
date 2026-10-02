@@ -158,6 +158,15 @@ type SessionAccessor interface {
 	// cleanly-completed dispatch as lost. Best-effort, same as the
 	// registration write: failures log and never propagate.
 	PersistDispatchTerminal(agentID string)
+
+	// PersistDispatchConversationID records a running dispatch's child
+	// conversation ID on its persisted agent_dispatch record, the moment the
+	// child session reports it. The registration record is written before the
+	// child has a conversation, and the terminal record only when the dispatch
+	// ends, so without this write a dispatch that is running when the engine
+	// process dies leaves no durable link to the conversation it was writing.
+	// Best-effort: failures are logged, never propagated.
+	PersistDispatchConversationID(agentID, conversationID string)
 	// DispatchRegistry returns the session's dispatch registry. Required by
 	// the context paths that build an extension.Context without already
 	// holding one in scope (extension-tool dispatch, the LLM-call hook

@@ -116,6 +116,7 @@ export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
       managed: result.data.policy.managedMode?.managed === true,
       policy_absent: result.data.policy.managedMode?.policyAbsent === true,
       override_refused: result.data.policy.managedMode?.overrideRefused === true,
+      overrides: result.data.policy.overrides?.length ?? 0,
     })
     return result.data.policy
   }

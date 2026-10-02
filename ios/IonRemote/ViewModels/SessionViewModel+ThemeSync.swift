@@ -46,12 +46,9 @@ extension SessionViewModel {
         }
     }
 
-    /// Enterprise theme policy from the settings snapshot: locked →
-    /// enforce on iOS too (the enforced id resolves against built-ins +
-    /// synced packs; an unresolvable id falls back to Ion Dark in
-    /// ThemeManager). Unlocked or absent → clear any prior enforcement so
-    /// the user's own selection resumes. Every snapshot re-evaluates, so
-    /// lifting the policy on the desktop propagates live.
+    /// Enterprise theme policy from the settings snapshot. Every snapshot
+    /// re-evaluates, so a policy change on the server propagates live.
+    /// `ThemeManager.applyThemePolicy` holds the lock and managed-default rules.
     func applyThemePolicy(_ themePolicy: RemoteThemePolicy?) {
         if let themePolicy {
             DiagnosticLog.log("theme policy received", tag: "session.events", fields: [
@@ -59,6 +56,10 @@ extension SessionViewModel {
                 "reason": themePolicy.themeId
             ])
         }
-        themeManager?.setEnforcedTheme(themePolicy?.locked == true ? themePolicy?.themeId : nil)
+        themeManager?.applyThemePolicy(
+            themeId: themePolicy?.themeId,
+            locked: themePolicy?.locked == true,
+            source: activeDeviceId
+        )
     }
 }

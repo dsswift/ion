@@ -42,27 +42,27 @@ export function DefaultModelsSection(): React.JSX.Element {
   return (
     <Stack gap={20}>
       <FormGroup title="Defaults" anchor="default-model">
-        <FormRow label="Default conversation model" description="The model new tabs use for conversations. Can be overridden per-tab from the status bar.">
+        <FormRow label="Default conversation model" settingKey="preferredModel" description="The model new tabs use for conversations. Can be overridden per-tab from the status bar.">
           <ModelPicker value={preferredModel || ''} onChange={setPreferredModel} grouped={grouped} environmentId={environmentId} label="Default conversation model" />
         </FormRow>
-        <FormRow label="Default engine model" description="The model used for engine tasks. 'Default' uses the conversation model.">
+        <FormRow label="Default engine model" settingKey="engineDefaultModel" description="The model used for engine tasks. 'Default' uses the conversation model.">
           <ModelPicker value={engineDefaultModel || ''} onChange={setEngineDefaultModel} grouped={grouped} environmentId={environmentId} emptyLabel="Default" label="Default engine model" />
         </FormRow>
       </FormGroup>
       <FormGroup title="Plan and implement" anchor="plan-split">
         <ToggleRow
-          label="Model splitting"
+          label="Model splitting" settingKey="planModelSplitEnabled"
           description="Automatically switch models at the plan/implement boundary. Use a powerful model for planning and a faster one for implementation."
           checked={planModelSplitEnabled}
           onChange={setPlanModelSplitEnabled}
         />
         {planModelSplitEnabled && (
-          <FormRow label="Planning model" description="Model to use when a tab is in plan mode. Overrides the default conversation model.">
+          <FormRow label="Planning model" settingKey="planModeModel" description="Model to use when a tab is in plan mode. Overrides the default conversation model.">
             <ModelPicker value={planModeModel || ''} onChange={setPlanModeModel} grouped={grouped} environmentId={environmentId} emptyLabel="Default (use conversation model)" label="Planning model" />
           </FormRow>
         )}
         {planModelSplitEnabled && (
-          <FormRow label="Implementation model" description="Model to use when implementing a plan. Automatically applied when you click Implement.">
+          <FormRow label="Implementation model" settingKey="implementModeModel" description="Model to use when implementing a plan. Automatically applied when you click Implement.">
             <ModelPicker value={implementModeModel || ''} onChange={setImplementModeModel} grouped={grouped} environmentId={environmentId} emptyLabel="Default (use conversation model)" label="Implementation model" />
           </FormRow>
         )}

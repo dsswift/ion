@@ -116,6 +116,19 @@ describe('McpSection', () => {
     expect(text()).toContain('ion mcp login broken')
   })
 
+  it('names the servers the organization removed, and says nothing without any', async () => {
+    const { usePreferencesStore } = await import('../../../../preferences')
+    await h.render(<McpSection />)
+    expect(text()).not.toContain('Your organization does not allow')
+    act(() => usePreferencesStore.getState().setEnterprisePolicy({ overrides: [
+      { field: 'mcpServers.stray', reason: 'mcp_server_not_allowed' },
+      { field: 'mcpServers.denied', reason: 'mcp_server_denied' },
+      { field: 'providers.rogue', reason: 'provider_not_allowed' },
+    ] }))
+    expect(text()).toMatch(/Your organization does not allow these MCP servers, so their configuration on .+ is not in effect: stray, denied\./)
+    act(() => usePreferencesStore.getState().setEnterprisePolicy(null))
+  })
+
   it('says so when no server is configured', async () => {
     await h.render(<McpSection />)
     expect(text()).toContain('No MCP servers configured yet.')

@@ -170,7 +170,8 @@ export class ElectronStudioHost implements StudioHost {
   }
 
   async setDeviceSetting(key: string, value: unknown): Promise<void> {
-    await this.preload.hostSetDeviceSetting(key, value)
+    const result = await this.preload.hostSetDeviceSetting(key, value)
+    if (!result.ok) throw new Error(`${result.code}: ${result.message} (class: ${result.class})`)
   }
 
   capabilities(): Capability[] {

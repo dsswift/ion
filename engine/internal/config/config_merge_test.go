@@ -394,16 +394,17 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	base := DefaultConfig()
 	enabled := true
 	overlay := &types.EngineRuntimeConfig{
-		Security:        &types.SecurityConfig{RedactSecrets: true},
-		FeatureFlags:    &types.FeatureFlagsConfig{Source: "static"},
-		Relay:           &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
-		WebSearch:       &types.WebSearchConfig{Mode: "server"},
-		Webhooks:        &types.WebhooksConfig{Enabled: &enabled},
-		Scheduling:      &types.SchedulingConfig{DefaultTz: "America/Chicago"},
-		BackgroundTasks: &types.BackgroundTasksConfig{MaxOutstandingPerSession: 9},
-		Poll:            &types.PollConfig{MaxAttempts: 2},
-		DispatchHistory: &types.DispatchHistoryConfig{MaxEntries: 7},
-		ThinkingPolicy:  &types.ThinkingPolicyConfig{Disabled: true},
+		Security:                 &types.SecurityConfig{RedactSecrets: true},
+		FeatureFlags:             &types.FeatureFlagsConfig{Source: "static"},
+		Relay:                    &types.RelayConfig{URL: "wss://relay.example", ChannelID: "abc"},
+		WebSearch:                &types.WebSearchConfig{Mode: "server"},
+		Webhooks:                 &types.WebhooksConfig{Enabled: &enabled},
+		Scheduling:               &types.SchedulingConfig{DefaultTz: "America/Chicago"},
+		BackgroundTasks:          &types.BackgroundTasksConfig{MaxOutstandingPerSession: 9},
+		Poll:                     &types.PollConfig{MaxAttempts: 2},
+		DispatchHistory:          &types.DispatchHistoryConfig{MaxEntries: 7},
+		DispatchConversationRead: &types.DispatchConversationReadConfig{MaxEntries: 9},
+		ThinkingPolicy:           &types.ThinkingPolicyConfig{Disabled: true},
 	}
 	result := MergeConfigs(nil, base, overlay)
 
@@ -433,6 +434,9 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	}
 	if result.DispatchHistory == nil || result.DispatchHistory.MaxEntries != 7 {
 		t.Error("DispatchHistory block dropped by merge")
+	}
+	if result.DispatchConversationRead == nil || result.DispatchConversationRead.MaxEntries != 9 {
+		t.Error("DispatchConversationRead block dropped by merge")
 	}
 	if result.ThinkingPolicy == nil || !result.ThinkingPolicy.Disabled {
 		t.Error("ThinkingPolicy block dropped by merge")

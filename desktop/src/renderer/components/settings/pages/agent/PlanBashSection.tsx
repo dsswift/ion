@@ -50,7 +50,7 @@ export function PlanBashSection(): React.JSX.Element {
   return (
     <>
       <FormGroup title="Plan mode">
-        <FormRow anchor="plan-bash" label="Allowed Bash commands" description={commands === null ? (error ? 'Could not load.' : 'Loading…') : planBashSummary(commands)}>
+        <FormRow anchor="plan-bash" label="Allowed Bash commands" settingKey="planModeAllowedBashCommands" description={commands === null ? (error ? 'Could not load.' : 'Loading…') : planBashSummary(commands)}>
           <Button disabled={commands === null} onClick={() => setEditing(true)}>Edit</Button>
         </FormRow>
         {error && !editing && <FormRow label="Could not update the list"><ErrorText>{error}</ErrorText></FormRow>}

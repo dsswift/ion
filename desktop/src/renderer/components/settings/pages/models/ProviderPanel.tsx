@@ -11,6 +11,8 @@ import { useModelStore, environmentModels } from '@ion/server/store/model-store'
 import { withTargetEnvironment } from '../../../../studio/connection/tab-environment'
 import { host } from '../../../../host/host-instance'
 import { rError, rWarn } from '../../../../rendererLogger'
+import { useEnvironmentEnterprisePolicy } from '../../use-environment-enterprise-policy'
+import { describeProviderOverride, providerOverrides } from '../../policy-override-notices'
 import { API_KEY_PROVIDERS, OAUTH_BUTTON_LABELS, OAUTH_PROVIDERS, authSourceTooltip, providerAuthBadge } from '../../provider-auth-labels'
 import { Button, Chip, ErrorText, FormGroup, FormRow, Inline, MonoLine, Muted, Notice, SidePanel, Stack, TextInput } from '../../kit'
 import { ProviderCliSignIn, Wide } from './ProviderCliSignIn'
@@ -37,6 +39,7 @@ export function ProviderPanel({ provider, environmentId, onClose, onCredentialSa
   const [oauthLoading, setOauthLoading] = useState(false)
   const [deviceCode, setDeviceCode] = useState<DeviceCodeState | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const overrides = providerOverrides(useEnvironmentEnterprisePolicy(environmentId), provider.id)
   const onEnv = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => withTargetEnvironment(environmentId, fn), [environmentId])
 
   const name = getProviderDisplayName(provider.id, [provider, ...providers])
@@ -133,6 +136,8 @@ export function ProviderPanel({ provider, environmentId, onClose, onCredentialSa
             </FormRow>
           )}
         </FormGroup>
+
+        {overrides.map((o) => <Notice key={o.field} tone="accent">{describeProviderOverride(o, provider.id)}</Notice>)}
 
         {showPoisonedHint && <Notice tone="warn">This stored OpenAI credential isn’t returning models. Remove it and sign in with ChatGPT below instead.</Notice>}
 

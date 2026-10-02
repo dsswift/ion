@@ -509,6 +509,37 @@ await ctx.dispatchAgent({
 
 **Dispatch history.** `listDispatchState` lists only live work. `await ctx.listDispatchHistory()` returns the dispatches that have ended, oldest completion first. Each entry carries `status` (`done`, `error`, `cancelled`, or `lost` for a dispatch that was running when the engine process died), `reason` (the error text, or the recall reason), `exitCode` (absent when unknown), `startedAt`, `completedAt`, `durationMs`, and the lineage fields `dispatchId`, `name`, `parentDispatchId`, and `depth`. A dispatch that starts and ends between two of your polls still shows up here, and so does one that ended before a session or engine restart. Ownership matches the live list: the root context sees every entry, a dispatched agent sees only its own descendants, including grandchildren whose own parent already finished. The engine bounds how many entries it keeps and for how long with the `dispatchHistory` block in [`engine.json`](../configuration/engine-json.md#dispatchhistory).
 
+**Reading a dispatch's conversation.** `await ctx.readDispatchConversation({ conversationId })` returns one page of what a dispatch wrote: each message with its text, tool calls, and tool results in order. You can also pass `dispatchId`. It works while the dispatch runs, after it ends, and after a restart. The engine checks ownership from its own dispatch lineage: the root context may read every dispatch, a dispatched agent only its descendants.
+
+The call resolves with an `outcome` instead of rejecting when it cannot read:
+
+| `outcome` | Meaning |
+|-----------|---------|
+| `ok` | `entries` holds the page. |
+| `unauthorized` | Not a dispatch this context owns, or lineage cannot be proven. |
+| `unavailable` | You own the dispatch, but there is nothing to read. `unavailableReason` is `not_created` or `not_found`. |
+| `invalid_cursor` | The cursor does not belong to this conversation. Read again without one. |
+| `unsupported` | The engine predates this call. |
+
+`status` and `terminal` say whether the dispatch is still running. `reason` and `exitCode` carry how it ended. Pass `nextCursor` back as `cursor` to read on. On a live dispatch, keep the cursor after `hasMore` turns `false` and read again later to get only new entries.
+
+```ts
+let cursor: string | undefined
+for (;;) {
+  const page = await ctx.readDispatchConversation({ conversationId, cursor, limit: 20 })
+  if (page.outcome !== 'ok') break
+  for (const entry of page.entries) {
+    for (const block of entry.blocks) {
+      if (block.type === 'tool_call') ctx.log.info(`${block.toolName} ${JSON.stringify(block.input)}`)
+    }
+  }
+  cursor = page.nextCursor
+  if (!page.hasMore) break
+}
+```
+
+`limit` and `maxBytes` ask for a page size. The engine lowers either to its maximum and reports what it used in `limits`. A block cut to fit is marked `truncated`. The bounds live in the `dispatchConversationRead` block in [`engine.json`](../configuration/engine-json.md#dispatchconversationread).
+
 ```typescript
 await ctx.dispatchAgent({
   name: 'ios-dev',            // a leaf specialist

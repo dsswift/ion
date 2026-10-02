@@ -185,6 +185,7 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
       lastAssembly: ws.lastAssembly,
       lastAssemblyError: ws.lastAssemblyError,
       lastAssemblyFailure: ws.lastAssemblyFailure,
+      resolutionOpen: ws.resolutionOpen,
       // Trimmed projection: `diagnosticTreeAt` is desktop-local state (whether
       // the AI-assisted analysis has materialised the failing tree back into
       // the bench) that iOS has no verb to act on and no use for.
@@ -405,7 +406,7 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
         warn('remove member refused: invalid path', { worktree_path: cmd.worktreePath })
         return true
       }
-      removeMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
+      await removeMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
       await pushWorktreeState(cmd.repoPath)
       return true
 

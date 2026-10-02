@@ -5,6 +5,7 @@ import type { ConversationPane } from "@ion/shared/types-engine";
 import type { TabState } from "@ion/shared/types";
 import {
   collapsedInboxRows,
+  duplicateKeys,
   inboxActivityOrder,
   isInboxTabWorking,
   nextInboxConversation,
@@ -216,5 +217,12 @@ describe("Inbox conversation cycling", () => {
 
   it("starts at the most active conversation when the active tab is elsewhere", () => {
     expect(nextInboxConversation(tabs, "elsewhere")?.id).toBe("tie-a");
+  });
+});
+
+describe("duplicateKeys", () => {
+  it("lists each repeated key once and nothing else", () => {
+    expect(duplicateKeys(["a", "b", "a", "c", "b", "a"])).toEqual(["a", "b"]);
+    expect(duplicateKeys(["a", "b"])).toEqual([]);
   });
 });

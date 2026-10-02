@@ -30,7 +30,7 @@ vi.mock('@ion/server/store/model-store', async (importOriginal) => {
 })
 const env = vi.hoisted(() => ({ id: 'local', label: 'This Mac', isLocal: true }))
 vi.mock('../../settings-servers', () => ({ useSettingsEnvironment: () => ({ ...env, justAdded: false }) }))
-const policy = vi.hoisted(() => ({ value: null as null | { allowedProviders?: string[] } }))
+const policy = vi.hoisted(() => ({ value: null as null | import('@ion/shared/types-enterprise').EnterprisePolicy }))
 vi.mock('../../use-environment-enterprise-policy', () => ({ useEnvironmentEnterprisePolicy: () => policy.value }))
 vi.mock('../../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000' }) }))
 vi.mock('../../../PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
@@ -98,6 +98,30 @@ describe('Providers', () => {
       expect(rows[2]).toContain('not configured')
     })
 
+    it('marks a provider the organization pinned and names the providers its allowlist removed', async () => {
+      store.state.providers = [
+        { id: 'gateway', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org', displayName: 'Gateway' },
+        { id: 'anthropic', hasAuth: true, authSource: 'filestore' },
+      ]
+      policy.value = { overrides: [
+        { field: 'providers.gateway.baseURL', reason: 'managed_provider_pinned', userValue: 'https://rogue.example.org', effectiveValue: 'https://gw.example.org' },
+        { field: 'providers.rogue', reason: 'provider_not_allowed' },
+      ] }
+      await h.render(<ProvidersSection />)
+      const rows = [...h.container.querySelectorAll('[role="listitem"]')].map((r) => r.textContent ?? '')
+      expect(rows[0]).toContain('managed')
+      expect(rows[1]).not.toContain('managed')
+      expect(h.container.querySelector('[role="status"]')?.textContent).toBe('Your organization does not allow this provider, so its configuration on This Mac is not in effect: rogue.')
+    })
+
+    it('shows no policy notice without overrides', async () => {
+      store.state.providers = [{ id: 'anthropic', hasAuth: true, authSource: 'filestore' }]
+      policy.value = { allowedProviders: ['anthropic'] }
+      await h.render(<ProvidersSection />)
+      expect(h.container.querySelector('[role="status"]')).toBeNull()
+      expect(h.container.textContent).not.toContain('managed')
+    })
+
     it('opens the provider panel from a row', async () => {
       store.state.providers = [{ id: 'anthropic', hasAuth: false }]
       await h.render(<ProvidersSection />)
@@ -158,6 +182,20 @@ describe('Providers', () => {
       await h.click('Save')
       expect(stub.storeCredential).toHaveBeenCalledWith({ provider: 'anthropic', credential: 'sk-test' })
       expect(sent.filter((s) => s.action === 'provider.storeCredential').map((s) => s.environmentId)).toEqual(['devbox'])
+    })
+
+    it('says which settings the organization set, without repeating a secret', async () => {
+      policy.value = { overrides: [
+        { field: 'providers.gateway.apiKey', reason: 'managed_provider_pinned' },
+        { field: 'providers.gateway.baseURL', reason: 'managed_provider_pinned', userValue: 'https://rogue.example.org', effectiveValue: 'https://gw.example.org' },
+        { field: 'providers.other.baseURL', reason: 'managed_provider_pinned', userValue: 'https://elsewhere.example.org' },
+      ] }
+      await renderPanel({ id: 'gateway', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org' })
+      const notices = [...h.container.querySelectorAll('[role="status"]')].map((n) => n.textContent)
+      expect(notices).toEqual([
+        'API key is set by your organization. The value in your configuration is not in effect.',
+        'Gateway is set by your organization. The value in your configuration (https://rogue.example.org) is not in effect.',
+      ])
     })
 
     it('warns about an OpenAI key that returns no models', async () => {

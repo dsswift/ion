@@ -34,24 +34,24 @@ export function BehaviorPage(): React.JSX.Element {
       <FormGroup title="Conversations">
         <FormRow
           anchor="surface-switch"
-          label="Studio surface on conversation switch"
+          label="Studio surface on conversation switch" settingKey="studioSurfaceSwitchMode"
           description={studioSurfaceSwitchMode === 'preserve' ? 'Keep the surface pinned when switching tabs.' : 'Remember the surface expanded state per conversation.'}
         >
           <Segmented<StudioSurfaceSwitchMode> label="Studio surface on conversation switch" value={studioSurfaceSwitchMode} options={SURFACE_MODES} onChange={setStudioSurfaceSwitchMode} />
         </FormRow>
-        <ToggleRow anchor="task-list" label="Show task list" description="Show the agent's task checklist at the bottom of the conversation while it works. Dispatch previews always show their task list." checked={showTodoList} onChange={setShowTodoList} />
-        <ToggleRow anchor="agent-panel" label="Agent panel open by default" description="Expand the agent panel when agents are dispatched. Off keeps it collapsed." checked={agentPanelDefaultOpen} onChange={setAgentPanelDefaultOpen} />
+        <ToggleRow anchor="task-list" label="Show task list" settingKey="showTodoList" description="Show the agent's task checklist at the bottom of the conversation while it works. Dispatch previews always show their task list." checked={showTodoList} onChange={setShowTodoList} />
+        <ToggleRow anchor="agent-panel" label="Agent panel open by default" settingKey="agentPanelDefaultOpen" description="Expand the agent panel when agents are dispatched. Off keeps it collapsed." checked={agentPanelDefaultOpen} onChange={setAgentPanelDefaultOpen} />
         <ToggleRow
           anchor="implement-clear"
-          label={'Show "Implement, clear context" button'}
+          label={'Show "Implement, clear context" button'} settingKey="showImplementClearContext"
           description="Adds a second action to the plan-approval card that starts a fresh conversation for implementation. Implement always keeps the conversation; /clear clears it at any time."
           checked={showImplementClearContext}
           onChange={setShowImplementClearContext}
         />
       </FormGroup>
       <FormGroup title="Alerts and previews">
-        <ToggleRow anchor="sound" label="Notification sound" description="Play a sound when a task completes." checked={soundEnabled} onChange={setSoundEnabled} />
-        <ToggleRow anchor="network-shield" label="Browser preview network shield" description="Block network requests from browser previews until you allow them in that preview." checked={browserPreviewNetworkShield} onChange={setBrowserPreviewNetworkShield} />
+        <ToggleRow anchor="sound" label="Notification sound" settingKey="soundEnabled" description="Play a sound when a task completes." checked={soundEnabled} onChange={setSoundEnabled} />
+        <ToggleRow anchor="network-shield" label="Browser preview network shield" settingKey="browserPreviewNetworkShield" description="Block network requests from browser previews until you allow them in that preview." checked={browserPreviewNetworkShield} onChange={setBrowserPreviewNetworkShield} />
       </FormGroup>
     </Stack>
   )
@@ -62,7 +62,7 @@ export function DeviceGitSection(): React.JSX.Element {
   const setGitChangesTreeView = useSettingsPreferences((s) => s.setGitChangesTreeView)
   return (
     <FormGroup title="Git panel">
-      <ToggleRow anchor="changes-tree" label="Tree view for changes" description="Group changed files by directory in the git panel." checked={gitChangesTreeView} onChange={setGitChangesTreeView} />
+      <ToggleRow anchor="changes-tree" label="Tree view for changes" settingKey="gitChangesTreeView" description="Group changed files by directory in the git panel." checked={gitChangesTreeView} onChange={setGitChangesTreeView} />
     </FormGroup>
   )
 }

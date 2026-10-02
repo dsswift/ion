@@ -1,0 +1,59 @@
+{
+  "_comment": "Cross-platform managed-default parity fixture. Pins how a client treats an unlocked enterprise policy value that seeds a user-editable preference. `decisions` pins the rule itself: given the policy value, its lock flag, and the watermark (the last policy value this client applied), which of absent / locked / keep / apply results. `sequences` pins the behavior over time: each step is either a policy load or the person changing the preference, and `preference` is the value the preference must hold after the step. A client records the watermark only on `apply`. Asserted by packages/shared/src/__tests__/managed-defaults.test.ts and ios/IonRemoteTests/ManagedDefaultParityTests.swift. A change to the rule on either side fails that side until the fixture and the other client move in the same change.",
+  "decisions": [
+    { "name": "no policy value, nothing applied", "policyValue": null, "locked": false, "applied": null, "decision": "absent" },
+    { "name": "empty policy value is no value", "policyValue": "", "locked": false, "applied": "a", "decision": "absent" },
+    { "name": "policy withdrawn after an application", "policyValue": null, "locked": false, "applied": "a", "decision": "absent" },
+    { "name": "first application", "policyValue": "a", "locked": false, "applied": null, "decision": "apply" },
+    { "name": "policy value changed", "policyValue": "b", "locked": false, "applied": "a", "decision": "apply" },
+    { "name": "policy value unchanged", "policyValue": "a", "locked": false, "applied": "a", "decision": "keep" },
+    { "name": "locked, nothing applied", "policyValue": "a", "locked": true, "applied": null, "decision": "locked" },
+    { "name": "locked, same value applied earlier", "policyValue": "a", "locked": true, "applied": "a", "decision": "locked" },
+    { "name": "locked, other value applied earlier", "policyValue": "b", "locked": true, "applied": "a", "decision": "locked" }
+  ],
+  "sequences": [
+    {
+      "name": "a changed default reaches an installation that already chose",
+      "initialPreference": "user-1",
+      "steps": [
+        { "policy": { "value": "a", "locked": false }, "preference": "a" },
+        { "policy": { "value": "a", "locked": false }, "preference": "a" },
+        { "policy": { "value": "b", "locked": false }, "preference": "b" }
+      ]
+    },
+    {
+      "name": "a deliberate change survives until the next revision",
+      "initialPreference": "user-1",
+      "steps": [
+        { "policy": { "value": "a", "locked": false }, "preference": "a" },
+        { "userSets": "user-2", "preference": "user-2" },
+        { "policy": { "value": "a", "locked": false }, "preference": "user-2" },
+        { "policy": { "value": "a", "locked": false }, "preference": "user-2" },
+        { "policy": { "value": "b", "locked": false }, "preference": "b" },
+        { "userSets": "user-3", "preference": "user-3" },
+        { "policy": { "value": "b", "locked": false }, "preference": "user-3" }
+      ]
+    },
+    {
+      "name": "a withdrawn policy leaves the preference and the watermark alone",
+      "initialPreference": "user-1",
+      "steps": [
+        { "policy": { "value": "a", "locked": false }, "preference": "a" },
+        { "userSets": "user-2", "preference": "user-2" },
+        { "policy": null, "preference": "user-2" },
+        { "policy": { "value": "a", "locked": false }, "preference": "user-2" }
+      ]
+    },
+    {
+      "name": "a locked policy never writes the preference",
+      "initialPreference": "user-1",
+      "steps": [
+        { "policy": { "value": "a", "locked": true }, "preference": "user-1" },
+        { "policy": { "value": "a", "locked": false }, "preference": "a" },
+        { "userSets": "user-2", "preference": "user-2" },
+        { "policy": { "value": "a", "locked": true }, "preference": "user-2" },
+        { "policy": { "value": "a", "locked": false }, "preference": "user-2" }
+      ]
+    }
+  ]
+}

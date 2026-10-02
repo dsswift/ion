@@ -51,6 +51,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/ack_dispatch_lost":             (*Host).rpcAckDispatchLost,
 	"ext/list_dispatch_state":           (*Host).rpcListDispatchState,
 	"ext/list_dispatch_history":         (*Host).rpcListDispatchHistory,
+	"ext/read_dispatch_conversation":    (*Host).rpcReadDispatchConversation,
 	"ext/set_dispatch_context_defaults": (*Host).rpcSetDispatchContextDefaults,
 
 	// Dynamic tool registry.

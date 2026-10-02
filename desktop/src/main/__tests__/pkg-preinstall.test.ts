@@ -1,7 +1,7 @@
 // Installing the .pkg over a running Ion corrupts the live bundle. The package
-// must therefore carry a preinstall that refuses before the payload changes.
-// `make desktop` coordinates the graceful quit outside Installer; manual and
-// MDM package installs remain safe when they start while Ion is live.
+// must therefore carry scripts that decide what happens to a running Ion and
+// that swap a complete bundle into place. This file pins how the package is
+// assembled; pkg-install-scripts.test.ts runs the scripts.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, statSync, constants, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { accessSync } from 'node:fs'
@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process'
 const scriptsDir = join(__dirname, '..', '..', '..', 'scripts')
 const preinstallPath = join(scriptsDir, 'pkg-scripts', 'preinstall')
 const postinstallPath = join(scriptsDir, 'pkg-scripts', 'postinstall')
+const commonPath = join(scriptsDir, 'pkg-scripts', 'ion-pkg-common.sh')
 const buildPkgPath = join(scriptsDir, 'build-pkg.sh')
 const signReleasePkgPath = join(scriptsDir, 'sign-release-pkg.sh')
 const workflowPath = join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'build.yml')
@@ -26,25 +27,29 @@ describe('pkg preinstall script', () => {
     expect(() => accessSync(preinstallPath, constants.X_OK)).not.toThrow()
   })
 
-  it('allows the install only when Ion is not running', () => {
-    const body = readFileSync(preinstallPath, 'utf8')
-    expect(body).toMatch(/is not running[\s\S]*?exit 0/)
-    expect(body).toMatch(/refusing to replace the live application bundle[\s\S]*?exit 1/)
+  it('refuses a running Ion unless device policy selects replace', () => {
+    const body = readFileSync(commonPath, 'utf8')
+    expect(body).toContain('POLICY_PLIST="${ION_PKG_POLICY_PLIST:-/Library/Managed Preferences/com.ion.engine.plist}"')
+    expect(body).toContain('POLICY_KEY=":customFields:ion-desktop:installer"')
+    expect(body).toMatch(/"\) printf 'refuse' ;;/)
+    expect(body).toMatch(/refusing to replace the live application bundle[\s\S]*?return 1/)
   })
 
-  it('does not signal or force-kill a running Ion', () => {
-    const body = readFileSync(preinstallPath, 'utf8')
-    expect(body).not.toContain('kill -USR1')
-    expect(body).not.toContain('kill -9')
+  it('keeps the whole stop sequence inside the package script timeout', () => {
+    const body = readFileSync(commonPath, 'utf8')
+    const number = (name: string): number => Number(new RegExp(`${name}="?(?:\\$\\{[A-Z_]+:-)?(\\d+)`).exec(body)?.[1])
+    const worstCase = number('MAX_DRAIN_TIMEOUT_SECONDS') + number('FORCED_QUIT_WAIT_SECONDS') + number('KILL_WAIT_SECONDS')
+    // pkgbuild gives each top-level script 600 seconds.
+    expect(worstCase).toBeLessThan(600)
+    expect(number('DEFAULT_DRAIN_TIMEOUT_SECONDS')).toBeLessThanOrEqual(number('MAX_DRAIN_TIMEOUT_SECONDS'))
   })
 
-  it('matches only the main app executable, not helper processes', () => {
-    const body = readFileSync(preinstallPath, 'utf8')
-    // Anchored on the main binary path so a helper or unrelated process whose
-    // path merely contains "Ion" is never signalled as the app.
-    expect(body).toContain('.app/Contents/MacOS/${APP_NAME}\\$')
+  it('matches only the main executable of the bundle being replaced', () => {
+    const body = readFileSync(commonPath, 'utf8')
+    // Anchored on the installed bundle's main binary, so a helper, or an Ion
+    // running from another directory, is never signalled as the app.
+    expect(body).toContain('pgrep -f "$(regex_escape "${APP_PATH}/Contents/MacOS/${APP_NAME}")( |\\$)"')
   })
-
 })
 
 describe('pkg postinstall script', () => {
@@ -97,15 +102,25 @@ describe('release package trust checks', () => {
 })
 
 describe('build-pkg.sh', () => {
-  it('passes --scripts to pkgbuild so the preinstall is embedded', () => {
+  it('passes --scripts to pkgbuild so the install scripts are embedded', () => {
     const body = readFileSync(buildPkgPath, 'utf8')
     expect(body).toMatch(/--scripts\s+"\$\{SCRIPT_DIR\}\/pkg-scripts"/)
   })
 
-  it('still installs to /Applications with the component payload', () => {
+  it('installs the payload into the staging directory postinstall swaps from', () => {
     const body = readFileSync(buildPkgPath, 'utf8')
-    expect(body).toContain('--install-location "/Applications"')
-    expect(body).toContain('--component "${APP_PATH}"')
+    const staging = /^STAGING_DIR="(.+)"$/m.exec(body)?.[1]
+    expect(staging).toBeTruthy()
+    expect(readFileSync(commonPath, 'utf8')).toContain(`STAGING_DIR="\${ION_PKG_STAGING_DIR:-${staging}}"`)
+    expect(body).toContain('--install-location "${STAGING_DIR}"')
+    expect(body).not.toContain('--install-location "/Applications"')
+  })
+
+  it('pins the bundle to the package location and installs any version', () => {
+    const body = readFileSync(buildPkgPath, 'utf8')
+    expect(body).toContain('--component-plist "${COMPONENT_PLIST}"')
+    expect(body).toContain("Add :0:BundleIsRelocatable bool false")
+    expect(body).toContain("Set :0:BundleIsVersionChecked false")
   })
 
   it('verifies the built package by expanding its PackageInfo metadata', () => {

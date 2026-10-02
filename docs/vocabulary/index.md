@@ -89,6 +89,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
+- [Dispatch Conversation Read](#term-dispatch-conversation-read)
 - [Dispatch History](#term-dispatch-history)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
@@ -131,6 +132,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
 - [Local Principal](#term-local-principal)
+- [Managed Default](#term-managed-default)
 - [Managed-Mode Marker](#term-managed-mode-marker)
 - [Menu](#term-menu)
 - [Message](#term-message)
@@ -153,6 +155,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Personal Preference](#term-personal-preference)
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
+- [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
 - [Port Forward](#term-port-forward)
 - [Presence](#term-presence)
@@ -183,6 +186,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Server message](#term-server-message)
 - [Session](#term-session)
 - [Session Principal](#term-session-principal)
+- [Settings Policy](#term-settings-policy)
 - [Settings Side Panel](#term-settings-side-panel)
 - [Settings Taxonomy](#term-settings-taxonomy)
 - [Slash command](#term-slash-command)
@@ -505,6 +509,20 @@ A consumer-supplied identifier registered as an alternate name for a dispatch's 
 - **Implementations:**
   - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry_alias.go`
   - `sdk` / `code` / `go`: `ClientDispatchID string` in `sdk/go/context_dispatch.go`
+
+#### Dispatch Conversation Read {#term-dispatch-conversation-read}
+
+A bounded, cursor-paged read of the conversation a dispatch wrote, open only to the context that created the dispatch directly or transitively. The engine settles that from its own dispatch lineage, live or retained, and refuses a target it cannot tie to a dispatch the caller owns. A page holds messages with their text, tool calls, and tool results in written order, plus whether the dispatch is still running or how it ended.
+
+- **ID:** `dispatch-conversation-read`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `parent-scoped conversation read`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) ResolveOwnedConversation` in `engine/internal/session/extcontext/dispatch_registry_conversation.go`
+  - `sdk` / `code` / `go`: `func (c *Context) ReadDispatchConversation` in `sdk/go/context_dispatch_conversation.go`
 
 #### Dispatch History {#term-dispatch-history}
 
@@ -961,6 +979,20 @@ The engine's typed inner event union. Each variant carries one shape. The engine
   - `engine` / `wire` / `go`: `type NormalizedEvent struct` in `engine/internal/types/normalized_event.go`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
 - **Notes:** Bare internal names never reach a consumer. Semantics such as snapshot versus incremental are part of the contract.
+
+#### Policy Override Notice {#term-policy-override-notice}
+
+A record that enterprise enforcement replaced or removed one user or project config value: the field path, a stable reason code, and, where neither can hold a secret, the displaced value and the value in effect. The engine stamps the list on the enterprise policy it returns; a client words it.
+
+- **ID:** `policy-override-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type PolicyOverride` in `engine/internal/types/config_policy_override.go`
+  - `desktop` / `code` / `typescript`: `export function providerOverrides` in `desktop/src/renderer/components/settings/policy-override-notices.ts`
 
 #### Server message {#term-server-message}
 
@@ -1689,6 +1721,20 @@ An unsaved Studio document stored by source-project identity. It appears across 
 - **Contract:** `internal`
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `packages/shared/src/studio-surface-types.ts`
+
+#### Settings Policy {#term-settings-policy}
+
+An enterprise block that gives each settings key a mutability class: user-adjustable, managed-default, or sealed. One resolver reads it for every write path. The server's namespace governs the settings a server stores; the desktop's namespace is Device Policy and governs the settings a client keeps.
+
+- **ID:** `settings-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `setting mutability class`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `resolveSettingMutability(` in `packages/shared/src/enterprise-settings-policy.ts`
+  - `server` / `wire` / `typescript`: `'settings.policyState':` in `server/src/protocol/settings-actions.ts`
 
 #### Settings Taxonomy {#term-settings-taxonomy}
 
@@ -2520,6 +2566,21 @@ Which folders are expanded, which root sections are folded shut, and which row i
   - `desktop` / `code` / `typescript`: `loadExplorerState` in `server/src/explorer-state-store.ts`
   - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `server/src/store/explorer-state-sync.ts`
 
+#### Managed Default {#term-managed-default}
+
+An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.
+
+- **ID:** `managed-default`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `function decideManagedDefault` in `packages/shared/src/managed-defaults.ts`
+  - `desktop` / `code` / `typescript`: `function reconcileManagedDefaults` in `desktop/src/renderer/managed-defaults.ts`
+  - `ios` / `code` / `swift`: `enum ManagedDefault` in `ios/IonRemote/Utilities/ManagedDefault.swift`
+
 #### Mirror store {#term-mirror-store}
 
 A Studio client's copy of the session store: the union of every connected Environment's published state. It runs the same reducers on the same event streams, forwards owner-durable mutations to the server that owns them, and never persists.
@@ -3031,6 +3092,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |
 | Local Principal | `localPrincipal` | `localPrincipal` | `localPrincipal` | None | iOS |
+| Managed Default | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `enum ManagedDefault` | None |
 | Menu | `export function InboxRowMenu` | `export function InboxRowMenu` | `export function InboxRowMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
 | Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `hydrateTabsFromSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
@@ -3045,6 +3107,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
@@ -3062,6 +3125,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
 | Server Admin Session | None | None | None | `final class ServerAdminSession` | Desktop, Studio, Overlay |
+| Settings Policy | `resolveSettingMutability(` | `resolveSettingMutability(` | `resolveSettingMutability(` | None | iOS |
 | Settings Side Panel | `export function SidePanel` | `export function SidePanel` | `export function SidePanel` | None | iOS |
 | Settings Taxonomy | None | None | None | `struct ServerPagesView` | Desktop, Studio, Overlay |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
@@ -3189,6 +3253,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `new conversation flow` → [New Conversation Picker](#term-new-conversation-picker)
 - Alias: `office canvas` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `outbound engine event` → [Engine event](#term-engine-event)
+- Alias: `parent-scoped conversation read` → [Dispatch Conversation Read](#term-dispatch-conversation-read)
 - Alias: `peer connection` → [Connection](#term-connection)
 - Alias: `permission request` → [Permission](#term-permission)
 - Alias: `phone actions` → [Phone Action List](#term-phone-action-list)
@@ -3212,6 +3277,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `scratch file` → [Scratch Document](#term-scratch-document)
 - Alias: `search in files` → [Workspace Search](#term-workspace-search)
 - Alias: `server event envelope` → [Server message](#term-server-message)
+- Alias: `setting mutability class` → [Settings Policy](#term-settings-policy)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
 - Alias: `slash model boundary` → [Model Boundary](#term-model-boundary)

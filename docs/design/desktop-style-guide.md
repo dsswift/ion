@@ -93,8 +93,29 @@ its own frozen cyan system. Classic and HUD are freeze-tested.
 | `accentBorder` / `accentBorderMedium` | blue 22% / 32% | Accent-tinted borders |
 | `focusBorder` | `#366FFB` | Focus-visible border (used by `.ion-focusable`) |
 | `focusRing` | blue 24% | The 3px outer focus ring |
-| `sendBg` / `sendHover` / `sendDisabled` | accent family | Send button |
-| `textOnAccent` / `textOnAccentMuted` | white / white 70% | Text and dimmed text on any solid status/accent fill |
+| `sendBg` / `sendHover` / `sendPressed` / `sendDisabled` | accent family | Send button fill states |
+| `sendFg` | white | Send button glyph |
+| `textOnAccent` / `textOnAccentMuted` | white / white 70% | Text and dimmed text on an accent fill (`accent` / `accentHover` / `accentPressed`) |
+
+### Foreground by surface role
+
+Content drawn on a solid fill takes the foreground token named for that fill.
+Never borrow a foreground from another fill, even when the two share a value
+in the built-ins: a theme pack sets them apart.
+
+| Token | Drawn on |
+|---|---|
+| `textOnAccent` / `textOnAccentMuted` | Accent fill |
+| `textOnSurface` / `textOnSurfaceMuted` | Neutral surface fill (`surfaceSecondary`), e.g. an info toast |
+| `textOnDanger` / `textOnDangerMuted` | Danger fill (`stopBg` / `stopHover`): error toasts, destructive confirms |
+| `textOnWarning` / `textOnWarningMuted` | Warning fill (`statusWarning`): warning toasts |
+| `textOnInfo` | Info fill (`infoText` as a background): selected question pills |
+| `textOnRunning` | Running fill (`statusRunning` as a background) |
+| `sendFg` | Send button fill |
+| `agentPillText` | Agent name pill, filled with the agent's own color |
+
+A primary and a muted foreground in one component always come from the same
+pair.
 
 ### Text
 

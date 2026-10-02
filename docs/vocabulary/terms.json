@@ -1339,6 +1339,34 @@
       ]
     },
     {
+      "id": "dispatch-conversation-read",
+      "term": "Dispatch Conversation Read",
+      "definition": "A bounded, cursor-paged read of the conversation a dispatch wrote, open only to the context that created the dispatch directly or transitively. The engine settles that from its own dispatch lineage, live or retained, and refuses a target it cannot tie to a dispatch the caller owns. A page holds messages with their text, tool calls, and tool results in written order, plus whether the dispatch is still running or how it ended.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "parent-scoped conversation read"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (r *DispatchRegistry) ResolveOwnedConversation",
+          "path": "engine/internal/session/extcontext/dispatch_registry_conversation.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (c *Context) ReadDispatchConversation",
+          "path": "sdk/go/context_dispatch_conversation.go"
+        }
+      ]
+    },
+    {
       "id": "dispatch-history",
       "term": "Dispatch History",
       "definition": "The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, is bounded by count and age in engine config, and is written to the conversation file so it survives a session or engine restart.",
@@ -2544,6 +2572,38 @@
       ]
     },
     {
+      "id": "managed-default",
+      "term": "Managed Default",
+      "definition": "An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function decideManagedDefault",
+          "path": "packages/shared/src/managed-defaults.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function reconcileManagedDefaults",
+          "path": "desktop/src/renderer/managed-defaults.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "enum ManagedDefault",
+          "path": "ios/IonRemote/Utilities/ManagedDefault.swift"
+        }
+      ]
+    },
+    {
       "id": "managed-mode-marker",
       "term": "Managed-Mode Marker",
       "definition": "An administrator-owned file that declares an installation managed, separate from the enterprise policy itself. With it present the engine ignores ION_ENTERPRISE_CONFIG and locks, instead of running unrestricted, when no machine policy resolves.",
@@ -3138,6 +3198,31 @@
           "language": "swift",
           "symbol": "struct ModelPickerSheet",
           "path": "ios/IonRemote/Views/ModelPickerSheet.swift"
+        }
+      ]
+    },
+    {
+      "id": "policy-override-notice",
+      "term": "Policy Override Notice",
+      "definition": "A record that enterprise enforcement replaced or removed one user or project config value: the field path, a stable reason code, and, where neither can hold a secret, the displaced value and the value in effect. The engine stamps the list on the enterprise policy it returns; a client words it.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type PolicyOverride",
+          "path": "engine/internal/types/config_policy_override.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function providerOverrides",
+          "path": "desktop/src/renderer/components/settings/policy-override-notices.ts"
         }
       ]
     },
@@ -3982,6 +4067,34 @@
           "language": "go",
           "symbol": "type SessionPrincipal struct",
           "path": "engine/internal/types/identity.go"
+        }
+      ]
+    },
+    {
+      "id": "settings-policy",
+      "term": "Settings Policy",
+      "definition": "An enterprise block that gives each settings key a mutability class: user-adjustable, managed-default, or sealed. One resolver reads it for every write path. The server's namespace governs the settings a server stores; the desktop's namespace is Device Policy and governs the settings a client keeps.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "setting mutability class"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveSettingMutability(",
+          "path": "packages/shared/src/enterprise-settings-policy.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "'settings.policyState':",
+          "path": "server/src/protocol/settings-actions.ts"
         }
       ]
     },

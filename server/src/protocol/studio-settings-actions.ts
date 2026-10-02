@@ -27,6 +27,10 @@ import { projectStudioSettings, validateStudioSetting } from '../persistence/stu
 import { readSettingsForSubject, writeSettingsForSubject } from '../persistence/user-settings-store'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
+import { currentEnterprisePolicy } from '../enterprise-policy-source'
+import { sealRefusalError, settingMutabilityFor, settingsSealRefusal } from './settings-seal'
+import type { StudioActionError } from '@ion/shared/studio-wire/types'
+import { STUDIO_SETTING_KEYS } from '../persistence/studio-settings-keys'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('studio-settings-actions', msg, fields)
@@ -37,7 +41,28 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 
 export interface StudioSettingsActionSpec {
   requiredScope: Scope
-  handler: (conn: Connection, args: unknown[]) => Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>
+  handler: (conn: Connection, args: unknown[]) => Promise<{ ok: true; value: unknown } | { ok: false; error: StudioActionError }>
+}
+
+/**
+ * `settings` as `conn` must read it: each Studio key the enterprise policy
+ * seals to a value carries that value. A policy value of the wrong shape is
+ * not served; the stored value stands and the write stays refused.
+ */
+function withSealedStudioSettings(conn: Connection, settings: Record<string, unknown>): Record<string, unknown> {
+  const policy = currentEnterprisePolicy()
+  if (!policy) return settings
+  const out = { ...settings }
+  for (const key of STUDIO_SETTING_KEYS) {
+    const mutability = settingMutabilityFor(conn, policy, key)
+    if (mutability.class !== 'sealed' || !mutability.hasValue) continue
+    if (!validateStudioSetting(key, mutability.value)) {
+      warn('sealed studio setting has an invalid policy value; serving the stored value', { connection_id: conn.id, key })
+      continue
+    }
+    out[key] = mutability.value
+  }
+  return out
 }
 
 export const STUDIO_SETTINGS_ACTIONS: Record<string, StudioSettingsActionSpec> = {
@@ -45,7 +70,7 @@ export const STUDIO_SETTINGS_ACTIONS: Record<string, StudioSettingsActionSpec> =
     requiredScope: 'conversations:read',
     handler: async (conn) => {
       try {
-        return { ok: true, value: projectStudioSettings(readSettingsForSubject(conn.principal?.subject ?? '')) }
+        return { ok: true, value: withSealedStudioSettings(conn, projectStudioSettings(readSettingsForSubject(conn.principal?.subject ?? ''))) }
       } catch (err) {
         warn('studio get-settings failed', { connection_id: conn.id, error: String(err) })
         // Defaults rather than a failure: a client with no readable overlay
@@ -64,6 +89,13 @@ export const STUDIO_SETTINGS_ACTIONS: Record<string, StudioSettingsActionSpec> =
         // would report success for a value that changes nothing.
         warn('studio set-setting refused: environment key', { connection_id: conn.id, key })
         return { ok: false, error: { code: 'wrong_scope', message: `${key} is a server setting; change it through settings.save` } }
+      }
+      if (typeof key === 'string') {
+        const sealRefusal = settingsSealRefusal(conn, currentEnterprisePolicy(), [key])
+        if (sealRefusal?.code === 'settings_sealed') {
+          warn('studio set-setting refused by enterprise policy', { connection_id: conn.id, key, transport: conn.transport })
+          return { ok: false, error: sealRefusalError(sealRefusal) }
+        }
       }
       if (!validateStudioSetting(key, value)) {
         log('studio set-setting rejected', { connection_id: conn.id, key: String(key).slice(0, 64) })

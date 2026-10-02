@@ -79,6 +79,11 @@ class PolicyStore {
     if (phase === 'offline' || phase === 'blocked') this.clear(environmentId)
   }
 
+  /** True while `environmentId` has an announced policy (a null one included); false once it is cleared. */
+  has(environmentId: string): boolean {
+    return this.policies.has(environmentId)
+  }
+
   /** The LOCAL environment's policy only — the sole source for every device-facing derivation. */
   devicePolicy(): EnterprisePolicy | null {
     return this.policies.get(LOCAL_ENVIRONMENT_ID) ?? null

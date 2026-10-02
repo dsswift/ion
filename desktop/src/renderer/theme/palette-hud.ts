@@ -128,6 +128,7 @@ export const hudColors: ColorPalette = {
   sendBg: "#33C3F7",
   sendHover: "#22b3e7",
   sendDisabled: "rgba(51, 195, 247, 0.3)",
+  sendPressed: "#189fd3",
 
   // Modal backdrop scrim — pins the pre-token value
   scrim: "rgba(0, 0, 0, 0.4)",
@@ -165,9 +166,29 @@ export const hudColors: ColorPalette = {
   // Disabled button color
   btnDisabled: "#42423d",
 
-  // Text on accent backgrounds
+  // Text on accent fills (accent / accentHover / accentPressed)
   textOnAccent: "#ffffff",
   textOnAccentMuted: "rgba(255, 255, 255, 0.7)",
+
+  // Foreground by surface role. Each token names the fill it is drawn on, so
+  // a theme sets every pairing independently.
+  // Neutral surface (surfaceSecondary and its neighbours).
+  textOnSurface: "#ffffff",
+  textOnSurfaceMuted: "rgba(255, 255, 255, 0.7)",
+  // Danger fill (stopBg / stopHover).
+  textOnDanger: "#ffffff",
+  textOnDangerMuted: "rgba(255, 255, 255, 0.7)",
+  // Warning fill (statusWarning).
+  textOnWarning: "#ffffff",
+  textOnWarningMuted: "rgba(255, 255, 255, 0.7)",
+  // Info fill (infoText used as a solid background).
+  textOnInfo: "rgba(4, 12, 26, 0.96)",
+  // Running fill (statusRunning used as a solid background).
+  textOnRunning: "rgba(190, 235, 255, 0.92)",
+  // Send button glyph (sendBg / sendHover).
+  sendFg: "#ffffff",
+  // Agent name pill, whose fill is the agent's own color.
+  agentPillText: "#ffffff",
 
   // Button hover (CSS-only stack buttons)
   btnHoverColor: "#c0bdb2",

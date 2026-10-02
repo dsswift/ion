@@ -125,7 +125,7 @@ function OptionControl({
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
                 style={{
                   background: selected ? colors.infoText : colors.infoBg,
-                  color: selected ? colors.containerBg : colors.infoText,
+                  color: selected ? colors.textOnInfo : colors.infoText,
                   border: `1px solid ${colors.infoBorder}`,
                 }}
               >

@@ -373,7 +373,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
-| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `AnswerDispatchQuestion`, `AckDispatchLost` |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
@@ -424,6 +424,32 @@ _, err := ctx.DispatchAgent(c, ion.DispatchAgentOpts{
 `ListDispatchState` entries expose `WaitingOn` for suspended dispatches. `TaskIDs` names notifying background Bash commands; `ChildDispatchIDs` names dispatched children. Both are exact current sets. `WaitingOn == nil` means no tracked asynchronous work is holding that dispatch parked.
 
 `ListDispatchState` lists only live dispatches. `ListDispatchHistory` returns the ones that have ended, oldest completion first, with `Status` (`done`, `error`, `cancelled`, or `lost` for one running when the engine died), `Reason`, `ExitCode` (nil when unknown), `CompletedAt`, `DurationMs`, and the lineage fields `DispatchID`, `Name`, `ParentDispatchID`, and `Depth`. It survives a session or engine restart. Ownership matches the live list.
+
+`ReadDispatchConversation` returns one page of the conversation a dispatch wrote. Name the target with `ConversationID`, `DispatchID`, or both. It works while the dispatch runs, after it ends, and after a restart. Ownership matches the live list, and the engine decides it from its own dispatch lineage. A refusal is a result, not an error. Check `Outcome`: `ok`, `unauthorized`, `unavailable` (with `UnavailableReason` `not_created` or `not_found`), `invalid_cursor`, or `unsupported` when the engine predates the method.
+
+Each entry is one message with a stable `ID`, a `Role`, and its `Blocks` in written order. A block's `Type` is `text`, `thinking`, `tool_call` (`ToolCallID`, `ToolName`, `Input`), or `tool_result` (`ToolCallID`, `ToolName`, `Content`, `IsError`). `Status` and `Terminal` say whether the dispatch is still running. `Reason` and `ExitCode` carry how it ended.
+
+```go
+opts := ion.ReadDispatchConversationOpts{ConversationID: conversationID, Limit: 20}
+for {
+	page, err := ctx.ReadDispatchConversation(c, opts)
+	if err != nil {
+		return err
+	}
+	if page.Outcome != ion.DispatchConversationOK {
+		break
+	}
+	for _, entry := range page.Entries {
+		inspect(entry)
+	}
+	opts.Cursor = page.NextCursor
+	if !page.HasMore {
+		break
+	}
+}
+```
+
+On a live dispatch, keep the cursor after `HasMore` turns false and read again later to get only new entries. `Limit` and `MaxBytes` ask for a page size. The engine lowers either to its maximum and reports what it used in `Limits`. A block cut to fit is marked `Truncated`. The bounds live in the `dispatchConversationRead` block in [`engine.json`](../configuration/engine-json.md#dispatchconversationread).
 
 Steer and recall act only on dispatches the caller owns: the root context owns every dispatch in its session, a dispatched agent only its descendants. `SteerDispatch` returns outcome `unauthorized` otherwise, and `completed` with `Terminal` set when the target already finished. `RecallDispatch` returns an `*RPCError` for an unauthorized target, as before; `RecallDispatchWithOutcome` returns `recalled`, `completed`, `unauthorized`, or `not_found` as a result. The engine bounds retention with the `dispatchHistory` block in `engine.json`.
 

@@ -31,8 +31,7 @@ struct RemoteNewConversationPolicy: Codable, Equatable, Sendable {
 /// `customFields['ion-desktop'].themePolicy`). `themeId` resolves against
 /// built-ins + synced theme packs; `locked=true` forces the theme and
 /// disables the iOS theme picker, `locked=false` is a managed default the
-/// user may override (iOS applies it only when the user has never picked
-/// a theme). Nil = unmanaged.
+/// user may override. Nil = unmanaged.
 struct RemoteThemePolicy: Codable, Equatable, Sendable {
     let themeId: String
     let locked: Bool

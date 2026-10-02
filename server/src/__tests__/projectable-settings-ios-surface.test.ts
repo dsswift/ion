@@ -21,7 +21,6 @@ vi.mock('../thin-view/remote-out', () => ({
 
 vi.mock('../theme-policy', () => ({
   getEnterpriseThemePolicy: () => null,
-  isThemeLocked: () => false,
 }))
 
 import {

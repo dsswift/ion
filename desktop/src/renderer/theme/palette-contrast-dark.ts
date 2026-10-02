@@ -35,6 +35,10 @@ export const contrastDarkColors: ColorPalette = {
   textSecondary: '#d7d7de',
   textTertiary: '#bdbdc7',
 
+  // Role foregrounds that track this palette's own base and text values.
+  textOnInfo: '#000000',
+  textOnRunning: '#ffffff',
+
   // Accent (accentSubtle→accentLight, accentGlow→accentSoft). Alpha 0.12/0.18
   // resolve to the same 0x1F/0x2E bytes the iOS opacity-derived values produce.
   accent: '#80a7ff',

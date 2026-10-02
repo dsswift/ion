@@ -10,9 +10,8 @@
  *   2. Broadcasting a fresh `desktop_settings_snapshot` to every paired
  *      device when any projectable key changed.
  *
- * One funnel means one gate on what reaches disk (the theme lock, the
- * engine-backed keys) and one log prefix (`[SETTINGS] persistAndBroadcast`)
- * to grep for. A write to a person's overlay does not come through here;
+ * One funnel means one gate on what reaches disk (the engine-backed keys)
+ * and one log prefix (`[SETTINGS] persistAndBroadcast`) to grep for. A write to a person's overlay does not come through here;
  * its writer calls `broadcastDesktopSettingsSnapshot` itself.
  *
  * Snapshot semantics are inherited from the underlying wire event —
@@ -29,7 +28,7 @@ import { handleSettingsChangeForClientTools } from './studio-client-tool-sync'
 import { writeSettings } from './persistence/settings-store'
 import { writePlanBashAllowlist } from './plan-bash-allowlist-store'
 import { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
-import { getEnterpriseThemePolicy, isThemeLocked } from './theme-policy'
+import { getEnterpriseThemePolicy } from './theme-policy'
 import {
   isProjectableKey,
   projectCurrentSettings,
@@ -150,24 +149,6 @@ export function persistAndBroadcastSettings(
   // The key stays visible to the projection layer (projectCurrentSettings
   // reads it back from engine.json), so the projectable-change diff below and
   // the desktop_settings_snapshot still reflect it for paired devices.
-  // Enterprise theme lock: strip locked `selectedTheme` writes at the
-  // single write funnel so every writer is covered. The pre-write value is restored
-  // so the user's saved pick survives on disk for when the policy lifts.
-  if (Object.prototype.hasOwnProperty.call(next, 'selectedTheme') && isThemeLocked()) {
-    const enforced = getEnterpriseThemePolicy()
-    if (next.selectedTheme !== prev?.selectedTheme) {
-      log('settings_broadcast: selectedTheme write rejected by enterprise lock', {
-        attempted: String(next.selectedTheme),
-        enforced: String(enforced?.themeId),
-      })
-    }
-    if (prev && Object.prototype.hasOwnProperty.call(prev, 'selectedTheme')) {
-      next.selectedTheme = prev.selectedTheme
-    } else {
-      delete next.selectedTheme
-    }
-  }
-
   let engineBackedChanged = false
   for (const key of Object.keys(next)) {
     if (!ENGINE_CONFIG_BACKED_KEYS.has(key)) continue

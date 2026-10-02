@@ -35,6 +35,7 @@ vi.mock('../../components/BranchPickerDialog', () => ({ BranchPickerDialog: () =
 vi.mock('../../components/NewConversationPicker', () => ({ NewConversationPicker: () => null }))
 
 import { InboxNavigatorGroups } from './InboxNavigatorGroups'
+import { buildInboxNavigator, inboxProjectRowKey } from './inbox-navigator'
 
 function tab(id: string, status: TabState['status'] = 'idle'): TabState {
   return { id, title: id, customTitle: null, status, workingDirectory: '/repo', pinnedAt: null } as TabState
@@ -63,6 +64,32 @@ afterEach(() => {
   state.conversationPanes = new Map()
   state.worktreeInventory = new Map()
   state.benchWorkspaces = new Map()
+})
+
+describe('InboxNavigatorGroups collapsing a project that holds one path on two environments', () => {
+  it('leaves no worktree header behind', async () => {
+    const repo = '/repo'
+    const entries = ['/wt/a', '/wt/b'].map((worktreePath) => ({ worktreePath, branchName: worktreePath, label: worktreePath, head: '', lastCommitSubject: '', isDirty: false, unlandedCommitCount: 0, needsSync: false, safeToDiscard: false }) as WorktreeInventoryEntry)
+    const tabs = entries.flatMap((entry) => [undefined, 'env-remote'].map((environmentId) => ({ ...tab(`${environmentId ?? 'local'}-${entry.worktreePath}`), workingDirectory: entry.worktreePath, environmentId, worktree: { worktreePath: entry.worktreePath, repoPath: repo, branchName: entry.branchName, sourceBranch: 'main' } }) as TabState))
+    // A project after the collapsed one keeps rows below it, which is what
+    // makes React match the remaining rows by key.
+    tabs.push({ ...tab('later'), workingDirectory: '/zebra' })
+    state.tabs = tabs
+    state.worktreeInventory = new Map([[repo, entries]])
+    const projects = buildInboxNavigator(tabs, new Map(), state.worktreeInventory, new Map(), new Set(), { scopeOf: (key) => (key === repo ? 'remote:example.org/repo' : key) })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const render = (collapsed: Set<string>): Promise<void> => act(async () => {
+      root.render(<InboxNavigatorGroups projects={projects} collapsed={collapsed} onToggle={() => {}} variant="card" selectedBench={{}} onSelectBench={() => {}} row={(item) => <div key={`${item.environmentId ?? 'local'}:${item.id}`} />} />)
+    })
+    const headers = (): number => container.querySelectorAll('[data-testid="worktree-header"]').length
+    await render(new Set())
+    expect(headers()).toBe(4)
+    await render(new Set(projects.map(inboxProjectRowKey)))
+    expect(headers()).toBe(0)
+    await act(async () => { root.unmount() })
+  })
 })
 
 describe('InboxNavigatorGroups collapsed important rows', () => {

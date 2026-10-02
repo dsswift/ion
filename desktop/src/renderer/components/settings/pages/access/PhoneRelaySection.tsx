@@ -98,7 +98,7 @@ function RelayGroup(): React.JSX.Element {
     <>
       <FormGroup title="Relay" anchor="relay" description="Reaches a paired phone when it is not on this server's network.">
         <FormRow
-          label="Relay server"
+          label="Relay server" settingKey="relayUrl"
           description={relayUrl ? <Stack gap={2}><MonoLine>{relayUrl}</MonoLine>{identity && <span>{identity}</span>}</Stack> : 'No relay server configured. LAN only.'}
         >
           {relayUrl
@@ -129,13 +129,13 @@ function LowBandwidthGroup(): React.JSX.Element {
   return (
     <FormGroup title="Low-bandwidth mode" anchor="low-bandwidth">
       <ToggleRow
-        label="Stream reasoning to phone"
+        label="Stream reasoning to phone" settingKey="streamThinkingToRemote"
         description="Forward the model's live reasoning text to paired devices. Turn off to save bandwidth: the phone still shows that the model thought, and for how long, just not the per-token stream."
         checked={streamThinkingToRemote}
         onChange={setStreamThinkingToRemote}
       />
       <ToggleRow
-        label="Conversation titles in notifications"
+        label="Conversation titles in notifications" settingKey="pushConversationTitles"
         description="Name the conversation in each push notification. Push text passes through the relay and Apple in plain text; the title is all it ever carries. Off sends generic text."
         checked={pushConversationTitles}
         onChange={setPushConversationTitles}

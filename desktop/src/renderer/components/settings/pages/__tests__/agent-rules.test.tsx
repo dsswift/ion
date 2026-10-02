@@ -27,13 +27,12 @@ vi.mock('../../settings-target', () => ({
   useSettingsPreferences: (sel: (s: typeof prefs.state) => unknown) => sel(prefs.state),
   useSettingsTargetEnvironmentId: () => 'local',
 }))
-const policy = vi.hoisted(() => ({ value: null as unknown }))
-vi.mock('../../use-environment-enterprise-policy', () => ({ useEnvironmentEnterprisePolicy: () => policy.value }))
 vi.mock('../../settings-servers', () => ({ useSettingsEnvironment: () => ({ id: 'devbox', label: 'Devbox', isLocal: false, justAdded: false }) }))
 vi.mock('../../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000' }) }))
 vi.mock('../../../PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../../../../rendererLogger', () => ({ rInfo: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn(), rError: vi.fn() }))
 
+const { holdDevicePolicy } = await import('../../../../settings-policy')
 const { AgentAccessSection, AgentToolsSection } = await import('../agent/AgentToggleSections')
 const { PlanBashSection, planBashSummary } = await import('../agent/PlanBashSection')
 const { AIWorkflowsSection } = await import('../agent/AIWorkflowsSection')
@@ -55,7 +54,7 @@ describe('Agent rules', () => {
     vi.clearAllMocks()
     prefs.state.allowSettingsEdits = false
     prefs.state.aiAssistPromptOverrides = {}
-    policy.value = null
+    holdDevicePolicy(null)
     stub.getPlanBashAllowlist.mockResolvedValue([])
     ;(window as unknown as { ion: unknown }).ion = installFakeWire(stub)
     h = createHarness()
@@ -72,13 +71,22 @@ describe('Agent rules', () => {
     })
 
     it('shows the organization seal and will not change', async () => {
-      policy.value = { customFields: { 'ion-server': { agentSettingsEdits: { allowed: true } } } }
+      holdDevicePolicy({ customFields: { 'ion-server': { agentSettingsEdits: { allowed: true } } } })
       await h.render(<AgentAccessSection />)
       const toggle = h.control('Allow settings edits by the agent')
       expect(toggle.getAttribute('aria-checked')).toBe('true')
       expect(h.container.textContent).toContain('Set by your organization.')
       await h.click('Allow settings edits by the agent')
       expect(prefs.state.setAllowSettingsEdits).not.toHaveBeenCalled()
+    })
+
+    it('locks any row whose setting the settings policy seals', async () => {
+      holdDevicePolicy({ customFields: { 'ion-server': { settingsPolicy: { keys: { studioPlaywrightEnabled: { class: 'sealed', value: false } } } } } })
+      await h.render(<AgentToolsSection />)
+      expect(h.control('Built-in Playwright browser tools').getAttribute('aria-checked')).toBe('false')
+      expect(h.container.textContent).toContain('Set by your organization.')
+      await h.click('Built-in Playwright browser tools')
+      expect(prefs.state.setStudioPlaywrightEnabled).not.toHaveBeenCalled()
     })
 
     it('saves the browser tools toggle', async () => {

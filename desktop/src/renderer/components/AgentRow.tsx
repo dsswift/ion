@@ -121,7 +121,7 @@ export function AgentRow({
               padding: "2px 8px",
               fontSize: 11,
               fontWeight: 700,
-              color: colors.textOnAccent,
+              color: colors.agentPillText,
               whiteSpace: "nowrap",
               flexShrink: 0,
             }}

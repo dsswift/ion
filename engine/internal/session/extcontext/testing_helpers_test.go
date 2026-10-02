@@ -26,6 +26,8 @@ func (noopPluginMethods) WirePrincipalRunConfig(_ *backend.RunConfig)    {}
 func (noopPluginMethods) PersistDispatchRegistered(_, _, _, _, _, _ string, _ int) {
 }
 func (noopPluginMethods) PersistDispatchTerminal(_ string) {}
+func (noopPluginMethods) PersistDispatchConversationID(_, _ string) {
+}
 
 // noopSA is a minimal SessionAccessor used in tests that only care about
 // RunOptions fields unrelated to plugins. It satisfies the interface by

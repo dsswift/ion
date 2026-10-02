@@ -1025,6 +1025,32 @@ A more specific config layer replaces the whole block. Each ended dispatch is al
 }
 ```
 
+## dispatchConversationRead
+
+Bounds one page of a dispatch conversation read. An extension reads the conversation of a dispatch it owns with `ext/read_dispatch_conversation` (`ctx.readDispatchConversation()` in TypeScript, `ctx.ReadDispatchConversation` in Go). This block sets how much one call may return, so a large child transcript cannot fill the parent's context in one read.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `defaultEntries` | int | `50` | Entries returned when the caller names no `limit`. |
+| `maxEntries` | int | `200` | Most entries a caller may ask for. A larger `limit` is lowered to this. |
+| `defaultBytes` | int | `32768` | Byte budget of a page when the caller names no `maxBytes`. |
+| `maxBytes` | int | `262144` | Largest byte budget a caller may ask for. A larger `maxBytes` is lowered to this. |
+
+`0` or a negative value uses the default for that field. A default above its maximum is lowered to the maximum. A more specific config layer replaces the whole block.
+
+A single entry larger than the byte budget is returned alone with its text, tool output, and tool input cut to fit. Each cut block is marked `truncated` and carries its original size.
+
+```json
+{
+  "dispatchConversationRead": {
+    "defaultEntries": 20,
+    "maxEntries": 100,
+    "defaultBytes": 16384,
+    "maxBytes": 131072
+  }
+}
+```
+
 ## protectedOperations
 
 Named outbound HTTP operations whose credential the engine injects at call time. An extension calls one by name with a payload (`ctx.protectedOperation` in TypeScript, `Context.ProtectedOperation` in Go). It never supplies the URL, the method, the injection slot, or the secret reference, so it never holds the secret and cannot send it anywhere else.

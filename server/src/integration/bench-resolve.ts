@@ -54,7 +54,15 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
 export async function prepareConflictResolution(
   repoPath: string,
   sourceBranch: string,
-): Promise<{ ok: boolean; benchPath?: string; branchName?: string; error?: string }> {
+): Promise<{
+  ok: boolean
+  benchPath?: string
+  /** A merge is open in the bench for the operator to resolve or abort. */
+  mergeOpen?: boolean
+  /** The member that merge belongs to; absent when no member holds its pin. */
+  branchName?: string
+  error?: string
+}> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
 
@@ -71,7 +79,7 @@ export async function prepareConflictResolution(
         source_branch: sourceBranch,
         branch: branchName ?? '',
       })
-      return { ok: true, benchPath: ws.benchPath, branchName }
+      return { ok: true, benchPath: ws.benchPath, mergeOpen: true, branchName }
     }
     try {
       await resetBenchToTree(ws.benchPath, ws.benchBranch, ws.sourceBranch)
@@ -200,14 +208,14 @@ export async function prepareConflictResolution(
           bench_path: ws.benchPath,
           unmerged_paths: unmerged.split('\n').length,
         })
-        return { ok: true, benchPath: ws.benchPath, branchName: member.branchName }
+        return { ok: true, benchPath: ws.benchPath, mergeOpen: true, branchName: member.branchName }
       }
     }
 
     // Nothing conflicted — the recordings (or a pin change) already cover it.
     // Tell the caller so it can simply reassemble.
     log('resolve-once: no conflict remains, bench merges cleanly', { bench_path: ws.benchPath })
-    return { ok: true, benchPath: ws.benchPath }
+    return { ok: true, benchPath: ws.benchPath, mergeOpen: false }
   })
 }
 

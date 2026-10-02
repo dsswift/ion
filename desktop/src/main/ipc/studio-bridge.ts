@@ -32,8 +32,9 @@ import { portForwards } from '../connections/port-forward-instance'
 import { hostname } from 'os'
 import { exportToFile, importFromFile, onTransferProgress, cancelTransfer } from '../connections/transfer'
 import { state } from '../state'
-import { readDeviceSettings, updateDeviceSetting } from '../device-settings'
+import { readDeviceSettings, requestDeviceSettingWrite } from '../device-settings'
 import { writeEnvCache, readEnvCache } from '../env-cache'
+import { noteDevicePolicyFrame } from '../device-policy'
 import { debug as _debug, log as _log, warn as _warn } from '../logger'
 import { sanitizeDialogFilters } from '@ion/server/ipc-validation'
 import { relayServerStartupReport } from '../startup-coordinator'
@@ -97,6 +98,7 @@ export function registerStudioBridgeIpc(): void {
 
   broker.onFrame((environmentId, frame) => {
     if (frame.type === 'studio_welcome') writeEnvCache(environmentId, frame)
+    noteDevicePolicyFrame(environmentId, frame)
     // The LOCAL server's restore progress feeds the splash; every other
     // frame is pass-through (see the module comment).
     relayServerStartupReport(environmentId, frame)
@@ -166,8 +168,9 @@ export function registerStudioBridgeIpc(): void {
   })
 
   ipcMain.handle(IPC.STUDIO_DEVICE_SETTINGS_SET, (_event, key: string, value: unknown) => {
-    log('studio:device-settings-set: write', { key })
-    updateDeviceSetting(key, value)
+    const result = requestDeviceSettingWrite(key, value)
+    log('studio:device-settings-set: write', { key, ok: result.ok })
+    return result
   })
 
   ipcMain.handle(IPC.HOST_CONNECT_ENVIRONMENT, async (_event, environmentId: string, label: string, target: EnvironmentTarget) => {

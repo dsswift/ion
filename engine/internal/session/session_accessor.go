@@ -367,6 +367,14 @@ func (a *sessionAccessor) PersistDispatchTerminal(agentID string) {
 	a.m.persistTerminalDispatch(a.key, a.s.conversationID, agentID)
 }
 
+// PersistDispatchConversationID records a running dispatch's child
+// conversation ID on its persisted record. Delegates to
+// Manager.persistDispatchConversationID (dispatch_rehydrate.go). Best-effort
+// by contract; see the interface doc.
+func (a *sessionAccessor) PersistDispatchConversationID(agentID, conversationID string) {
+	a.m.persistDispatchConversationID(a.s.conversationID, agentID, conversationID)
+}
+
 // DispatchRegistry returns the session's dispatch registry so context builders
 // that do not already hold one in scope (extension-tool dispatch, the LLM-call
 // hook context) can pass it to NewExtContext instead of silently omitting it.

@@ -72,10 +72,14 @@ type NewConversationDefaultsPolicy struct {
 type EnterpriseConfig struct {
 	// ManagedMode is stamped by the loader when the managed-mode marker is
 	// present, and nil otherwise. A policy source cannot set it.
-	ManagedMode      *ManagedModeStatus `json:"managedMode,omitempty"`
-	AllowedModels    []string           `json:"allowedModels,omitempty"`
-	BlockedModels    []string           `json:"blockedModels,omitempty"`
-	AllowedProviders []string           `json:"allowedProviders,omitempty"`
+	ManagedMode *ManagedModeStatus `json:"managedMode,omitempty"`
+	// Overrides lists the lower-layer config values enforcement displaced,
+	// sorted by field. It is stamped by EnforceEnterprise and a policy source
+	// cannot set it. Empty when enforcement changed no lower-layer value.
+	Overrides        []PolicyOverride `json:"overrides,omitempty"`
+	AllowedModels    []string         `json:"allowedModels,omitempty"`
+	BlockedModels    []string         `json:"blockedModels,omitempty"`
+	AllowedProviders []string         `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from
@@ -515,6 +519,11 @@ type EngineRuntimeConfig struct {
 	// DispatchHistory bounds the terminal dispatch history each session
 	// retains. Nil means the compiled defaults. See DispatchHistoryConfig.
 	DispatchHistory *DispatchHistoryConfig `json:"dispatchHistory,omitempty"`
+
+	// DispatchConversationRead bounds one page of a lineage-scoped dispatch
+	// conversation read. Nil means the compiled defaults. See
+	// DispatchConversationReadConfig.
+	DispatchConversationRead *DispatchConversationReadConfig `json:"dispatchConversationRead,omitempty"`
 
 	// ThinkingPolicy holds the engine-wide operator policy for extended
 	// thinking. It is distinct from Thinking, which configures default per-run

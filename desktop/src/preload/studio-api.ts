@@ -15,6 +15,7 @@ import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
 import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBrowserFindRequest, StudioBrowserFindResult, StudioBrowserPrompt, StudioBrowserPromptAnswer, StudioBrowserShortcutEvent, StudioBrowserViewState, StudioBrowserZoomRequest } from '@ion/shared/studio-browser-types'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
+import type { DeviceSettingWrite } from '@ion/shared/enterprise-settings-policy'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
 
@@ -105,8 +106,8 @@ export interface StudioApi {
   onHostConnections(callback: (snapshot: ConnectionPhaseSnapshot[]) => void): () => void
   /** Reads `desktop.json` (device-local settings; never over the Studio wire). */
   hostGetDeviceSettings(): Promise<Record<string, unknown>>
-  /** Writes one device-local setting. */
-  hostSetDeviceSetting(key: string, value: unknown): Promise<void>
+  /** Writes one device-local setting. Answers the refusal when device policy seals the key. */
+  hostSetDeviceSetting(key: string, value: unknown): Promise<DeviceSettingWrite>
   /** Native "choose a file" dialog. Null when cancelled. */
   hostPickFile(options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }> }): Promise<string[] | null>
   /** Asks main to connect one non-local environment (spec 13): main resolves the transport and stored credential. */

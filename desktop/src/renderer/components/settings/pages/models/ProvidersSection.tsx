@@ -11,7 +11,8 @@ import { useModelStore, environmentModels } from '@ion/server/store/model-store'
 import { useSettingsEnvironment } from '../../settings-servers'
 import { useEnvironmentEnterprisePolicy } from '../../use-environment-enterprise-policy'
 import { authSourceTooltip, providerAuthBadge } from '../../provider-auth-labels'
-import { CellText, Chip, DataList, EmptyState, StatusDot } from '../../kit'
+import { providerOverrides, removedProviders } from '../../policy-override-notices'
+import { CellText, Chip, DataList, EmptyState, Notice, StatusDot } from '../../kit'
 import { rWarn } from '../../../../rendererLogger'
 import { ProviderPanel } from './ProviderPanel'
 
@@ -21,7 +22,9 @@ export function ProvidersSection(): React.JSX.Element {
   const providers = useModelStore((s) => environmentModels(s, env.id).providers)
   const loading = useModelStore((s) => environmentModels(s, env.id).loading)
   // That server's own provider allowlist narrows the list, not this device's.
-  const allowedProviders = useEnvironmentEnterprisePolicy(env.id)?.allowedProviders
+  const policy = useEnvironmentEnterprisePolicy(env.id)
+  const allowedProviders = policy?.allowedProviders
+  const removed = removedProviders(policy)
   const [openId, setOpenId] = useState<string | null>(null)
 
   const visible = useMemo(() => {
@@ -41,6 +44,11 @@ export function ProvidersSection(): React.JSX.Element {
 
   return (
     <>
+      {removed.length > 0 && (
+        <Notice tone="warn">
+          Your organization does not allow {removed.length === 1 ? 'this provider' : 'these providers'}, so {removed.length === 1 ? 'its' : 'their'} configuration on {env.label} is not in effect: {removed.join(', ')}.
+        </Notice>
+      )}
       <DataList<ProviderEntry>
         label="Providers"
         title="Providers"
@@ -56,6 +64,7 @@ export function ProvidersSection(): React.JSX.Element {
         columns={[
           { id: 'name', header: 'Provider', render: (p) => <CellText>{getProviderDisplayName(p.id, providers)}</CellText> },
           { id: 'gateway', width: 'auto', render: (p) => (p.baseURL ? <Chip tone="warn">custom gateway</Chip> : null) },
+          { id: 'managed', width: 'auto', render: (p) => (providerOverrides(policy, p.id).length > 0 ? <Chip tone="accent">managed</Chip> : null) },
           {
             id: 'auth', header: 'Sign-in', width: '220px',
             render: (p) => <><StatusDot tone={p.hasAuth ? 'ok' : 'muted'} label={p.hasAuth ? authSourceTooltip(p.authSource) : undefined} /><CellText muted={!p.hasAuth}>{providerAuthBadge(p)}</CellText></>,

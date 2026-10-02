@@ -124,4 +124,45 @@ describe('custom theme registry', () => {
       document.documentElement.style.getPropertyValue('--ion-theme-background-image'),
     ).toBe('')
   })
+
+  // Role-specific tokens (TOKEN_FALLBACKS). A pack written before a token
+  // existed keeps rendering one color across the pairings it used to share.
+  it('an omitted role token takes the pack value of its fallback source', () => {
+    const def = resolveCustomThemeDefinition(
+      acmePayload({ tokens: { textOnAccent: '#161f38', textOnAccentMuted: '#161f38b3', accentPressed: '#004433' } }),
+    )
+    expect(def.colors.textOnSurface).toBe('#161f38')
+    expect(def.colors.textOnSurfaceMuted).toBe('#161f38b3')
+    expect(def.colors.textOnDanger).toBe('#161f38')
+    expect(def.colors.textOnWarningMuted).toBe('#161f38b3')
+    expect(def.colors.sendFg).toBe('#161f38')
+    expect(def.colors.agentPillText).toBe('#161f38')
+    expect(def.colors.sendPressed).toBe('#004433')
+  })
+
+  it('a pack sets accent-fill and neutral-surface foregrounds independently', () => {
+    const def = resolveCustomThemeDefinition(
+      acmePayload({
+        tokens: {
+          textOnAccent: '#161f38',
+          textOnSurface: '#ffffff',
+          textOnSurfaceMuted: '#ffffffb3',
+        },
+      }),
+    )
+    expect(def.colors.textOnAccent).toBe('#161f38')
+    expect(def.colors.textOnSurface).toBe('#ffffff')
+    expect(def.colors.textOnSurfaceMuted).toBe('#ffffffb3')
+    // Roles the pack left alone still follow the accent foreground.
+    expect(def.colors.textOnDanger).toBe('#161f38')
+    // The muted accent foreground was not set, so it stays the base value.
+    expect(def.colors.textOnAccentMuted).toBe(darkColors.textOnAccentMuted)
+  })
+
+  it('a role token with no pack value for itself or its source inherits the base', () => {
+    const def = resolveCustomThemeDefinition(acmePayload())
+    expect(def.colors.textOnSurface).toBe(darkColors.textOnSurface)
+    // containerBg is set by the pack and is the fallback source of textOnInfo.
+    expect(def.colors.textOnInfo).toBe('#101013')
+  })
 })

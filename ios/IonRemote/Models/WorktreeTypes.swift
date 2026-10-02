@@ -285,6 +285,11 @@ struct RemoteMembership: Codable, Hashable {
     }
 }
 
+/// The bench's open conflict-resolution merge.
+struct RemoteBenchResolutionOpen: Codable, Hashable {
+    var unmergedPaths: Int
+}
+
 /// One integration workspace (bench).
 struct RemoteBench: Codable, Identifiable, Hashable {
     var repoPath: String
@@ -311,6 +316,10 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     /// tree. Nil on a record written before this split, or on an older
     /// desktop -- read as unclassified, never defaulted to `"conflict"`.
     var lastAssemblyFailure: String?
+    /// A conflict-resolution merge is open in the bench. Nothing assembles
+    /// until the desktop continues or aborts it. Nil when none is open, and nil
+    /// from an older desktop.
+    var resolutionOpen: RemoteBenchResolutionOpen?
     /// Evidence for a `"verification"` failure. Nil otherwise, and nil from an
     /// older desktop. The recovery verbs (dismiss, discard-and-reassemble,
     /// analyse) are desktop-only -- this is read-only detail for the footer.
@@ -369,6 +378,7 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         lastAssembly = try c.decodeIfPresent(String.self, forKey: .lastAssembly)
         lastAssemblyError = try c.decodeIfPresent(String.self, forKey: .lastAssemblyError)
         lastAssemblyFailure = try c.decodeIfPresent(String.self, forKey: .lastAssemblyFailure)
+        resolutionOpen = try c.decodeIfPresent(RemoteBenchResolutionOpen.self, forKey: .resolutionOpen)
         lastAssemblyVerification = try c.decodeIfPresent(RemoteBenchVerification.self, forKey: .lastAssemblyVerification)
         baseDrifted = try c.decode(Bool.self, forKey: .baseDrifted)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []

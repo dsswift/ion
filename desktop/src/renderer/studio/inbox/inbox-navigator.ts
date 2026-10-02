@@ -3,7 +3,7 @@ import type { IntegrationMember, IntegrationWorkspace, WorktreeInfo, WorktreeInv
 import { buildWorktreeList } from '@ion/shared/worktree-list'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { inboxProjectFor, type InboxProject } from './inbox-grouping'
-import { checkoutSlot, pathScope, type ProjectScopeResolver } from './project-identity'
+import { checkoutSlot, environmentScopedKey, pathScope, type ProjectScopeResolver } from './project-identity'
 import { pathBasename } from '@ion/shared/paths'
 
 export type InboxNavigatorGroupKind = 'bench' | 'source' | 'worktree'
@@ -16,6 +16,8 @@ export interface InboxNavigatorGroup {
   worktree?: WorktreeInventoryEntry
   membership?: IntegrationMember
   workspace?: IntegrationWorkspace
+  /** The Environment this group's checkout is on, when it is not the header's own. */
+  environmentId?: string
 }
 
 export interface InboxNavigatorProject {
@@ -53,6 +55,24 @@ export interface InboxNavigatorOptions {
    * does not, so it is checked here. Defaults to every machine.
    */
   environmentIncluded?: (environmentId: string) => boolean
+}
+
+/**
+ * The identity of a project header among the navigator's rows: its React key
+ * and its collapse key. `project.key` alone is a path, and two environments
+ * can each have a project at the same path.
+ */
+export function inboxProjectRowKey(node: Pick<InboxNavigatorProject, 'project' | 'environmentId'>): string {
+  return `project:${environmentScopedKey(node.environmentId, node.project.key)}`
+}
+
+/**
+ * The identity of a group header among the navigator's rows: its React key
+ * and its collapse key. `group.key` alone is a path, and a header can hold
+ * the same path once per environment.
+ */
+export function inboxGroupRowKey(node: Pick<InboxNavigatorProject, 'environmentId'>, group: Pick<InboxNavigatorGroup, 'key' | 'environmentId'>, variant: 'card' | 'slim'): string {
+  return `group:${variant}:${environmentScopedKey(group.environmentId ?? node.environmentId, group.key)}`
 }
 
 function containsDirectory(root: string, directory: string): boolean {
@@ -169,8 +189,13 @@ export function buildInboxNavigator(
   }
 
   const perCheckout = [...projects.values()].map(({ project, tabs: projectTabs, environmentId, scopeKey }) => {
-    const entries = uniqueInventory(inventory.get(project.key) ?? [])
-    const workspaces = benches.get(project.key) ?? []
+    // The read model is keyed by path with no machine, and holds one
+    // machine's rows per path. A checkout on any other machine at that path
+    // has no rows there: borrowing them would draw another machine's
+    // worktrees and bench under this checkout.
+    const ownsReadModel = (options.environmentOfRepo?.(project.key) ?? LOCAL_ENVIRONMENT_ID) === environmentId
+    const entries = ownsReadModel ? uniqueInventory(inventory.get(project.key) ?? []) : []
+    const workspaces = ownsReadModel ? benches.get(project.key) ?? [] : []
     const membershipWorkspace = workspaces.find((workspace) => workspace.members.some((member) => entries.some((entry) => entry.worktreePath === member.worktreePath)))
     const activeWorkspace = workspaces.find((workspace) => workspace.sourceBranch === selectedBenchByRepo.get(project.key))
       ?? workspaces.find((workspace) => projectTabs.some((tab) => containsDirectory(workspace.benchPath, tab.workingDirectory)))
@@ -282,7 +307,7 @@ export function buildInboxNavigator(
     const primary = merged.get(node.scopeKey)
     if (!primary) { merged.set(node.scopeKey, node); continue }
     const machine = options.environmentLabel?.(node.environmentId) ?? node.environmentId
-    primary.groups.push(...node.groups.map((group) => ({ ...group, label: `${group.label} · ${machine}` })))
+    primary.groups.push(...node.groups.map((group) => ({ ...group, label: `${group.label} · ${machine}`, environmentId: node.environmentId })))
     primary.flatTabs.push(...node.flatTabs)
     primary.checkouts.push(...node.checkouts)
   }

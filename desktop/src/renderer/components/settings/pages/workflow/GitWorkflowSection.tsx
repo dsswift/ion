@@ -35,20 +35,20 @@ export function GitWorkflowSection(): React.JSX.Element {
   return (
     <Stack gap={20}>
       <FormGroup title="Git operations">
-        <FormRow label="GitOps mode" anchor="gitops-mode" description="Manual: no automatic git operations. Worktrees: each new conversation gets an isolated worktree branch.">
+        <FormRow label="GitOps mode" settingKey="gitOpsMode" anchor="gitops-mode" description="Manual: no automatic git operations. Worktrees: each new conversation gets an isolated worktree branch.">
           <Segmented<GitOpsMode> label="GitOps mode" value={gitOpsMode} onChange={setGitOpsMode} options={[{ value: 'manual', label: 'Manual' }, { value: 'worktree', label: 'Worktrees' }]} />
         </FormRow>
-        <FormRow label="Completion strategy" anchor="completion" description="How worktree work goes back into the source branch, for Land and Finish work. Linear syncs first so the fast-forward is available, and refuses rather than writing a merge commit.">
+        <FormRow label="Completion strategy" settingKey="worktreeCompletionStrategy" anchor="completion" description="How worktree work goes back into the source branch, for Land and Finish work. Linear syncs first so the fast-forward is available, and refuses rather than writing a merge commit.">
           <Segmented<WorktreeCompletionStrategy> label="Completion strategy" value={strategy} onChange={setStrategy} options={[{ value: 'merge-ff', label: 'Linear (sync + ff)' }, { value: 'merge', label: 'Merge commit' }, { value: 'pr', label: 'Pull request' }]} />
         </FormRow>
         {strategy === 'pr' && (
-          <ToggleRow label="Skip PR title prompt" description="Always use the generated branch name as the PR title, without asking." checked={skipPrTitle} onChange={setSkipPrTitle} />
+          <ToggleRow label="Skip PR title prompt" settingKey="worktreeSkipPrTitle" description="Always use the generated branch name as the PR title, without asking." checked={skipPrTitle} onChange={setSkipPrTitle} />
         )}
-        <FormRow label="Commit command" anchor="commit-command" description="A bash command run in the terminal instead of asking the model to commit. Leave empty for the default.">
+        <FormRow label="Commit command" settingKey="commitCommand" anchor="commit-command" description="A bash command run in the terminal instead of asking the model to commit. Leave empty for the default.">
           <TextInput aria-label="Commit command" mono width={220} value={commitCommand} onChange={(e) => setCommitCommand(e.target.value)} placeholder="e.g. commit --smart" spellCheck={false} />
         </FormRow>
         <FormRow
-          label="Ignored directories"
+          label="Ignored directories" settingKey="gitWatcherIgnoredDirectories"
           anchor="watcher-ignore"
           description={`${ignored.length === 0 ? 'None' : `${ignored.length} ${ignored.length === 1 ? 'directory' : 'directories'}`} where the git file watcher stays quiet. The panel still refreshes on focus and conversation switch.`}
         >

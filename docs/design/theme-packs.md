@@ -101,11 +101,48 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
 Validation rules (shared module `desktop/src/shared/theme-pack-types.ts`):
 
 - The desktop token overlay is **partial** — unknown keys are dropped with a logged warning, everything unspecified inherits from `base`.
+- Some desktop tokens are **role tokens**: they name one specific pairing that an older, broader token used to cover. A pack that omits a role token gets the pack's own value for the broader token, and only then the `base` value. See [Foreground tokens by surface role](#foreground-tokens-by-surface-role).
 - The iOS token set is **required-when-partial**. A component that supplies the complete required set (every `IOS_THEME_TOKEN_KEYS` entry except the optional code-syntax tokens) loads with no `base`. A component that omits any required token **must** name a built-in `base`, and iOS inherits every omitted required token from that theme — nothing is ever inferred. Omitting a required token with no `base`, naming a base that is not a built-in id, or supplying invalid hex on any token rejects the iOS component (the desktop component still loads). An omitted-token-with-no-base pack would render unreadable mixes of pack and fallback colors, which is what the rule prevents.
 - A pack whose desktop component loads but whose iOS component is rejected shows its rejection reason (the missing/invalid tokens) at the pack's row in Settings → Appearance, so the author learns their theme will not exist on paired phones.
 - Settings groups typed validation diagnostics into iOS diagnostics and desktop diagnostics. Each record identifies its surface and whether it rejected that component or loaded it with fallback values, so theme authors see every validation outcome without parsing log output.
 - Assets: PNG/JPEG/WebP, ≤ 3 MB each, and must resolve inside the pack directory (traversal and symlink escapes are refused). `background` renders as a full-surface backdrop; `logo` is a brand mark shown in the Settings appearance surface on both platforms.
 - Native effect renderers (Arc Reactor rings etc.) are reserved for built-ins; custom packs style with tokens and images.
+
+## Foreground tokens by surface role
+
+Text and icons drawn on a solid fill resolve a foreground token named for that fill, so a pack can pick a readable color for each pairing on its own.
+
+| Token | Drawn on | Falls back to |
+|-------|----------|---------------|
+| `textOnAccent`, `textOnAccentMuted` | Accent fill: primary buttons, selected segments | (none) |
+| `textOnSurface`, `textOnSurfaceMuted` | Neutral surface fill: info notifications | `textOnAccent`, `textOnAccentMuted` |
+| `textOnDanger`, `textOnDangerMuted` | Danger fill (`stopBg`): error notifications, destructive confirm buttons | `textOnAccent`, `textOnAccentMuted` |
+| `textOnWarning`, `textOnWarningMuted` | Warning fill (`statusWarning`): warning notifications | `textOnAccent`, `textOnAccentMuted` |
+| `textOnInfo` | Info fill (`infoText`): selected question options | `containerBg` |
+| `textOnRunning` | Running fill (`statusRunning`) | `textPrimary` |
+| `sendFg` | Send button glyph | `textOnAccent` |
+| `sendPressed` | Send button pressed fill | `accentPressed` |
+| `agentPillText` | Agent name pill | `textOnAccent` |
+
+The fallback is what keeps an existing pack unchanged. A pack that sets only `textOnAccent` renders that one color on every fill listed above, as it did before the roles were separated. A pack that also sets `textOnSurface` controls the neutral-surface pairing without touching accent-filled controls. Set the muted token whenever you set its primary, so one component never mixes the two families.
+
+A pack with a light accent would set, for example:
+
+```jsonc
+"tokens": {
+  "accent": "#80CBB0",
+  "textOnAccent": "#161F38",        // dark text on the light accent fill
+  "textOnAccentMuted": "#161F38B3",
+  "textOnSurface": "#FFFFFF",        // light text on dark neutral surfaces
+  "textOnSurfaceMuted": "#FFFFFFB3",
+  "textOnDanger": "#FFFFFF",
+  "textOnDangerMuted": "#FFFFFFB3",
+  "textOnWarning": "#161F38",
+  "textOnWarningMuted": "#161F38B3"
+}
+```
+
+These are desktop tokens. The iOS token set has no accent-foreground token to separate.
 
 ## iOS sync
 
@@ -132,7 +169,7 @@ Enterprise theme policy rides the engine's MDM-sealed enterprise config under th
 }
 ```
 
-- `themeId` alone (`locked` absent/false): **managed default** — applied when the user has never picked a theme; the user may change it afterwards.
+- `themeId` alone (`locked` absent/false): **managed default**. The theme is applied once per published value, on the desktop **and** on every paired iOS device, and it replaces whatever theme was selected. The user may change it afterwards, and that choice stays until an administrator publishes a different `themeId`. See [Managed defaults](../enterprise/sealed-config.md#managed-defaults-seed-then-the-person-owns-it).
 - `locked: true`: **enforced** — the theme always renders and the picker is disabled, on the desktop **and** on every paired iOS device (projected via `desktop_settings_snapshot.themePolicy`). The user's own saved selection is preserved and resumes when the policy lifts. Enforcement persists on iOS across offline relaunches.
 
 A typical enterprise deployment pairs the two mechanisms: the MDM installs the branded pack into the machine-scope themes root and sets `themePolicy` in the managed enterprise config. See [docs/enterprise/mdm.md](../enterprise/mdm.md) for the managed-config delivery paths. The engine passes `customFields['ion-desktop']` through opaquely — no engine configuration is involved beyond the sealed config file itself.

@@ -183,7 +183,7 @@ argument is one object. Shapes: `@ion/shared/types-environment-admin`.
 | `engine.abort` `{tabId}` | `conversations:operate` | A bare engine abort with no scope. `interrupt` is the scoped stop. |
 | `session.implementPlan` `{tabId, questionId, instanceId?, clearContext?}` | `conversations:operate` | Approves the plan the named ExitPlanMode question carries and starts implementing it. The server reads the plan from disk. |
 | `terminal.paneSnapshot` `{tabId}` | `terminal:operate` | The whole pane, `{tabId, instances, activeInstanceId, buffers?}`, where `terminal.attach` reads one instance. A conversation whose terminal was never opened gets its default shell. `null` when the tab does not exist. |
-| `settings.setProjectable` `{key, value}` | `conversations:operate` | Writes one projectable setting to the server's settings document through the persist-and-broadcast funnel, not the caller's overlay. Answers `{ok: true}` or `{ok: false, code, message}` with `code` one of `unknown_key`, `invalid_value`, `settings_locked` (the enterprise theme lock), `write_failed`. |
+| `settings.setProjectable` `{key, value}` | `conversations:operate` | Writes one projectable setting where its scope says it lives: an Environment setting to the server's settings document through the persist-and-broadcast funnel, an Account setting to the caller's overlay. Answers `{ok: true}` or `{ok: false, code, message}` with `code` one of `unknown_key`, `invalid_value`, `admin_required`, `wrong_scope`, `write_failed`, `settings_sealed`, `settings_hidden`. |
 | `clientLog.append` `{lines, nextSeq, pairingId, withheldUnstamped?, withheldOtherPairing?}` | `conversations:operate` | A client hands over its diagnostic log as newline-separated JSONL. Lines at or below the persisted cursor are dropped. Answers `{nextSeq}`, the cursor the next batch starts from; empty `lines` reads it. |
 | `auth.forgetSelf` | `conversations:read` | Revokes the pairing the calling connection rides and closes its sessions `revoked`. It can name no other pairing, which is why it needs no `admin`; `auth.revokeClient` is the verb for someone else's device. |
 | `auth.createOwnPairingLink` `{scopes?, label?}` | `conversations:read` | A one-time pairing link, `{url, code, expiresAt}`, for one of the caller's own devices: the device acts as the caller and gets only scopes the caller holds, never `admin`. Refuses `as` and `relay` (`admin_required`) and a caller without `admin` on a `shared` install (`shared_tenancy`). `auth.createPairingLink` (`admin`) pairs a device for anyone. |
@@ -627,6 +627,21 @@ Personal preference or a Device setting is refused with
 `settings.setProjectable`, the thin client's write, routes the same way and
 answers `admin_required` for an Environment key and `wrong_scope` for a key
 the client keeps itself.
+
+A write of a setting the enterprise settings policy seals is refused whole
+with `settings_sealed`, before the scope check, for an admin too. The error
+carries `keys` (the sealed keys in the patch) and `class` (`sealed`).
+`settings.setProjectable` answers the same code, keys, and class as its
+refusal value. `studio.setSetting` refuses a sealed Studio key the same way
+for the local connection, and `studio.getSettings` serves the sealed value.
+See [Settings policy](../enterprise/settings-policy.md).
+
+`settings.policyState` (`conversations:read`) answers the mutability class in
+force for every setting, and a checksum of the policy that produced it:
+`{ schemaVersion, checksum, namespaces, keys, ignoredKeys }`. It carries no
+setting's value. The local connection is told about both policy namespaces. A
+visiting connection is told about the server's own namespace only, because
+device policy is the local desktop's.
 
 `settings.load` needs only `conversations:read`. A connection without
 `admin` gets the document without its credentials: the relay API key and each

@@ -35,17 +35,17 @@ export function DefaultsPage(): React.JSX.Element {
   return (
     <Stack gap={KIT.groupGap}>
       <FormGroup title="New conversations">
-        <FormRow anchor="permission-mode" label="Default permission mode" description="The permission mode new tabs start with.">
+        <FormRow anchor="permission-mode" label="Default permission mode" settingKey="defaultPermissionMode" description="The permission mode new tabs start with.">
           <Segmented<PermissionMode> label="Default permission mode" value={defaultPermissionMode} options={PERMISSION_MODES} onChange={setDefaultPermissionMode} />
         </FormRow>
-        <ToggleRow anchor="ai-titles" label="AI tab titles" description="Generate descriptive tab titles from your first message. Uses the fast model tier." checked={aiGeneratedTitles} onChange={setAiGeneratedTitles} />
-        <ToggleRow anchor="bash-entry" label="Bash command entry" description="Type ! as the first character to run a bash command directly in the conversation." checked={bashCommandEntry} onChange={setBashCommandEntry} />
+        <ToggleRow anchor="ai-titles" label="AI tab titles" settingKey="aiGeneratedTitles" description="Generate descriptive tab titles from your first message. Uses the fast model tier." checked={aiGeneratedTitles} onChange={setAiGeneratedTitles} />
+        <ToggleRow anchor="bash-entry" label="Bash command entry" settingKey="bashCommandEntry" description="Type ! as the first character to run a bash command directly in the conversation." checked={bashCommandEntry} onChange={setBashCommandEntry} />
       </FormGroup>
       <FormGroup title="Engine behavior">
-        <ToggleRow anchor="claude-compat" label="Claude compatibility" description="Load commands and skills from .claude/ directories. Commands in .ion/ directories always load." checked={enableClaudeCompat} onChange={setEnableClaudeCompat} />
+        <ToggleRow anchor="claude-compat" label="Claude compatibility" settingKey="enableClaudeCompat" description="Load commands and skills from .claude/ directories. Commands in .ion/ directories always load." checked={enableClaudeCompat} onChange={setEnableClaudeCompat} />
         <ToggleRow
           anchor="early-stop"
-          label="Early-stop continuation nudge"
+          label="Early-stop continuation nudge" settingKey="enableEarlyStopContinuation"
           description="When the model stops below the engine's configured output-token target, answer the engine's continuation hook with a 'keep working' prompt. Off never nudges."
           checked={enableEarlyStopContinuation}
           onChange={setEnableEarlyStopContinuation}
@@ -63,7 +63,7 @@ export function ThinkingSection(): React.JSX.Element {
       <FormRow
         anchor="thinking"
         stacked
-        label="Default thinking level"
+        label="Default thinking level" settingKey="defaultThinkingEffort"
         description="Where new conversations start on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth. Each conversation can change it from its status bar."
       >
         <Segmented<ThinkingEffort> label="Default thinking level" value={defaultThinkingEffort} options={THINKING_LEVELS.map((level) => ({ value: level, label: thinkingEffortLabel(level) }))} onChange={setDefaultThinkingEffort} />

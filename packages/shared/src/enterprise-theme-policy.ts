@@ -7,12 +7,17 @@
  * MDM-supplied shape identically.
  *
  * Semantics of the two knobs:
- *   - `themeId` alone (locked absent/false): managed DEFAULT — applied when
- *     the user has never picked a theme, user may change it afterwards.
+ *   - `themeId` alone (locked absent/false): managed DEFAULT — seeds the
+ *     user's theme once per published value (`./managed-defaults`); the user
+ *     may change it afterwards.
  *   - `locked: true`: enforced — the theme always applies and pickers are
  *     disabled, on the desktop and on paired iOS devices.
+ *
+ * A `settingsPolicy` entry for `selectedTheme` says the same two things with
+ * the general classes: `managed-default` with a value, and `sealed` with one.
  */
-import type { EnterprisePolicy, IonDesktopPolicyFields } from './types-engine'
+import type { EnterprisePolicy } from './types-engine'
+import { resolveSettingMutability } from './enterprise-settings-policy'
 
 export interface EnterpriseThemePolicy {
   themeId: string
@@ -22,11 +27,13 @@ export interface EnterpriseThemePolicy {
 export function deriveEnterpriseThemePolicy(
   policy: EnterprisePolicy | null | undefined,
 ): EnterpriseThemePolicy | null {
-  const fields = (policy?.customFields?.['ion-desktop'] ?? {}) as IonDesktopPolicyFields
-  const raw = fields.themePolicy
-  if (!raw || typeof raw !== 'object') return null
-  if (typeof raw.themeId !== 'string' || raw.themeId.length === 0) return null
-  return { themeId: raw.themeId, locked: raw.locked === true }
+  // One resolver for both spellings: the `themePolicy` block, and a
+  // `settingsPolicy` entry for `selectedTheme`, which outranks it. A class
+  // that supplies no theme id has no theme to enforce or suggest.
+  const mutability = resolveSettingMutability(policy, 'selectedTheme')
+  if (mutability.class === 'user-adjustable' || !mutability.hasValue) return null
+  if (typeof mutability.value !== 'string' || mutability.value.length === 0) return null
+  return { themeId: mutability.value, locked: mutability.class === 'sealed' }
 }
 
 /**

@@ -174,6 +174,7 @@ export function ConflictsDialog({
   const allResolved = (op?.files.length ?? 0) === 0 && op?.state != null
 
   return (
+    <>
     <FloatingPanel title={title} onClose={onClose} defaultWidth={620} defaultHeight={420} workingDir={directory}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         {error && (
@@ -322,18 +323,6 @@ export function ConflictsDialog({
         </div>
       </div>
 
-      {mergePath && (
-        <MergeEditor
-          directory={directory}
-          path={mergePath}
-          onClose={() => setMergePath(null)}
-          onResolved={() => {
-            setMergePath(null)
-            void refresh().catch((err) => rError('git.conflicts', 'refresh after merge failed', { error: String(err) }))
-          }}
-        />
-      )}
-
       {confirmAbort && (
         <ConfirmDialog
           title="Abort the operation?"
@@ -345,5 +334,22 @@ export function ConflictsDialog({
         />
       )}
     </FloatingPanel>
+
+    {/* A sibling of the panel, never its child. The editor is a panel of its
+        own, and a panel's children only stay mounted while that panel is the
+        one showing. As a child, opening the editor would hide this dialog,
+        which would unmount the editor, which would show this dialog again. */}
+    {mergePath && (
+      <MergeEditor
+        directory={directory}
+        path={mergePath}
+        onClose={() => setMergePath(null)}
+        onResolved={() => {
+          setMergePath(null)
+          void refresh().catch((err) => rError('git.conflicts', 'refresh after merge failed', { error: String(err) }))
+        }}
+      />
+    )}
+    </>
   )
 }

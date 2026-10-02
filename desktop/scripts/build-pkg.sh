@@ -8,14 +8,15 @@
 # What it does:
 #   1. Locates the built Ion.app under electron-builder's release/mac* output.
 #   2. Reads the version from package.json (single source of truth).
-#   3. Runs pkgbuild to produce release/Ion-<version>.pkg that installs the app
-#      to /Applications. pkgbuild's component-install semantics REPLACE any
-#      existing /Applications/Ion.app, which satisfies feature 0009 Scenario 1
-#      (force-overwrite on reinstall) for free.
-#   4. Embeds pkg-scripts/ so the package refuses to overwrite a running
-#      Ion. The macOS Installer shows its standard result; the script's log
-#      tells the operator to quit Ion and retry. `make desktop` uses a detached
-#      coordinator that waits for the normal Ion drain, then opens this package.
+#   3. Runs pkgbuild to produce release/Ion-<version>.pkg. The payload lands
+#      in a staging directory, and pkg-scripts/postinstall swaps the complete
+#      bundle into /Applications/Ion.app, replacing any existing copy
+#      (feature 0009 Scenario 1, force-overwrite on reinstall).
+#   4. Embeds pkg-scripts/. By default the package refuses to replace a running
+#      Ion and its log tells the operator to quit Ion and retry. Device policy
+#      can select the unattended path, which stops a running Ion first.
+#      `make desktop` uses a detached coordinator that waits for the normal Ion
+#      drain, then opens this package.
 #      The package is the only mechanism that writes /Applications/Ion.app.
 #
 # Prerequisites: a built Ion.app. Produce one with:
@@ -40,6 +41,8 @@ RELEASE_DIR="${DESKTOP_DIR}/release"
 
 APP_IDENTIFIER="com.sprague.ion.desktop"
 APP_NAME="Ion.app"
+# Must match STAGING_DIR in pkg-scripts/ion-pkg-common.sh.
+STAGING_DIR="/Library/Application Support/Ion/pkg-staging"
 
 log() { printf '[build-pkg] %s\n' "$1"; }
 die() { printf '[build-pkg] ERROR: %s\n' "$1" >&2; exit 1; }
@@ -75,13 +78,33 @@ log "version:   ${VERSION}"
 OUT_PKG="${RELEASE_DIR}/Ion-${VERSION}.pkg"
 
 # --- Build the component .pkg ------------------------------------------------
-# --component packages the app as a single component payload.
-# --install-location /Applications makes the installer place (and replace)
-# Ion.app there. --identifier + --version tag the package for MDM tracking.
-# --scripts embeds the safe live-Ion preflight.
+# The payload root holds Ion.app alone, so the package installs exactly one
+# bundle into the staging directory postinstall swaps from.
+PAYLOAD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ion-pkg-root.XXXXXX")"
+trap 'rm -rf "${PAYLOAD_ROOT}"' EXIT
+ditto "${APP_PATH}" "${PAYLOAD_ROOT}/root/${APP_NAME}"
+
+# Installer must write the bundle where the package says, every time: never
+# follow a copy of Ion found elsewhere on the disk, and never skip the payload
+# because of the version already installed (a pinned fleet rolls back too).
+COMPONENT_PLIST="${PAYLOAD_ROOT}/component.plist"
+pkgbuild --analyze --root "${PAYLOAD_ROOT}/root" "${COMPONENT_PLIST}" >/dev/null
+/usr/libexec/PlistBuddy \
+  -c 'Delete :0:BundleIsRelocatable' \
+  -c 'Add :0:BundleIsRelocatable bool false' \
+  -c 'Set :0:BundleIsVersionChecked false' \
+  "${COMPONENT_PLIST}" >/dev/null 2>&1 || true
+[ "$(/usr/libexec/PlistBuddy -c 'Print :0:BundleIsRelocatable' "${COMPONENT_PLIST}")" = "false" ] \
+  || die "component plist is still relocatable"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :0:BundleIsVersionChecked' "${COMPONENT_PLIST}")" = "false" ] \
+  || die "component plist is still version-checked"
+
+# --identifier + --version tag the package for MDM tracking. --scripts embeds
+# the running-Ion preflight and the swap into /Applications.
 pkgbuild \
-  --component "${APP_PATH}" \
-  --install-location "/Applications" \
+  --root "${PAYLOAD_ROOT}/root" \
+  --component-plist "${COMPONENT_PLIST}" \
+  --install-location "${STAGING_DIR}" \
   --identifier "${APP_IDENTIFIER}" \
   --version "${VERSION}" \
   --scripts "${SCRIPT_DIR}/pkg-scripts" \

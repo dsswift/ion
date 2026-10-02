@@ -304,6 +304,39 @@ When the target already finished, both answer `"outcome":"completed"` with a `te
 
 `ext/list_dispatch_history` is the terminal peer of `ext/list_dispatch_state`, which lists only live dispatches. Entries are ordered oldest completion first. `status` is `done`, `error`, `cancelled`, or `lost` (running when the engine process died). `exitCode` is absent when unknown. History survives a session or engine restart. The caller sees the same set it would see live: the root context sees every entry, a dispatched agent only its descendants. Retention is bounded by `dispatchHistory` in `engine.json`.
 
+**Reading a dispatch's conversation:**
+
+```json
+{"jsonrpc":"2.0","id":100005,"method":"ext/read_dispatch_conversation","params":{"conversationId":"conv-abc","limit":2}}
+```
+
+```json
+{"jsonrpc":"2.0","id":100005,"result":{"outcome":"ok","conversationId":"conv-abc","dispatchId":"dispatch-researcher-123","agentName":"researcher","status":"running","terminal":false,"entries":[{"id":"e1","role":"assistant","timestamp":1790000000000,"blocks":[{"type":"text","text":"Reading the file."},{"type":"tool_call","toolCallId":"t1","toolName":"Read","input":{"path":"/repo/a.go"}}]},{"id":"e2","role":"user","timestamp":1790000001000,"blocks":[{"type":"tool_result","toolCallId":"t1","toolName":"Read","content":"package a"}]}],"nextCursor":"eyJ2IjoxLCJpZCI6ImUyIiwiaSI6MX0","hasMore":true,"totalEntries":9,"limits":{"entries":2,"bytes":32768,"maxEntries":200,"maxBytes":262144}}}
+```
+
+`ext/read_dispatch_conversation` returns one page of the conversation a dispatch wrote. Name the target with `conversationId`, `dispatchId`, or both. With both, they must name the same dispatch. A request with neither is a `-32602` error.
+
+The engine decides who may read from its own dispatch lineage, never from anything the caller claims. The root context may read every dispatch in its session. A dispatched agent may read only its descendants, direct or deeper. This is the same rule as `ext/list_dispatch_state`. It holds while the dispatch runs, after it ends, and after a session or engine restart, for as long as the dispatch is in the record that `dispatchHistory` bounds.
+
+Every refusal is a normal result with an `outcome`, not an error:
+
+| `outcome` | Meaning |
+|-----------|---------|
+| `ok` | `entries` holds the page. |
+| `unauthorized` | The target is not a dispatch the caller owns, or its lineage cannot be proven. No other field is set, so the answer does not reveal whether the conversation exists. |
+| `unavailable` | The caller owns the dispatch, but there is no conversation to read. `unavailableReason` is `not_created` (the child never started one) or `not_found` (it was removed from the conversation store). |
+| `invalid_cursor` | The cursor does not name an entry of this conversation. Read again without a cursor. |
+
+An engine without this method answers `-32601`.
+
+Each entry is one message. `id` is stable across reads. `blocks` keep the order they were written in, so text, tool calls, and tool results stay interleaved. A block's `type` is `text`, `thinking`, `tool_call` (`toolCallId`, `toolName`, `input`), or `tool_result` (`toolCallId`, `toolName`, `content`, `isError`). Any other block keeps its own type name.
+
+`status` is `running` or `suspended` while the dispatch is live, and `done`, `error`, `cancelled`, or `lost` once `terminal` is `true`. `reason` and `exitCode` carry the terminal outcome. They are never part of the transcript.
+
+Paging uses `cursor`, an opaque string. Pass back `nextCursor` to get the entries after the last one returned. It works on a live conversation too: when `hasMore` is `false` and `terminal` is `false`, keep the cursor and read again later to get only what is new. The call never waits for the child.
+
+`limit` and `maxBytes` ask for a page size. The engine lowers either to its maximum, set by `dispatchConversationRead` in `engine.json`, and reports what it used in `limits`. A single entry too large for the page is returned alone, with oversized blocks cut and marked `truncated` with `originalBytes`.
+
 ### ext/task_suspend
 
 Ends the current LLM run without completing it. Two shapes, distinguished by depth:

@@ -1,29 +1,32 @@
 #!/bin/bash
-# @file-size-exception: Installer preflight must keep the full safety contract visible
+# preinstall — make it safe for the payload to land, before anything is written.
 #
-# preinstall — refuse to overwrite a live Ion application bundle.
-#
-# A package script cannot safely wait without a finite system timeout, and it
-# cannot provide a reliable custom retry screen in Installer.app. A live Ion
-# must therefore leave the bundle untouched. `make desktop` avoids this manual
-# retry by using its detached coordinator: it requests the normal Ion drain,
-# waits outside Installer without a timeout, then opens this package.
+# A running Ion is refused by default, so an install started by hand never
+# stops someone's work. Device policy can select the unattended path, which
+# stops Ion and carries on (ion-pkg-common.sh).
 set -euo pipefail
 
-APP_NAME="Ion"
-LOG_FILE="/var/log/install.log"
+SCRIPT_NAME="preinstall"
+# shellcheck source=desktop/scripts/pkg-scripts/ion-pkg-common.sh
+. "$(dirname "$0")/ion-pkg-common.sh"
 
-log() { printf '[Ion preinstall] %s\n' "$1" | tee -a "$LOG_FILE"; }
-
-APP_PID="$(pgrep -f "${APP_NAME}.app/Contents/MacOS/${APP_NAME}\$" 2>/dev/null | head -1 || true)"
-if [ -z "$APP_PID" ]; then
-  log "${APP_NAME} is not running; proceeding with install."
-  exit 0
+# An install interrupted between postinstall's two renames leaves the previous
+# bundle set aside and nothing in its place. Put it back before deciding
+# anything else.
+if [ -d "$PREVIOUS_APP" ]; then
+  if [ -d "$APP_PATH" ]; then
+    rm -rf "$PREVIOUS_APP"
+    log "removed the set-aside bundle left by an earlier install."
+  else
+    mv "$PREVIOUS_APP" "$APP_PATH"
+    log "restored the previous bundle left set aside by an interrupted install."
+  fi
 fi
 
-log "${APP_NAME} is running (pid ${APP_PID}); refusing to replace the live application bundle."
-log "Quit ${APP_NAME}, then click Install again."
+# Non-zero aborts before the payload is written.
+ensure_app_stopped || exit 1
 
-# Non-zero aborts before the payload changes. Installer.app shows its standard
-# failure result and the log gives the exact retry instruction.
-exit 1
+# The payload must land in an empty staging directory: a bundle left by an
+# interrupted install would otherwise be merged with the new one.
+rm -rf "$STAGING_DIR" "$INCOMING_APP"
+log "staging directory is clean; proceeding with install."

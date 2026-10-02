@@ -28,12 +28,13 @@
  * operator's (a missed stale).
  */
 import { runGit } from '../git/git-runner'
-import { log as _log, warn as _warn } from '../logger'
+import { debug as _debug, log as _log, warn as _warn } from '../logger'
 import type { IntegrationMember } from '@ion/shared/types'
 
 const TAG = 'bench.snapshot'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 
 /** A member's contribution: the commit to merge and the tree identifying it. */
 export interface Contribution {
@@ -142,6 +143,10 @@ export async function hasUncommittedWork(worktreePath: string): Promise<boolean>
  *
  * Returns null when the worktree or branch is gone (the `missing` case), which
  * the caller reports rather than treating as a change.
+ *
+ * This is read on a poll, so a read that repeats what the member record
+ * already holds — the same tree, or a member already recorded `gone` — logs at
+ * DEBUG. Only a read that tells the record something new is INFO or WARN.
  */
 export async function contributedTreeHash(member: IntegrationMember): Promise<string | null> {
   try {
@@ -150,16 +155,20 @@ export async function contributedTreeHash(member: IntegrationMember): Promise<st
     // points at the member's real tip, so the branch answer is right at every
     // moment. Staleness needs no merge base, so this stays a single read.
     const treeHash = (await runGit(member.worktreePath, ['rev-parse', `${member.branchName}^{tree}`])).trim()
-    log('read member tree hash', {
+    const changed = treeHash !== member.currentTreeHash
+    ;(changed ? log : debug)('read member tree hash', {
       worktree_path: member.worktreePath,
       branch: member.branchName,
       tree: treeHash.slice(0, 7),
+      changed,
     })
     return treeHash
   } catch (err) {
-    warn('could not read member contribution', {
+    const alreadyGone = member.pin === 'gone'
+    ;(alreadyGone ? debug : warn)('could not read member contribution', {
       worktree_path: member.worktreePath,
       branch: member.branchName,
+      already_gone: alreadyGone,
       error: String(err),
     })
     return null

@@ -29,8 +29,7 @@ const count = (v: unknown): number | undefined => (typeof v === 'number' && v >=
 
 export const PARITY_CLIENT_ACTIONS: Record<string, SessionActionSpec> = {
   // [{ key, value }] -> { ok: true } | { ok: false, code, message }
-  // `code` is `unknown_key`, `invalid_value`, `settings_locked` (the
-  // enterprise theme lock), or `write_failed`. A refusal is a value, not an
+  // `code` is a `ProjectableSettingRefusal`. A refusal is a value, not an
   // error: the client keeps showing what it had and can say why.
   'settings.setProjectable': wrap('settings.setProjectable', 'conversations:operate', (a, conn) => {
     const key = str(a.key)

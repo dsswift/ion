@@ -176,7 +176,10 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   // The registry is this machine's; a path on another machine is a different project even when the strings match.
   const selectedProject = workspace && workspace.environmentId === LOCAL_ENVIRONMENT_ID ? registry[workspace.projectDirectory] : undefined
   const fallbackOverride = selectedProject?.profileOverride
-  const resolvedAction = useMemo(() => resolveConversationProfileAction(profiles, forceProfilePicker ? { kind: 'ask' } : fallbackOverride, recommendation, enterprisePolicy), [enterprisePolicy, fallbackOverride, forceProfilePicker, profiles, recommendation])
+  // The default profile is an Account preference of this machine's server, so it names a profile only there.
+  const localDefaultProfileId = usePreferencesStore((state) => state.defaultEngineProfileId)
+  const defaultProfileId = workspace && workspace.environmentId !== LOCAL_ENVIRONMENT_ID ? '' : localDefaultProfileId
+  const resolvedAction = useMemo(() => resolveConversationProfileAction(profiles, forceProfilePicker ? { kind: 'ask' } : fallbackOverride, recommendation, enterprisePolicy, defaultProfileId), [defaultProfileId, enterprisePolicy, fallbackOverride, forceProfilePicker, profiles, recommendation])
 
   useEffect(() => {
     rInfo('new-conversation-picker', 'opened', { initial_view: view, explicit_worktree: initialUseWorktree, has_default_project: !!defaultProject(registry, managedProjects) })

@@ -217,6 +217,7 @@ Use it for nested fields that have no top-level value name of their own:
 | Require operator sign-in | `{"auth":{"requireOperatorIdentity":true}}` |
 | Disable the desktop auto-updater | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
 | Lock the desktop theme | `{"customFields":{"ion-desktop":{"themePolicy":{"themeId":"<theme id>","locked":true}}}}` |
+| Seal one setting | `{"customFields":{"ion-server":{"settingsPolicy":{"keys":{"gitOpsMode":{"class":"sealed","value":"worktree"}}}}}}` |
 
 ### Setting policy with PowerShell
 
@@ -358,7 +359,7 @@ The sections above deliver engine *configuration*. This section covers pushing t
 
 ### The artifact
 
-Each desktop release publishes a component installer, `Ion-<version>.pkg`, on the GitHub release. CI builds it (`build-pkg.sh`), signs it with a Developer ID Installer certificate (`productsign`), and notarizes it. The package installs `Ion.app` to `/Applications` and force-replaces any existing copy. On first launch the app self-installs its launchd LaunchAgent (`com.ion.engine`) and installs/updates the engine daemon binary at `~/.ion/bin/ion`, swapping it by content hash. No additional endpoint steps are required.
+Each desktop release publishes a component installer, `Ion-<version>.pkg`, on the GitHub release. CI builds it (`build-pkg.sh`), signs it with a Developer ID Installer certificate (`productsign`), and notarizes it. The package installs `Ion.app` to `/Applications` and replaces any existing copy, whatever its version or origin. The payload is written to a staging directory (`/Library/Application Support/Ion/pkg-staging`) and the complete bundle is then renamed into place, so an install that is interrupted never leaves a partly written `Ion.app`. On first launch the app self-installs its launchd LaunchAgent (`com.ion.engine`) and installs/updates the engine daemon binary at `~/.ion/bin/ion`, swapping it by content hash. No additional endpoint steps are required.
 
 Verify a package before distributing:
 
@@ -369,7 +370,42 @@ spctl -a -vvv -t install Ion-<version>.pkg    # Gatekeeper accepts
 
 ### Push via Jamf / Intune
 
-Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. The package refuses before it replaces `/Applications/Ion.app` when Ion is still running. MDM run-time policies can defer the package until the user quits Ion.
+Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. By default the package refuses, before anything is written, when Ion is still running: that is the right behavior for an install a person starts by hand. An unattended push selects the replace path below.
+
+### Unattended install over a running Ion
+
+Set `installer.runningApp` to `replace` in the desktop-owned `customFields['ion-desktop']` namespace of the `com.ion.engine` Managed Preferences payload. The profile must be on the machine before the package runs.
+
+```xml
+<key>customFields</key>
+<dict>
+  <key>ion-desktop</key>
+  <dict>
+    <key>installer</key>
+    <dict>
+      <key>runningApp</key>
+      <string>replace</string>
+      <key>drainTimeoutSeconds</key>
+      <integer>300</integer>
+    </dict>
+  </dict>
+</dict>
+```
+
+| Key | Values | Default |
+|---|---|---|
+| `runningApp` | `refuse`: fail the install and leave Ion running. `replace`: stop Ion, replace the bundle, exit zero. | `refuse` |
+| `drainTimeoutSeconds` | How long `replace` waits for the graceful drain. Capped at 480. | `300` |
+
+With `replace`, the package stops a running Ion in three steps and moves to the next one only when the previous one did not end the process:
+
+1. **Graceful drain** (`SIGUSR1`). Ion finishes active work, saves its state, stops the engine, and exits. The package waits up to `drainTimeoutSeconds`.
+2. **Forced quit** (`SIGUSR2`). Ion stops active work instead of waiting for it, then exits.
+3. **Termination** (`SIGKILL`).
+
+Helper processes still running from the old bundle are then ended, the bundle is replaced, and Ion is relaunched for the signed-in user. The package exits zero whether or not Ion was running.
+
+`/var/log/install.log` records which step ended the process, on a line starting `[Ion preinstall] stop outcome:` followed by `graceful`, `forced`, or `killed`.
 
 ### Disable the in-app auto-updater on managed machines
 

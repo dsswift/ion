@@ -2,10 +2,12 @@ import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
 import { applyTheme, getThemeRegistryVersion, onThemeRegistryChanged, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from '@ion/server/preferences-types'
-import { saveSettings, saveSettingsFor, persist, INITIAL_SAVED } from './preferences-persist'
+import { saveSettings, saveSettingsFor, settingsTargetOf, persist, INITIAL_SAVED } from './preferences-persist'
+import { dropSealedSettings } from './settings-policy'
+import { resolveSettingMutability } from '@ion/shared/enterprise-settings-policy'
 import { bootstrapPreferences } from './preferences-bootstrap'
 import { createKeyboardShortcutActions } from './preferences-shortcuts'
-import { deriveEnterpriseThemePolicy, resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
+import { resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
 import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rInfo, rWarn } from './rendererLogger'
 import { isEphemeralWorkspaceDirectory } from '@ion/shared/recent-directories'
@@ -127,11 +129,11 @@ export const createPreferencesState: StateCreator<PreferencesState> = (set, get)
   // belt-and-suspenders for programmatic callers and iOS-originated
   // settings pushes, mirroring the main-process write-funnel strip).
   setSelectedTheme: (id) => {
-    const themePolicy = deriveEnterpriseThemePolicy(get().enterprisePolicy)
-    if (themePolicy?.locked && id !== themePolicy.themeId) {
+    const mutability = resolveSettingMutability(get().enterprisePolicy, 'selectedTheme')
+    if (mutability.class === 'sealed' && !(mutability.hasValue && id === mutability.value)) {
       rWarn('preferences', 'setSelectedTheme rejected by enterprise lock', {
         attempted: id,
-        enforced: themePolicy.themeId,
+        enforced: mutability.hasValue ? String(mutability.value) : null,
       })
       return
     }
@@ -274,7 +276,7 @@ export const createPreferencesState: StateCreator<PreferencesState> = (set, get)
   ...createProjectRegistryActions(set, get),
   setExcludedResourceKinds: (kinds) => persist(set, { excludedResourceKinds: kinds }),
   setShowImplementClearContext: (enabled) => persist(set, { showImplementClearContext: enabled }),
-  ...createKeyboardShortcutActions(set, get, (patch) => saveSettingsFor(set, patch)),
+  ...createKeyboardShortcutActions((patch) => set(dropSealedSettings(patch, settingsTargetOf(set))), get, (patch) => saveSettingsFor(set, patch)),
   applyPreset: (preset) => persist(set, preset),
 })
 
