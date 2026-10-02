@@ -724,11 +724,39 @@ Read the enterprise policy the engine resolved. Stateless -- no session key is r
 | Field                     | Type         | Description                                                                                                   |
 |---------------------------|--------------|---------------------------------------------------------------------------------------------------------------|
 | `newConversationDefaults` | object\|null | The enterprise `NewConversationDefaults` policy object, or `null` when no enterprise config is loaded or no `NewConversationDefaults` section is present. |
-| `policy`                  | object|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. On a managed installation it is never `null` and carries `managedMode` (`managed`, `policyAbsent`, `overrideRefused`); see [Managed mode](../enterprise/mdm.md#managed-mode). `overrides` lists the user and project config values enforcement displaced; see [Policy override notices](../enterprise/sealed-config.md#policy-override-notices). It never carries `accountPolicies`. `assetScopes` lists the asset scopes of the account policies that matched. |
+| `policy`                  | object|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. On a managed installation it is never `null` and carries `managedMode` (`managed`, `policyAbsent`, `overrideRefused`); see [Managed mode](../enterprise/mdm.md#managed-mode). `overrides` lists the user and project config values enforcement displaced; see [Policy override notices](../enterprise/sealed-config.md#policy-override-notices). When policy declares managed files it also carries `managedConfigStatus`; see [Managed configuration files](../enterprise/managed-config.md). |
 | `policyHash`              | string       | SHA-256 hex digest of `policy`'s canonical JSON. Stable across two calls with an unchanged policy; changes whenever the policy does. Lets a consumer detect a policy change without deep-comparing the whole blob. |
 
 ```json
 {"cmd":"result","requestId":"r41","ok":true,"data":{"newConversationDefaults":null,"policy":null,"policyHash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}
+```
+
+---
+
+### get_managed_config_status
+
+Read which [managed configuration files](../enterprise/managed-config.md) are in force. Stateless: no session key is required. The response never carries configuration content.
+
+| Field       | Type                           | Required | Description                  |
+|-------------|--------------------------------|----------|------------------------------|
+| `cmd`       | `"get_managed_config_status"`  | yes      | Command discriminator        |
+| `requestId` | string                         | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"get_managed_config_status","requestId":"r42"}
+```
+
+**Response:** `ServerResult` with `data`:
+
+| Field     | Type         | Description |
+|-----------|--------------|-------------|
+| `applied` | object\|null | The status the running engine loaded at start, or `null` when it loaded no managed file. |
+| `current` | object\|null | The status the managed source resolves to now, or `null` when policy declares no managed file. It differs from `applied` when a managed file changed after the engine started. |
+
+Each status object carries `schemaVersion`, `supportedSchemaVersion`, and an `engine` and a `models` object for each declared surface: `projected` (boolean), `checksum` (`sha256:<hex>` of the file's bytes), and `error` (why the file was not applied).
+
+```json
+{"cmd":"result","requestId":"r42","ok":true,"data":{"applied":null,"current":null}}
 ```
 
 ---

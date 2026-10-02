@@ -38,6 +38,7 @@ Sent to the requesting client in response to a command that included a `requestI
 | `ok`        | boolean | `true` if the command succeeded                  |
 | `error`     | string  | Error message (present when `ok` is `false`)     |
 | `policyFailure` | string | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the command failed because of enterprise policy (optional) |
+| `code`      | string  | Machine-readable reason for the failure, when it has one. `managed_config_write_refused` marks a write to a [managed configuration](../enterprise/managed-config.md) surface. Absent on most failures. |
 | `data`      | any     | Response payload (command-specific)              |
 | `newKey`    | string  | New session key (only for `fork_session`)        |
 
@@ -385,6 +386,7 @@ An error signal from the engine. It carries structured classification when the s
 | `session_not_found` | `provider_error`  | no        | No session for the given key       |
 | `queue_full`        | `provider_error`  | yes       | Prompt queue at capacity           |
 | `managed_policy_absent` | `provider_error` | no     | The installation is managed and has no enterprise policy; every prompt is refused |
+| `managed_config_invalid` | `provider_error` | no    | A declared [managed configuration file](../enterprise/managed-config.md) could not be applied; every prompt is refused |
 | `hook_failed`       | `hook_error`      | no        | Extension hook threw an error. Message includes the stack trace. |
 
 ```json

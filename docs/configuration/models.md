@@ -8,6 +8,8 @@ sidebar_position: 3
 
 `~/.ion/models.json` is the place to register custom model names and tier aliases. The engine reads this file on every request, so changes take effect without a restart.
 
+When enterprise policy names a [managed models file](../enterprise/managed-config.md), the engine reads that file in place of `~/.ion/models.json` and refuses tier and default-provider changes.
+
 ## When you need it
 
 Most of the time you do not. The engine routes well-known model name patterns automatically. If your model name matches one of these prefixes, you do not need a `models.json` entry:
