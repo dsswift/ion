@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.4.1](https://github.com/dsswift/ion/compare/desktop-v2.4.0...desktop-v2.4.1) (2026-10-02)
+
+### Bug Fixes
+
+* **desktop:** add tab owner check to the tabs-index stub ([4a44f70](https://github.com/dsswift/ion/commit/4a44f70d245639baf633533bd91fd6e82ab36c45))
+
 ## [2.4.0](https://github.com/dsswift/ion/compare/desktop-v2.3.0...desktop-v2.4.0) (2026-10-01)
 
 ### Features
