@@ -24,7 +24,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 | `tool_start` | Before tool execution | `ToolStartInfo{ToolName, ToolID}` | ignored | Observe only |
 | `tool_end` | After tool execution | `nil` | ignored | Observe only |
 | `tool_call` | LLM requests tool use | `ToolCallInfo{ToolName, ToolID, Input}` | `*ToolCallResult{Block, Reason}` | If any handler returns Block=true, the tool call is blocked. |
-| `on_error` | Error occurs (provider, tool, budget, session, hook) | `ErrorInfo{Message, ErrorCode, Category, Retryable, RetryAfterMs, HttpStatus}` | ignored | Observe only. Fires for all error categories including `hook_failed` (with stack traces) and provider HTTP errors with full status and retry timing. |
+| `on_error` | Error occurs (provider, tool, budget, session, hook) | `ErrorInfo{Message, ErrorCode, Category, Retryable, RetryAfterMs, HttpStatus, PolicyFailure}` | ignored | Observe only. Fires for all error categories including `hook_failed` (with stack traces) and provider HTTP errors with full status and retry timing. |
 | `agent_start` | Sub-agent starts | `AgentInfo{Name, Task}` | ignored | Observe only |
 | `agent_end` | Sub-agent ends | `AgentInfo{Name, Task}` | ignored | Observe only |
 
@@ -138,6 +138,7 @@ type ErrorInfo struct {
     Retryable    bool
     RetryAfterMs int64
     HttpStatus   int
+    PolicyFailure string        // Policy Failure identifier when enterprise policy caused the error
 }
 ```
 

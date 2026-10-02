@@ -156,6 +156,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
 - [Policy Override Notice](#term-policy-override-notice)
+- [Policy Failure](#term-policy-failure)
 - [Poll](#term-poll)
 - [Port Forward](#term-port-forward)
 - [Presence](#term-presence)
@@ -639,6 +640,22 @@ The decision about whether a tool call may run. The engine classifies the call a
   - `engine` / `wire` / `go`: `type PermissionRequestEvent struct` in `engine/internal/types/normalized_event.go`
   - `desktop` / `ui` / `typescript`: `PermissionCard` in `desktop/src/renderer/components/PermissionCard.tsx`
   - `ios` / `ui` / `swift`: `struct PermissionCardView` in `ios/IonRemote/Views/PermissionCardView.swift`
+
+#### Policy Failure {#term-policy-failure}
+
+A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.
+
+- **ID:** `policy-failure`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `policy message`, `configurable error message`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `wire` / `go`: `var PolicyFailureIDs` in `engine/internal/types/policy_failure.go`
+  - `engine` / `code` / `go`: `func PolicyMessage` in `engine/internal/config/policy_messages.go`
+  - `server` / `code` / `typescript`: `policyMessage` in `packages/shared/src/policy-failure.ts`
+  - `ios` / `wire` / `swift`: `func failureText` in `ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift`
 
 #### Poll {#term-poll}
 
@@ -3108,6 +3125,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
 | Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
+| Policy Failure | None | None | None | `func failureText` | Desktop, Studio, Overlay |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
@@ -3202,6 +3220,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `command envelope` → [Client command](#term-client-command)
 - Alias: `compact boundary` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `composer` → [Input Bar](#term-input-bar)
+- Alias: `configurable error message` → [Policy Failure](#term-policy-failure)
 - Alias: `context compaction` → [Compaction](#term-compaction)
 - Alias: `context menu` → [Menu](#term-menu)
 - Alias: `conversation attachment` → [Attachment](#term-attachment)
@@ -3258,6 +3277,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `permission request` → [Permission](#term-permission)
 - Alias: `phone actions` → [Phone Action List](#term-phone-action-list)
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
+- Alias: `policy message` → [Policy Failure](#term-policy-failure)
 - Alias: `popover picker` → [Picker](#term-picker)
 - Alias: `port forwarding` → [Port Forward](#term-port-forward)
 - Alias: `profile` → [Engine profile](#term-engine-profile)

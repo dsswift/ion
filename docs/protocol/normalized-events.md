@@ -101,6 +101,7 @@ The output of a tool execution.
 | `content`          | string          | Tool output text                 |
 | `isError`          | boolean         | `true` if the tool failed        |
 | `backgroundTaskId` | string          | Correlates this tool result with an asynchronous task: Bash background task ID or Agent dispatch ID. Additive (`omitempty`): absent for synchronous tool results. Clients may use this to fold a later `background_work_delivered` item onto the originating tool row. |
+| `policyFailure`    | string          | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when enterprise policy refused the call (optional) |
 
 **Produced from:** User-type events containing `tool_result` content blocks
 
@@ -195,6 +196,7 @@ An error occurred during the run.
 | `retryable`    | boolean   | Whether the client can retry       |
 | `retryAfterMs` | number    | Suggested retry delay              |
 | `httpStatus`   | number    | HTTP status code from the provider |
+| `policyFailure` | string   | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the error results from enterprise policy |
 
 **Produced from:** `ResultEvent` (error)
 

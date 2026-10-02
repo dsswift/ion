@@ -3227,6 +3227,49 @@
       ]
     },
     {
+      "id": "policy-failure",
+      "term": "Policy Failure",
+      "definition": "A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "policy message",
+        "configurable error message"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "var PolicyFailureIDs",
+          "path": "engine/internal/types/policy_failure.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func PolicyMessage",
+          "path": "engine/internal/config/policy_messages.go"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "policyMessage",
+          "path": "packages/shared/src/policy-failure.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "func failureText",
+          "path": "ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift"
+        }
+      ]
+    },
+    {
       "id": "poll",
       "term": "Poll",
       "definition": "A bounded engine-owned inference loop. It dispatches check agents, re-arms only while work is advancing, and delivers one terminal verdict with evidence to the parent session.",

@@ -37,6 +37,7 @@ Sent to the requesting client in response to a command that included a `requestI
 | `requestId` | string  | Matches the client's `requestId`                 |
 | `ok`        | boolean | `true` if the command succeeded                  |
 | `error`     | string  | Error message (present when `ok` is `false`)     |
+| `policyFailure` | string | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the command failed because of enterprise policy (optional) |
 | `data`      | any     | Response payload (command-specific)              |
 | `newKey`    | string  | New session key (only for `fork_session`)        |
 
@@ -361,6 +362,7 @@ An error signal from the engine. It carries structured classification when the s
 | `retryable`     | boolean | Whether the error is transient                 |
 | `retryAfterMs`  | number  | Suggested retry delay in milliseconds          |
 | `httpStatus`    | number  | HTTP status code from the provider             |
+| `policyFailure` | string  | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when the error results from enterprise policy. `message` is then the policy's text when one is configured. `errorCode` is unaffected. |
 | `providerSubscription` | object | The [Provider Subscription](#engine_provider_subscription) snapshot taken when a provider request failed. Present only when the request went to the `subscriptionLookup` provider while no looked-up key was applied (any state other than `applied`). It says why the request may have had no key; `message` is unchanged. |
 
 **Error Codes:**
@@ -475,6 +477,7 @@ Signals the completion of a tool execution.
 | `result`           | string  | Tool output                          |
 | `isError`          | boolean | `true` if the tool execution failed  |
 | `backgroundTaskId` | string  | Correlates this tool result with an asynchronous task: Bash background task ID or Agent dispatch ID. Additive (`omitempty`): absent for synchronous tool results. Clients may use this to fold a later `engine_background_work_delivered` item onto the originating tool row. |
+| `policyFailure`    | string  | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier, when enterprise policy refused the call (optional) |
 
 #### engine_dispatch_activity
 
@@ -1274,6 +1277,8 @@ Complete Provider Subscription state: the provider key the engine resolved from 
 | `providerSubscription.source` | string | `lookup` \| `cache`: where the applied key came from (optional) |
 | `providerSubscription.resolvedAt` | int | Unix milliseconds of the lookup behind the key or options (optional) |
 | `providerSubscription.error` | string | Most recent lookup failure. Can accompany `applied` when a refresh failed and the cached key stayed in effect (optional) |
+| `providerSubscription.policyFailure` | string | The [Policy Failure](../enterprise/policy-messages.md#identifiers) identifier of the state: `subscription_unavailable` for `none`, `subscription_lookup_failed` for `failed` (optional) |
+| `providerSubscription.message` | string | The enterprise policy's text for `policyFailure`. Absent when none is configured (optional) |
 
 `none` and `failed` are different situations. `none` is a successful lookup that returned zero subscriptions for this identity. `failed` is a lookup that did not complete, with no cached key to fall back on; any manually configured key is still in use.
 

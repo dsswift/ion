@@ -285,7 +285,7 @@ Ion Studio shows the provider notices on the Providers & models page and the MCP
 | `id`     | The extension identifier: the `name` in its `extension.json`, else its directory name.                            |
 | `sha256` | Optional. The hex SHA-256 of the extension's entry-point file. A mismatch blocks the load even when `id` matches. |
 
-An empty or absent list loads every extension. A non-empty list blocks every extension it does not name, before the extension runs. A blocked load surfaces as an `engine_error` with `errorCode: "extension_blocked"` and records an `enforcement.extension_blocked` telemetry event.
+An empty or absent list loads every extension. A non-empty list blocks every extension it does not name, before the extension runs. A blocked load surfaces as an `engine_error` with `errorCode: "extension_blocked"` and records an `enforcement.extension_blocked` telemetry event. Its text can be replaced; see [Policy messages](policy-messages.md).
 
 The `id` an extension matched is its trusted identity. The engine keys each extension's section of [application config](../configuration/engine-json.md#application-config-document) on it. The name an extension reports about itself at startup does not change it.
 
