@@ -508,6 +508,8 @@ type DispatchAgentOpts struct {
     PlanFilePath     string         `json:"planFilePath,omitempty"`     // override plan file path
     PlanModeTools    []string       `json:"planModeTools,omitempty"`    // override allowed tools during plan mode
     RequireToolUse   *bool          `json:"requireToolUse,omitempty"`   // tri-state work expectation (see below)
+    ParkCheckInIntervalMs int       `json:"parkCheckInIntervalMs,omitempty"` // periodic wake while parked (see below)
+    ParkCheckInAsk   bool           `json:"parkCheckInAsk,omitempty"`   // dispatcher answers dispatch_park_checkin
     ContextPolicy    *ContextPolicy `json:"contextPolicy,omitempty"`    // per-dispatch context-layer override
 }
 
@@ -524,6 +526,18 @@ type DispatchAgentResult struct {
     PlanExited   bool    `json:"planExited,omitempty"`   // true when child called ExitPlanMode
 }
 ```
+
+**`ParkCheckInIntervalMs` is the park check-in.** A dispatch that ends its
+turn with work of its own still running (child dispatches, background
+commands, polls) parks until that work settles. With an interval declared, the
+engine instead wakes the parked dispatch for one turn every interval, with a
+prompt classified `checkin`, so the agent can inspect, steer, or recall what it
+is waiting on. When that turn ends with the work still outstanding the dispatch
+parks again and the interval restarts. The prompt comes from the dispatcher's
+`OnParkCheckIn` callback (set `ParkCheckInAsk` on the wire); a reply with
+`Skip`, an empty prompt, an error, or no answer in time leaves the dispatch
+parked for another interval. With no callback the engine delivers a generic
+prompt naming the awaited work. Zero, the default, means no check-ins.
 
 **`RequireToolUse` is the work gate.** `nil` declares no expectation, so the
 engine reports `ToolCount` and judges nothing — the zero value, which keeps

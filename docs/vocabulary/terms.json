@@ -3037,6 +3037,41 @@
       ]
     },
     {
+      "id": "park-check-in",
+      "term": "Park Check-In",
+      "definition": "One periodic wake of a dispatch that is parked on work it started. The dispatcher declares the interval; each time it passes with the awaited work still running, the engine resumes the parked dispatch for one turn with a prompt the dispatcher supplies, so the agent can inspect, steer, or recall that work. The dispatch parks again when the turn ends with the work still outstanding.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "dispatch check-in"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DispatchParkCheckInInfo struct",
+          "path": "engine/internal/extension/sdk_types_dispatch.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DispatchParkCheckInInfo struct",
+          "path": "sdk/go/context_dispatch.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface DispatchParkCheckInInfo",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "peer",
       "term": "Peer",
       "definition": "One end of a relay channel. A channel holds at most two peers, and each peer holds one role.",

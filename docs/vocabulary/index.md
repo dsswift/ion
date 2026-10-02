@@ -149,6 +149,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Pairing Link](#term-pairing-link)
 - [Pane Find](#term-pane-find)
 - [Panel](#term-panel)
+- [Park Check-In](#term-park-check-in)
 - [Peer](#term-peer)
 - [Peer role](#term-peer-role)
 - [Permission](#term-permission)
@@ -624,6 +625,21 @@ A delegated CLI compacting its own native session. Distinct from Compaction: Ion
   - `engine` / `code` / `go`: `type NativeCompactionEvent struct` in `engine/internal/types/normalized_event.go`
   - `engine` / `code` / `go`: `EntryNativeCompaction` in `engine/internal/conversation/conversation.go`
   - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `packages/shared/src/compaction-marker.ts`
+
+#### Park Check-In {#term-park-check-in}
+
+One periodic wake of a dispatch that is parked on work it started. The dispatcher declares the interval; each time it passes with the awaited work still running, the engine resumes the parked dispatch for one turn with a prompt the dispatcher supplies, so the agent can inspect, steer, or recall that work. The dispatch parks again when the turn ends with the work still outstanding.
+
+- **ID:** `park-check-in`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `dispatch check-in`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type DispatchParkCheckInInfo struct` in `engine/internal/extension/sdk_types_dispatch.go`
+  - `sdk` / `code` / `go`: `type DispatchParkCheckInInfo struct` in `sdk/go/context_dispatch.go`
+  - `sdk` / `code` / `typescript`: `export interface DispatchParkCheckInInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 #### Permission {#term-permission}
 
@@ -3235,6 +3251,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
 - Alias: `desktop_transcript_patch` → [Transcript Patch](#term-transcript-patch)
 - Alias: `device token` → [Push address](#term-push-address)
+- Alias: `dispatch check-in` → [Park Check-In](#term-park-check-in)
 - Alias: `dispatch split` → [Dispatch Split Pane](#term-dispatch-split-pane)
 - Alias: `draft input` → [Composer Draft](#term-composer-draft)
 - Alias: `drain checkpoint` → [Steer Drain Checkpoint](#term-steer-drain-checkpoint)

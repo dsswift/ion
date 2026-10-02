@@ -397,6 +397,7 @@ When an asynchronous dispatch is active (default for `ext/dispatch_agent`; `wait
 | `dispatch_tool_start` | Tool invocation began in child | `{callbackId, dispatchId, name, toolName, toolId}` |
 | `dispatch_tool_end` | Tool completed in child | `{callbackId, dispatchId, name, toolName, toolId, content}` |
 | `dispatch_tool_error` | Tool errored in child | `{callbackId, dispatchId, name, toolName, toolId, content}` |
+| `dispatch_park_checkin` | A parked dispatch's check-in interval elapsed (only when the dispatch sent `parkCheckInAsk`). Answer with `ext/answer_dispatch_park_checkin` | `{callbackId, dispatchId, requestId, name, depth, parkedMs, checkInCount, awaitingDispatchIds, awaitingTaskIds, awaitingPollIds, awaitingDispatches}` |
 | `dispatch_usage` | Token usage update from child | `{callbackId, dispatchId, name, inputTokens, outputTokens, cumulativeInputTokens, cumulativeOutputTokens, cumulativeCost}` |
 | `dispatch_text_delta` | Streaming text from child | `{callbackId, dispatchId, name, delta, accumulated}` |
 | `dispatch_plan_proposal` | Child agent proposed a plan (called ExitPlanMode) | `{callbackId, dispatchId, name, agentId, planFilePath, planSlug, planRequested}` |

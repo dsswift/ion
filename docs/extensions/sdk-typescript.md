@@ -873,6 +873,7 @@ interface DispatchAgentOpts {
   maxTurns?: number         // cap child agent loop turns (omit or <=0 = unlimited)
   maxDispatchDepth?: number // override the depth cap for this dispatch tree
   requireToolUse?: boolean  // declare whether this dispatch must produce work (see below)
+  parkCheckInIntervalMs?: number // wake this dispatch every interval while it is parked (see below)
   contextPolicy?: ContextPolicy // per-dispatch context-layer override
   planMode?: boolean        // start child in plan mode
   planFilePath?: string     // override plan file path (default: engine allocates one)
@@ -888,8 +889,29 @@ interface DispatchAgentOpts {
   onUsage?: (info: DispatchUsageInfo) => void         // token/cost usage update
   onTextDelta?: (info: DispatchTextDeltaInfo) => void // streaming text chunks from child
   onPlanProposal?: (info: DispatchPlanProposalInfo) => void // child proposed a plan
+  onParkCheckIn?: (info: DispatchParkCheckInInfo) => Promise<DispatchParkCheckInReply> | DispatchParkCheckInReply // prompt for a park check-in
 }
 ```
+
+### parkCheckInIntervalMs — checking in on a parked dispatch
+
+A dispatched agent that starts work of its own (child dispatches, background commands, polls) and ends its turn is parked until that work settles. If the work runs long, the agent sleeps the whole time and never looks at it. `parkCheckInIntervalMs` wakes the parked agent for one turn every interval while the work is still running, so it can inspect, steer, or recall what it is waiting on. The woken turn is classified `checkin`. When it ends with the work still outstanding, the dispatch parks again and the interval restarts.
+
+```typescript
+await ctx.dispatchAgent({
+  name: 'dev-lead',
+  task: 'Deliver the feature with your team',
+  parkCheckInIntervalMs: 10 * 60 * 1000,
+  onParkCheckIn: async (info) => {
+    // info.awaitingDispatchIds / awaitingTaskIds / awaitingPollIds name the work
+    // info.awaitingDispatches is the live state of each awaited child dispatch
+    // info.parkedMs and info.checkInCount describe the current park
+    return { prompt: `You have been waiting ${Math.round(info.parkedMs / 60000)} minutes. Check on your team.` }
+  },
+})
+```
+
+Return `{ skip: true }` to leave the dispatch parked for another interval. Omit `onParkCheckIn` and the engine delivers its own generic prompt naming the awaited work.
 
 ### requireToolUse — declaring that a dispatch must produce work
 
