@@ -700,6 +700,7 @@
   },
   "extRequests": [
     "ext/ack_dispatch_lost",
+    "ext/answer_dispatch_park_checkin",
     "ext/answer_dispatch_question",
     "ext/await_application_config",
     "ext/call_tool",

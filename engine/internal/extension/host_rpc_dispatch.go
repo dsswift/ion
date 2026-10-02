@@ -92,6 +92,9 @@ func (h *Host) rpcDispatchAgent(ctx *Context, id int64, raw []byte) {
 				h.sendNotification("dispatch_plan_proposal", data)
 			}
 			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName, callbackID)
+			if req.Params.ParkCheckInAsk {
+				req.Params.OnParkCheckIn = h.makeOnParkCheckIn(agentName, callbackID)
+			}
 
 			// Dispatch in a goroutine; respond immediately with stub.
 			go func() {
@@ -111,6 +114,9 @@ func (h *Host) rpcDispatchAgent(ctx *Context, id int64, raw []byte) {
 			agentName := req.Params.Name
 			callbackID := req.Params.CallbackID
 			req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName, callbackID)
+			if req.Params.ParkCheckInAsk {
+				req.Params.OnParkCheckIn = h.makeOnParkCheckIn(agentName, callbackID)
+			}
 			go func() {
 				result, err := ctx.DispatchAgent(req.Params)
 				if err != nil {

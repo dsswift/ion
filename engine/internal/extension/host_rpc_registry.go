@@ -48,6 +48,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/steer_dispatch_by_name":        (*Host).rpcSteerDispatchByName,
 	"ext/steer_self":                    (*Host).rpcSteerSelf,
 	"ext/answer_dispatch_question":      (*Host).rpcAnswerDispatchQuestion,
+	"ext/answer_dispatch_park_checkin":  (*Host).rpcAnswerDispatchParkCheckIn,
 	"ext/ack_dispatch_lost":             (*Host).rpcAckDispatchLost,
 	"ext/list_dispatch_state":           (*Host).rpcListDispatchState,
 	"ext/list_dispatch_history":         (*Host).rpcListDispatchHistory,
