@@ -106,11 +106,19 @@ export function ProviderPanel({ provider, environmentId, onClose, onCredentialSa
   }
 
   const handleRefreshModels = async (): Promise<void> => {
-    setRefreshing(true)
+    setRefreshing(true); setError(null)
     try {
-      await onEnv(() => host.shell.refreshModels(provider.id))
+      const result = await onEnv(() => host.shell.refreshModels(provider.id))
+      if (!result.ok) {
+        rWarn('settings', 'refresh models failed', { environment_id: environmentId, provider: provider.id, error: result.error ?? '' })
+        setError(result.error || 'Could not refresh models'); setRefreshing(false)
+        return
+      }
       setTimeout(() => { onCredentialSaved(); setRefreshing(false) }, 2500)
-    } catch (err) { rWarn('settings', 'refresh models failed', { environment_id: environmentId, error: String(err) }); setRefreshing(false) }
+    } catch (err) {
+      rWarn('settings', 'refresh models failed', { environment_id: environmentId, provider: provider.id, error: String(err) })
+      setError(describeProviderActionError(err, environmentId)); setRefreshing(false)
+    }
   }
 
   const copyDeviceCode = (code: string): void => {
