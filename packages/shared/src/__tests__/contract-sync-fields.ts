@@ -47,6 +47,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "contextTokens",
     "contextWindow",
     "errorCode",
+    "extensionName",
     "httpStatus",
     "isError",
     "message",

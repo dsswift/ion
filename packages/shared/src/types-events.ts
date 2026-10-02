@@ -82,6 +82,8 @@ export type NormalizedEvent =
       providerSubscription?: import("./types-engine-event-model").ProviderSubscriptionStatus;
       /** The Policy Failure identifier when the error results from enterprise policy. */
       policyFailure?: string;
+      /** The extension the error is about, e.g. the one an allowlist blocked. */
+      extensionName?: string;
     }
   | {
       type: "session_dead";

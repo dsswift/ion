@@ -204,6 +204,8 @@ export type EngineEvent =
       providerSubscription?: ProviderSubscriptionStatus;
       /** The Policy Failure identifier when the error results from enterprise policy. */
       policyFailure?: string;
+      /** The blocked extension's identifier when errorCode is extension_blocked. */
+      extensionName?: string;
     }
   | {
       type: "engine_permission_request";
