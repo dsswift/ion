@@ -76,6 +76,20 @@ final class SubscriptionPromptTests: XCTestCase {
         XCTAssertNil(model.operationError)
     }
 
+    func testAFailureStateUsesThePolicyTextWhenConfigured() throws {
+        let configured = try status(#"{"state":"none","provider":"gateway","policyFailure":"subscription_unavailable","message":"Open a ticket to request access."}"#)
+        XCTAssertEqual(configured.policyFailure, "subscription_unavailable")
+        XCTAssertEqual(configured.failureText("default"), "Open a ticket to request access.")
+        XCTAssertEqual(ProviderSubscriptionRows.describe(configured), "Open a ticket to request access.")
+        let attention = try XCTUnwrap(SubscriptionAttention.next(previous: nil, status: configured))
+        XCTAssertEqual(ProviderSubscriptionPromptCard.explanation(attention), "Open a ticket to request access.")
+
+        let plain = try status(Self.none)
+        XCTAssertNil(plain.policyFailure)
+        XCTAssertEqual(plain.failureText("default"), "default")
+        XCTAssertTrue(ProviderSubscriptionPromptCard.explanation(try XCTUnwrap(SubscriptionAttention.next(previous: nil, status: plain))).contains("Contact your administrator"))
+    }
+
     func testNoSubscriptionNamesTheProviderAndLooksUpAgain() async throws {
         caller.answer(.providerRefreshSubscription, with: .success(result(Self.none)))
         let model = SubscriptionPromptModel(events: ServerAdminEvents())

@@ -76,9 +76,9 @@ struct ProviderSubscriptionRows: View {
         case ProviderSubscriptionStatus.State.selectionRequired:
             return "Choose the subscription the account uses."
         case ProviderSubscriptionStatus.State.none:
-            return "The account has no subscription. Contact your administrator for access."
+            return status.failureText("The account has no subscription. Contact your administrator for access.")
         case ProviderSubscriptionStatus.State.failed:
-            return "The subscription lookup failed. Any key entered by hand is still in use."
+            return status.failureText("The subscription lookup failed. Any key entered by hand is still in use.")
         default:
             return "The subscription is in a state this app does not know: \(status.state)."
         }
