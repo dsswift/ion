@@ -668,7 +668,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// child.Cancel() so the callback can distinguish a recall from any other
 		// engine-initiated cancel; see the recall branch below.
 		var recalled atomic.Bool
-		var recallReason string
+		var recallReason recallReasonCell
 
 		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
 			// Report child liveness to the run that is actually blocked on
@@ -931,7 +931,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// rather than an error. Logged at INFO so the exit is still
 				// observable without asserting a failure that did not occur.
 				utils.LogWithFields(utils.LevelInfo, "server", "child run exited via recall cancel", map[string]any{
-					"model": opts.Name, "run_id": childReqID, "session_id": key, "recall_reason": recallReason,
+					"model": opts.Name, "run_id": childReqID, "session_id": key, "recall_reason": recallReason.get(),
 				})
 			case signal != nil && *signal == "cancelled":
 				childExitCancelled.Store(true)
@@ -1079,7 +1079,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					// happened, which is its own defect: a WARN that contradicts
 					// reality is what sends the next reader down the wrong path.
 					recalled.Store(true)
-					utils.LogWithFields(utils.LevelInfo, "server", "recall context cancelled", map[string]any{"model": opts.Name, "recall_reason": recallReason, "session_id": key})
+					utils.LogWithFields(utils.LevelInfo, "server", "recall context cancelled", map[string]any{"model": opts.Name, "recall_reason": recallReason.get(), "session_id": key})
 					child.Cancel(childReqID)
 					<-doneCh
 				}
@@ -1210,7 +1210,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						continue
 					case parkWakeRecalled:
 						// Recalled while suspended.
-						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason})
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason.get()})
 						recalled.Store(true)
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
@@ -1328,7 +1328,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			output := resultText
 			if recalled.Load() {
 				exitCode = ExitCodeRecalled
-				output = fmt.Sprintf("recalled: %s", recallReason)
+				output = fmt.Sprintf("recalled: %s", recallReason.get())
 			} else if childErr != nil {
 				exitCode = 1
 				output = childErr.Error()
@@ -1442,7 +1442,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				}
 				if recalled.Load() {
 					state.Status = "cancelled"
-					state.Metadata["lastWork"] = "cancelled: " + recallReason
+					state.Metadata["lastWork"] = "cancelled: " + recallReason.get()
 				} else if childErr != nil {
 					state.Status = "error"
 					state.Metadata["lastWork"] = childErr.Error()
@@ -1520,7 +1520,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// swept, so no run-exit clear can orphan it and the terminal update
 			// above always landed on a real slot.
 			if registry != nil {
-				registry.Deregister(agentID, dispatchExitOutcome(recalled.Load(), recallReason, childErr, exitCode))
+				registry.Deregister(agentID, dispatchExitOutcome(recalled.Load(), recallReason.get(), childErr, exitCode))
 				// Re-emit engine_status with the updated BackgroundAgents count so
 				// the parent session clears its "waiting on background agent" state.
 				// handleRunExit sampled bgCount BEFORE Deregister ran; nothing
@@ -1586,7 +1586,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
 			registerDispatch(registry, agentID, opts.Name, func(reason string) {
-				recallReason = recallReasonOrDefault(reason)
+				recallReason.set(reason)
 				cancelFn()
 			}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 
@@ -1658,11 +1658,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 				// Callbacks observe terminal state only. Isolate failures so a
 				// callback cannot re-panic this goroutine after owner delivery.
-				logTerminalOutcome(key, *result, recalled.Load(), recallReason)
+				logTerminalOutcome(key, *result, recalled.Load(), recallReason.get())
 				if recalled.Load() {
 					invokeDispatchCallback(func() {
 						if opts.OnRecall != nil {
-							opts.OnRecall(terminalRecallInfo(*result, recallReason))
+							opts.OnRecall(terminalRecallInfo(*result, recallReason.get()))
 						}
 					}, key, agentID, "recall")
 				} else if childErr != nil || result.ExitCode != 0 {
@@ -1695,7 +1695,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// Register in the dispatch registry so foreground dispatches are
 		// recallable, counted, and steerable, matching background behavior.
 		registerDispatch(registry, agentID, opts.Name, func(reason string) {
-			recallReason = recallReasonOrDefault(reason)
+			recallReason.set(reason)
 			cancelFn()
 		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 

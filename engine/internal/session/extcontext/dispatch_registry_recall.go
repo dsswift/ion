@@ -2,6 +2,7 @@ package extcontext
 
 import (
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -234,4 +235,25 @@ func recallReasonOrDefault(reason string) string {
 		return defaultRecallReason
 	}
 	return reason
+}
+
+// recallReasonCell holds the reason a dispatch was recalled. The recaller's
+// goroutine stores it; the dispatch's own goroutine loads it. The zero value
+// reads as "".
+type recallReasonCell struct {
+	reason atomic.Pointer[string]
+}
+
+// set records reason, or defaultRecallReason when it is empty.
+func (c *recallReasonCell) set(reason string) {
+	reason = recallReasonOrDefault(reason)
+	c.reason.Store(&reason)
+}
+
+// get returns the recorded reason, or "" when no recall has happened.
+func (c *recallReasonCell) get() string {
+	if reason := c.reason.Load(); reason != nil {
+		return *reason
+	}
+	return ""
 }
