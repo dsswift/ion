@@ -179,7 +179,7 @@ describe('member management', () => {
     const a = makeWorktree('a')
     await addMember(repo, FEATURE, a.path, a.branch)
 
-    const ws = removeMember(repo, FEATURE, a.path)
+    const ws = await removeMember(repo, FEATURE, a.path)
 
     expect(ws!.members).toHaveLength(0)
     expect(existsSync(a.path)).toBe(true)

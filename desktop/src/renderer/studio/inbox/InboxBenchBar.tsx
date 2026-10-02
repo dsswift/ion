@@ -1,7 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { ArrowsClockwise, CaretDown, CaretRight, CircleNotch, DotsThree, Hammer, Terminal } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { Tooltip } from '../../components/git/Tooltip'
+import { ConflictsDialog } from '../../components/git/ConflictsDialog'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { rError } from '../../rendererLogger'
 import type { DirConversation } from '@ion/shared/worktree-conversations'
 import type { IntegrationWorkspace } from '@ion/shared/types'
 
@@ -43,6 +46,14 @@ export function InboxBenchBar({
   assembling: boolean
 }): React.JSX.Element {
   const colors = useColors()
+  const [conflictDirectory, setConflictDirectory] = useState<string | null>(null)
+  // The open merge is the bench's own state, so its door is on the bench bar:
+  // no member row has to report a conflict for it to be reachable.
+  const openResolution = (): void => {
+    void useSessionStore.getState().benchResolveConflict(workspace.repoPath, workspace.sourceBranch)
+      .then((benchPath) => { if (benchPath) setConflictDirectory(benchPath) })
+      .catch((error) => rError('inbox.bench-bar', 'open resolution failed', { bench_path: workspace.benchPath, error: String(error) }))
+  }
   return <div
     data-testid={`inbox-bench-bar-${workspace.sourceBranch}`}
     onContextMenu={(event) => {
@@ -92,9 +103,18 @@ export function InboxBenchBar({
           Sync All
         </button>
       )}
-      <span data-testid={`inbox-bench-status-${workspace.sourceBranch}`} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.textTertiary, fontSize: 10 }}>{statusText}</span>
+      {workspace.resolutionOpen
+        ? <Tooltip text="A conflict-resolution merge is open in the bench. Open it to continue or abort.">
+          <button
+            data-testid={`inbox-bench-resolution-${workspace.sourceBranch}`}
+            onClick={openResolution}
+            style={{ ...buttonStyle(colors), flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.warningFg, fontSize: 10, textDecoration: 'underline' }}
+          >{statusText}</button>
+        </Tooltip>
+        : <span data-testid={`inbox-bench-status-${workspace.sourceBranch}`} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.textTertiary, fontSize: 10 }}>{statusText}</span>}
       {statusRow}
     </div>
+    {conflictDirectory && <ConflictsDialog directory={conflictDirectory} onClose={() => setConflictDirectory(null)} />}
   </div>
 }
 

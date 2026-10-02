@@ -389,6 +389,16 @@ describe('buildWorktreeList — active worktree', () => {
 describe('benchMemberSummary', () => {
   const HOUR = 3600_000
 
+  // An open merge blocks every assembly whatever the member rows say, so it is
+  // the status even over a failed assembly.
+  it('reports an open resolution merge ahead of every other status', () => {
+    const ws = workspace([member()])
+    expect(benchMemberSummary({ ...ws, lastAssembly: 'failed', resolutionOpen: { unmergedPaths: 13 } }))
+      .toBe('Merge open · 13 conflicted files')
+    expect(benchMemberSummary({ ...ws, resolutionOpen: { unmergedPaths: 1 } })).toBe('Merge open · 1 conflicted file')
+    expect(benchMemberSummary({ ...ws, resolutionOpen: { unmergedPaths: 0 } })).toBe('Merge open · ready to continue')
+  })
+
   it('reports member count alongside the assembly age', () => {
     const ws = workspace([member(), member({ worktreePath: '/wt/b', branchName: 'wt/b' })])
     expect(benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - 2 * HOUR }))

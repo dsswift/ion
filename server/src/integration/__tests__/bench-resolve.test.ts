@@ -14,7 +14,8 @@ vi.mock('os', async () => {
 import { assembleBench } from '../bench-assemble'
 import { prepareConflictResolution } from '../bench-resolve'
 import { captureContribution } from '../bench-snapshot'
-import { makeMember, makeWorkspace, saveWorkspaces } from '../bench-store'
+import { loadWorkspaces, makeMember, makeWorkspace, saveWorkspaces } from '../bench-store'
+import { refreshStaleness, removeMember } from '../bench-ops'
 import type { IntegrationMember, IntegrationWorkspace } from '@ion/shared/types'
 
 function git(cwd: string, ...args: string[]): string {
@@ -150,5 +151,62 @@ describe('prepareConflictResolution', () => {
 
     expect(result).toMatchObject({ ok: true, benchPath: ws.benchPath, branchName: 'wt/c' })
     expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+}, GIT_FIXTURE_TIMEOUT)
+
+/**
+ * The open merge belongs to the bench, not to a member row. These pin the
+ * dead end where the conflicted member left the bench (or lost its pin) and
+ * every door to Continue/Abort closed while assembly stayed refused.
+ */
+describe('an open resolution merge stays reachable', () => {
+  async function openConflict(): Promise<IntegrationWorkspace> {
+    const ws = await fixture()
+    await assembleBench(ws)
+    const prepared = await prepareConflictResolution(repo, 'main')
+    expect(prepared, JSON.stringify(prepared)).toMatchObject({ ok: true, mergeOpen: true, branchName: 'wt/c' })
+    return ws
+  }
+
+  it('reports the merge on the workspace from the bench git state', async () => {
+    const ws = await openConflict()
+    const refreshed = await refreshStaleness(repo, 'main')
+    expect(refreshed!.resolutionOpen).toEqual({ unmergedPaths: 1 })
+    expect(loadWorkspaces()[0].resolutionOpen).toEqual({ unmergedPaths: 1 })
+
+    git(ws.benchPath, 'merge', '--abort')
+    expect((await refreshStaleness(repo, 'main'))!.resolutionOpen).toBeUndefined()
+    expect(loadWorkspaces()[0].resolutionOpen).toBeUndefined()
+  })
+
+  it('still reports the merge as open when no member holds its pin', async () => {
+    const ws = await openConflict()
+    // The record loses the conflicted member without the merge being touched.
+    saveWorkspaces([{ ...ws, members: [ws.members[0]] }])
+
+    const result = await prepareConflictResolution(repo, 'main')
+
+    expect(result).toMatchObject({ ok: true, mergeOpen: true, benchPath: ws.benchPath })
+    expect(result.branchName).toBeUndefined()
+  })
+
+  it('aborts the merge when its member is removed, and keeps any other merge', async () => {
+    const ws = await openConflict()
+    const mergeHead = (): string => git(ws.benchPath, 'rev-parse', '-q', '--verify', 'MERGE_HEAD').trim()
+
+    await removeMember(repo, 'main', ws.members[0].worktreePath)
+    expect(mergeHead()).toBe(ws.members[1].pinnedSha)
+
+    const next = await removeMember(repo, 'main', ws.members[1].worktreePath)
+    expect(() => mergeHead()).toThrow()
+    expect(next!.resolutionOpen).toBeUndefined()
+    expect((await prepareConflictResolution(repo, 'main')).mergeOpen).toBe(false)
+  })
+
+  it('reports no open merge when everything merges cleanly', async () => {
+    const ws = await fixture()
+    await assembleBench(ws)
+    recordResolution(ws, 'valid combined resolution\n')
+    expect((await prepareConflictResolution(repo, 'main')).mergeOpen).toBe(false)
   })
 }, GIT_FIXTURE_TIMEOUT)

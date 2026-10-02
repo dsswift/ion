@@ -20,6 +20,15 @@ vi.mock('../../theme', () => ({
 }))
 vi.mock('../../components/git/Tooltip', () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 
+const benchResolveConflict = vi.fn(async (..._a: unknown[]): Promise<string | null> => '/bench')
+vi.mock('@ion/server/store/sessionStore', () => ({
+  useSessionStore: { getState: () => ({ benchResolveConflict }) },
+}))
+vi.mock('../../components/git/ConflictsDialog', () => ({
+  ConflictsDialog: ({ directory }: { directory: string }) => <div data-testid="conflicts-dialog">{directory}</div>,
+}))
+vi.mock('../../rendererLogger', () => ({ rError: vi.fn() }))
+
 import { InboxBenchBar } from './InboxBenchBar'
 
 const workspace = { sourceBranch: 'main' } as IntegrationWorkspace
@@ -103,5 +112,41 @@ describe('InboxBenchBar conversation count', () => {
   it('shows the count when the bench has conversations', () => {
     render(2)
     expect(host.querySelector('[data-testid="inbox-bench-conversation-count"]')?.textContent).toBe('2')
+  })
+
+  // The bench's open merge has its own door on the bar, so it stays reachable
+  // when no member row reports a conflict.
+  it('opens the conflict dialog from the status line while a resolution merge is open', async () => {
+    const open = { repoPath: '/repo', sourceBranch: 'main', benchPath: '/bench', resolutionOpen: { unmergedPaths: 13 } } as IntegrationWorkspace
+    act(() => root.render(
+      <InboxBenchBar
+        workspace={open}
+        conversations={[]}
+        expanded
+        onToggle={() => {}}
+        onCycle={() => {}}
+        onOpenTerminal={() => {}}
+        onMenu={() => {}}
+        onSyncAll={() => {}}
+        showSyncAll={false}
+        statusText="Merge open · 13 conflicted files"
+        onAssemble={() => {}}
+        assembling={false}
+      />,
+    ))
+    const door = host.querySelector<HTMLButtonElement>('[data-testid="inbox-bench-resolution-main"]')
+    expect(door?.textContent).toBe('Merge open · 13 conflicted files')
+    expect(host.querySelector('[data-testid="inbox-bench-status-main"]')).toBeNull()
+
+    await act(async () => { door!.click() })
+
+    expect(benchResolveConflict).toHaveBeenCalledWith('/repo', 'main')
+    expect(host.querySelector('[data-testid="conflicts-dialog"]')?.textContent).toBe('/bench')
+  })
+
+  it('shows a plain status line when no resolution merge is open', () => {
+    render(0)
+    expect(host.querySelector('[data-testid="inbox-bench-status-main"]')?.textContent).toBe('no members')
+    expect(host.querySelector('[data-testid="inbox-bench-resolution-main"]')).toBeNull()
   })
 })

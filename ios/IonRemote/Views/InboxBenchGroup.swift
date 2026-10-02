@@ -28,6 +28,14 @@ enum BenchAssemblyTime {
     /// `total` and `behind` are counted by the caller from the snapshot's
     /// worktree records, so this stays a pure function of the three numbers
     /// and can be asserted directly rather than through a rendered view.
+    /// The status line while a conflict-resolution merge is open in the bench.
+    /// Mirrors the desktop's `benchResolutionOpenSummary`. It replaces every
+    /// other status: nothing assembles until the merge is continued or aborted.
+    static func resolutionOpenSummary(unmergedPaths: Int) -> String {
+        if unmergedPaths == 0 { return "Merge open · ready to continue" }
+        return "Merge open · \(unmergedPaths) conflicted file\(unmergedPaths == 1 ? "" : "s")"
+    }
+
     static func summary(total: Int, behind: Int, lastBuiltAtMs: Double) -> String {
         if total == 0 { return "no members" }
         let members = "\(total) member\(total == 1 ? "" : "s")"
@@ -290,6 +298,9 @@ struct InboxBenchGroup<Row: View>: View {
     /// because the bench is empty and member freshness is not the operator's
     /// problem yet.
     private func benchStatus(_ bench: RemoteBench) -> String {
+        if let open = bench.resolutionOpen {
+            return BenchAssemblyTime.resolutionOpenSummary(unmergedPaths: open.unmergedPaths)
+        }
         if bench.lastAssembly == "failed" {
             return bench.lastAssemblyFailure == "verification" ? "Verification failed" : "Assembly failed"
         }
@@ -301,6 +312,7 @@ struct InboxBenchGroup<Row: View>: View {
     }
 
     private func benchStatusColor(_ bench: RemoteBench) -> Color {
+        if bench.resolutionOpen != nil { return .orange }
         if bench.lastAssembly == "failed" { return .red }
         if state.behindMemberCount(of: bench) > 0 { return .orange }
         return .secondary

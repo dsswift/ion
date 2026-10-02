@@ -217,6 +217,14 @@ export interface IntegrationWorkspace {
   /** Operator-facing reason when `lastAssembly` is `failed`. */
   lastAssemblyError?: string
   /**
+   * A conflict-resolution merge is open in the bench worktree. Read from the
+   * bench's own git state, never inferred from a member verdict: the member the
+   * merge was opened for can be re-pinned or removed while it is open, and the
+   * merge still refuses every assembly until it is continued or aborted.
+   * Absent when no merge is open.
+   */
+  resolutionOpen?: { unmergedPaths: number }
+  /**
    * Which gate produced the failure, when `lastAssembly === 'failed'`.
    *
    * `'conflict'`: a member's pinned contribution would not merge; per-member

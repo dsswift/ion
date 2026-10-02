@@ -230,6 +230,27 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(evidence.replayedBranches, ["wt/a", "wt/c"])
     }
 
+    /// An open resolution merge decodes, and drives the status line the desktop
+    /// shows for the same bench.
+    func testOpenResolutionMergeDecodesAndSummarizes() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/bench",
+          "benchBranch":"ion/bench/josh","baseSha":"aaa","lastBuiltAt":1700000000000,
+          "lastAssembly":"failed",
+          "resolutionOpen":{"unmergedPaths":13},
+          "baseDrifted":false}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        XCTAssertEqual(states[0].benches[0].resolutionOpen?.unmergedPaths, 13)
+        XCTAssertEqual(BenchAssemblyTime.resolutionOpenSummary(unmergedPaths: 13), "Merge open · 13 conflicted files")
+        XCTAssertEqual(BenchAssemblyTime.resolutionOpenSummary(unmergedPaths: 1), "Merge open · 1 conflicted file")
+        XCTAssertEqual(BenchAssemblyTime.resolutionOpenSummary(unmergedPaths: 0), "Merge open · ready to continue")
+    }
+
     /// A plain merge-conflict failure classifies distinctly and carries no
     /// verification evidence -- the two failure kinds must never be conflated.
     func testConflictFailureClassifiesDistinctlyFromVerification() throws {

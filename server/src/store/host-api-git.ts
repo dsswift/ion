@@ -262,7 +262,7 @@ export function benchAddMember(args: { repoPath: string; sourceBranch: string; w
 }
 
 export function benchRemoveMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }) {
-  return Promise.resolve({ workspace: removeMember(args.repoPath, args.sourceBranch, args.worktreePath) })
+  return removeMember(args.repoPath, args.sourceBranch, args.worktreePath).then((workspace) => ({ workspace }))
 }
 
 export function benchSetOrder(args: { repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }) {

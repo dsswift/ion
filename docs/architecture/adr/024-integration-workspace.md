@@ -403,6 +403,13 @@ call in the model response, the index must contain no unmerged entries, and
 failed edit, formatter, test, or staging command from being masked by a later
 Continue in the same shell or parallel tool batch.
 
+The open merge is a fact about the bench, not about a member. The staleness
+poll reads it from the bench's git state and publishes it as
+`IntegrationWorkspace.resolutionOpen`, and the bench status line becomes the
+door to Continue and Abort. No member row has to report a conflict for the
+merge to be reachable: the member it was opened for can be re-pinned while it is
+open. Removing that member aborts the merge, because nothing is left to resolve.
+
 Automatic rerere replay obeys the same staged-content validation before the
 machinery commits it. An invalid replay is never treated as "nothing left to
 resolve": Ion captures the exact rerere paths while the conflict context exists,

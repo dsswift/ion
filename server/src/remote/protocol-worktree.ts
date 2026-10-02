@@ -175,6 +175,11 @@ export interface RemoteBench {
   /** Operator-facing reason when `lastAssembly` is `failed`. */
   lastAssemblyError?: string
   /**
+   * A conflict-resolution merge is open in the bench. Read-only on iOS:
+   * resolving and aborting it are desktop verbs. Absent when none is open.
+   */
+  resolutionOpen?: { unmergedPaths: number }
+  /**
    * Which gate produced the failure. `'conflict'` means a member's pinned
    * contribution would not merge (see the member's own `conflictPaths` /
    * `conflictsWith`). `'verification'` means every merge succeeded but the

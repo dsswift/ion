@@ -252,6 +252,9 @@ function normalizeWorkspace(raw: unknown): IntegrationWorkspace | null {
       ? w.lastAssemblyFailure
       : undefined,
     lastAssemblyVerification: normalizeVerification(w.lastAssemblyVerification),
+    resolutionOpen: w.resolutionOpen && typeof w.resolutionOpen.unmergedPaths === 'number'
+      ? { unmergedPaths: w.resolutionOpen.unmergedPaths }
+      : undefined,
   }
 }
 

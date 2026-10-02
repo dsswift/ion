@@ -63,7 +63,7 @@ export function createBenchAssemblySlice(
         });
         return null;
       }
-      if (!prepared.branchName) {
+      if (!prepared.mergeOpen) {
         // No merge was left open: recordings (or a pin change) already cover
         // the conflict, so a plain assembly completes the job.
         rInfo("bench", "no conflict remains, reassembling", {
@@ -74,7 +74,7 @@ export function createBenchAssemblySlice(
       }
       rInfo("bench", "merge left in progress for resolution", {
         bench_path: prepared.benchPath ?? "",
-        branch: prepared.branchName,
+        branch: prepared.branchName ?? "",
       });
       return prepared.benchPath ?? null;
     },

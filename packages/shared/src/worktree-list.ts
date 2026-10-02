@@ -224,16 +224,28 @@ export function benchAssembledRelativeTime(lastBuiltAtMs: number): string {
  * that is fine (nothing has moved since) or badly stale (four members have
  * committed since), which is exactly the judgement the count supplies.
  *
- * Assembly FAILURE still replaces everything: when the last assembly failed the
+ * An OPEN RESOLUTION MERGE replaces everything, including a failure: it is the
+ * reason no assembly can run, and it stays true whichever member rows changed.
+ *
+ * Assembly FAILURE otherwise replaces everything: when the last assembly failed the
  * bench is empty, and member freshness is not the operator's problem yet.
  *
  * Shared for the same reason `benchAssembledRelativeTime` is: the overlay's
  * BenchBar, the Studio Inbox's InboxBenchBar, and iOS all render this line, and
  * three copies of the wording is how they drift.
  */
+/** The bench status line while a conflict-resolution merge is open. */
+export function benchResolutionOpenSummary(unmergedPaths: number): string {
+  if (unmergedPaths === 0) return 'Merge open · ready to continue'
+  return `Merge open · ${unmergedPaths} conflicted file${unmergedPaths === 1 ? '' : 's'}`
+}
+
 export function benchMemberSummary(
-  workspace: Pick<IntegrationWorkspace, 'members' | 'lastBuiltAt' | 'lastAssembly' | 'lastAssemblyFailure'>,
+  workspace: Pick<IntegrationWorkspace, 'members' | 'lastBuiltAt' | 'lastAssembly' | 'lastAssemblyFailure' | 'resolutionOpen'>,
 ): string {
+  // An open resolution merge outranks the last assembly's verdict: nothing can
+  // assemble until it is continued or aborted, so it is the one fact to act on.
+  if (workspace.resolutionOpen) return benchResolutionOpenSummary(workspace.resolutionOpen.unmergedPaths)
   if (workspace.lastAssembly === 'failed') {
     if (workspace.lastAssemblyFailure === 'verification') return 'Verification failed'
     // An obstruction is not a collision, and the summary line is the only bench
