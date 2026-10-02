@@ -438,6 +438,37 @@ type DispatchAgentResult struct {
 	// parent is the orchestrator at depth 0). Populated by the engine
 	// so consumers can reconstruct the dispatch tree.
 	ParentDispatchId string `json:"parentDispatchId,omitempty"`
+
+	// ErrorCode is a machine-readable reason the engine refused to launch the
+	// child. Empty on a launched dispatch. See the DispatchErrorCode constants.
+	// A refusal resolves normally rather than as an RPC error, with ExitCode 1
+	// and no DispatchID: nothing was started and the caller's work is intact.
+	ErrorCode string `json:"errorCode,omitempty"`
+
+	// ResourceExhausted describes the exhausted engine-process resource when
+	// ErrorCode is DispatchErrorCodeResourceExhausted. Nil otherwise.
+	ResourceExhausted *DispatchResourceExhausted `json:"resourceExhausted,omitempty"`
+}
+
+// DispatchErrorCodeResourceExhausted is the DispatchAgentResult.ErrorCode of a
+// dispatch refused because the engine process can no longer start
+// subprocesses. Every run in the engine shares that process, so a later
+// dispatch is refused the same way until the resource is released.
+const DispatchErrorCodeResourceExhausted = "resource_exhausted"
+
+// DispatchResourceExhausted is the detail of a resource_exhausted refusal.
+type DispatchResourceExhausted struct {
+	// Resource names what ran out: "file_descriptors", "processes", or
+	// "memory".
+	Resource string `json:"resource"`
+	// OpenDescriptors is the engine process's open descriptor count at the
+	// refusal. Omitted when the platform cannot report it.
+	OpenDescriptors int `json:"openDescriptors,omitempty"`
+	// DescriptorLimit is the engine process's descriptor limit. Omitted when
+	// the platform cannot report it.
+	DescriptorLimit int64 `json:"descriptorLimit,omitempty"`
+	// Message is the operating-system error the preflight observed.
+	Message string `json:"message"`
 }
 
 // DispatchError describes a failed background dispatch.

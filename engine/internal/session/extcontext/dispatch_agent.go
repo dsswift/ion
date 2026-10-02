@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/procres"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -96,6 +97,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				utils.LogWithFields(utils.LevelDebug, "session", "enterprise agent limit check passed", map[string]any{"session_key": sa.SessionKey(), "agent": opts.Name, "active_agents": active, "limit": limit})
 			}
 		}
+
+		// --- Process-resource preflight ---
+		// Last of the pre-dispatch guards, and like them ordered before any
+		// state exists: a refusal starts nothing and leaves nothing behind.
+		if refused := preflightDispatchResources(sa, opts.Name, childDepth, currentDispatchId); refused != nil {
+			return refused, nil
+		}
+		startDescriptors := procres.ReadDescriptors()
 
 		start := time.Now()
 
@@ -1557,6 +1566,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				toolCount:                toolCount,
 				childConversationID:      childSessionID,
 				recalled:                 recalled.Load(),
+				startDescriptors:         startDescriptors,
 			})
 
 			utils.LogWithFields(utils.LevelInfo, "server", "dispatch complete", map[string]any{"model": opts.Name, "exit_code": exitCode, "elapsed": elapsed, "total_cost": totalCost, "tool_count": toolCount, "session_id": key})
@@ -1573,6 +1583,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			if childExtHost != nil {
 				childExtHost.Dispose()
 			}
+			logDispatchDescriptors(key, agentID, agentName, startDescriptors)
 
 			return result
 		}
@@ -1632,6 +1643,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 								}
 							},
 						)
+						// The panic skipped runChild's own cleanup, so the child
+						// extension subprocess and its pipes are still held.
+						// Released after the terminal delivery above, which must
+						// not wait on the reap.
+						if childExtHost != nil {
+							childExtHost.Dispose()
+						}
+						logDispatchDescriptors(key, agentID, agentName, startDescriptors)
 					}
 				}()
 				result := runChild()
@@ -1704,6 +1723,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		defer func() {
 			if childToolServer != nil {
 				childToolServer.Stop()
+			}
+		}()
+		// Release the child extension subprocess when runChild panics past its
+		// own cleanup. A second Dispose after a normal return is a no-op.
+		defer func() {
+			if childExtHost != nil {
+				childExtHost.Dispose()
 			}
 		}()
 		result := runChild()

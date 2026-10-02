@@ -524,6 +524,36 @@ export interface DispatchAgentResult {
    * (e.g. hit max turns or was recalled).
    */
   planExited?: boolean;
+  /**
+   * Machine-readable reason the engine refused to launch the child. Absent on
+   * a launched dispatch. A refusal resolves normally rather than throwing,
+   * with `exitCode: 1` and no `dispatchId`, so check this before treating a
+   * result as a launched child.
+   */
+  errorCode?: DispatchErrorCode;
+  /** The exhausted engine-process resource when `errorCode` is `resource_exhausted`. */
+  resourceExhausted?: DispatchResourceExhausted;
+}
+
+/**
+ * Why the engine refused to launch a dispatched child.
+ *
+ * `resource_exhausted`: the engine process can no longer start subprocesses.
+ * Every run shares that process, so a retry is refused the same way until the
+ * engine releases the resource or is restarted.
+ */
+export type DispatchErrorCode = 'resource_exhausted';
+
+/** Detail of a `resource_exhausted` dispatch refusal. */
+export interface DispatchResourceExhausted {
+  /** What ran out. */
+  resource: 'file_descriptors' | 'processes' | 'memory';
+  /** The engine process's open descriptor count at the refusal. Absent when the platform cannot report it. */
+  openDescriptors?: number;
+  /** The engine process's descriptor limit. Absent when the platform cannot report it. */
+  descriptorLimit?: number;
+  /** The operating-system error the engine observed. */
+  message: string;
 }
 
 /** Describes a failed asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onError}. */
