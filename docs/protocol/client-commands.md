@@ -1413,6 +1413,39 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 
 ---
 
+### refresh_models
+
+Re-fetch the model list of one provider, or of every provider, from its models endpoint. The command answers after discovery has finished. It also re-probes the delegated CLIs, which broadcasts `engine_providers_updated`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"refresh_models"` | yes | Command discriminator |
+| `provider` | string | no | Provider to refresh. Empty or absent refreshes every provider |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"refresh_models","provider":"openai","requestId":"r51"}
+```
+
+**Response:** `ServerResult` with `data: { results }`, one entry per provider considered, sorted by provider id.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | Provider id |
+| `status` | `"ok"` \| `"failed"` \| `"skipped"` | Outcome for this provider |
+| `reason` | string | Why the provider failed or was skipped. Absent when `status` is `ok` |
+| `modelCount` | number | Models the endpoint returned. `0` unless `status` is `ok` |
+
+A provider is `skipped` when it was not a discovery target: its models come from a delegated CLI, it has no models endpoint, or, in a refresh of every provider, it has no credential. A provider named in `provider` is always a target, so a missing credential there is `failed`.
+
+`ok` is `false` only when discovery failed for every targeted provider; `error` then names each failed provider with its reason. A partial failure answers `ok: true`, and the failed providers are found in `results`. `data` is present on both outcomes.
+
+```json
+{"requestId":"r51","ok":false,"error":"discovery failed for 1 of 1 provider(s): openai: http error: ...","data":{"results":[{"provider":"openai","status":"failed","reason":"http error: ...","modelCount":0}]}}
+```
+
+---
+
 ### resolve_model_tier
 
 Resolve a tier name from [`~/.ion/models.json`](../configuration/models.md#tiers) to the model it is configured for, plus that tier's fallback chain.
