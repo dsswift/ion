@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.17](https://github.com/dsswift/ion/compare/sdk/go-v0.1.16...sdk/go-v0.1.17) (2026-10-02)
+
+### Features
+
+* **engine:** add parent-scoped dispatch conversation read (#398) ([d1fd156](https://github.com/dsswift/ion/commit/d1fd156cd63022a3c3cc88568e1d8a5a94411ab5))
+
 ## [0.1.16](https://github.com/dsswift/ion/compare/sdk/go-v0.1.15...sdk/go-v0.1.16) (2026-10-01)
 
 ### Features

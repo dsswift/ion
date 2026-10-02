@@ -10,6 +10,24 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.5.0](https://github.com/dsswift/ion/compare/desktop-v2.4.1...desktop-v2.5.0) (2026-10-02)
+
+### Features
+
+* **engine:** report policy override notices (#385) ([e6befb1](https://github.com/dsswift/ion/commit/e6befb1aa7655cf925cb2c010b830c2959a99180))
+* **desktop:** let the mac package replace a running ion (#387) ([73258cf](https://github.com/dsswift/ion/commit/73258cf2f9cb6d3e00cac9bfcb058a41f238b432))
+* **repo:** resolve per-key settings mutability from policy (#394) ([ef9ddae](https://github.com/dsswift/ion/commit/ef9ddae88bf91412c4d0cde114d8fbb320e8b5fa))
+* **desktop:** separate foreground theme tokens by surface role (#396) ([effb8e8](https://github.com/dsswift/ion/commit/effb8e857d81006589957460f90902171a82f4cc))
+* **desktop:** reapply a changed managed default (#435) ([9812b4b](https://github.com/dsswift/ion/commit/9812b4bf5863c728410ec32d1a9e9b403a75a55a))
+
+### Bug Fixes
+
+* **desktop:** stop collapse all leaving ghost inbox worktree rows ([92cea67](https://github.com/dsswift/ion/commit/92cea671287231da0faec6f72fa82c79b6eca351))
+* **desktop:** keep the merge editor beside the conflicts panel ([6cb57d9](https://github.com/dsswift/ion/commit/6cb57d901b77d5c17562170cb4b27ef68359e95c))
+* **desktop:** reopen a routed panel after a conversation switch ([a8906bc](https://github.com/dsswift/ion/commit/a8906bce9337aab7f01772cfe350cdac66c34e43))
+* **desktop:** reconcile settings-policy managed defaults (#435) ([69ef131](https://github.com/dsswift/ion/commit/69ef131edbb228772e83f96b49d3c2234f74f48a))
+* **server:** keep an open bench merge reachable and abortable ([2e00f7b](https://github.com/dsswift/ion/commit/2e00f7bb1d07c3cac789dde364e89ece03e141ac))
+
 ## [2.4.1](https://github.com/dsswift/ion/compare/desktop-v2.4.0...desktop-v2.4.1) (2026-10-02)
 
 ### Bug Fixes

@@ -8,6 +8,22 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.5.0](https://github.com/dsswift/ion/compare/server-v1.4.0...server-v1.5.0) (2026-10-02)
+
+### Features
+
+* **engine:** report policy override notices (#385) ([e6befb1](https://github.com/dsswift/ion/commit/e6befb1aa7655cf925cb2c010b830c2959a99180))
+* **repo:** resolve per-key settings mutability from policy (#394) ([ef9ddae](https://github.com/dsswift/ion/commit/ef9ddae88bf91412c4d0cde114d8fbb320e8b5fa))
+* **desktop:** separate foreground theme tokens by surface role (#396) ([effb8e8](https://github.com/dsswift/ion/commit/effb8e857d81006589957460f90902171a82f4cc))
+
+### Bug Fixes
+
+* **server:** drop an unused discovery import ([6f0c915](https://github.com/dsswift/ion/commit/6f0c9153cf1854e5f0abce87ab83b99cafb6ab36))
+* **server:** stop the bench poll re-logging unchanged members ([5e14fb6](https://github.com/dsswift/ion/commit/5e14fb6a6df819bd669bf85e386f39950045ec49))
+* **server:** keep an auto-fix tab whose operation is still open ([5a3d91e](https://github.com/dsswift/ion/commit/5a3d91efbe7d71534accf63efd820e3bfceaca26))
+* **server:** let a bench merge take one side of a conflict ([803b6a3](https://github.com/dsswift/ion/commit/803b6a3ed1abf270124172a478f27a3ba35cbb25))
+* **server:** keep an open bench merge reachable and abortable ([2e00f7b](https://github.com/dsswift/ion/commit/2e00f7bb1d07c3cac789dde364e89ece03e141ac))
+
 ## [1.4.0](https://github.com/dsswift/ion/compare/server-v1.3.0...server-v1.4.0) (2026-10-01)
 
 ### Features

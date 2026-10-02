@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.92.0](https://github.com/dsswift/ion/compare/engine-v1.91.0...engine-v1.92.0) (2026-10-02)
+
+### Features
+
+* **engine:** report policy override notices (#385) ([e6befb1](https://github.com/dsswift/ion/commit/e6befb1aa7655cf925cb2c010b830c2959a99180))
+* **engine:** add parent-scoped dispatch conversation read (#398) ([d1fd156](https://github.com/dsswift/ion/commit/d1fd156cd63022a3c3cc88568e1d8a5a94411ab5))
+
 ## [1.91.0](https://github.com/dsswift/ion/compare/engine-v1.90.1...engine-v1.91.0) (2026-10-01)
 
 ### Features

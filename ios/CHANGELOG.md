@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.3.0](https://github.com/dsswift/ion/compare/ios-v2.2.0...ios-v2.3.0) (2026-10-02)
+
+### Features
+
+* **desktop:** reapply a changed managed default (#435) ([9812b4b](https://github.com/dsswift/ion/commit/9812b4bf5863c728410ec32d1a9e9b403a75a55a))
+
+### Bug Fixes
+
+* **server:** keep an open bench merge reachable and abortable ([2e00f7b](https://github.com/dsswift/ion/commit/2e00f7bb1d07c3cac789dde364e89ece03e141ac))
+
 ## [2.2.0](https://github.com/dsswift/ion/compare/ios-v2.1.1...ios-v2.2.0) (2026-10-01)
 
 ### Features
