@@ -108,6 +108,11 @@ Version history: v2 introduced the unified contract; v3 added `event_id` and the
 | `tool` | string | Tool name |
 | `duration_ms` | int | Execution wall-clock duration |
 | `error` | string | Error message; empty on success |
+| `fd_open` | int | File descriptors the engine process holds when the call ends |
+| `fd_limit` | int | File descriptors the engine process may hold |
+| `fd_delta` | int | Change in `fd_open` across the call |
+
+The three `fd_*` keys are omitted where the platform cannot count descriptors (Windows). Every run shares the engine process, so `fd_delta` includes whatever concurrent work opened or closed during the call. A tool whose calls keep a positive `fd_delta` is leaking descriptors. The `dispatch.agent` span carries the same reading for a whole dispatch: `fd_open` and `fd_limit` at its end, `fd_open_start` from when it was accepted, and `fd_delta` between them.
 
 `run.complete` — emitted once per completed run; all cost and token accounting lives here:
 
