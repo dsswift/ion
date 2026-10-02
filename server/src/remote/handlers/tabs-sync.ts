@@ -28,6 +28,7 @@ import { localPrincipal } from '../../identity/local-principal'
 import { buildSnapshotEvent } from '../snapshot-polling'
 import { readRemoteDisplay } from './display'
 import { getEnterprisePolicyNewConversationDefaults } from '../../engine/engine-bridge-fs'
+import { rememberNewConversationDefaults, sessionPrincipalForSubject } from '../../enterprise-policy-principal'
 import { buildThemeManifest, rescanThemePacks } from '../../theme-packs'
 import { thinConnections } from '../../thin-view/remote-out'
 import { sendThinFirstPaint } from '../../thin-view/thin-sync'
@@ -98,16 +99,18 @@ export async function sendSync(send: (event: any) => void, forSubject?: string, 
   // rather than inside the `settings` key-value map.
   let newConversationPolicy: { baseDirectory: string; engineProfileId: string; locked: boolean } | null = null
   try {
-    const policy = await getEnterprisePolicyNewConversationDefaults()
+    const policy = await getEnterprisePolicyNewConversationDefaults(forSubject ? sessionPrincipalForSubject(forSubject) : undefined)
     if (policy) {
       newConversationPolicy = { baseDirectory: policy.baseDirectory, engineProfileId: policy.engineProfileId, locked: policy.locked }
     }
   } catch (err) {
     log('snap_send: enterprise policy fetch failed', { error: String(err) })
   }
-  // Refresh the main-process cache so synchronous emitters
-  // (broadcastDesktopSettingsSnapshot) project the same policy without an RPC.
-  enterprisePolicyCache.newConversationDefaults = newConversationPolicy
+  // Refresh what synchronous emitters (broadcastDesktopSettingsSnapshot)
+  // project without an RPC: this subject's own entry when the read was for
+  // one subject, the process-wide cache otherwise.
+  if (forSubject) rememberNewConversationDefaults(forSubject, newConversationPolicy)
+  else enterprisePolicyCache.newConversationDefaults = newConversationPolicy
   send(buildDesktopSettingsSnapshot(forSubject ?? localPrincipal().subject, scopes, newConversationPolicy))
   // Custom theme packs: rescan the disk roots (an MDM may have dropped a
   // pack since the last connect), then ship the iOS components. Sync runs

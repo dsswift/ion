@@ -18,7 +18,8 @@ import { treeWatch } from '../files/tree-watch'
 import { decodeFrame } from '@ion/shared/studio-wire/codec'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { getEngineHostInfo } from '../engine/engine-bridge-fs'
-import { enterprisePolicyHash, onEnterprisePolicyChange, settledEnterprisePolicy } from '../enterprise-policy-publish'
+import { enterprisePolicyHash, onEnterprisePolicyChange } from '../enterprise-policy-publish'
+import { enterprisePolicyFor } from '../enterprise-policy-principal'
 import { computeSettingsHiddenGroups } from './settings-visibility'
 import type { HealthHandle } from '../http/health'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
@@ -127,7 +128,7 @@ function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBi
       serverVersion: opts.serverVersion,
       engineVersion: () => cachedEngineVersion,
       buildSnapshot: buildStudioSnapshot,
-      getEnterprisePolicy: settledEnterprisePolicy,
+      getEnterprisePolicy: enterprisePolicyFor,
       advertisedRelays: () => advertisedRelays(currentServerConfig()),
       directAddresses: () => loggedDirectAddresses(currentServerConfig().listen.tcp.port),
       allowUnsealedPaired: () => currentServerConfig().listen.tcp.allowUnsealedPaired,
@@ -368,13 +369,19 @@ export function startStudioListeners(health: HealthHandle, options: StudioListen
     warn('startStudioListeners called with neither a local nor a TCP server available')
   }
   installStudioCommandSenders(opts.environmentId)
-  const offPolicy = onEnterprisePolicyChange((policy) => {
-    const policyHash = enterprisePolicyHash(policy)
+  const offPolicy = onEnterprisePolicyChange(() => {
+    // Each connection gets the policy that applies to its own principal.
     for (const conn of connectionRegistry.all()) {
-      if (conn.isClosed) continue
-      conn.send({ type: 'studio_environment_policy', enterprisePolicy: policy, settingsHiddenGroups: computeSettingsHiddenGroups(conn, policy), policyHash })
+      const principal = conn.principal
+      if (conn.isClosed || !principal) continue
+      void enterprisePolicyFor(principal).then((policy) => {
+        if (conn.isClosed) return
+        const policyHash = enterprisePolicyHash(policy)
+        conn.send({ type: 'studio_environment_policy', enterprisePolicy: policy, settingsHiddenGroups: computeSettingsHiddenGroups(conn, policy), policyHash })
+        log('enterprise policy sent to live connection', { connection_id: conn.id, subject: principal.subject, policy_hash: policyHash })
+      })
     }
-    log('enterprise policy sent to live connections', { connection_count: connectionRegistry.all().length, policy_hash: policyHash })
+    log('enterprise policy change fanned out', { connection_count: connectionRegistry.all().length })
   })
   const heartbeat = setInterval(sweepConnectionLiveness, HEARTBEAT_INTERVAL_MS)
   // Never hold the process open on the heartbeat alone.

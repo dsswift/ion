@@ -24,6 +24,9 @@ import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import { SCOPES } from '@ion/shared/studio-wire/types'
 import type { AuthPolicy } from '../hello'
 import { lookupPrincipal, lookupClaims, _resetPrincipalRegistryForTest } from '../../identity/principal-registry'
+import { getEnterprisePolicy } from '../../engine/engine-bridge-fs'
+import { publishEnterprisePolicy } from '../../enterprise-policy-publish'
+import type { EnterprisePolicy, SessionPrincipal } from '@ion/shared/types-engine'
 
 let harness: Harness
 let dataDir: string
@@ -253,6 +256,77 @@ describe('studio_hello: P0 principal registration', () => {
       expect(lookupPrincipal('alice')).toEqual({ subject: 'alice', displayName: 'Alice', provider: 'entra', kind: 'operator' })
       expect(lookupClaims('alice')).toEqual({ roles: ['admin'] })
       await closeSocket(ws)
+    } finally {
+      await h.close()
+    }
+  })
+})
+
+describe('studio_welcome: enterprise policy per principal', () => {
+  const processPolicy: EnterprisePolicy = { allowedModels: ['model-a', 'model-b'] }
+  const tokenPolicy: AuthPolicy = {
+    authenticate: (credential) =>
+      Promise.resolve({
+        ok: true as const,
+        principal: { subject: credential.kind === 'bearer' ? credential.token : 'nobody', displayName: 'A user', provider: 'entra', kind: 'operator' },
+        scopes: [...SCOPES],
+        claims: { groups: ['contractors'] },
+      }),
+  }
+
+  afterEach(() => {
+    publishEnterprisePolicy(null)
+    vi.mocked(getEnterprisePolicy).mockReset().mockResolvedValue(null)
+  })
+
+  async function welcomePolicy(h: Harness, token: string): Promise<unknown> {
+    const ws = connectTcp(h)
+    await waitOpen(ws)
+    sendFrame(ws, helloFrame({ credential: { kind: 'bearer', token } }))
+    const frame = await nextFrame(ws)
+    expect(frame.type).toBe('studio_welcome')
+    await closeSocket(ws)
+    return (frame as { enterprisePolicy: unknown }).enterprisePolicy
+  }
+
+  it('welcomes each principal with the policy the engine resolves for that principal', async () => {
+    publishEnterprisePolicy(processPolicy)
+    vi.mocked(getEnterprisePolicy).mockImplementation((principal?: SessionPrincipal) =>
+      Promise.resolve(principal?.subject === 'contractor' ? { allowedModels: ['model-a'], assetScopes: ['contractors'] } : processPolicy),
+    )
+    const h = await startHarness({ authPolicy: tokenPolicy })
+    try {
+      const [contractor, staff] = await Promise.all([welcomePolicy(h, 'contractor'), welcomePolicy(h, 'staff')])
+      expect(contractor).toEqual({ allowedModels: ['model-a'], assetScopes: ['contractors'] })
+      expect(staff).toEqual(processPolicy)
+      // The engine was asked with the verified principal and its claims.
+      expect(vi.mocked(getEnterprisePolicy).mock.calls.map(([p]) => [p?.subject, p?.claims])).toEqual(
+        expect.arrayContaining([
+          ['contractor', { groups: ['contractors'] }],
+          ['staff', { groups: ['contractors'] }],
+        ]),
+      )
+    } finally {
+      await h.close()
+    }
+  })
+
+  it('falls back to the process policy when the engine cannot resolve one for the principal', async () => {
+    publishEnterprisePolicy(processPolicy)
+    vi.mocked(getEnterprisePolicy).mockRejectedValue(new Error('engine unreachable'))
+    const h = await startHarness({ authPolicy: tokenPolicy })
+    try {
+      expect(await welcomePolicy(h, 'contractor')).toEqual(processPolicy)
+    } finally {
+      await h.close()
+    }
+  })
+
+  it('asks the engine for nothing when there is no enterprise policy at all', async () => {
+    const h = await startHarness({ authPolicy: tokenPolicy })
+    try {
+      expect(await welcomePolicy(h, 'contractor')).toBeNull()
+      expect(getEnterprisePolicy).not.toHaveBeenCalled()
     } finally {
       await h.close()
     }

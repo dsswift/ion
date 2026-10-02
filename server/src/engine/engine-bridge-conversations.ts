@@ -16,8 +16,14 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engi
  * THIS ambient value, never from a client-supplied argument.
  */
 function principalPayload(): { principal: ReturnType<typeof toSessionPrincipal> } | Record<string, never> {
+  const principal = ambientSessionPrincipal()
+  return principal ? { principal } : {}
+}
+
+/** The ambient request principal in engine-wire shape, or undefined outside a live Studio-wire dispatch. */
+export function ambientSessionPrincipal(): ReturnType<typeof toSessionPrincipal> | undefined {
   const caller = currentPrincipal()
-  return caller ? { principal: toSessionPrincipal(caller, currentClaims()) } : {}
+  return caller ? toSessionPrincipal(caller, currentClaims()) : undefined
 }
 
 /**

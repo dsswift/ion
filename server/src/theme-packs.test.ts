@@ -11,7 +11,9 @@ vi.mock('./logger', () => ({
   error: vi.fn(),
 }))
 
+import { registerEnterprisePolicySource } from './enterprise-policy-source'
 import {
+  accountThemesRoots,
   buildThemeManifest,
   customThemeChoices,
   getRendererThemes,
@@ -336,5 +338,65 @@ describe('rescan + consumers', () => {
     expect(themes[0].desktopDiagnostics).toContainEqual(expect.objectContaining({
       surface: 'desktop', fatal: true, message: expect.stringContaining('desktop.base'),
     }))
+  })
+})
+
+describe('account-scoped theme packs', () => {
+  let base: string
+  let scopedUser: string
+  let scopedSystem: string
+  const accountRoot = (scope: string): string => join(base, 'accounts', scope, 'themes')
+
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'ion-themes-scoped-'))
+    scopedUser = join(base, 'user')
+    scopedSystem = join(base, 'themes')
+    resetThemePacksForTest({ user: scopedUser, system: scopedSystem })
+  })
+
+  afterEach(() => {
+    registerEnterprisePolicySource(() => null)
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('serves a scoped pack only to an account whose policy names the scope', () => {
+    writePack(scopedSystem, 'everyone', basicManifest('everyone'))
+    writePack(accountRoot('contractors'), 'brand', { ...basicManifest('brand'), name: 'Contractor brand' })
+    writePack(accountRoot('staff'), 'brand', { ...basicManifest('brand'), name: 'Staff brand' })
+
+    registerEnterprisePolicySource(() => null)
+    expect(getThemePacks().map((p) => p.manifest.id)).toEqual(['everyone'])
+
+    registerEnterprisePolicySource(() => ({ assetScopes: ['contractors'] }))
+    rescanThemePacks()
+    expect(getThemePacks().map((p) => [p.manifest.id, p.manifest.name])).toEqual([
+      ['brand', 'Contractor brand'],
+      ['everyone', 'Theme everyone'],
+    ])
+
+    registerEnterprisePolicySource(() => ({ assetScopes: ['staff'] }))
+    rescanThemePacks()
+    expect(getThemePacks().find((p) => p.manifest.id === 'brand')?.manifest.name).toBe('Staff brand')
+  })
+
+  it('lets a scoped pack shadow a machine-wide pack with the same id and reads its assets from the scoped root', () => {
+    const withLogo = (id: string): Record<string, unknown> => ({
+      ...basicManifest(id),
+      ios: { tokens: iosTokens(), assets: { logo: 'assets/logo.png' } },
+    })
+    const machineLogo = Buffer.concat([PNG_BYTES, Buffer.from('machine')])
+    writePack(scopedSystem, 'brand', withLogo('brand'), { 'assets/logo.png': machineLogo })
+    writePack(accountRoot('contractors'), 'brand', withLogo('brand'), { 'assets/logo.png': PNG_BYTES })
+    registerEnterprisePolicySource(() => ({ assetScopes: ['contractors'] }))
+
+    const packs = getThemePacks()
+    expect(packs).toHaveLength(1)
+    expect(packs[0].source).toBe('system')
+    expect(readIosThemeAsset('brand', 'logo')?.dataUrl).toBe(`data:image/png;base64,${PNG_BYTES.toString('base64')}`)
+  })
+
+  it('ignores a scope that is not a single safe directory name', () => {
+    registerEnterprisePolicySource(() => ({ assetScopes: ['../escape', 'Contractors', 'ok-scope'] }))
+    expect(accountThemesRoots()).toEqual([accountRoot('ok-scope')])
   })
 })

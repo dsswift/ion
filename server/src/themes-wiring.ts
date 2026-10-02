@@ -18,7 +18,8 @@
 import { broadcast } from './broadcast'
 import { log as _log } from './logger'
 import { broadcastDesktopSettingsSnapshot } from './settings-broadcast'
-import { buildThemeManifest, getRendererThemes, onThemePacksChanged, startThemePackWatcher } from './theme-packs'
+import { buildThemeManifest, getRendererThemes, onThemePacksChanged, rescanThemePacks, startThemePackWatcher } from './theme-packs'
+import { onEnterprisePolicyChange, settledEnterprisePolicy } from './enterprise-policy-publish'
 import { sendRemoteEvent, remoteClientsPresent } from './thin-view/remote-out'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -40,5 +41,22 @@ export function wireThemePackEvents(): () => void {
   })
   startThemePackWatcher()
   log('theme pack watcher started')
-  return off
+  // The account's asset scopes come from the enterprise policy, which is
+  // read after boot and can change on an engine reconnect. Either moves the
+  // set of roots, so rescan and re-arm the watcher.
+  const rescanForPolicy = (reason: string): void => {
+    const changed = rescanThemePacks()
+    startThemePackWatcher()
+    log('theme pack roots re-read for enterprise policy', { reason, changed })
+  }
+  const offPolicy = onEnterprisePolicyChange(() => rescanForPolicy('policy_changed'))
+  let wired = true
+  void settledEnterprisePolicy().then(() => {
+    if (wired) rescanForPolicy('policy_settled')
+  })
+  return () => {
+    wired = false
+    off()
+    offPolicy()
+  }
 }
