@@ -78,13 +78,13 @@ export async function listModelTiers(bridge: EngineBridge): Promise<ModelTier[]>
   return result.data?.tiers ?? []
 }
 
-export async function setModelTier(bridge: EngineBridge, tier: ModelTier): Promise<{ ok: boolean; error?: string }> {
+export async function setModelTier(bridge: EngineBridge, tier: ModelTier): Promise<{ ok: boolean; error?: string; code?: string }> {
   await bridge.connect()
   log('set_model_tier', { tier: tier.name, model: tier.model, fallbackCount: tier.fallbacks.length })
   return bridge._sendWithResult({ cmd: 'set_model_tier', text: tier.name, model: tier.model, fallbacks: tier.fallbacks })
 }
 
-export async function removeModelTier(bridge: EngineBridge, name: string): Promise<{ ok: boolean; error?: string }> {
+export async function removeModelTier(bridge: EngineBridge, name: string): Promise<{ ok: boolean; error?: string; code?: string }> {
   await bridge.connect()
   log('remove_model_tier', { tier: name })
   return bridge._sendWithResult({ cmd: 'remove_model_tier', text: name })
@@ -104,7 +104,7 @@ export async function getDefaultProvider(bridge: EngineBridge): Promise<string> 
 }
 
 /** Persist the default provider. An empty string clears the preference. */
-export async function setDefaultProvider(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string }> {
+export async function setDefaultProvider(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string; code?: string }> {
   await bridge.connect()
   log('set_default_provider', { provider, cleared: provider === '' })
   return bridge._sendWithResult({ cmd: 'set_default_provider', text: provider })

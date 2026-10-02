@@ -515,12 +515,12 @@ export class EngineBridge extends EventEmitter {
   }
   async setModelTier(
     tier: ModelTier,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; code?: string }> {
     return prov.setModelTier(this, tier);
   }
   async removeModelTier(
     name: string,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; code?: string }> {
     return prov.removeModelTier(this, name);
   }
   async storeCredential(

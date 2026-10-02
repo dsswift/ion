@@ -35,6 +35,8 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
 export interface MutationResult {
   ok: boolean
   error?: string
+  /** The engine's machine-readable reason for a refusal, when it gave one. */
+  code?: string
 }
 
 function isModelTier(value: unknown): value is ModelTier {

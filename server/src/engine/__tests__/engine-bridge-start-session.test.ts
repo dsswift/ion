@@ -27,6 +27,9 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(() => false),
   readFileSync: vi.fn(() => ''),
 }))
+// The real logger flushes on a timer through fs.appendFile, which the fs mock
+// above does not carry.
+vi.mock('../../logger', () => ({ log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(), trace: vi.fn() }))
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
   execSync: vi.fn(() => ''),

@@ -121,3 +121,23 @@ describe('provider.login placement', () => {
     expect(bridge.providerLogin.mock.calls).toEqual([['anthropic'], ['openai'], ['xai']])
   })
 })
+
+describe('PROVIDER_ACTIONS on a managed engine configuration', () => {
+  it('refuses a plan-mode Bash allowlist write with the managed-config code', async () => {
+    const { setManagedEngineConfigSource } = await import('../../persistence/settings-store')
+    const { MANAGED_CONFIG_WRITE_REFUSED } = await import('@ion/shared/types-enterprise')
+    setManagedEngineConfigSource({ path: null })
+    try {
+      const outcome = await PROVIDER_ACTIONS['planBashAllowlist.set'].handler(conn, [['gh']])
+      expect(outcome).toMatchObject({ ok: false, error: { code: MANAGED_CONFIG_WRITE_REFUSED } })
+    } finally {
+      setManagedEngineConfigSource(null)
+    }
+  })
+
+  it('passes the engine refusal code of a tier write back to the caller', async () => {
+    bridge.setModelTier.mockResolvedValue({ ok: false, error: 'models configuration is owned by the managed source', code: 'managed_config_write_refused' } as never)
+    const outcome = await PROVIDER_ACTIONS['model.setTier'].handler(conn, [{ name: 'fast', model: 'm', fallbacks: [] }])
+    expect(outcome).toMatchObject({ ok: true, value: { ok: false, code: 'managed_config_write_refused' } })
+  })
+})
