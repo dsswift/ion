@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { IntegrationMember, IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
-import { buildInboxNavigator } from './inbox-navigator'
+import { buildInboxNavigator, inboxGroupRowKey, inboxProjectRowKey } from './inbox-navigator'
 
 function tab(id: string, directory: string, overrides: Partial<TabState> = {}): TabState {
   return { id, title: id, workingDirectory: directory, worktree: null, isTerminalOnly: false, ...overrides } as TabState
@@ -332,5 +332,49 @@ describe('buildInboxNavigator: a repository on another machine', () => {
     const nodes = buildInboxNavigator([conversation, local], new Map(), new Map([[repo, [wt]]]), new Map(), new Set(), { scopeOf, environmentOfRepo })
     expect(nodes).toHaveLength(1)
     expect(nodes[0].checkouts).toEqual([{ environmentId: 'local', key: '/Users/u/src/api' }, { environmentId: 'env-remote', key: repo }])
+  })
+})
+
+describe('navigator row keys: the same path on two environments', () => {
+  // Two machines can hold a repository at the same path, and the merged
+  // worktree read model serves one inventory for it. Rows keyed on the path
+  // alone collided, and React stranded the colliding rows on screen.
+  const repo = '/Users/u/src/ion'
+  const wt = entry('/Users/u/.ion/worktrees/ion-a', 'A')
+  const inventory = new Map([[repo, [wt]]])
+  const worktree = { worktreePath: wt.worktreePath, repoPath: repo, branchName: wt.branchName, sourceBranch: 'main' }
+  const local = tab('t-local', wt.worktreePath, { worktree })
+  const remote = tab('t-remote', wt.worktreePath, { environmentId: 'env-remote', worktree })
+  const rowKeys = (nodes: ReturnType<typeof buildInboxNavigator>): string[] => nodes.flatMap((node) => [inboxProjectRowKey(node), ...node.groups.map((group) => inboxGroupRowKey(node, group, 'card'))])
+
+  it('gives every header a distinct key when both checkouts merge under one project', () => {
+    const scopeOf = (): string => 'remote:github.com/o/ion'
+    const nodes = buildInboxNavigator([local, remote], new Map(), inventory, new Map(), new Set(), { scopeOf })
+    expect(nodes).toHaveLength(1)
+    const keys = rowKeys(nodes)
+    expect(keys).toEqual(['project:/Users/u/src/ion', 'group:card:/Users/u/.ion/worktrees/ion-a', 'group:card:env-remote::/Users/u/.ion/worktrees/ion-a'])
+  })
+
+  it('gives every header a distinct key when the checkouts stay two projects', () => {
+    const scopeOf = (key: string, env: string): string => `${env}|${key}`
+    const nodes = buildInboxNavigator([local, remote], new Map(), inventory, new Map(), new Set(), { scopeOf })
+    expect(nodes).toHaveLength(2)
+    const keys = rowKeys(nodes)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('buildInboxNavigator: the read model belongs to one machine per path', () => {
+  // A conversation on another machine, in a folder whose path is also a
+  // repository here, used to be drawn with this machine's worktrees and bench.
+  const repo = '/Users/u/src/ion'
+  const wt = entry('/Users/u/.ion/worktrees/ion-a', 'A')
+  const remote = tab('t-remote', repo, { environmentId: 'env-remote' })
+  const environmentOfRepo = (): string => 'local'
+
+  it('draws no local worktree or bench under the other machine\'s checkout', () => {
+    const benches = new Map([[repo, [workspace(repo, '/Users/u/.ion/integration/ion')]]])
+    const nodes = buildInboxNavigator([remote], benches, new Map([[repo, [wt]]]), new Map(), new Set(), { environmentOfRepo, environmentIncluded: (id) => id === 'env-remote' })
+    expect(nodes.map((node) => [node.environmentId, node.groups.length, node.flatTabs.map((t) => t.id)])).toEqual([['env-remote', 0, ['t-remote']]])
   })
 })

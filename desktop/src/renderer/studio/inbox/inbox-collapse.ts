@@ -105,3 +105,14 @@ export function collapsedInboxRows(
   for (const tab of tabs) if (workingTabIds.has(tab.id)) append(tab);
   return visible;
 }
+
+/** The keys that occur more than once, each listed once, in first-seen order. */
+export function duplicateKeys(keys: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const repeated = new Set<string>()
+  for (const key of keys) {
+    if (seen.has(key)) repeated.add(key)
+    seen.add(key)
+  }
+  return [...repeated]
+}

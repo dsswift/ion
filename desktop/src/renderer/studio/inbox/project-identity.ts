@@ -32,6 +32,15 @@ export function checkoutSlot(environmentId: string, projectKey: string): string 
   return `${environmentId}::${projectKey}`
 }
 
+/**
+ * A path key made unique across environments. Two environments can hold the
+ * same path, so a key that must tell their checkouts apart carries the
+ * environment. A local path stays bare.
+ */
+export function environmentScopedKey(environmentId: string, key: string): string {
+  return environmentId === LOCAL_ENVIRONMENT_ID ? key : checkoutSlot(environmentId, key)
+}
+
 export function buildProjectScopeResolver(byEnvironment: ProjectsByEnvironment): ProjectScopeResolver {
   const bySlot = new Map<string, string>()
   for (const [environmentId, projects] of Object.entries(byEnvironment)) {
