@@ -36,6 +36,7 @@ import { GitPanel } from '../../components/GitPanel'
 import type { SurfaceTab } from '@ion/shared/studio-surface-types'
 import { host } from '../../host/host-instance'
 import { SurfaceFindHost } from './surface-find'
+import { useOfferedSurfaceTabs } from './surface-developer-gate'
 
 function PlaceholderBody({ label }: { label: string }): React.JSX.Element {
   const colors = useColors()
@@ -231,8 +232,7 @@ export function StudioBrowserHost(): React.JSX.Element | null {
 
 export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, agentName: string) => void }): React.JSX.Element {
   const colors = useColors()
-  const tabs = useSurfaceStore((s) => s.tabs)
-  const activeTabId = useSurfaceStore((s) => s.activeTabId)
+  const { tabs, activeTabId } = useOfferedSurfaceTabs()
   const currentConversationId = useSurfaceStore((s) => s.currentConversationId)
   const hydrated = useSurfaceStore((s) => s.hydrated)
   // The searchable body. The find bar sits beside it, never inside it.

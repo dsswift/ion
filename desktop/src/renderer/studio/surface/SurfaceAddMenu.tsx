@@ -5,6 +5,9 @@
  * Portals into the PopoverLayer; pointerEvents:'auto' on the root (the
  * layer itself is pointer-transparent).
  */
+import type { DeveloperSurfaceState } from '@ion/shared/developer-surfaces'
+import { useActiveDeveloperSurfaces } from '../connection/developer-surfaces'
+import { surfaceTabOffered } from './surface-tab-offer'
 import React, { useEffect, useRef } from 'react'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { createPortal } from 'react-dom'
@@ -25,6 +28,8 @@ interface AddEntryContext {
   graphViewAvailable: boolean
   /** False on a client that cannot listen on its own machine (a browser tab). */
   portForwardAvailable: boolean
+  /** The developer surfaces on offer for the active conversation. */
+  developerSurfaces: DeveloperSurfaceState
 }
 
 interface AddEntry {
@@ -38,7 +43,7 @@ interface AddEntry {
 
 /** Future surface kinds are one entry here. */
 export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
-  { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff') },
+  { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff'), available: (ctx) => surfaceTabOffered('diff', ctx.developerSurfaces) },
   { id: 'plan', label: 'Plan Preview', icon: FileText, create: (s) => s.openSingleton('plan') },
   {
     id: 'visualizer',
@@ -48,7 +53,7 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
   },
   { id: 'scratch', label: 'Scratch Document', icon: NotePencil, create: (s) => s.createScratch() },
   { id: 'files', label: 'Explorer', icon: FolderOpen, create: (s) => s.openSingleton('files') },
-  { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel') },
+  { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel'), available: (ctx) => surfaceTabOffered('gitpanel', ctx.developerSurfaces) },
   {
     id: 'browser',
     label: 'Browser',
@@ -122,10 +127,12 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
   const menuRef = useRef<HTMLDivElement>(null)
   const activeCwd = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? '~')
   const graphViewAvailable = useGraphStore((s) => s.available)
+  const developerSurfaces = useActiveDeveloperSurfaces()
   const ctx: AddEntryContext = {
     graphViewAvailable,
     browserTabAvailable: host.capabilities().includes('browser'),
     portForwardAvailable: Boolean(host.portForward),
+    developerSurfaces,
   }
   const visibleEntries = SURFACE_ADD_ENTRIES.filter((entry) => entry.available?.(ctx) !== false)
 

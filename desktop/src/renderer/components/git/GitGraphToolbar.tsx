@@ -1,3 +1,4 @@
+import { useActiveDeveloperSurfaces } from '../../studio/connection/developer-surfaces'
 import React from 'react'
 import { isWorktreeSealed } from '@ion/shared/worktree-seal'
 import {
@@ -46,14 +47,21 @@ export function GitGraphToolbar({
   setFinishMenuAnchor: (anchor: { x: number; y: number } | null) => void
 }): React.JSX.Element {
   const colors = useColors()
+  // Every control in this bar writes to the repository, so the bar is bare
+  // where source control is off: the graph below it stays readable.
+  const { sourceControl, repositoryStatus, worktrees: worktreesOffered } = useActiveDeveloperSurfaces()
   return (
     <div
       className="flex items-center justify-between px-2"
       style={{ height: 24, borderBottom: `1px solid ${colors.containerBorder}` }}
     >
-      <BranchPicker directory={directory} currentBranch={branch} onRefresh={handleBranchRefresh} worktree={worktree} />
+      {sourceControl ? (
+        <BranchPicker directory={directory} currentBranch={branch} onRefresh={handleBranchRefresh} worktree={worktree} />
+      ) : (
+        <span className="text-[10px]" style={{ color: colors.textTertiary }}>{repositoryStatus ? branch : ''}</span>
+      )}
       <div className="flex items-center gap-0.5">
-        {pushConfirm ? (
+        {!sourceControl ? null : pushConfirm ? (
           <div className="flex items-center gap-0.5 text-[9px]">
             <span style={{ color: colors.textTertiary }}>Push?</span>
             <button
@@ -93,7 +101,7 @@ export function GitGraphToolbar({
                 {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
               </button>
             </Tooltip>
-            {worktree && !isWorktreeSealed(worktree) ? (
+            {worktree && !worktreesOffered ? null : worktree && !isWorktreeSealed(worktree) ? (
               <Tooltip text={hasUncommittedChanges
                   ? 'Commit all changes before finishing'
                   : strategy === 'merge-ff'

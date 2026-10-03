@@ -4,6 +4,7 @@
  * deletion. The inbox is the primary conversation surface, so a conversation
  * verb lands here.
  */
+import { useEnvironmentDeveloperSurfaces } from '../connection/developer-surfaces'
 import { tabEnvironmentId } from '../connection/tab-environment'
 import { isNonNegativeNumber, useServerSetting } from '../state/use-server-setting'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -102,6 +103,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
   // Visible only for a plain conversation over a git repo (not already a
   // worktree), disabled while the tab is busy or the checkout is dirty.
   const convert = useConvertToWorktreeGate(tab)
+  const developerSurfaces = useEnvironmentDeveloperSurfaces(tabEnvironmentId(tab))
   // "Fork conversation" needs a
   // minted conversation to copy from, and a landed or moved worktree is a
   // sealed read-only record that no longer accepts new forks.
@@ -207,7 +209,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
       {/* Worktree conversations only: the deliberate "change both names" verb.
           Plain Rename leaves the worktree alone, because a worktree's topic
           does not follow every conversation relabelling. */}
-      {onRenameWithWorktree && tab.worktree && <MenuButton label="Rename conversation and worktree…" onSelect={() => exec(onRenameWithWorktree)} />}
+      {onRenameWithWorktree && tab.worktree && developerSurfaces.worktrees && <MenuButton label="Rename conversation and worktree…" onSelect={() => exec(onRenameWithWorktree)} />}
       {onPickColor && <MenuButton label="Color…" onSelect={() => exec(onPickColor)} />}
       <MenuButton label="Regenerate title" onSelect={() => exec(() => { void store.getState().regenerateTabTitle(tab.id) })} />
       {canFork && (
@@ -236,7 +238,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
         })}
       />
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
-      {tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
+      {developerSurfaces.repositoryStatus && tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
       {!tab.isTerminalOnly && <MenuButton label="Copy transcript" onSelect={() => exec(() => { void copyConversationTranscript(tab.id) })} />}
       {!tab.isTerminalOnly && <MenuButton label="Copy session ID" disabled={!tab.conversationId && !tab.lastKnownSessionId && tab.historicalSessionIds.length === 0} onSelect={() => exec(() => { void copyConversationSessionIds(tab) })} />}
       <MenuButton

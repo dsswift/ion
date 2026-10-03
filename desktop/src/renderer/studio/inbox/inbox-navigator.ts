@@ -55,6 +55,13 @@ export interface InboxNavigatorOptions {
    * does not, so it is checked here. Defaults to every machine.
    */
   environmentIncluded?: (environmentId: string) => boolean
+  /**
+   * Whether worktrees are a developer surface on offer for this machine's
+   * conversations. Where they are not, its conversations are listed flat
+   * under their repository, with no worktree, bench, or source grouping.
+   * Defaults to offered.
+   */
+  worktreesOffered?: (environmentId: string) => boolean
 }
 
 /**
@@ -189,6 +196,9 @@ export function buildInboxNavigator(
   }
 
   const perCheckout = [...projects.values()].map(({ project, tabs: projectTabs, environmentId, scopeKey }) => {
+    if (options.worktreesOffered && !options.worktreesOffered(environmentId)) {
+      return { project, scopeKey, checkouts: [{ environmentId, key: project.key }], groups: [] as InboxNavigatorGroup[], flatTabs: [...projectTabs], environmentId }
+    }
     // The read model is keyed by path with no machine, and holds one
     // machine's rows per path. A checkout on any other machine at that path
     // has no rows there: borrowing them would draw another machine's

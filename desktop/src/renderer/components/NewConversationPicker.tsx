@@ -32,6 +32,9 @@ import { LOCAL_ENVIRONMENT_LABEL } from '../studio/connection/local-label'
 
 const NO_PROFILES: PreferencesState['engineProfiles'] = []
 
+/** A worktree is cut only on a machine where worktrees are a developer surface on offer; elsewhere the conversation opens in the directory itself. */
+const worktreesOfferedOn = (environmentId: string): boolean => policyStore.developerSurfacesFor(environmentId).worktrees
+
 type PickerView = 'projects' | 'branches' | 'profiles'
 
 // How the project list is ordered and divided is a per-device view
@@ -81,11 +84,11 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   const managedProjects = useMemo<ManagedProject[]>(() => (fullEnterprisePolicy?.newConversationDefaults?.projects ?? []).map((project) => ({ directory: project.directory, name: project.name, isDefault: project.default, profileAction: project.profileName ? 'profile' : 'ask', profileSource: project.profileName ? 'enterprise-project' : undefined })), [fullEnterprisePolicy])
   const effectiveProjectList = useMemo(() => effectiveProjects(registry, managedProjects), [managedProjects, registry])
   const [view, setView] = useState<PickerView>(() => {
-    if (initialDirectory) return initialUseWorktree && !initialSourceBranch ? 'branches' : 'profiles'
+    if (initialDirectory) return initialUseWorktree && worktreesOfferedOn(initialEnvironmentId) && !initialSourceBranch ? 'branches' : 'profiles'
     return defaultProject(registry, managedProjects) ? 'profiles' : 'projects'
   })
   const [workspace, setWorkspace] = useState<WorkspaceChoice | null>(() => {
-    if (initialDirectory) return { directory: initialDirectory, projectDirectory: initialDirectory, environmentId: initialEnvironmentId, useWorktree: initialUseWorktree, sourceBranch: initialSourceBranch }
+    if (initialDirectory) return { directory: initialDirectory, projectDirectory: initialDirectory, environmentId: initialEnvironmentId, useWorktree: initialUseWorktree && worktreesOfferedOn(initialEnvironmentId), sourceBranch: initialSourceBranch }
     // The starred Project comes from this machine's own registry.
     const project = defaultProject(registry, managedProjects)
     return project ? { directory: project.dir, projectDirectory: project.dir, environmentId: LOCAL_ENVIRONMENT_ID } : null
@@ -253,7 +256,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     const workspaceChanged = directory !== choice.directory
     const opts = {
       ...(profileId ? { profileId } : {}),
-      ...(!workspaceChanged && { useWorktree: choice.useWorktree, sourceBranch: choice.sourceBranch }),
+      ...(!workspaceChanged && { useWorktree: choice.useWorktree && worktreesOfferedOn(targetEnvironmentId), sourceBranch: choice.sourceBranch }),
       projectDirectory: choice.projectDirectory,
     }
     rInfo('new-conversation-picker', 'conversation creation resolved', { directory, project_directory: choice.projectDirectory, profile_id: profileId, source: locked ? 'enterprise-lock' : profile ? 'explicit-profile' : resolvedAction.source, use_worktree: !!opts.useWorktree, environment_id: targetEnvironmentId })
@@ -298,7 +301,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     if (!holder) { rError('new-conversation-picker', 'row has no checkout on the requested machine', { environment_id: environmentId, repo_remote: row.repoRemote ?? '' }); return }
     setEnvironmentError(null)
     setWorkspace({ directory: holder.entry.dir, projectDirectory: holder.entry.dir, environmentId }); setQuery('')
-    if (initialUseWorktree) setView('branches')
+    if (initialUseWorktree && worktreesOfferedOn(environmentId)) setView('branches')
     else setView('profiles')
     rInfo('new-conversation-picker', 'project selected', { directory: holder.entry.dir, environment_id: environmentId, default_environment_id: defaultRowEnvironment(row), usage_count: holder.usageCount, sort_order: sortOrder, grouping: effectiveGrouping, explicit_worktree: initialUseWorktree })
   }

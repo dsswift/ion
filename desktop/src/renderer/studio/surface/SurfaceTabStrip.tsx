@@ -14,6 +14,7 @@ import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useSurfaceStore } from './surface-store'
 import { Tooltip } from '../../components/git/Tooltip'
 import { isSingleton, type SurfaceTab } from '@ion/shared/studio-surface-types'
+import { useOfferedSurfaceTabs } from './surface-developer-gate'
 import { browserGroup, isBrowserTabId } from '@ion/shared/studio-browser-group'
 import { SurfaceAddMenu } from './SurfaceAddMenu'
 import { SurfaceTabContextMenu } from './SurfaceTabContextMenu'
@@ -212,8 +213,7 @@ function SurfaceTabPill({
 
 export function SurfaceTabStrip(): React.JSX.Element {
   const colors = useColors()
-  const tabs = useSurfaceStore((s) => s.tabs)
-  const activeTabId = useSurfaceStore((s) => s.activeTabId)
+  const { tabs, activeTabId } = useOfferedSurfaceTabs()
   // The conversation's single agent-linked browser instance, or null. Read as a
   // primitive so the strip re-renders on a link change but not on unrelated
   // descriptor churn.

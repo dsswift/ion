@@ -15,6 +15,23 @@ function workspace(repo: string, benchPath: string, members: IntegrationMember[]
 }
 
 describe('buildInboxNavigator', () => {
+  it('lists conversations flat, with no worktree or bench rows, on a machine that does not offer worktrees', () => {
+    const repo = '/repo'
+    const one = entry('/worktrees/one', 'One')
+    const source = tab('source', repo, { environmentId: 'env-finance' })
+    const worktree = tab('worktree', one.worktreePath, {
+      environmentId: 'env-finance',
+      worktree: { repoPath: repo, worktreePath: one.worktreePath, branchName: one.branchName, sourceBranch: 'main' },
+    })
+    const options = { worktreesOffered: (environmentId: string): boolean => environmentId !== 'env-finance' }
+
+    const projects = buildInboxNavigator([worktree, source], new Map(), new Map(), new Map(), new Set(), options)
+
+    expect(projects).toHaveLength(1)
+    expect(projects[0]!.groups).toEqual([])
+    expect(projects[0]!.flatTabs.map((item) => item.id)).toEqual(['worktree', 'source'])
+  })
+
   it('uses inventory to show non-landed worktrees without conversations', () => {
     const repo = '/repo'
     const one = entry('/worktrees/one', 'One')

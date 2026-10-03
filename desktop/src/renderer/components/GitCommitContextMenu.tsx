@@ -10,6 +10,7 @@ import { rError } from '../rendererLogger'
 import type { GitCommit } from '@ion/shared/types'
 import { scrollableMenuStyle } from '../menu-viewport'
 import { host } from '../host/host-instance'
+import { useActiveDeveloperSurfaces } from '../studio/connection/developer-surfaces'
 
 // ─── Commit context menu ───
 
@@ -62,11 +63,17 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
   // Measured placement. The graph scrolls, so a right-click on the last visible
   // commit sits at the bottom of the panel and the menu used to open below the
   // window edge. `onRebase` gates two extra rows, so it changes the height.
-  const pos = useAnchoredPopover(anchor, { deps: [!!onRebase] })
+  // Everything below the two copy rows writes to the repository, so only
+  // those two remain where source control is off for this conversation.
+  const sourceControl = useActiveDeveloperSurfaces().sourceControl
+  const pos = useAnchoredPopover(anchor, { deps: [!!onRebase, sourceControl] })
 
-  const items = [
+  const copyItems = [
     { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },
     { label: 'Copy Commit Message', action: () => navigator.clipboard.writeText(commit.subject) },
+  ]
+  const items = !sourceControl ? copyItems : [
+    ...copyItems,
     { type: 'separator' as const },
     { label: 'Cherry-pick', action: async () => {
       const result = await host.shell.gitCherryPick(directory, commit.hash)

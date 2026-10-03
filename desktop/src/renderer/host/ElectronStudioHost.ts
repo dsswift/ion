@@ -38,6 +38,8 @@ import { BRIDGED_CAPABILITIES, type ShellSubscribeScope } from './browser-shell-
 import { StudioActionFailure } from '@ion/shared/studio-wire/action-failure'
 import { createBridgedShell } from './bridged-shell'
 import { rWarn } from '../rendererLogger'
+import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
+import { policyStore } from '../studio/connection/policy-store'
 
 /** Matches `host-actions.ts` so a bridged call fails the same way any other studio_action does. */
 const BRIDGED_CALL_TIMEOUT_MS = 30_000
@@ -111,6 +113,10 @@ export class ElectronStudioHost implements StudioHost {
     return new Promise((resolve, reject) => {
       const id = crypto.randomUUID()
       const environmentId = resolveShellEnvironment(args)
+      if (this.surfaceDisabled(action, environmentId)) {
+        reject(new StudioActionFailure(`${action} is not available for this conversation`, 'surface_disabled'))
+        return
+      }
       // Declared before both closures reference it: `onFrame` can deliver a
       // reply synchronously, so a `const` assigned afterwards would still be
       // in its temporal dead zone when the handler runs.
@@ -138,7 +144,22 @@ export class ElectronStudioHost implements StudioHost {
 
   /** Send-and-forget, for the verbs the preload sends rather than invokes. */
   private sendBridgedOneWay(action: string, args: unknown[]): void {
-    this.send(resolveShellEnvironment(args), { type: 'studio_action', id: crypto.randomUUID(), action, args })
+    const environmentId = resolveShellEnvironment(args)
+    if (this.surfaceDisabled(action, environmentId)) return
+    this.send(environmentId, { type: 'studio_action', id: crypto.randomUUID(), action, args })
+  }
+
+  /**
+   * True when `action` belongs to a developer surface that is off for
+   * `environmentId`. The server refuses what it does not offer; this also
+   * holds a call this desktop's own device policy rules out, which a server
+   * it is only visiting cannot know about.
+   */
+  private surfaceDisabled(action: string, environmentId: string): boolean {
+    const blocked = developerSurfaceBlock(action, policyStore.developerSurfacesFor(environmentId))
+    if (!blocked) return false
+    rWarn('ElectronStudioHost', 'bridged shell call held: developer surface disabled', { action, environment_id: environmentId, surfaces: blocked })
+    return true
   }
 
   /**

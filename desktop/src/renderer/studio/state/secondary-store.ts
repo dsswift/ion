@@ -36,6 +36,8 @@ import type { StudioUserMessageEcho, StudioHistoryReplace } from '@ion/shared/ty
 // every existing import path keeps resolving.
 export { hydrateWorktreeFromSync } from './secondary-store-worktree-sync'
 import { rDebug, rWarn } from '../../rendererLogger'
+import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
+import { policyStore } from '../connection/policy-store'
 import { declareMirrorWindow } from '@ion/server/lib/window-role'
 import { host, action } from '../../host/host-instance'
 import { reconcileAttachmentTabs, reconcileForwardedAttachments, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft } from './secondary-store-reconcile'
@@ -467,6 +469,13 @@ export function applyMirrorOverrides(): string[] {
       if (environmentId !== LOCAL_ENVIRONMENT_ID && environmentAvailability.availabilityOf(environmentId) !== 'connected') {
         rWarn('studio.mirror', 'refused an action for an environment this desktop cannot reach', {
           action: name, environment_id: environmentId, availability: environmentAvailability.availabilityOf(environmentId),
+        })
+        return undefined
+      }
+      const blockedSurfaces = developerSurfaceBlock(name, policyStore.developerSurfacesFor(environmentId))
+      if (blockedSurfaces) {
+        rWarn('studio.mirror', 'held an action for a developer surface that is off for its environment', {
+          action: name, environment_id: environmentId, surfaces: blockedSurfaces,
         })
         return undefined
       }

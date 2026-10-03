@@ -14,6 +14,7 @@ vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rDebug: vi.fn(), rWarn:
 
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { ElectronStudioHost } from '../ElectronStudioHost'
+import { policyStore } from '../../studio/connection/policy-store'
 
 function preloadStub(): { sent: Array<{ environmentId: string; frame: StudioFrame }>; deliver: (environmentId: string, frame: StudioFrame) => void } {
   const sent: Array<{ environmentId: string; frame: StudioFrame }> = []
@@ -37,9 +38,21 @@ beforeEach(() => {
     activeTabId: 'l1',
   } as never)
 })
-afterEach(() => { delete (window as unknown as { ion?: unknown }).ion })
+afterEach(() => { delete (window as unknown as { ion?: unknown }).ion; policyStore._resetForTest() })
 
 describe('ElectronStudioHost routing', () => {
+  it('holds a source-control call for a server that does not offer it, and still sends one to a server that does', async () => {
+    policyStore.setDeveloperSurfaces('devbox', { sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true })
+    const { sent } = preloadStub()
+    const host = new ElectronStudioHost()
+    useSessionStore.setState({ activeTabId: 'g1' } as never)
+    await expect(host.shell.gitStage('/g', ['a.ts'])).rejects.toMatchObject({ code: 'surface_disabled' })
+    expect(sent).toEqual([])
+    expect(await host.shell.gitGraph('/g')).toBe('from-devbox')
+    useSessionStore.setState({ activeTabId: 'l1' } as never)
+    expect(await host.shell.gitStage('/l', ['a.ts'])).toBe('from-local')
+  })
+
   it('sends a terminal keystroke to the server that owns the terminal\'s tab', async () => {
     const { sent } = preloadStub()
     const host = new ElectronStudioHost()
