@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.7.0](https://github.com/dsswift/ion/compare/ios-v2.6.1...ios-v2.7.0) (2026-10-03)
+
+### Features
+
+* **ios:** rebuild the composer and dictation flow ([708076d](https://github.com/dsswift/ion/commit/708076dd5700e855131fb51b5079b0306d3490e1))
+* **ios:** rebuild the inbox as dense project cards ([2e75527](https://github.com/dsswift/ion/commit/2e75527bb278757afcc737fc5b48e6546c7cd95c))
+
 ## [2.6.1](https://github.com/dsswift/ion/compare/ios-v2.6.0...ios-v2.6.1) (2026-10-03)
 
 ## [2.6.0](https://github.com/dsswift/ion/compare/ios-v2.5.0...ios-v2.6.0) (2026-10-03)

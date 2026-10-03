@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.21](https://github.com/dsswift/ion/compare/sdk/go-v0.1.20...sdk/go-v0.1.21) (2026-10-03)
+
+### Features
+
+* **sdk:** add resource_exhausted dispatch refusal fields ([58c48d8](https://github.com/dsswift/ion/commit/58c48d89a0db7c1a0e3ebe3c913195786f861428))
+
 ## [0.1.20](https://github.com/dsswift/ion/compare/sdk/go-v0.1.19...sdk/go-v0.1.20) (2026-10-03)
 
 ### Features
