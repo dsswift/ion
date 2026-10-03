@@ -45,6 +45,13 @@ export interface ProviderActionSpec {
   handler: (conn: Connection, args: unknown[]) => Promise<ProviderActionOutcome>
 }
 
+/** Turn a thrown error into a typed action error, keeping a managed-config refusal's own code. */
+function thrownActionError(conn: Connection, name: string, err: unknown): ProviderActionOutcome {
+  warn('provider action threw', { connection_id: conn.id, action: name, error: String(err) })
+  if (err instanceof ManagedEngineConfigError) return { ok: false, error: { code: err.code, message: err.message } }
+  return { ok: false, error: { code: 'provider_action_failed', message: String(err) } }
+}
+
 /** Wrap a provider-api call so a throw becomes a typed action error, never a dropped reply. */
 function wrap(
   name: string,
@@ -57,9 +64,7 @@ function wrap(
       try {
         return { ok: true, value: (await run(args, conn)) ?? null }
       } catch (err) {
-        warn('provider action threw', { connection_id: conn.id, action: name, error: String(err) })
-        const code = err instanceof ManagedEngineConfigError ? err.code : 'provider_action_failed'
-        return { ok: false, error: { code, message: err instanceof ManagedEngineConfigError ? err.message : String(err) } }
+        return thrownActionError(conn, name, err)
       }
     },
   }
@@ -117,8 +122,7 @@ export const PROVIDER_ACTIONS: Record<string, ProviderActionSpec> = {
         writePlanBashAllowlist(Array.isArray(args[0]) ? (args[0] as string[]) : [])
         return { ok: true, value: null }
       } catch (err) {
-        warn('provider action threw', { connection_id: conn.id, action: 'planBashAllowlist.set', error: String(err) })
-        return { ok: false, error: { code: 'provider_action_failed', message: String(err) } }
+        return thrownActionError(conn, 'planBashAllowlist.set', err)
       }
     },
   },

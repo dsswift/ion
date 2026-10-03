@@ -13,6 +13,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/acp"
 	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/subscription"
@@ -75,6 +76,11 @@ func Formats() []Format {
 			ID: "identity-store", Owner: OwnerEngine, Rule: RuleHostStorage,
 			Version: strconv.Itoa(auth.IdentityStoreVersion), Constant: "auth.IdentityStoreVersion",
 			Meaning: "Schema of the stored operator sign-in",
+		},
+		{
+			ID: "managed-config", Owner: OwnerEngine, Rule: RuleExact,
+			Version: strconv.Itoa(config.ManagedConfigSchemaVersion), Constant: "config.ManagedConfigSchemaVersion",
+			Meaning: "Schema of the managed engine and models files enterprise policy names; the engine reads only this version",
 		},
 		{
 			ID: "telemetry-schema", Owner: OwnerEngine, Rule: RuleReaderAtLeast,
