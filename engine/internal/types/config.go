@@ -440,6 +440,11 @@ type EngineRuntimeConfig struct {
 	// Pointer so engine.json can omit the block and inherit the compiled
 	// defaults. See types.WorkspaceConfig.
 	Workspace *WorkspaceConfig `json:"workspace,omitempty"`
+	// WikiLinks controls wiki-link maintenance: rename detection in a watched
+	// workspace, link rewriting on rename, and the link integrity scan.
+	// Pointer so engine.json can omit the block and inherit the compiled
+	// defaults (everything on). See types.WikiLinksConfig.
+	WikiLinks *WikiLinksConfig `json:"wikiLinks,omitempty"`
 	// EarlyStopContinue configures the Claude-Code-style "keep working"
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
@@ -655,7 +660,9 @@ type LoggingConfig struct {
 	// MaxFiles is the number of rotated archive files retained alongside the
 	// live log file. When the live file reaches MaxSizeMB, it is renamed to
 	// engine.jsonl.1 (shifting older generations to .2, .3, … up to MaxFiles),
-	// and a fresh log file is opened. Files beyond MaxFiles are deleted.
+	// and a fresh log file is opened. The oldest generation is overwritten.
+	// Any engine process writing the file may rotate it; every other writer
+	// moves to the new live file within a second.
 	// Zero means use the compiled default (3).
 	MaxFiles int `json:"maxFiles,omitempty"`
 
