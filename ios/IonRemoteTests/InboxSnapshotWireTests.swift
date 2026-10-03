@@ -43,7 +43,7 @@ final class InboxSnapshotWireTests: XCTestCase {
         let source = try String(contentsOf: path)
 
         XCTAssertTrue(source.contains("tab.settledOverride == \"auto\""))
-        XCTAssertTrue(source.contains("Text(\"Auto\")"))
+        XCTAssertTrue(source.contains("Text(\"· Auto\")"))
         XCTAssertTrue(source.contains("accessibilityLabel(\"Automatically settled\")"))
     }
 

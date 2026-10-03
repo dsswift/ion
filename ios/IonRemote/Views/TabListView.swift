@@ -125,7 +125,10 @@ struct TabListView: View {
             List(selection: $selectedTabId) {
                 tabSections(selectionStyle: .selection)
             }
-            .scrollContentBackground(.hidden)
+            .listStyle(.plain)
+            .onAppear { refreshInboxOnAppear() }
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, InboxLayout.minHeight(.groupHeader))
             .refreshable {
                 Haptic.light()
                 viewModel.sync(intent: .userInitiated)
@@ -155,12 +158,14 @@ struct TabListView: View {
     /// The Inbox is the one conversation list. Both layout roots render THIS.
     @ViewBuilder
     func tabSections(selectionStyle: TabSelectionStyle) -> some View {
-        inboxControls
-            // Ride the same cached crawl the desktop panels use so the
-            // hierarchy renders from fresh state the moment the inbox
-            // appears, instead of waiting out the snapshot interval.
-            .onAppear { viewModel.refreshAllWorktrees() }
         inboxSections(selectionStyle: selectionStyle)
+    }
+
+    /// Ride the same cached crawl the desktop panels use so the hierarchy
+    /// renders from fresh state the moment the inbox appears, instead of
+    /// waiting out the snapshot interval.
+    func refreshInboxOnAppear() {
+        viewModel.refreshAllWorktrees()
     }
 
     /// Close a tab, pausing for confirmation only when its worktree still holds

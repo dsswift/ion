@@ -56,22 +56,23 @@ extension TabListView {
             Section {
                 if !settledShelfCollapsed {
                     ForEach(settled.prefix(settledShown)) { tab in
-                        inboxRow(tab, selectionStyle: selectionStyle, project: projectName(for: tab), location: nil, branch: nil)
+                        inboxRow(tab, selectionStyle: selectionStyle, project: projectName(for: tab), location: nil, branch: nil, level: 0, showsProject: true)
                     }
                     if settled.count > settledShown {
                         Button("Show \(min(15, settled.count - settledShown)) more") { settledShown += 15 }
-                            .font(.caption)
+                            .font(IonType.meaning)
                             .foregroundStyle(theme.accent)
+                            .inboxRow(level: 0)
                     }
                 }
             } header: {
                 HStack {
-                    inboxShelfHeader(label: "Settled (\(settled.count))", collapsed: settledShelfCollapsed) {
+                    inboxShelfHeader(label: "Settled", count: settled.count, collapsed: settledShelfCollapsed) {
                         settledShelfCollapsed.toggle()
                     }
                     Spacer()
                     Button("History") { showSettledHistory = true }
-                        .font(.caption.weight(.semibold))
+                        .font(IonType.sectionLabel)
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.accent)
                 }
@@ -89,14 +90,26 @@ extension TabListView {
         Section {
             if projects.isEmpty {
                 Text(title == "Active" ? "Inbox zero." : "No snoozed conversations.")
-                    .font(.caption)
-                    .foregroundStyle(theme.textSecondary)
+                    .font(IonType.meaning)
+                    .foregroundStyle(theme.textTertiary)
+                    .inboxRow(level: 0)
             }
             ForEach(projects) { project in
                 inboxProject(project, expansion: expansion, selectionStyle: selectionStyle)
             }
         } header: {
-            Text(title)
+            // The Active header carries the list's filter controls. They ride
+            // the section header rather than a row of their own, so they cost
+            // no height and stay pinned while the list scrolls.
+            HStack(spacing: IonSpace.compactGap) {
+                Text(title)
+                    .font(IonType.sectionLabel)
+                    .foregroundStyle(theme.textSecondary)
+                Spacer(minLength: IonSpace.compactGap)
+                if title == "Active" {
+                    inboxHeaderControls
+                }
+            }
         }
     }
 
@@ -109,6 +122,10 @@ extension TabListView {
         let projectKey = InboxNavigator.projectExpansionKey(project.id)
         let projectExpanded = expansion.wrappedValue.contains(projectKey)
         let cyclesOnTap = InboxNavigator.headerTapCycles(selectionStyle)
+        // A collapsed project can still show rows (pinned, selected, or
+        // working ones), and then it is a card with a body, not a lone header.
+        let collapsedRows = InboxNavigator.collapsedRows(project.allTabs, activeTabId: currentTabId)
+        let hasRowsBeneath = projectExpanded || !collapsedRows.isEmpty
         // ONE button spanning the whole row. The folder icon, the name, the
         // count, the gap, and the chevron are all label content, so every part
         // of the row is the same target — the row is the largest surface
@@ -127,20 +144,17 @@ extension TabListView {
                 toggle(projectKey, in: expansion)
             }
         } label: {
-            HStack {
-                Image(systemName: "folder")
-                    .foregroundStyle(theme.accent)
-                Text(project.name).font(.subheadline.weight(.semibold))
-                // The project header's conversation count — the same metadata
-                // the desktop header shows beside the folder name.
-                Text("\(project.conversationCount)")
-                    .font(.caption2)
-                    .foregroundStyle(theme.textSecondary)
-                Spacer()
-                Image(systemName: projectExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption)
+            // The count is the project's conversation count — the same
+            // metadata the desktop header shows beside the folder name.
+            InboxDisclosureHeader(
+                title: project.name,
+                systemImage: "folder",
+                count: project.conversationCount,
+                isExpanded: projectExpanded,
+                emphasis: .primary
+            ) {
+                InboxProjectRollup(counts: InboxProjectRollup.counts(for: project.allTabs))
             }
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(project.name)
@@ -186,6 +200,7 @@ extension TabListView {
             }
             }
         }
+        .inboxRow(level: 0, kind: hasRowsBeneath ? .cardHeader : .cardHeaderAlone)
 
         if projectExpanded {
             // Every band is rendered unconditionally over its own (possibly
@@ -203,10 +218,8 @@ extension TabListView {
                     tabsByBenchPath: benchTabsByPath(project.benchTabs, state: state),
                     terminalTabsByID: Dictionary(uniqueKeysWithValues: project.benchTerminals.map { ($0.id, $0) }),
                     activeTabId: currentTabId,
-                    expanded: expansion,
-                    cyclesOnHeaderTap: cyclesOnTap,
                     row: { tab in
-                        inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Integration Bench", branch: nil)
+                        inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Integration Bench", branch: nil, level: 2)
                     }
                 )
             }
@@ -222,45 +235,44 @@ extension TabListView {
                     expanded: expansion,
                     cyclesOnHeaderTap: cyclesOnTap,
                     row: { tab in
-                        inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: worktree.displayName, branch: worktree.branchName)
+                        inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: worktree.displayName, branch: worktree.branchName, level: 2)
                     }
                 )
-                .padding(.leading, IonSpace.contentGap)
             }
             if !project.sourceTabs.isEmpty {
                 let sourceKey = "source:\(project.id)"
                 inboxDisclosure(title: "Source Repository", icon: "archivebox", key: sourceKey, expansion: expansion)
-                if expansion.wrappedValue.contains(sourceKey) {
-                    ForEach(project.sourceTabs) { tab in
-                        inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Source Repository", branch: nil)
-                            .padding(.leading, IonSpace.sectionGap)
-                    }
+                // Collapsed, the group keeps its pinned, selected, and working
+                // rows, the same rule every other group follows. It used to
+                // hide all of them, so a pinned conversation vanished the
+                // moment its group was closed.
+                let sourceRows = expansion.wrappedValue.contains(sourceKey)
+                    ? project.sourceTabs
+                    : InboxNavigator.collapsedRows(project.sourceTabs, activeTabId: currentTabId)
+                ForEach(sourceRows) { tab in
+                    inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Source Repository", branch: nil, level: 2)
                 }
             }
             // A plain project — no worktree inventory, no bench — has no band
             // for its conversations, so they render directly under the header
             // (the desktop's flatTabs).
             ForEach(project.directTabs) { tab in
-                inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil)
-                    .padding(.leading, IonSpace.sectionGap)
+                inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil, level: 1)
             }
         } else {
-            ForEach(InboxNavigator.collapsedRows(project.allTabs, activeTabId: currentTabId)) { tab in
+            ForEach(collapsedRows) { tab in
                 if tab.isTerminalOnly == true {
                     InboxBenchTerminalRow(tab: tab)
-                        .padding(.leading, IonSpace.sectionGap)
+                        .inboxRow(level: 1)
                 } else {
-                    inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil)
-                        .padding(.leading, IonSpace.sectionGap)
+                    inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil, level: 1)
                 }
             }
         }
-    }
-
-    private var inboxProjectFilterLabel: String {
-        guard inboxProjectFilter != "all" else { return "All projects" }
-        return InboxNavigator.projects(tabs: viewModel.tabs, states: viewModel.worktreeStates)
-            .first(where: { $0.id == inboxProjectFilter })?.name ?? "Project"
+        // The card's bottom edge, and the gap before the next project.
+        Color.clear
+            .inboxRow(level: 0, kind: hasRowsBeneath ? .cardFooter : .cardGap)
+            .accessibilityHidden(true)
     }
 
     /// Projects always sort alphabetically (the navigator already returns them
@@ -278,123 +290,6 @@ extension TabListView {
         guard inboxProjectFilter != "all" else { return true }
         return InboxNavigator.projects(tabs: [tab], states: viewModel.worktreeStates)
             .contains { $0.id == inboxProjectFilter }
-    }
-
-    @ViewBuilder
-    var inboxControls: some View {
-        Section {
-            HStack(spacing: 12) {
-                inboxProjectScopeMenu
-                Menu {
-                    ForEach(InboxNavigator.Sort.allCases) { sort in
-                        Button {
-                            inboxSort = sort
-                            UserDefaults.standard.set(sort.rawValue, forKey: "inboxSort")
-                        } label: {
-                            if inboxSort == sort {
-                                Label(sort.label, systemImage: "checkmark")
-                            } else {
-                                Text(sort.label)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(inboxSort.label, systemImage: "arrow.up.arrow.down")
-                }
-                Spacer()
-                Button { toggleAllInboxGroups() } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                }
-                .accessibilityLabel("Collapse or expand inbox groups")
-            }
-            .font(.caption)
-            .buttonStyle(.plain)
-        }
-    }
-
-    /// Collapse or expand EVERY inbox group in one action: the projects and
-    /// their bands in the Active tree, the same in the Snoozed tree, and the
-    /// Settled shelf. One decision drives all three, so the control can never
-    /// leave the view half open (the desktop's collapseAll/expandAll writes the
-    /// active set, the snoozed set, and the settled shelf together).
-    ///
-    /// The Active and Snoozed headings themselves are not collapsible on either
-    /// client, so they have no key here.
-    ///
-    /// Both trees are keyed from their OWN rendered projects. The snoozed tree
-    /// is built with `.conversationsOnly`, so it contributes keys only while
-    /// something is actually snoozed.
-    private func toggleAllInboxGroups() {
-        let activeKeys = InboxNavigator.expansionKeys(for: InboxNavigator.projects(
-            tabs: viewModel.tabs.filter { $0.inboxState != "snoozed" && $0.inboxState != "settled" },
-            states: viewModel.worktreeStates
-        ))
-        let snoozedKeys = InboxNavigator.expansionKeys(for: InboxNavigator.projects(
-            tabs: viewModel.tabs.filter { $0.inboxState == "snoozed" },
-            states: viewModel.worktreeStates,
-            buckets: .conversationsOnly
-        ))
-        // "Anything still shut" means expand; only a fully open view collapses.
-        // The settled shelf votes too, so pressing this with just that shelf
-        // closed opens it rather than reading as "already expanded".
-        let hasCollapsed = settledShelfCollapsed
-            || activeKeys.contains { !activeInboxExpansion.contains($0) }
-            || snoozedKeys.contains { !snoozedInboxExpansion.contains($0) }
-        activeInboxExpansion = hasCollapsed ? Set(activeKeys) : []
-        snoozedInboxExpansion = hasCollapsed ? Set(snoozedKeys) : []
-        settledShelfCollapsed = !hasCollapsed
-        DiagnosticLog.log("inbox groups toggled", tag: "view.inbox", fields: [
-            "expanded": String(hasCollapsed),
-            "active_keys": String(activeKeys.count),
-            "snoozed_keys": String(snoozedKeys.count)
-        ])
-    }
-
-    /// Enriched project scope picker: "All projects" with the total, then one
-    /// entry per project with its conversation count — the desktop's
-    /// InboxProjectScopePicker card content in menu form. Selection persists
-    /// (the desktop persists its filter too; this menu used to read the key at
-    /// launch and never write it back).
-    private var inboxProjectScopeMenu: some View {
-        // Counts come from a navigator over ALL live tabs (no scope applied):
-        // active + snoozed conversations, terminals excluded — the same input
-        // the desktop's projectOptions uses.
-        let projects = InboxNavigator.projects(
-            tabs: viewModel.tabs.filter { $0.inboxState != "settled" },
-            states: viewModel.worktreeStates
-        )
-        let total = projects.reduce(0) { $0 + $1.conversationCount }
-        return Menu {
-            Button {
-                setInboxProjectFilter("all")
-            } label: {
-                if inboxProjectFilter == "all" {
-                    Label("All projects (\(total))", systemImage: "checkmark")
-                } else {
-                    Text("All projects (\(total))")
-                }
-            }
-            Divider()
-            ForEach(projects) { project in
-                Button {
-                    setInboxProjectFilter(project.id)
-                } label: {
-                    if inboxProjectFilter == project.id {
-                        Label("\(project.name) (\(project.conversationCount))", systemImage: "checkmark")
-                    } else {
-                        Text("\(project.name) (\(project.conversationCount))")
-                    }
-                }
-            }
-        } label: {
-            Label(inboxProjectFilterLabel, systemImage: "folder")
-        }
-    }
-
-    private func setInboxProjectFilter(_ value: String) {
-        inboxProjectFilter = value
-        UserDefaults.standard.set(value, forKey: "inboxProjectFilter")
-        DiagnosticLog.log("project scope applied", tag: "view.inbox", fields: ["scope": value])
     }
 
     private var currentTabId: String? {
@@ -439,16 +334,10 @@ extension TabListView {
     @ViewBuilder
     private func inboxDisclosure(title: String, icon: String, key: String, expansion: Binding<Set<String>>) -> some View {
         Button { toggle(key, in: expansion) } label: {
-            HStack {
-                Image(systemName: icon).foregroundStyle(.secondary)
-                Text(title)
-                Spacer()
-                Image(systemName: expansion.wrappedValue.contains(key) ? "chevron.down" : "chevron.right")
-                    .font(.caption)
-            }
+            InboxDisclosureHeader(title: title, systemImage: icon, isExpanded: expansion.wrappedValue.contains(key))
         }
         .buttonStyle(.plain)
-        .padding(.leading, IonSpace.contentGap)
+        .inboxRow(level: 1, kind: .groupHeader)
     }
 
     private func toggle(_ key: String, in expansion: Binding<Set<String>>) {
@@ -476,11 +365,13 @@ extension TabListView {
         selectionStyle: TabSelectionStyle,
         project: String,
         location: String?,
-        branch: String?
+        branch: String?,
+        level: Int,
+        showsProject: Bool = false
     ) -> some View {
         // A branch name is repository status, which the server may not offer.
         let branch = viewModel.developerSurfaces.repositoryStatus ? branch : nil
-        let row = InboxRowView(tab: tab)
+        let row = InboxRowView(tab: tab, showsProject: showsProject)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if tab.inboxState == "settled" {
                     if tab.canRestoreSettled != false {
@@ -560,22 +451,30 @@ extension TabListView {
                     Label("Delete conversation…", systemImage: "trash")
                 }
             }
-        if tab.inboxState == "settled" && !viewModel.tabs.contains(where: { $0.id == tab.id }) {
-            if tab.canRestoreSettled != false {
-                Button { viewModel.reviewSettledTab(tabId: tab.id) } label: { row }
-                    .buttonStyle(.plain)
+        Group {
+            if tab.inboxState == "settled" && !viewModel.tabs.contains(where: { $0.id == tab.id }) {
+                if tab.canRestoreSettled != false {
+                    Button { viewModel.reviewSettledTab(tabId: tab.id) } label: { row }
+                        .buttonStyle(.plain)
+                } else {
+                    row
+                }
             } else {
-                row
-            }
-        } else {
-            switch selectionStyle {
-            case .navigation: NavigationLink(value: tab.id) { row }
-            case .selection: row.onTapGesture {
-                selectedTabId = tab.id
-                viewModel.sendReportFocus(tabId: tab.id)
-            }
+                switch selectionStyle {
+                // The link sits behind the row rather than wrapping it: a
+                // wrapping NavigationLink draws its own disclosure chevron on
+                // the trailing edge, beside the status pill, on every row.
+                case .navigation:
+                    row.background(NavigationLink(value: tab.id) { EmptyView() }.opacity(0))
+                case .selection:
+                    row.onTapGesture {
+                        selectedTabId = tab.id
+                        viewModel.sendReportFocus(tabId: tab.id)
+                    }
+                }
             }
         }
+        .inboxRow(level: level, highlighted: selectionStyle == .selection && tab.id == currentTabId)
     }
 
     private func projectName(for tab: RemoteTabState) -> String {
@@ -583,13 +482,18 @@ extension TabListView {
     }
 
     @ViewBuilder
-    private func inboxShelfHeader(label: String, collapsed: Bool, onToggle: @escaping () -> Void) -> some View {
+    private func inboxShelfHeader(label: String, count: Int, collapsed: Bool, onToggle: @escaping () -> Void) -> some View {
         Button(action: onToggle) {
-            HStack(spacing: 4) {
-                Image(systemName: collapsed ? "chevron.right" : "chevron.down").font(.caption2)
-                Text(label).font(.caption.weight(.semibold))
+            HStack(spacing: IonSpace.hairlineGap) {
+                InboxChevron(isExpanded: !collapsed)
+                Text(label)
+                    .font(IonType.sectionLabel)
+                Text("\(count)")
+                    .font(IonType.microLabel)
+                    .foregroundStyle(theme.textTertiary)
             }
             .foregroundStyle(theme.textSecondary)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

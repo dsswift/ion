@@ -42,8 +42,11 @@ final class InboxBenchTerminalTests: XCTestCase {
 
     func testBenchHeaderOmitsZeroConversationCountButKeepsPositiveCount() throws {
         let source = try self.source("IonRemote/Views/InboxBenchGroup.swift")
-        XCTAssertTrue(source.contains("if !bench.openConversations.isEmpty"))
-        XCTAssertTrue(source.contains("Text(\"\\(bench.openConversations.count)\")"))
+        // The bench hands its count to the shared header, and the header is
+        // what omits a zero.
+        XCTAssertTrue(source.contains("count: bench.openConversations.count"))
+        let header = try self.source("IonRemote/Views/InboxDisclosureHeader.swift")
+        XCTAssertTrue(header.contains("if let count, count > 0"))
     }
 
     func testTerminalUsesTerminalOnlyActionsAndBenchConversationCannotBeNewlyPinned() throws {

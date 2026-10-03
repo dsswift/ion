@@ -332,7 +332,7 @@ final class InboxNavigatorTests: XCTestCase {
             .appendingPathComponent("IonRemote/Views/InboxRowView.swift")
         let source = try String(contentsOf: path)
         XCTAssertFalse(source.contains("Circle()"))
-        XCTAssertTrue(source.contains(".weight(unread ? .semibold : .regular)"))
+        XCTAssertTrue(source.contains(".font(unread ? IonType.bodyStrong : IonType.body)"))
         XCTAssertTrue(source.contains("case .unread: return .done"))
         XCTAssertTrue(source.contains("case .done: return (\"Done\", theme.statusDone)"))
     }
@@ -378,7 +378,7 @@ final class InboxNavigatorTests: XCTestCase {
     /// The iPhone header must not lose access to conversations: the explicit
     /// open verbs stay in the worktree context menu and the bench overflow.
     func testExplicitOpenVerbsSurviveWithoutHeaderCycling() throws {
-        let worktreeRow = try source("IonRemote/Views/WorktreeRowView.swift")
+        let worktreeRow = try source("IonRemote/Views/WorktreeRowView+ContextMenu.swift")
         XCTAssertTrue(worktreeRow.contains("Open conversation"))
         XCTAssertTrue(worktreeRow.contains("New conversation here"))
 
@@ -386,22 +386,25 @@ final class InboxNavigatorTests: XCTestCase {
         XCTAssertTrue(bench.contains("Open Bench Conversation"))
     }
 
-    /// Both group hosts must honour the layout gate rather than hardcoding a
-    /// cycle on tap.
+    /// The worktree host must honour the layout gate rather than hardcoding a
+    /// cycle on tap. The bench has no such gate: it does not collapse, so its
+    /// header has one job in every layout, which is opening the bench
+    /// conversation.
     func testGroupHostsGateHeaderTapOnLayout() throws {
         let worktreeGroup = try source("IonRemote/Views/InboxWorktreeGroup.swift")
         XCTAssertTrue(worktreeGroup.contains("guard cyclesOnHeaderTap else"),
                       "worktree header must fall through to expand/collapse when cycling is off")
 
         let bench = try source("IonRemote/Views/InboxBenchGroup.swift")
-        XCTAssertTrue(bench.contains("if cyclesOnHeaderTap {"),
-                      "bench title must branch on the layout gate")
+        XCTAssertFalse(bench.contains("cyclesOnHeaderTap"),
+                       "the bench does not collapse, so it has no expand-or-cycle choice to gate")
+        XCTAssertTrue(bench.contains("cycleBenchConversation(bench)"))
 
         let inbox = try source("IonRemote/Views/TabListView+Inbox.swift")
         XCTAssertTrue(inbox.contains("InboxNavigator.headerTapCycles(selectionStyle)"),
                       "the inbox must resolve the gate from the active selection style")
         XCTAssertTrue(inbox.contains("cyclesOnHeaderTap: cyclesOnTap"),
-                      "both group hosts must receive the resolved gate")
+                      "the worktree host must receive the resolved gate")
     }
 
     private func source(_ relativePath: String) throws -> String {
@@ -555,7 +558,7 @@ final class InboxNavigatorTests: XCTestCase {
 
     /// The button drives BOTH trees and the settled shelf from one decision.
     func testToggleAllCoversBothTreesAndTheSettledShelf() throws {
-        let source = try self.source("IonRemote/Views/TabListView+Inbox.swift")
+        let source = try self.source("IonRemote/Views/TabListView+InboxControls.swift")
         XCTAssertTrue(source.contains("snoozedInboxExpansion = hasCollapsed"),
                       "the control must drive the snoozed tree, not only the active one")
         XCTAssertTrue(source.contains("settledShelfCollapsed = !hasCollapsed"),

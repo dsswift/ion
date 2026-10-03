@@ -57,7 +57,7 @@ extension TabListView {
 
     /// iPad equivalent: clear a detail selection whose tab has been closed.
     ///
-    /// The detail pane already renders its "Select a tab" empty state for an
+    /// The detail pane already renders its "Select a conversation" empty state for an
     /// unresolvable selection, so the visible outcome was acceptable — but the
     /// stale id was retained silently and never logged. Clearing it keeps
     /// `selectedTabId` honest (so list selection highlighting and focus

@@ -42,7 +42,7 @@ final class WorktreeLandAndRetireNothingToLandTests: XCTestCase {
     }
 
     func testInboxWorktreeRowUsesConfirmedDiscardAction() throws {
-        let row = try source("IonRemote/Views/WorktreeRowView.swift")
+        let row = try source("IonRemote/Views/WorktreeRowView+ContextMenu.swift")
         let group = try source("IonRemote/Views/InboxWorktreeGroup.swift")
 
         XCTAssertTrue(row.contains("Label(\"Discard worktree\", systemImage: \"trash\")"),
