@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.19](https://github.com/dsswift/ion/compare/sdk/go-v0.1.18...sdk/go-v0.1.19) (2026-10-03)
+
+### Features
+
+* **sdk:** add wiki link hooks and integrity scan (#399) ([6483cc7](https://github.com/dsswift/ion/commit/6483cc7af00ee28f7a413a65abfe12afd53376bc))
+
 ## [0.1.18](https://github.com/dsswift/ion/compare/sdk/go-v0.1.17...sdk/go-v0.1.18) (2026-10-02)
 
 ### Features

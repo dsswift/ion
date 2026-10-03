@@ -18,6 +18,19 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.96.0](https://github.com/dsswift/ion/compare/engine-v1.95.0...engine-v1.96.0) (2026-10-03)
+
+### Features
+
+* **engine:** propagate wiki links when a file is renamed (#399) ([ee59c92](https://github.com/dsswift/ion/commit/ee59c92713f71f53aed232aac6a9585367b0ef84))
+
+### Bug Fixes
+
+* **engine:** keep every writer on the live engine.jsonl ([6ff919f](https://github.com/dsswift/ion/commit/6ff919fc861d22f845c30e9aed96e1c19f9e2034))
+* **engine:** persist input and cache tokens for gpt models (#422) ([b6046a2](https://github.com/dsswift/ion/commit/b6046a2660ea9c9248f4154aead3050043efe8de))
+* **engine:** log each agent metadata clamp once (#421) ([d5eb7c3](https://github.com/dsswift/ion/commit/d5eb7c3ae23ca6a4ac25276a0dface9a1f93dc13))
+* **engine:** report failed model discovery on refresh (#418) ([70e5ba4](https://github.com/dsswift/ion/commit/70e5ba414a30105e3f0e8f397b60fc4786b22351))
+
 ## [1.95.0](https://github.com/dsswift/ion/compare/engine-v1.94.1...engine-v1.95.0) (2026-10-02)
 
 ### Features

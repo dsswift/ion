@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.8.0](https://github.com/dsswift/ion/compare/desktop-v2.7.0...desktop-v2.8.0) (2026-10-03)
+
+### Features
+
+* **desktop:** hide developer surfaces a server does not offer (#392) ([a062e79](https://github.com/dsswift/ion/commit/a062e794501421166668150640c6b87dba5d6d40))
+
+### Bug Fixes
+
+* **desktop:** show why a model refresh failed (#418) ([f2f9e61](https://github.com/dsswift/ion/commit/f2f9e61e41537f829359755ae544c787036de411))
+
 ## [2.7.0](https://github.com/dsswift/ion/compare/desktop-v2.6.0...desktop-v2.7.0) (2026-10-02)
 
 ### Features
