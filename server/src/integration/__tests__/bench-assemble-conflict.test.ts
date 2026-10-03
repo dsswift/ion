@@ -182,10 +182,11 @@ describe('assembleBench — atomic conflicts and missing members', () => {
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
 
-    // Destroy b entirely: remove the worktree, delete the branch, and make the
-    // pinned commit unreachable.
+    // Delete b's branch and make the pinned commit unreachable. The directory
+    // stays: a member whose worktree directory is gone is disenrolled before
+    // this check is ever reached.
     const bPin = ws.members[1].pinnedSha
-    git(repo, 'worktree', 'remove', '--force', b.path)
+    git(b.path, 'checkout', '--detach')
     git(repo, 'branch', '-D', 'wt/b')
     const broken = {
       ...ws,

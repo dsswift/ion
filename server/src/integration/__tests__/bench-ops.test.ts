@@ -344,13 +344,30 @@ describe('staleness reporting', () => {
     expect(member.pin).toBe('behind')
   })
 
-  it('reports a member whose worktree is gone', async () => {
+  it('reports a member whose branch is gone', async () => {
     localBench()
     const a = makeWorktree('a')
     await addMember(repo, FEATURE, a.path, a.branch)
-    git(repo, 'worktree', 'remove', '--force', a.path)
+    git(a.path, 'checkout', '--detach')
+    git(repo, 'branch', '-D', a.branch)
 
     expect((await refreshStaleness(repo, FEATURE))!.members[0].pin).toBe('gone')
+  })
+
+  it('disenrolls a member whose worktree was removed without a retire', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    const b = makeWorktree('b')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await addMember(repo, FEATURE, b.path, b.branch)
+    git(repo, 'worktree', 'remove', '--force', a.path)
+
+    const refreshed = await refreshStaleness(repo, FEATURE)
+
+    expect(refreshed!.members.map((m) => m.branchName)).toEqual([b.branch])
+    // Persisted, not just returned: the member count every surface reads comes
+    // from the stored record.
+    expect(listWorkspaces(repo)[0].members.map((m) => m.branchName)).toEqual([b.branch])
   })
 
   it('keeps an empty pin empty until the member commits', async () => {

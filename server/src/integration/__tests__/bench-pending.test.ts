@@ -39,7 +39,6 @@ import { assembleBench } from '../bench-assemble'
 import { captureContribution } from '../bench-snapshot'
 import { makeWorkspace, makeMember } from '../bench-store'
 import { landWorktree } from '../../worktree/integrate'
-import { retireWorktree } from '../../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
@@ -158,6 +157,22 @@ describe('assembleBench — a member with nothing committed yet', () => {
     }
   })
 
+  it('disenrolls a pending member whose worktree was removed without a retire', async () => {
+    // The live shape: an empty pin kept as pending forever after its worktree
+    // was deleted outside Ion, inflating the bench's member count with a
+    // member no surface could show or remove.
+    const gone = makeBareWorktree('gone')
+    const real = makeWorktree('real')
+    const ws = workspaceFor([await enroll(gone), await enroll(real)])
+    git(repo, 'worktree', 'remove', '--force', gone.path)
+
+    const result = await assembleBench(ws)
+
+    expect(result.ok).toBe(true)
+    expect(result.workspace!.members.map((m) => m.branchName)).toEqual([real.branch])
+    expect((result.retired ?? []).map((m) => m.branchName)).not.toContain(gone.branch)
+  })
+
   it('contributes no merge commit while pending', async () => {
     // Pending means "nothing to merge", not "merge an empty change".
     const a = makeBareWorktree('a')
@@ -252,7 +267,10 @@ describe('assembleBench — records written before the contribution range existe
     const a = makeWorktree('a')
     const built = (await assembleBench(workspaceFor([await enroll(a)]))).workspace!
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
-    await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+    // The branch goes; the directory stays. A member whose directory is gone
+    // is disenrolled before any landed tier runs.
+    git(a.path, 'checkout', '--detach')
+    git(repo, 'branch', '-D', a.branch)
 
     const legacy = built.members.map((m) => ({ ...m, pinnedBaseSha: '' }))
     const result = await assembleBench({ ...built, members: legacy })
