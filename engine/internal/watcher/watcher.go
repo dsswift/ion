@@ -21,6 +21,12 @@
 // consistent semantics across macOS / Linux / Windows and lets us apply the
 // ignore-glob list at the directory level (so we never attach inotify
 // descriptors to ignored subtrees like node_modules).
+//
+// Windows is the exception to per-directory attachment: there the event
+// source holds a single recursive handle on the root (see source_windows.go),
+// because an open handle on a subdirectory blocks renaming any directory
+// above it. Attaching a directory is then a no-op, and ignored subtrees are
+// filtered per event instead of per directory.
 package watcher
 
 import (
@@ -123,7 +129,7 @@ type Watcher struct {
 	ignores []string
 
 	mu      sync.Mutex
-	fsw     *fsnotify.Watcher
+	fsw     eventSource
 	cancel  context.CancelFunc
 	pending map[string]*pendingEvent
 	pendMu  sync.Mutex
@@ -260,10 +266,10 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 		return errors.New("watcher: onEvent is nil")
 	}
 
-	fsw, err := fsnotify.NewWatcher()
+	fsw, err := newEventSource(w.root)
 	if err != nil {
 		w.mu.Unlock()
-		utils.LogWithFields(utils.LevelError, "watcher", "start fsnotify watcher failed", map[string]any{"error": err.Error()})
+		utils.LogWithFields(utils.LevelError, "watcher", "start event source failed", map[string]any{"path": w.root, "error": err.Error()})
 		return err
 	}
 	w.fsw = fsw
@@ -393,13 +399,13 @@ func (w *Watcher) pump(ctx context.Context) {
 		case <-ctx.Done():
 			utils.LogWithFields(utils.LevelDebug, "watcher", "pump ctx done exiting", map[string]any{"path": w.root})
 			return
-		case ev, ok := <-w.fsw.Events:
+		case ev, ok := <-w.fsw.Events():
 			if !ok {
 				utils.LogWithFields(utils.LevelDebug, "watcher", "pump events channel closed exiting", map[string]any{"path": w.root})
 				return
 			}
 			w.handleEvent(ev)
-		case err, ok := <-w.fsw.Errors:
+		case err, ok := <-w.fsw.Errors():
 			if !ok {
 				utils.LogWithFields(utils.LevelDebug, "watcher", "pump errors channel closed exiting", map[string]any{"path": w.root})
 				return

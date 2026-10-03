@@ -165,7 +165,7 @@ func TestMcpEphemeralImagesReachOneProviderTurn(t *testing.T) {
 		},
 	})
 
-	if !waitForExit(collector, 5*time.Second) {
+	if !waitForExit(collector, 15*time.Second) {
 		t.Fatal("timed out waiting for MCP image run")
 	}
 

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,13 +35,20 @@ func TestForkResolvedSlash_PersistsParentDisplayTurn(t *testing.T) {
 	mgr := NewManager(mb)
 
 	const key = "fork-display-turn"
+	convID := "fork-test-conv-" + key
+	convDir := filepath.Join(tempHome, ".ion", "conversations")
 	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 		t.Fatalf("StartSession failed: %v", err)
 	}
-	t.Cleanup(func() { _ = mgr.StopSession(key) })
+	t.Cleanup(func() {
+		_ = mgr.StopSession(key)
+		// Stopping cancels the forked child, which then writes its terminal
+		// record into the parent conversation. Wait for that write so the
+		// temp dir is not removed under it.
+		waitForDispatchRecordsTerminal(t, convDir, convID)
+	})
 
 	// Seed a parent conversation on disk so forkResolvedSlash can load + append.
-	convID := "fork-test-conv-" + key
 	mgr.mu.Lock()
 	s := mgr.sessions[key]
 	s.conversationID = convID
@@ -81,7 +89,6 @@ func TestForkResolvedSlash_PersistsParentDisplayTurn(t *testing.T) {
 	}
 
 	// The parent display turn was persisted with raw invocation + provenance.
-	convDir := filepath.Join(tempHome, ".ion", "conversations")
 	loaded, err := conversation.Load(convID, convDir)
 	if err != nil {
 		t.Fatalf("post-fork Load: %v", err)
@@ -152,4 +159,28 @@ func TestForkResolvedSlash_NoConversationDoesNotPanic(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("forkResolvedSlash did not return promptly with no conversation")
 	}
+}
+
+// waitForDispatchRecordsTerminal waits until every agent_dispatch record in the
+// conversation on disk carries its terminal outcome and the conversation's save
+// lock is released.
+func waitForDispatchRecordsTerminal(t *testing.T, convDir, convID string) {
+	t.Helper()
+	lockPath := filepath.Join(convDir, ".conversation-"+convID+".lock")
+	waitFor(t, "dispatch terminal record persisted", func() bool {
+		conv, err := conversation.Load(convID, convDir)
+		if err != nil {
+			return false
+		}
+		for _, e := range conv.Entries {
+			if e.Type != conversation.EntryAgentDispatch {
+				continue
+			}
+			if d := conversation.AsAgentDispatchData(e.Data); d == nil || d.Terminal == nil {
+				return false
+			}
+		}
+		_, statErr := os.Stat(lockPath)
+		return os.IsNotExist(statErr)
+	})
 }
