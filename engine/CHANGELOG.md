@@ -18,6 +18,15 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.2](https://github.com/dsswift/ion/compare/engine-v1.97.1...engine-v1.97.2) (2026-10-03)
+
+### Bug Fixes
+
+* **engine:** count process descriptors and trace growth per tool ([a65e72b](https://github.com/dsswift/ion/commit/a65e72b8a3a8df573441c674bdbead14a5d4b7db))
+* **engine:** refuse dispatch when the engine cannot spawn (#424) ([c6103f1](https://github.com/dsswift/ion/commit/c6103f1466ce2eeb1c8d7a88a299837c79e15892))
+* **engine:** watch macOS workspaces with one fsevents stream ([d3a9ac8](https://github.com/dsswift/ion/commit/d3a9ac8c00a7028d57a596301ead14b97ef3f41d))
+* **engine:** resync rename tracking when the watcher drops events ([94e3732](https://github.com/dsswift/ion/commit/94e3732e3c6071e2162374921ebdff212b9d31c5))
+
 ## [1.97.1](https://github.com/dsswift/ion/compare/engine-v1.97.0...engine-v1.97.1) (2026-10-03)
 
 ### Bug Fixes
