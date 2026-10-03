@@ -58,23 +58,8 @@ export interface WorktreeListItem {
   active: boolean
 }
 
-/**
- * A membership whose worktree is no longer in the inventory.
- *
- * These are NOT rendered as rows. A row implies a directory the operator can
- * open, and an absorbed or deleted worktree has none -- inventing a row for it
- * would offer verbs that cannot run. They surface as a footnote on the bench
- * bar instead, which keeps them addressable: before this, an absorbed member's
- * row simply vanished and the absorption notice was its only trace.
- */
-export interface OrphanMembership {
-  membership: IntegrationMember
-  sourceBranch: string
-}
-
 export interface WorktreeListResult {
   items: WorktreeListItem[]
-  orphans: OrphanMembership[]
 }
 
 /**
@@ -136,16 +121,8 @@ export function buildWorktreeList(
     }
   })
 
-  // A membership with no inventory entry: the worktree was retired, absorbed,
-  // or is otherwise gone. Reported separately rather than dropped, so the bench
-  // can still say what it is holding.
-  const present = new Set(entries.map((e) => e.worktreePath))
-  const orphans: OrphanMembership[] = (workspace?.members ?? [])
-    .filter((m) => !present.has(m.worktreePath))
-    .map((membership) => ({ membership, sourceBranch: workspace!.sourceBranch }))
-
   items.sort(compareListItems)
-  return { items, orphans }
+  return { items }
 }
 
 /**
@@ -257,7 +234,7 @@ export function benchMemberSummary(
   if (total === 0) return 'no members'
   // `behind` is the pin verdict for "the worktree has content the bench does
   // not hold". `gone` is deliberately excluded: it is a broken membership, not
-  // a stale one, and it already surfaces as an orphan on the bench bar.
+  // a stale one, and its row already says so.
   const behind = workspace.members.filter((member) => member.pin === 'behind').length
   const members = `${total} member${total === 1 ? '' : 's'}`
   const age = benchAssembledRelativeTime(workspace.lastBuiltAt)

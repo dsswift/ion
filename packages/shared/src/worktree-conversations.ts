@@ -253,21 +253,6 @@ export function conversationRoleLabel(role: ConversationTabRole | null | undefin
 }
 
 /**
- * Bench-specific open indicator. Unlike a worktree row, a bench must expose
- * its machine work: an auto-fix or verification analysis changes whether the
- * operator should inspect or cycle the shared integration conversations.
- */
-export function describeBenchOpenConversations(matches: readonly DirConversation[]): string | null {
-  const open = describeOpenConversations(matches)
-  if (!open) return null
-  const roles = [...new Set(matches
-    .map((conversation) => conversationRoleLabel(conversation.tabRole))
-    .filter((role): role is string => role !== null))]
-  if (roles.length === 0) return open
-  return `${open} · ${roles.join(' + ')}`
-}
-
-/**
  * The title Ion gives a bench's dedicated terminal tab.
  *
  * One function names the tab so the picker and the creator cannot disagree:

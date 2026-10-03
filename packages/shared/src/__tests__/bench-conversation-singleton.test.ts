@@ -9,7 +9,6 @@ import {
   collectDirConversations,
   collectAllDirConversations,
   conversationRoleLabel,
-  describeBenchOpenConversations,
   pickBenchConversation,
   type DirConversationSource,
 } from '../worktree-conversations'
@@ -136,19 +135,7 @@ describe('collectAllDirConversations — the navigation-only, role-inclusive twi
 })
 
 describe('bench machine-work labels', () => {
-  it('labels a single machine conversation with count and role', () => {
-    const matches = collectAllDirConversations([
-      tab({ id: 'fix', tabRole: 'conflict-auto-fix' }),
-    ], BENCH)
-    expect(describeBenchOpenConversations(matches)).toBe('(1) · Auto-fix')
-  })
-
-  it('labels several machine conversations with count and roles', () => {
-    const matches = collectAllDirConversations([
-      tab({ id: 'fix', tabRole: 'conflict-auto-fix' }),
-      tab({ id: 'verify', tabRole: 'verification-analysis' }),
-    ], BENCH)
-    expect(describeBenchOpenConversations(matches)).toBe('(2) · Auto-fix + Analysis')
+  it('labels each machine conversation role', () => {
     expect(conversationRoleLabel('conflict-auto-fix')).toBe('Auto-fix')
     expect(conversationRoleLabel('verification-analysis')).toBe('Analysis')
   })

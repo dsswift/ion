@@ -30,6 +30,7 @@ import { repositoryManager } from '../git/repositoryManager'
 import { lookupWorktreeLandedAt } from '../worktree/registry'
 import { triggerWorktreePinAdvance } from '../worktree/pin-advance-trigger'
 import { triggerBenchAutomation } from './bench-automation-trigger'
+import { disenrollRemovedMembers, isWorktreeRemoved } from './bench-removed-members'
 import type { IntegrationWorkspace, BenchAssembleResult, PinState, WorktreePinAdvance } from '@ion/shared/types'
 
 const TAG = 'bench.ops'
@@ -499,7 +500,14 @@ export async function assembleWorkspace(repoPath: string, sourceBranch: string):
  * merge outcome it has nothing to say about.
  */
 export async function refreshStaleness(repoPath: string, sourceBranch: string): Promise<IntegrationWorkspace | null> {
-  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  const stored = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  if (!stored) return null
+  // A worktree removed without a retire is disenrolled here, where the poll
+  // first sees it. Queued, so it lands after a retire or assembly holding the
+  // repo instead of racing their writes to the same record.
+  const ws = stored.members.some(isWorktreeRemoved)
+    ? await repositoryManager.get(repoPath).queue.enqueueMutation(async () => disenrollRemovedMembers(repoPath, sourceBranch))
+    : stored
   if (!ws) return null
 
   const members = []

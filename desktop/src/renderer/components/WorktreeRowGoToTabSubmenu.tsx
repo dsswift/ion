@@ -10,18 +10,12 @@
  * hover card. See the module doc-comment in `shared/worktree-conversations.ts`
  * for why the two collectors are kept deliberately separate.
  *
- * Two hosts, two anchor directions:
- * - The worktree row menu (`WorktreeRowMenu`) opens this as a hover submenu to
- *   the RIGHT of its own "Go to tab" row.
- * - `BenchBar`'s toolbar button opens this straight BELOW itself — there is no
- *   parent menu row to sit beside, just a persistent toolbar icon.
- * `prefer` selects between them; defaults to the row-menu behaviour since that
- * was this component's original (and still primary) host.
+ * The worktree row menu (`WorktreeRowMenu`) opens this as a hover submenu to
+ * the RIGHT of its own "Go to tab" row.
  *
- * Dismissal (outside mousedown + Escape) is self-contained here rather than
- * relying on a host's own outside-dismiss listener, because one host (BenchBar)
- * has no such listener to share — it is a persistent toolbar, not a dismissible
- * popover itself.
+ * Dismissal (outside mousedown + Escape) is self-contained here: the submenu
+ * portals as a sibling of its host's root, so it closes itself while the host
+ * menu stays open.
  */
 import React, { useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -52,8 +46,6 @@ interface WorktreeRowGoToTabSubmenuProps {
    * The bounding rect of the parent menu row that triggered this submenu.
    * Same purpose as `MoveToGroupSubmenu`'s `parentRect`: lets the submenu
    * flip to the left of the parent row when there isn't room to the right.
-   * Unused when `prefer === 'below'` (BenchBar has no parent row to flip
-   * around; the position hook's `anchor`-only fallback is what it uses).
    */
   parentRect?: { left: number; right: number; top: number; bottom: number }
   /**
@@ -67,16 +59,9 @@ interface WorktreeRowGoToTabSubmenuProps {
    * on a row here reads as "outside the menu" from the ROW MENU's dismiss
    * handler — `dismiss()` fires there and unmounts the whole tree (this
    * submenu included) before the subsequent `click` can reach this
-   * component's own `onClick` below. Not needed by `BenchBar`, which has no
-   * competing outside-dismiss listener of its own.
+   * component's own `onClick` below.
    */
   containerRef?: React.RefObject<HTMLDivElement | null>
-  /**
-   * Anchor direction. `'rightOf'` (default) opens beside a parent menu row —
-   * the row menu's usage. `'below'` opens straight under the anchor, for a
-   * standalone toolbar button with no parent row to sit beside.
-   */
-  prefer?: 'below' | 'rightOf'
 }
 
 /** Submenu listing every open conversation in a directory, for direct focus. */
@@ -89,7 +74,6 @@ export function WorktreeRowGoToTabSubmenu({
   triggerRef,
   parentRect,
   containerRef,
-  prefer = 'rightOf',
 }: WorktreeRowGoToTabSubmenuProps): React.JSX.Element | null {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
@@ -113,7 +97,7 @@ export function WorktreeRowGoToTabSubmenu({
   }, [onClose, triggerRef])
 
   const pos = useAnchoredPopover(anchor, {
-    prefer,
+    prefer: 'rightOf',
     parentRect,
     anchorSpace,
     deps: [conversations.length],

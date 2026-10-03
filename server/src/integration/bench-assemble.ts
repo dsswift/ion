@@ -75,6 +75,7 @@ import { resolveContribution, isLandedIntoSource } from './bench-contribution'
 import { ensureRerereEnabled, tryReplayResolution } from './bench-assembly-rerere'
 import { runBenchVerify } from './bench-verify'
 import { resolutionsFor } from './bench-resolution-journal'
+import { withoutRemovedMembers } from './bench-removed-members'
 import { ensureBenchWorktree, describeConflict, wipeBenchToEmpty, resetBenchToTree, classifyMergeFailure } from './bench-assemble-support'
 import type { IntegrationWorkspace, IntegrationMember, BenchAssembleResult } from '@ion/shared/types'
 
@@ -101,12 +102,17 @@ export async function assembleBench(ws: IntegrationWorkspace): Promise<BenchAsse
  * The assembly body without the queue wrapper. Exported for tests and for
  * callers already holding the repo mutation slot.
  */
-export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<BenchAssembleResult> {
+export async function assembleBenchUnqueued(enrolled: IntegrationWorkspace): Promise<BenchAssembleResult> {
+  // A member whose worktree directory is gone has nothing to integrate and no
+  // row to act on. Dropped before anything reads the member list, so every
+  // outcome below (success or atomic failure) records the set without it.
+  const ws = withoutRemovedMembers(enrolled)
   log('assemble: starting', {
     repo_path: ws.repoPath,
     source_branch: ws.sourceBranch,
     bench_path: ws.benchPath,
     members_total: ws.members.length,
+    removed_worktrees_disenrolled: enrolled.members.length - ws.members.length,
   })
 
   try {

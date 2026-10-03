@@ -364,8 +364,6 @@ describe('buildWorktreeState — membership rides the worktree', () => {
     expect(state.worktrees[0].membership).toMatchObject({
       sourceBranch: 'josh', pin: 'current', merge: 'merged', order: 1,
     })
-    // Nothing duplicated into the bench.
-    expect(state.benches[0].orphans).toEqual([])
   })
 
   it('ships the three axes separately so none can mask another', async () => {
@@ -414,20 +412,6 @@ describe('buildWorktreeState — membership rides the worktree', () => {
     const byPath = (p: string) => state.worktrees.find((w) => w.worktreePath === p)!.membership!
     expect(byPath(WT_B).order).toBe(1)
     expect(byPath('/wt/first').order).toBe(2)
-  })
-
-  it('reports a membership whose worktree is gone as a bench orphan', async () => {
-    // No directory to open, so no row -- but the bench still says what it holds
-    // rather than the record vanishing without explanation.
-    mocks.worktrees = []
-    mocks.workspaces = [workspace]
-    const { buildWorktreeState: build } = await loadBuilder()
-
-    const state = await build(REPO)
-
-    expect(state.worktrees).toEqual([])
-    expect(state.benches[0].orphans).toHaveLength(1)
-    expect(state.benches[0].orphans[0].sourceBranch).toBe('josh')
   })
 
   it('projects bench auto-fix and analysis work, but keeps worktrees operator-only', async () => {

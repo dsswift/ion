@@ -41,7 +41,6 @@ import { assembleBench } from '../bench-assemble'
 import { captureContribution } from '../bench-snapshot'
 import { makeWorkspace, makeMember } from '../bench-store'
 import { landWorktree } from '../../worktree/integrate'
-import { retireWorktree } from '../../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
@@ -169,11 +168,6 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
     expect(joshAhead.some((s) => s.startsWith('wt1 wip'))).toBe(false)
     // Nowhere near the dozen wip commits.
     expect(joshAhead.length).toBeLessThanOrEqual(2)
-
-    // Retire the finished worktree (the "Land & retire" verb).
-    const retiredWt = await retireWorktree({ repoPath: repo, worktreePath: wt1.path, branchName: wt1.branch })
-    expect(retiredWt.ok).toBe(true)
-    expect(retiredWt.workingDirectory).toBe(repo)
 
     // ── Beat 8: the bench clears, takes a fresh josh, re-layers only wt2 ────
     // wt2's pin is advanced first (an explicit Update for its new commit).

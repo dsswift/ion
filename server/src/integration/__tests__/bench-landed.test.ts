@@ -33,7 +33,6 @@ import { assembleBench } from '../bench-assemble'
 import { captureContribution } from '../bench-snapshot'
 import { makeWorkspace, makeMember } from '../bench-store'
 import { landWorktree } from '../../worktree/integrate'
-import { retireWorktree } from '../../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
@@ -286,22 +285,23 @@ describe('landed member absorption', () => {
 
   // The full operator sequence: land, retire the worktree, rebuild. The bench
   // must still contain the work even though the worktree is gone.
-  it('survives the worktree being retired after the land', async () => {
+  it('survives the branch being deleted after the land', async () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
     const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
-    const retiredWt = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
-    expect(retiredWt.ok).toBe(true)
-    expect(existsSync(a.path)).toBe(false)
+    // The directory stays: a member whose worktree directory is gone is
+    // disenrolled before the landed tiers run, the same as a retire does.
+    git(a.path, 'checkout', '--detach')
+    git(repo, 'branch', '-D', a.branch)
 
     const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
-    // Landed content survives the worktree AND the branch being deleted,
-    // because it lives in the source branch now — not reported `missing`.
+    // Landed content survives the branch being deleted, because it lives in
+    // the source branch now — not reported `missing`.
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
     expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual(['wt/b'])

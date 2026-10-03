@@ -76,7 +76,10 @@ package, this fails closed — a malformed manifest grants nothing. Reference:
 Closing a conversation never removes a worktree. Removal is only the explicit
 Retire verb, which appraises what would be lost, refuses when the answer is work,
 and relocates any conversation still living there so it is not left pointed at a
-deleted directory.
+deleted directory. Retire also disenrolls the worktree from every bench. A
+worktree deleted outside Ion skips that step, so the bench disenrolls any member
+whose worktree directory is gone the next time it assembles or refreshes its
+staleness (`server/src/integration/bench-removed-members.ts`).
 
 **A landed worktree is sealed.** A successful Land records `landedAt`, immediately
 removes the worktree from every bench, and does not rebuild the remaining bench

@@ -2517,8 +2517,8 @@
           "platform": "desktop",
           "presentation": "ui",
           "language": "typescript",
-          "symbol": "BenchBar",
-          "path": "desktop/src/renderer/components/BenchBar.tsx"
+          "symbol": "export function InboxBenchBar",
+          "path": "desktop/src/renderer/studio/inbox/InboxBenchBar.tsx"
         },
         {
           "platform": "ios",

@@ -162,7 +162,6 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     membership: membershipOf.get(w.worktreePath),
   }))
 
-  const present = new Set(inventory.map((w) => w.worktreePath))
   const benches: RemoteBench[] = []
   for (const ws of workspaces) {
     const tip = await sourceBranchTip(sourceRepoPath, ws.sourceBranch)
@@ -201,12 +200,6 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
       openConversations: openAllIn(ws.benchPath),
       benchConversationTabId: conversation && !conversation.adopted ? conversation.tab.id : undefined,
       benchTerminalTabId: terminal?.id,
-      // Only the memberships with no worktree left. The rest ride their
-      // worktree record; sending them here too would restore the duplication
-      // this projection exists to remove.
-      orphans: ws.members
-        .filter((m) => !present.has(m.worktreePath))
-        .map((m, i) => projectWorktreeMembership(m, ws.sourceBranch, i + 1)),
     })
   }
 
