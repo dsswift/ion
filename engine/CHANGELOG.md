@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.96.1](https://github.com/dsswift/ion/compare/engine-v1.96.0...engine-v1.96.1) (2026-10-03)
+
+### Bug Fixes
+
+* **engine:** register managed config schema version (#470) ([e2ab454](https://github.com/dsswift/ion/commit/e2ab454b66ffab33d3a6d4f7a0e1b47c65fcf185))
+
 ## [1.96.0](https://github.com/dsswift/ion/compare/engine-v1.95.0...engine-v1.96.0) (2026-10-03)
 
 ### Features
