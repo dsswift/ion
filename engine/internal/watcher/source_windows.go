@@ -54,7 +54,11 @@ type recursiveSource struct {
 	closeOnce sync.Once
 }
 
-func newEventSource(root string) (eventSource, error) {
+// newEventSource builds the source for a watcher root: one recursive handle
+// on the root.
+var newEventSource = newRecursiveSource
+
+func newRecursiveSource(root string) (eventSource, error) {
 	rootPtr, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		return nil, err
@@ -107,6 +111,7 @@ func (s *recursiveSource) Add(dir string) error {
 
 func (s *recursiveSource) Events() <-chan fsnotify.Event { return s.events }
 func (s *recursiveSource) Errors() <-chan error          { return s.errors }
+func (s *recursiveSource) Recursive() bool               { return true }
 
 func (s *recursiveSource) Close() error {
 	var err error

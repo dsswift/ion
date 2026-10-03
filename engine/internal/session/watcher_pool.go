@@ -15,11 +15,9 @@ import (
 
 // watcherPool deduplicates filesystem watchers across sessions that share
 // the same working directory and ignore configuration. Without dedup,
-// N sessions watching the same repo tree consume N * dirs file descriptors
-// (kqueue on macOS requires one FD per watched directory). Ten sessions on
-// a ~6000-directory tree exhaust the default 10240 soft limit and even the
-// 61440 hard limit, causing DNS lookups and socket operations to fail with
-// EMFILE / "no such host."
+// N sessions watching the same repo tree hold N watchers, each with its own
+// kernel resources (one inotify watch per directory on Linux) and its own
+// copy of every event.
 //
 // The pool is keyed by (root, ignores-hash, wiki-link settings). Sessions
 // that resolve to the same key share one watcher.Watcher and receive events

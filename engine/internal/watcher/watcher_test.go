@@ -363,6 +363,16 @@ func withMaxWatchedDirs(t *testing.T, n int) {
 	t.Cleanup(func() { maxWatchedDirs = prev })
 }
 
+// withDirectorySource makes watchers started during the test use the
+// per-directory source, the only kind the directory cap applies to, whatever
+// the platform's own source is. Restored on cleanup.
+func withDirectorySource(t *testing.T) {
+	t.Helper()
+	prev := newEventSource
+	newEventSource = newDirectorySource
+	t.Cleanup(func() { newEventSource = prev })
+}
+
 // withCapWarnCounter swaps the cap-warning sink for a counting one and returns
 // a func that reads the current count. Restored on cleanup.
 func withCapWarnCounter(t *testing.T) (count func() int) {
@@ -398,6 +408,7 @@ func (w *Watcher) snapshotState() (truncated bool, attached int) {
 // climb to the full directory count and leaves truncated false, failing the
 // assertions below.
 func TestWatcher_StartRespectsDirCap(t *testing.T) {
+	withDirectorySource(t)
 	const cap = 5
 	const dirCount = 12
 	withMaxWatchedDirs(t, cap)
@@ -443,6 +454,7 @@ func TestWatcher_StartRespectsDirCap(t *testing.T) {
 // default. This is the configurability path used by engine.json's
 // workspace.maxWatchedDirs.
 func TestWatcher_NewWithMaxDirs_HonorsExplicitCap(t *testing.T) {
+	withDirectorySource(t)
 	// Leave the package default at its real (large) value: the explicit cap
 	// must win on its own.
 	warnCount := withCapWarnCounter(t)
@@ -481,6 +493,7 @@ func TestWatcher_NewWithMaxDirs_HonorsExplicitCap(t *testing.T) {
 // TestWatcher_NewWithMaxDirsZeroUsesDefault proves that a zero cap falls back
 // to the package default (the "config omitted" path).
 func TestWatcher_NewWithMaxDirsZeroUsesDefault(t *testing.T) {
+	withDirectorySource(t)
 	withMaxWatchedDirs(t, 4) // lower the default so the test is cheap
 
 	root := t.TempDir()
@@ -511,6 +524,7 @@ func TestWatcher_NewWithMaxDirsZeroUsesDefault(t *testing.T) {
 // whole cap, a newly-created subtree attaches no further directories and the
 // warning still fires exactly once across both walks.
 func TestWatcher_SubtreeAttachRespectsDirCap(t *testing.T) {
+	withDirectorySource(t)
 	const cap = 2
 	withMaxWatchedDirs(t, cap)
 	warnCount := withCapWarnCounter(t)

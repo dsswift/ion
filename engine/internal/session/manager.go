@@ -106,9 +106,8 @@ type Manager struct {
 	globalBroker *resource.Broker
 
 	// watchers deduplicates filesystem watchers across sessions that
-	// share the same working directory. Without this, N sessions on
-	// one repo tree consume N * dirs kqueue FDs, exhausting the
-	// per-process file descriptor limit.
+	// share the same working directory, so N sessions on one repo tree
+	// hold one watcher rather than N.
 	watchers *watcherPool
 
 	// runOnce is the Manager-level registry for cross-instance dedup.
