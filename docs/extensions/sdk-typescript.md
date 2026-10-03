@@ -1317,6 +1317,40 @@ await ctx.setSessionMemory(`${existing}\n\n- deploy target is staging`)
 
 `getSessionMemory` returns an empty string when the conversation has no memory yet, or when the extension is running outside a session (a schedule or webhook firing).
 
+## Wiki links
+
+The engine keeps wiki-style links (`[[target]]`, `[[target|alias]]`) resolving when a document in the working directory is renamed. See [Wiki-Link Maintenance](../architecture/wiki-links.md) for the rules and the [`wikiLinks`](../configuration/engine-json.md#wikilinks) config block.
+
+Two observe-only hooks report what happened:
+
+```typescript
+ion.on('workspace_file_renamed', (ctx, info) => {
+  // info.oldRelPath -> info.newRelPath
+})
+
+ion.on('wiki_links_propagated', (ctx, report) => {
+  for (const file of report.files) {
+    for (const r of file.rewrites) {
+      ion.log.info(`${file.path}:${r.line} ${r.oldLink} -> ${r.newLink}`)
+    }
+  }
+})
+```
+
+`workspace_file_renamed` fires for each renamed document. `wiki_links_propagated` fires once per propagation pass with the complete record of that pass: the renames handled, every file changed, and every link rewritten. It fires even when no link needed rewriting, with `files` empty. The files are already written when it fires.
+
+`ctx.scanWikiLinks()` runs the read-only link integrity scan and returns every link that names no single file:
+
+```typescript
+const report = await ctx.scanWikiLinks()
+for (const b of report.broken) {
+  // b.reason is 'missing' or 'ambiguous'; an ambiguous entry lists b.candidates
+  ion.log.warn(`${b.path}:${b.line} ${b.link} (${b.reason})`)
+}
+```
+
+It rejects when the engine's `wikiLinks` config turns the scan off, so an empty `broken` array always means every link resolved.
+
 ## Interrupted-run recovery
 
 `ctx.setRunRecovery()` sets extension-owned recovery policy for later runs in current session. `enabled` is required by current engines. It remains optional in TypeScript for compatibility with older callers, but an omitted value is rejected by current engines. `maxAttempts` is optional. `0` or omission uses engine default. This policy overrides `start_session` and `engine.json` values. It does not change journal for active run. Recovery applies only after engine process interruption, not provider failures, timeouts, or normal terminal exits.

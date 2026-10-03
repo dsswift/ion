@@ -1027,6 +1027,24 @@ A background bash command started with `Bash(run_in_background: true, notify_on_
 | `backgroundTaskComplete.command` | string | The command that ran |
 | `backgroundTaskComplete.remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
 
+#### engine_wiki_links_propagated
+
+The engine rewrote wiki links after one or more documents in the session's working directory were renamed. Emitted once per propagation pass, on the stream of every session watching that workspace, even when no link needed rewriting (`files` is then empty). The payload is the complete record of the pass; it replaces nothing a consumer already holds. See [Wiki-Link Maintenance](../architecture/wiki-links.md).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_wiki_links_propagated"` | Event type |
+| `wikiLinksPropagated.root` | string | Absolute workspace root the pass was confined to |
+| `wikiLinksPropagated.renames` | object[] | The renames handled, each `{oldPath, newPath}`, workspace-relative |
+| `wikiLinksPropagated.files` | object[] | The files changed, each `{path, rewrites}` |
+| `wikiLinksPropagated.files[].rewrites[].line` | number | 1-based line of the link |
+| `wikiLinksPropagated.files[].rewrites[].oldLink` | string | Full link text before the rewrite |
+| `wikiLinksPropagated.files[].rewrites[].newLink` | string | Full link text after the rewrite. Alias and `#section` are kept |
+| `wikiLinksPropagated.files[].rewrites[].oldTarget` | string | Workspace-relative path the link named before |
+| `wikiLinksPropagated.files[].rewrites[].newTarget` | string | Workspace-relative path the link names now |
+| `wikiLinksPropagated.rewriteCount` | number | Total links rewritten |
+| `wikiLinksPropagated.failed` | object[] | Files that needed rewriting but could not be written, each `{path, error}`. Absent when none failed |
+
 #### engine_background_work_delivered
 
 Emitted only after an engine-owned completion result has been persisted as an input to an orchestrator conversation. This is distinct from `engine_background_task_complete`, which reports a Bash process terminal state even when delivery is queued or disabled. `backgroundWorkDelivered.content` is the exact payload supplied to the model; `backgroundWorkDelivered.work` carries structured source, status, duration, and stable work identifiers for clients that present a collapsible audit row.

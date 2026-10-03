@@ -412,6 +412,8 @@ type PermissionDeniedInfo struct {
 |------|------|---------|--------|--------|
 | `file_changed` | LLM Write or Edit tool wrote a file (does **not** fire on external edits — see `workspace_file_changed`) | `FileChangedInfo{Path, Action}` | ignored | Observe only |
 | `workspace_file_changed` | Any non-ignored file or directory under the session working directory was created, modified, or deleted (LLM tools, user editor, shell scripts — anything) | `WorkspaceFileChangedInfo{Path, RelPath, Action}` | ignored | Observe only |
+| `workspace_file_renamed` | The workspace watcher matched a removal and a creation to the same document. Fires in addition to the `workspace_file_changed` delete and create for the two paths | `WorkspaceFileRenamedInfo{OldPath, OldRelPath, NewPath, NewRelPath}` | ignored | Observe only |
+| `wiki_links_propagated` | The engine finished rewriting wiki links after one or more renames. Fires once per pass, even when no link needed rewriting | `WikiLinkPropagationReport{Root, Renames, Files, RewriteCount, Failed}` | ignored | Observe only |
 
 ### Payload Types
 
@@ -434,7 +436,42 @@ type WorkspaceFileChangedInfo struct {
 
 `workspace_file_changed` is backed by an engine-owned recursive fsnotify watcher rooted at `EngineConfig.WorkingDirectory`. Defaults ignore `.git/**`, `node_modules/**`, `dist/**`, `build/**`, `target/**`, `.next/**`, `.nuxt/**`, `.venv/**`, `__pycache__/**`, `.ion/**`, plus editor noise (`.DS_Store`, `*.swp`, `*.swo`, `*.tmp`, `*~`). Override the whole list via `EngineConfig.WorkspaceWatchIgnore` (non-empty array replaces the defaults; it does not merge).
 
-Out-of-tree paths are not covered. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess. Renames are reported as paired delete+create events (cross-editor rename detection is unreliable).
+`workspace_file_changed` is delivered only to an extension that registered a handler for it. A busy tree produces many events, and an extension that never asked for them pays nothing.
+
+Out-of-tree paths are not covered. Extensions that need to watch files outside the working directory install their own `node:fs.watch` in their subprocess. A rename is reported as a paired delete and create.
+
+**WorkspaceFileRenamedInfo**
+```go
+type WorkspaceFileRenamedInfo struct {
+    OldPath    string  // absolute, OS-native
+    OldRelPath string  // forward-slash, relative to WorkingDirectory
+    NewPath    string  // absolute, OS-native
+    NewRelPath string  // forward-slash, relative to WorkingDirectory
+}
+```
+
+`workspace_file_renamed` fires only for documents: files whose extension is listed in the [`wikiLinks.extensions`](../configuration/engine-json.md#wikilinks) config, and only while `wikiLinks.enabled` is true. It is delivered a moment after the rename, in the order renames were observed. With `wikiLinks.propagateOnRename` set to `false` this hook still fires, so a harness can apply its own handling.
+
+**WikiLinkPropagationReport**
+```go
+type WikiLinkPropagationReport struct {
+    Root         string                 // absolute workspace root
+    Renames      []WikiLinkRename       // {OldPath, NewPath}, workspace-relative
+    Files        []WikiLinkFileRewrites // {Path, Rewrites}
+    RewriteCount int                    // total links rewritten
+    Failed       []WikiLinkFileFailure  // {Path, Error}
+}
+
+type WikiLinkRewrite struct {
+    Line      int     // 1-based
+    OldLink   string  // full link text before, brackets included
+    NewLink   string  // full link text after
+    OldTarget string  // workspace-relative path the link named before
+    NewTarget string  // workspace-relative path it names now
+}
+```
+
+The report is the complete record of one pass. The files are already written when the hook fires. See [Wiki-Link Maintenance](../architecture/wiki-links.md) for detection, resolution, and rewrite rules.
 
 ## Task Lifecycle
 

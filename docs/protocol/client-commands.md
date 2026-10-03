@@ -678,6 +678,40 @@ While any connection watches, the engine samples at the smallest interval any wa
 
 ---
 
+### scan_wiki_links
+
+Run the read-only [link integrity scan](../architecture/wiki-links.md#link-integrity-scan) over a session's working directory. The engine reads every document, resolves each wiki link, and reports the ones that name no single file. Nothing is written. The scan honors the session's workspace ignore patterns.
+
+| Field       | Type                | Required | Description                  |
+|-------------|---------------------|----------|------------------------------|
+| `cmd`       | `"scan_wiki_links"` | yes      | Command discriminator        |
+| `key`       | string              | yes      | Session whose working directory is scanned |
+| `requestId` | string              | no       | Correlates with ServerResult |
+
+**Response:** `ServerResult` whose `data` is a `WikiLinkIntegrityReport`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `root` | string | Absolute workspace root that was scanned |
+| `documentsScanned` | number | Documents read |
+| `linksChecked` | number | Wiki links resolved |
+| `broken` | object[] | Links that name no single file. Empty array when every link resolves |
+| `broken[].path` | string | Workspace-relative path of the file holding the link |
+| `broken[].line` | number | 1-based line of the link |
+| `broken[].link` | string | Full link text, brackets included |
+| `broken[].target` | string | The link target with any alias and `#section` removed |
+| `broken[].reason` | string | `missing` or `ambiguous` |
+| `broken[].candidates` | string[] | For `ambiguous`: the files the target could name |
+
+The result is an error, and the workspace is not read, when the session is unknown or when `wikiLinks.integrityScan` or `wikiLinks.enabled` is `false` (`wiki link integrity scan is disabled`).
+
+```json
+{"cmd":"scan_wiki_links","key":"s1","requestId":"r43"}
+{"cmd":"result","requestId":"r43","ok":true,"data":{"root":"/work/docs","documentsScanned":212,"linksChecked":640,"broken":[{"path":"guides/setup.md","line":14,"link":"[[install-notes|notes]]","target":"install-notes","reason":"missing"}]}}
+```
+
+---
+
 ### health
 
 Daemon liveness, answered on a lane that never queues behind a busy session. Stateless.

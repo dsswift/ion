@@ -2605,6 +2605,31 @@
       ]
     },
     {
+      "id": "link-integrity-scan",
+      "term": "Link Integrity Scan",
+      "definition": "A read-only pass over a session's working directory that resolves every wiki link in every document and reports the ones that name no single file: a missing target, or a bare name more than one file carries. It writes nothing and runs only when asked (scan_wiki_links, ctx.scanWikiLinks). It finds the links broken by renames the engine never observed, which Wiki-Link Propagation cannot repair.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func Scan",
+          "path": "engine/internal/wikilinks/scan.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WikiLinkIntegrityReport",
+          "path": "engine/internal/types/wiki_links.go"
+        }
+      ]
+    },
+    {
       "id": "local-principal",
       "term": "Local Principal",
       "definition": "The Session Principal a server stamps for the local, same-machine caller: subject local:<os-username>, provider os, kind local. Requires no sign-in.",
@@ -5499,6 +5524,31 @@
       ]
     },
     {
+      "id": "wiki-link-propagation",
+      "term": "Wiki-Link Propagation",
+      "definition": "Rewriting wiki links ([[target]], [[target|alias]]) after a Workspace Rename so every link keeps naming the file it named before. One pass handles a batch of renames, changes only link targets (alias, section, and link style are kept), is confined to the watched working directory, and produces one report of every file and link it changed (engine_wiki_links_propagated, the wiki_links_propagated hook).",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func Propagate",
+          "path": "engine/internal/wikilinks/propagate.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WikiLinkPropagationReport",
+          "path": "engine/internal/types/wiki_links.go"
+        }
+      ]
+    },
+    {
       "id": "workspace",
       "term": "Workspace",
       "definition": "The filesystem root that scopes tool execution and file access for a conversation. The engine enforces containment against it.",
@@ -5530,6 +5580,31 @@
           "language": "typescript",
           "symbol": "WorkspaceStatusIndicator",
           "path": "desktop/src/renderer/components/WorkspaceStatusIndicator.tsx"
+        }
+      ]
+    },
+    {
+      "id": "workspace-rename",
+      "term": "Workspace Rename",
+      "definition": "One file moving from one path to another inside a watched working directory, detected by the engine from what changed on disk: a removal and a creation that describe the same file (same file, size, and modification time). Whatever performed the move is irrelevant. Reported as a single event carrying both paths (the workspace_file_renamed hook), in addition to the delete and create the watcher always reports. Detected only for documents, the extensions named by the wikiLinks config.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type renameTracker",
+          "path": "engine/internal/watcher/rename.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WorkspaceFileRenamedInfo",
+          "path": "engine/internal/extension/sdk_hook_types_workspace.go"
         }
       ]
     },
