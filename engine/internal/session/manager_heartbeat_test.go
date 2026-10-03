@@ -340,6 +340,19 @@ func TestSetHeartbeatInterval_RestoresDefaultOnZero(t *testing.T) {
 	}
 }
 
+// TestNewManager_HeartbeatParkedInTests pins the package-wide isolation in
+// main_test.go: a Manager a test never shuts down must not tick on its own.
+// A tick on the production cadence reaches sessions built as partial literals
+// by tests that have already returned.
+func TestNewManager_HeartbeatParkedInTests(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	defer mgr.Shutdown()
+
+	if got := mgr.snapshotHeartbeatInterval(); got != parkedHeartbeatInterval {
+		t.Errorf("expected a new Manager to start parked at %v, got %v", parkedHeartbeatInterval, got)
+	}
+}
+
 // TestHeartbeat_EmitsAgentStateForEverySession verifies that each heartbeat
 // tick emits engine_agent_state alongside engine_status.  This is the
 // passive convergence mechanism for agent state — if a reconnecting

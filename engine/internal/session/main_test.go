@@ -21,14 +21,27 @@ package session
 // Individual tests that need their own HOME still call t.Setenv("HOME", ...);
 // that continues to work and takes precedence for the duration of the test.
 
+// The heartbeat is parked for the same reason. Most tests here never call
+// Manager.Shutdown, and many hand the Manager a session literal that holds only
+// the fields the test reads. A Manager left running ticks on the production
+// cadence against those sessions, long after its test returned, so a package
+// run that outlasts one cadence crashes in whichever session the tick reaches
+// first. Managers in this binary start with a cadence no run reaches; a test
+// that exercises the heartbeat sets its own with SetHeartbeatInterval.
+
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/testhome"
 )
 
+// parkedHeartbeatInterval is longer than any run of this package.
+const parkedHeartbeatInterval = 24 * time.Hour
+
 func TestMain(m *testing.M) {
+	initialHeartbeatInterval = parkedHeartbeatInterval
 	// "ionh-" stays short: this HOME is the base for the CLI tool server's
 	// Unix socket, which must fit the socket path limit.
 	os.Exit(testhome.Run(m, "ionh-"))
