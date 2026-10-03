@@ -53,7 +53,6 @@ final class WorktreeWireTests: XCTestCase {
               "lastAssembly": "failed",
               "lastAssemblyError": "wt/a3f1 conflicts on 1 file. The bench is empty until this is resolved.",
               "baseDrifted": true,
-              "orphans": [],
               "openConversations": [
                 {"tabId": "tab-9", "title": "Bench build", "status": "idle", "index": 9},
                 {"tabId": "tab-fix", "title": "Resolve merge", "status": "running", "index": 10, "tabRole": "conflict-auto-fix"},
@@ -106,7 +105,6 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(bench.activeAutoFixTabId, "tab-fix")
         XCTAssertEqual(bench.conversationActionTitle, "Go to · Analysis + Auto-fix")
         XCTAssertEqual(bench.benchConversationTabId, "tab-talk")
-        XCTAssertTrue(bench.orphans.isEmpty)
         // The bench's dedicated terminal, which is what lets the row say
         // "Go to terminal" rather than offering to open a second one.
         XCTAssertEqual(bench.benchTerminalTabId, "tab-term")
@@ -184,9 +182,6 @@ final class WorktreeWireTests: XCTestCase {
 
         let bench = states[0].benches[0]
         XCTAssertEqual(bench.openConversations, [])
-        // An older desktop sends no `orphans`; an empty list is the right
-        // reading, never a decode failure that would blank the bench view.
-        XCTAssertEqual(bench.orphans, [])
         XCTAssertNil(bench.benchConversationTabId)
         XCTAssertNil(bench.openConversations.first?.tabRole)
         // Likewise no `benchTerminalTabId`. Absent means "no terminal open",

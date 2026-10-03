@@ -296,11 +296,6 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     var sourceBranch: String
     var benchPath: String
     var benchBranch: String
-    /// Memberships whose worktree is no longer in the inventory (absorbed into
-    /// the source branch, or retired). They have no directory to open, so they
-    /// are a footnote rather than rows -- but letting them vanish is what made
-    /// absorption look like the bench eating a worktree.
-    var orphans: [RemoteMembership]
     var baseSha: String
     var lastBuiltAt: Double
     /// Outcome of the last assembly. `failed` means the desktop wiped the bench
@@ -372,7 +367,6 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         sourceBranch = try c.decode(String.self, forKey: .sourceBranch)
         benchPath = try c.decode(String.self, forKey: .benchPath)
         benchBranch = try c.decode(String.self, forKey: .benchBranch)
-        orphans = try c.decodeIfPresent([RemoteMembership].self, forKey: .orphans) ?? []
         baseSha = try c.decode(String.self, forKey: .baseSha)
         lastBuiltAt = try c.decode(Double.self, forKey: .lastBuiltAt)
         lastAssembly = try c.decodeIfPresent(String.self, forKey: .lastAssembly)

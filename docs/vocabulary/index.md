@@ -1632,7 +1632,7 @@ A rebuildable checkout that assembles the feature branch plus each member worktr
 - **Contract:** `internal`
 - **Implementations:**
   - `desktop` / `wire` / `typescript`: `export interface RemoteBench` in `server/src/remote/protocol-worktree.ts`
-  - `desktop` / `ui` / `typescript`: `BenchBar` in `desktop/src/renderer/components/BenchBar.tsx`
+  - `desktop` / `ui` / `typescript`: `export function InboxBenchBar` in `desktop/src/renderer/studio/inbox/InboxBenchBar.tsx`
   - `ios` / `ui` / `swift`: `InboxBenchGroup` in `ios/IonRemote/Views/InboxBenchGroup.swift`
 
 #### Ion Studio Server {#term-ion-studio-server}
@@ -3227,7 +3227,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | None | iOS |
 | Input Bar | `export function InputBar` | `export function InputBar`, `InputBar` | `export function InputBar` | `InputBar` | None |
 | Install worker | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | None | iOS |
-| Integration bench | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `InboxBenchGroup` | None |
+| Integration bench | `export interface RemoteBench`, `export function InboxBenchBar` | `export interface RemoteBench`, `export function InboxBenchBar` | `export interface RemoteBench`, `export function InboxBenchBar` | `InboxBenchGroup` | None |
 | Ion Studio Server | `main` | `main` | `main` | None | iOS |
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |

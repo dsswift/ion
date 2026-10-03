@@ -282,7 +282,7 @@ describe('buildWorktreeList — landed work sinks to its own band', () => {
   })
 })
 
-describe('buildWorktreeList — benches and orphans', () => {
+describe('buildWorktreeList — benches', () => {
   it('decorates rows from the ACTIVE bench only', () => {
     // A repo integrating into two branches has two benches; a row can show one
     // membership, so the caller picks which.
@@ -296,26 +296,9 @@ describe('buildWorktreeList — benches and orphans', () => {
     expect(asMain.items[0].membership).toBeDefined()
   })
 
-  it('returns a membership with no worktree as an orphan, never as a row', () => {
-    // An absorbed or retired member has no directory to open. A row would offer
-    // verbs that cannot run.
-    const ws = workspace([
-      member({ worktreePath: '/wt/a' }),
-      member({ worktreePath: '/wt/gone', branchName: 'wt/gone', pin: 'absorbed' }),
-    ])
-
-    const { items, orphans } = buildWorktreeList([entry({ worktreePath: '/wt/a' })], [ws], 'josh')
-
-    expect(items).toHaveLength(1)
-    expect(orphans).toHaveLength(1)
-    expect(orphans[0].membership.worktreePath).toBe('/wt/gone')
-    expect(orphans[0].sourceBranch).toBe('josh')
-  })
-
   it('treats a repo with no bench as a plain list rather than an error', () => {
-    const { items, orphans } = buildWorktreeList([entry()], [], 'josh')
+    const { items } = buildWorktreeList([entry()], [], 'josh')
     expect(items).toHaveLength(1)
-    expect(orphans).toEqual([])
   })
 })
 
@@ -433,8 +416,8 @@ describe('benchMemberSummary', () => {
     expect(benchMemberSummary(workspace([member()]))).toBe('1 member · never assembled')
   })
 
-  // A `gone` member is a BROKEN membership, not a stale one -- its worktree no
-  // longer exists, and it already surfaces as an orphan on the bench bar.
+  // A `gone` member is a BROKEN membership, not a stale one -- its branch no
+  // longer resolves, and its row already says so.
   it('does not count a gone member as out of date', () => {
     const ws = workspace([member({ pin: 'gone' }), member({ worktreePath: '/wt/b', branchName: 'wt/b' })])
     expect(benchMemberSummary({ ...ws, lastBuiltAt: Date.now() - HOUR }))

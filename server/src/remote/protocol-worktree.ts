@@ -157,12 +157,6 @@ export interface RemoteBench {
   sourceBranch: string
   benchPath: string
   benchBranch: string
-  /**
-   * Memberships whose worktree is no longer in the inventory (absorbed into the
-   * source branch, or retired). Sent so the bench can still say what it holds:
-   * these have no directory to open, so they are a footnote rather than rows.
-   */
-  orphans: RemoteMembership[]
   baseSha: string
   lastBuiltAt: number
   /**

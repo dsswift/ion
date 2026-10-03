@@ -156,7 +156,7 @@ Each conversation can run in its own git worktree. An **integration bench** laye
 | Studio wire | FORWARDED store actions over `studio_action` (`packages/shared/src/studio-wire/actions.ts`); worktree git verbs in `server/src/protocol/git-actions.ts` |
 | iOS wire | `server/src/remote/protocol-worktree.ts`, `server/src/remote/handlers/worktree.ts` (store-backed verbs in `worktree-store-commands.ts`) |
 | Store state | `server/src/store/slices/worktree-inventory-slice.ts`, `bench-slice.ts` |
-| UI | `desktop/src/renderer/studio/inbox/`, `desktop/src/renderer/components/BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
+| UI | `desktop/src/renderer/studio/inbox/`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
 | Join | `packages/shared/src/worktree-list.ts` (worktrees and memberships, one ordered list) |
 
 ### State flow
