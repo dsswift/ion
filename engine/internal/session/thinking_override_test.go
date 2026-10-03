@@ -17,7 +17,7 @@ import (
 // high/low cases; removing the "off" clearing fails the off case.
 func TestBuildRunOptions_ThinkingEffortOverride(t *testing.T) {
 	newSession := func() *engineSession {
-		return &engineSession{config: types.EngineConfig{WorkingDirectory: "/tmp"}}
+		return &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 	}
 
 	t.Run("high sets effort thinking", func(t *testing.T) {

@@ -70,6 +70,7 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/get_session_memory": (*Host).rpcGetSessionMemory,
 	"ext/set_session_memory": (*Host).rpcSetSessionMemory,
 	"ext/walk_context_files": (*Host).rpcWalkContextFiles,
+	"ext/scan_wiki_links":    (*Host).rpcScanWikiLinks,
 	"ext/list_sessions":      (*Host).rpcListSessions,
 	"ext/send_to_session":    (*Host).rpcSendToSession,
 	"ext/intercept":          (*Host).rpcIntercept,

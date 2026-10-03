@@ -242,9 +242,9 @@ type FileChangedInfo struct {
 //
 // Path is absolute and OS-native; RelPath is forward-slash separated and
 // relative to EngineConfig.WorkingDirectory so consumers can glob-match
-// portably. Action is one of "create", "modify", "delete". Rename is
-// reported as paired delete+create -- cross-editor rename detection is
-// unreliable.
+// portably. Action is one of "create", "modify", "delete". A rename is
+// reported here as a delete of the old path and a create of the new one;
+// WorkspaceFileRenamedInfo carries the correlated pair.
 type WorkspaceFileChangedInfo struct {
 	Path    string `json:"path"`
 	RelPath string `json:"relPath"`

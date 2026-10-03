@@ -334,6 +334,12 @@ type Context struct {
 	// onward. Read-only. Nil when the context is not bound to a session.
 	ReadConversation func(conversationID string, offset, limit int) (*ConversationRecord, error)
 
+	// ScanWikiLinks runs the read-only link integrity scan over the session's
+	// working directory and returns every wiki link that names no single
+	// file. Errors when the scan is turned off in engine config. Nil when the
+	// context has no session behind it.
+	ScanWikiLinks func() (types.WikiLinkIntegrityReport, error)
+
 	// GetSessionMemory returns the current session memory content for this
 	// session. Returns empty string when session memory is not active or
 	// no summary has been generated yet.

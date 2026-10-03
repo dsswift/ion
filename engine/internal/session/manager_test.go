@@ -117,8 +117,8 @@ func TestSendPrompt_ValidSession(t *testing.T) {
 	if opts.Prompt != "Hello world" {
 		t.Errorf("expected prompt 'Hello world', got %q", opts.Prompt)
 	}
-	if opts.ProjectPath != "/tmp" {
-		t.Errorf("expected projectPath '/tmp', got %q", opts.ProjectPath)
+	if opts.ProjectPath != testWorkDir() {
+		t.Errorf("expected projectPath %q, got %q", testWorkDir(), opts.ProjectPath)
 	}
 	// Model resolved at runtime, not from config
 }

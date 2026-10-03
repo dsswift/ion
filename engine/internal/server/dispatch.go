@@ -738,6 +738,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "system_metrics_watch":
 		s.dispatchSystemMetricsWatch(conn, cmd)
 
+	case "scan_wiki_links":
+		s.dispatchScanWikiLinks(conn, cmd)
+
 	case "health":
 		type healthResult struct {
 			data map[string]interface{}

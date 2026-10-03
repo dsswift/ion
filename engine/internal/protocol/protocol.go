@@ -644,6 +644,9 @@ var validCommands = map[string]bool{
 	// engine_system_metrics to the calling connection only.
 	"get_system_metrics":   true,
 	"system_metrics_watch": true,
+	// scan_wiki_links: read-only link integrity scan of a session's working
+	// directory. The result data is a WikiLinkIntegrityReport.
+	"scan_wiki_links": true,
 	// clear_conversation_file: wipes the LLM-visible Messages on a stored
 	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory

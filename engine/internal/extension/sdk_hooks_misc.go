@@ -52,6 +52,18 @@ func (s *SDK) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFileChangedIn
 	s.fire(HookWorkspaceFileChanged, ctx, info)
 }
 
+// FireWorkspaceFileRenamed fires the workspace_file_renamed hook. Called by
+// the session-scoped filesystem watcher when it correlates a rename.
+func (s *SDK) FireWorkspaceFileRenamed(ctx *Context, info WorkspaceFileRenamedInfo) {
+	s.fire(HookWorkspaceFileRenamed, ctx, info)
+}
+
+// FireWikiLinksPropagated fires the wiki_links_propagated hook with the
+// report of one propagation pass.
+func (s *SDK) FireWikiLinksPropagated(ctx *Context, report WikiLinkPropagationReport) {
+	s.fire(HookWikiLinksPropagated, ctx, report)
+}
+
 // FireTaskCreated fires the task_created hook.
 func (s *SDK) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
 	s.fire(HookTaskCreated, ctx, info)

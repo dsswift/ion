@@ -42,6 +42,14 @@ func (h *Host) registerHookForwarders() {
 		// They must reach subprocess extensions: schedule_missed is where a
 		// harness applies its own catch-up policy.
 		HookWebhookDeregistered, HookScheduleDeregistered, HookScheduleMissed,
+		// Workspace file events. ExtensionGroup.FireWorkspaceFileChanged sends
+		// this only to hosts that declared a handler, because a busy tree
+		// produces far more events than any other hook.
+		HookWorkspaceFileChanged,
+		// Workspace renames and the link rewrites that follow them. Both are
+		// rare, observation-only, and exist for a harness to act on, so they
+		// must reach the subprocess.
+		HookWorkspaceFileRenamed, HookWikiLinksPropagated,
 		// Cross-session messaging: forward the session_message hook
 		// to the subprocess so ion.on('session_message', ...) fires.
 		HookSessionMessage,

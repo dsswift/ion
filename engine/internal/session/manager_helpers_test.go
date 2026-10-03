@@ -189,7 +189,7 @@ func (m *mockBackend) getStarted(requestID string) (types.RunOptions, bool) {
 func defaultConfig() types.EngineConfig {
 	return types.EngineConfig{
 		ProfileID:        "test",
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}
 }
 

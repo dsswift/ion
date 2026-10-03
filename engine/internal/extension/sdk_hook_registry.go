@@ -150,6 +150,8 @@ func hookSpecs() map[string]hookSpec {
 		// --- File changes ---
 		HookFileChanged:          {Payload: FileChangedInfo{}, Result: hookResultNone},
 		HookWorkspaceFileChanged: {Payload: WorkspaceFileChangedInfo{}, Result: hookResultNone},
+		HookWorkspaceFileRenamed: {Payload: WorkspaceFileRenamedInfo{}, Result: hookResultNone},
+		HookWikiLinksPropagated:  {Payload: WikiLinkPropagationReport{}, Result: hookResultNone},
 
 		// --- Tasks ---
 		HookTaskCreated:             {Payload: TaskLifecycleInfo{}, Result: hookResultNone},

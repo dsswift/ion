@@ -52,7 +52,7 @@ rl.on("line", (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -152,7 +152,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -263,7 +263,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -339,7 +339,7 @@ rl.on("line", (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -459,7 +459,7 @@ rl.on("line", (line) => {
 	go func() {
 		done <- host.Load(entry, &extension.ExtensionConfig{
 			ExtensionDir:     extDir,
-			WorkingDirectory: "/tmp",
+			WorkingDirectory: testWorkDir(),
 		})
 	}()
 	select {
@@ -521,7 +521,7 @@ func TestExtensionManifest_UnknownKeysReject(t *testing.T) {
 
 	err := host.Load(filepath.Join(extDir, "index.js"), &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	})
 	if err == nil {
 		t.Fatal("expected manifest load to fail on unknown field, got nil")
@@ -596,7 +596,7 @@ rl.on("line", (line: string) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -646,7 +646,7 @@ rl.on("line", (line: string) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -714,7 +714,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -814,7 +814,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -916,7 +916,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -1094,7 +1094,7 @@ rl.on("line", async (line) => {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load: %v", err)
 	}

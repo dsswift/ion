@@ -15,7 +15,7 @@ import (
 func defaultConfig() types.EngineConfig {
 	return types.EngineConfig{
 		ProfileID:        "test",
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}
 }
 

@@ -137,7 +137,7 @@ func TestPrincipalSourceEndToEnd(t *testing.T) {
 	})
 
 	principal := &types.SessionPrincipal{Subject: "alice"}
-	if _, err := mgr.StartSession("e2e-session", types.EngineConfig{ProfileID: "test", WorkingDirectory: "/tmp"}, principal); err != nil {
+	if _, err := mgr.StartSession("e2e-session", types.EngineConfig{ProfileID: "test", WorkingDirectory: testWorkDir()}, principal); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
 	t.Cleanup(func() { mgr.StopSession("e2e-session") }) //nolint:errcheck // test cleanup

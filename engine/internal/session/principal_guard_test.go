@@ -111,7 +111,7 @@ func TestStartSession_FreshKeyRefusedAcrossPrincipals(t *testing.T) {
 	aliceConvID := savedConversationOwnedBy(t, "oidc:alice")
 	bob := principalFor("oidc:bob")
 
-	_, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: "/tmp", SessionID: aliceConvID}, bob)
+	_, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: testWorkDir(), SessionID: aliceConvID}, bob)
 	if !errors.Is(err, ErrConversationNotOwned) {
 		t.Fatalf("expected a fresh session key naming alice's conversation refused for bob, got %v", err)
 	}
@@ -128,7 +128,7 @@ func TestStartSession_FreshKeyAllowedForTheOwner(t *testing.T) {
 	aliceConvID := savedConversationOwnedBy(t, "oidc:alice")
 	alice := principalFor("oidc:alice")
 
-	res, err := mgr.StartSession("alice-tab", types.EngineConfig{WorkingDirectory: "/tmp", SessionID: aliceConvID}, alice)
+	res, err := mgr.StartSession("alice-tab", types.EngineConfig{WorkingDirectory: testWorkDir(), SessionID: aliceConvID}, alice)
 	if err != nil {
 		t.Fatalf("expected alice to resume her own conversation, got %v", err)
 	}
@@ -143,7 +143,7 @@ func TestStartSession_StorageRootEmptyWhenPartitioningDisabled(t *testing.T) {
 	mgr := NewManager(backend.NewApiBackend())
 	defer mgr.Shutdown()
 
-	res, err := mgr.StartSession("tab-1", types.EngineConfig{WorkingDirectory: "/tmp"}, principalFor("oidc:alice"))
+	res, err := mgr.StartSession("tab-1", types.EngineConfig{WorkingDirectory: testWorkDir()}, principalFor("oidc:alice"))
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestStartSession_StorageRootPopulatedForAnAttributedSession(t *testing.T) {
 	mgr := NewManager(backend.NewApiBackend())
 	defer mgr.Shutdown()
 
-	res, err := mgr.StartSession("tab-1", types.EngineConfig{WorkingDirectory: "/tmp"}, principalFor("oidc:alice"))
+	res, err := mgr.StartSession("tab-1", types.EngineConfig{WorkingDirectory: testWorkDir()}, principalFor("oidc:alice"))
 	if err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestStartSession_RebindRefusedAcrossPrincipals(t *testing.T) {
 	defer mgr.Shutdown()
 
 	bob := principalFor("oidc:bob")
-	if _, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: "/tmp"}, bob); err != nil {
+	if _, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: testWorkDir()}, bob); err != nil {
 		t.Fatalf("bob StartSession: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func TestStartSession_RebindRefusedAcrossPrincipals(t *testing.T) {
 
 	// bob's EXISTING session key re-asserts start_session naming alice's
 	// conversation id -- the rebind path (wantsRebind).
-	_, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: "/tmp", SessionID: aliceConvID}, bob)
+	_, err := mgr.StartSession("bob-tab", types.EngineConfig{WorkingDirectory: testWorkDir(), SessionID: aliceConvID}, bob)
 	if !errors.Is(err, ErrConversationNotOwned) {
 		t.Fatalf("expected rebind to alice's conversation refused for bob, got %v", err)
 	}

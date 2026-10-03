@@ -261,7 +261,7 @@ func main() {
 | **Per-tool** | `{bash,read,write,edit,grep,glob,agent}_tool_{call,result}` (per-tool call + result hooks) |
 | **Context** | `context_discover`, `context_load`, `instruction_load`, `context_inject` |
 | **Permission** | `permission_request`, `permission_denied`, `permission_classify` |
-| **File** | `file_changed`, `workspace_file_changed` |
+| **File** | `file_changed`, `workspace_file_changed`, `workspace_file_renamed`, `wiki_links_propagated` |
 | **Task** | `task_created`, `task_completed` |
 | **Elicitation** | `elicitation_request`, `elicitation_result` |
 | **Plan mode** | `plan_mode_prompt`, `before_plan_mode_enter`, `before_plan_mode_exit`, `system_inject` |
