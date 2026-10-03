@@ -61,7 +61,7 @@ avoiding the ~33% size increase that would cost on terminal output.
 | Frame | Direction | Purpose |
 | --- | --- | --- |
 | `studio_hello` | client → server | Present protocol version, identity, capabilities, and a credential. |
-| `studio_welcome` | server → client | Accept the hello: environment identity, granted scopes, `relays` (for a `paired` credential: the relays the server is on and how to authenticate to each, the same list a pair response carries, repeated so a relay added later is learned), `pairedClientId` (the `credentials.json` pairing a `paired` credential rode; absent for other doors, since on a shared host every device acts as the same host identity), enterprise policy, `settingsHiddenGroups` (ADR-034), `onHost` (whether this connection runs on the server's own host, so a sign-in that finishes on a loopback listener there can finish for it), and the full `StudioSnapshot`. |
+| `studio_welcome` | server → client | Accept the hello: environment identity, granted scopes, `relays` (for a `paired` credential: the relays the server is on and how to authenticate to each, the same list a pair response carries, repeated so a relay added later is learned), `pairedClientId` (the `credentials.json` pairing a `paired` credential rode; absent for other doors, since on a shared host every device acts as the same host identity), enterprise policy, `settingsHiddenGroups` (ADR-034), `developerSurfaces` and `policyHash` (see [Developer surfaces](#developer-surfaces)), `onHost` (whether this connection runs on the server's own host, so a sign-in that finishes on a loopback listener there can finish for it), and the full `StudioSnapshot`. |
 | `studio_refused` | server → client | Reject the hello (`protocol_version`, `unauthorized`, `not_ready`, `engine_incompatible`, `duplicate_client`, `scope`). |
 | `studio_action` | client → server | Invoke a forwarded store action by name. Carries `activeTabId` for an action that names no tab and acts on the active one (see below), and `traceparent` when one of its arguments carries one (a prompt `submit` does), so a relay transport can put it on the envelope. |
 | `studio_action_result` | server → client | `ok`/`value`, or a `refusal` (policy) vs. `error` (failure). |
@@ -70,7 +70,7 @@ avoiding the ~33% size increase that would cost on terminal output.
 | `studio_command_result` | client → server | The client's answer to a `studio_command`. |
 | `studio_snapshot` | server → client | A full (never partial) re-send of `StudioSnapshot`. |
 | `studio_reauth` | client → server | Present a fresh bearer credential to extend a session. |
-| `studio_environment_policy` | server → client | Enterprise policy (and `settingsHiddenGroups`) changed; carries a content hash so a client can skip a no-op re-render. |
+| `studio_environment_policy` | server → client | Enterprise policy (with `settingsHiddenGroups` and `developerSurfaces`) changed; carries a content hash so a client can skip a no-op re-render. |
 | `studio_snapshot_request` | client → server | Ask for a fresh full `StudioSnapshot` (answered with `studio_snapshot`). For a client that needs to converge on current state without reconnecting (for example after it has been throttled or has dropped events). |
 | `studio_body_request` | client → server | Ask for one tab's message rows (never carried in the snapshot), or, on a thin connection, a dispatched agent's (`conversationId`, `dispatchId`). |
 | `studio_body` | server → client | The answer to a `studio_body_request`. |
@@ -700,6 +700,51 @@ every other connection. A mutating action whose group is hidden for the caller
 `studio_action_result{ok:false, refusal:{code:'settings_locked'}}` before it
 reaches the underlying store action. Who may change a server's configuration
 at all is a separate rule: each of those actions requires the `admin` scope.
+
+### Developer surfaces
+
+A developer surface is one of four source-control features an organization
+can switch off: `sourceControl` (the changes list and every repository write),
+`commitGraph`, `repositoryStatus` (branch and status indicators), and
+`worktrees` (worktrees and integration benches). The shared rule is
+`packages/shared/src/developer-surfaces.ts`.
+
+`studio_welcome.developerSurfaces` and
+`studio_environment_policy.developerSurfaces` carry one boolean per surface:
+what this connection may reach on this server. Two policies feed it:
+
+- **What the server offers**, `customFields['ion-server'].developerSurfaces`
+  in the Environment's enterprise config. It binds every connection, so a
+  client shows no control for a surface the server does not offer, on any
+  device, for conversations on that server only.
+- **Device policy**, `customFields['ion-desktop'].developerSurfaces`. It
+  narrows the local connection and no other. A desktop also applies its own
+  device policy to conversations on every server it visits; a server never
+  applies its device policy to a visiting client.
+
+Each surface is `"enabled"` or `"disabled"` in config, and on when absent.
+Both frames carry `policyHash`, a hash of the enterprise policy, so a client
+learns the policy changed without comparing values. A server that predates
+developer surfaces sends neither field on its welcome; a client reads that as
+every surface offered. `policy.getDeveloperSurfaces` returns the same
+`{developerSurfaces, policyHash}` on request and nothing else.
+
+A disabled surface is refused, not only hidden:
+
+- A `studio_action` that serves only disabled surfaces is answered
+  `studio_action_result{ok:false, refusal:{code:'surface_disabled'}}`. An
+  action that feeds several surfaces (`git.changes`, `git.subscribe`) runs
+  while any of them is on.
+- `ion:git-event`, `ion:worktree-titled`, `ion:worktree-landed`, and the thin
+  view's `desktop_git_*`, `desktop_worktree_*`, and `desktop_bench_*` events
+  are withheld.
+- `studio:worktree-sync` and the snapshot's `worktrees` arrive with the
+  disabled surface's part emptied: worktree and bench state for `worktrees`,
+  conflict alerts for `sourceControl`. A policy change is followed by a fresh
+  `studio_snapshot`.
+- With `worktrees` off, a new conversation that asks for a worktree opens in
+  the directory itself, and a transfer that would arrive in a worktree is
+  refused with `worktrees_not_offered`.
 
 ### Reverse commands
 

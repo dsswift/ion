@@ -1238,6 +1238,31 @@
       "notes": "Studio is the Desktop's application window. The splash and the worktree-overlap visualizer are auxiliary windows with no store."
     },
     {
+      "id": "developer-surface",
+      "term": "Developer Surface",
+      "definition": "One of the source-control features an organization can switch off: source control, the commit graph, repository status, or worktrees. A server's policy says which it offers, binding every connection; a desktop's device policy narrows that desktop alone. A disabled surface is refused by the server and has no controls on any client.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function computeDeveloperSurfaces",
+          "path": "server/src/protocol/developer-surfaces.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "developerSurfacesFor(environmentId: string): DeveloperSurfaceState",
+          "path": "desktop/src/renderer/studio/connection/policy-store.ts"
+        }
+      ]
+    },
+    {
       "id": "device-metrics",
       "term": "Device Metrics",
       "definition": "What Ion Studio itself uses on the machine it runs on: CPU, memory, and GPU time of each of its own Electron processes (main, GPU helper, renderer, utility helpers), and the idle-repaint warning when the GPU helper or a renderer stays busy while nobody is looking at Studio. They describe the device, not an Environment, so they are read and kept on the device and never sent to a server or another client.",

@@ -85,6 +85,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Cost](#term-cost)
 - [Desktop](#term-desktop-client)
 - [Desktop Automation](#term-desktop-automation)
+- [Developer Surface](#term-developer-surface)
 - [Device Metrics](#term-device-metrics)
 - [Device Policy](#term-device-policy)
 - [Device Setting](#term-device-setting)
@@ -2850,6 +2851,20 @@ The proof that lets Transfer delete the source. The export records the sha256 of
 
 ### internal-type
 
+#### Developer Surface {#term-developer-surface}
+
+One of the source-control features an organization can switch off: source control, the commit graph, repository status, or worktrees. A server's policy says which it offers, binding every connection; a desktop's device policy narrows that desktop alone. A disabled surface is refused by the server and has no controls on any client.
+
+- **ID:** `developer-surface`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `function computeDeveloperSurfaces` in `server/src/protocol/developer-surfaces.ts`
+  - `desktop` / `code` / `typescript`: `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` in `desktop/src/renderer/studio/connection/policy-store.ts`
+
 #### Device Policy {#term-device-policy}
 
 Enterprise constraints on a person's own desktop UI (theme lock, auto-update, the environment catalog it offers), read only from the LOCAL environment. A remote Environment can never narrow it.
@@ -3182,6 +3197,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
 | Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
+| Developer Surface | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | None | iOS |
 | Device Metrics | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | None | iOS |
 | Device Policy | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | None | iOS |
 | Dialog | `SettingsDialog` | `SettingsDialog` | `SettingsDialog` | `struct EngineDialogSheet` | None |
