@@ -100,6 +100,7 @@ func (h *Host) registerHookForwarders() {
 	// Boolean canceller hooks: parse result as bool.
 	boolHooks := []string{
 		HookSessionBeforeCompact, HookSessionBeforeFork, HookContextDiscover,
+		HookSessionBeforeRelease,
 	}
 	for _, hook := range boolHooks {
 		h.registerBoolForwarder(hook)

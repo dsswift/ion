@@ -2613,6 +2613,21 @@ export interface ForkInfo {
   forkMessageIndex: number;
 }
 
+/**
+ * Payload for `session_before_release`. The engine is about to release a
+ * session that has nothing left to do. Return `true` to keep it.
+ */
+export interface SessionReleaseInfo {
+  /**
+   * `idle_timeout`: the session stayed quiescent for the configured duration.
+   * `idle_abort`: an abort arrived for a session that was already quiescent.
+   * New reasons may be added.
+   */
+  reason: "idle_timeout" | "idle_abort" | (string & {});
+  /** How long the session has been continuously quiescent, in milliseconds. */
+  idleMs: number;
+}
+
 /** Payload for `message_update`. */
 export interface MessageUpdateInfo {
   role: string;
@@ -3347,6 +3362,7 @@ export interface HookPayloadMap {
   session_before_fork: ForkInfo;
   session_fork: ForkInfo;
   session_before_switch: void;
+  session_before_release: SessionReleaseInfo;
 
   // Pre-action
   before_agent_start: AgentInfo;

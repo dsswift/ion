@@ -127,6 +127,10 @@ func (h *Host) FireSessionBeforeFork(ctx *Context, info ForkInfo) (bool, error) 
 	return h.sdk.FireSessionBeforeFork(ctx, info)
 }
 
+func (h *Host) FireSessionBeforeRelease(ctx *Context, info SessionReleaseInfo) (bool, error) {
+	return h.sdk.FireSessionBeforeRelease(ctx, info)
+}
+
 func (h *Host) FireSessionFork(ctx *Context, info ForkInfo) error {
 	return h.sdk.FireSessionFork(ctx, info)
 }

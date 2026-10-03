@@ -30,6 +30,18 @@ func (s *SDK) FireSessionBeforeFork(ctx *Context, info ForkInfo) (bool, error) {
 	return false, nil
 }
 
+// FireSessionBeforeRelease fires the session_before_release hook.
+// If any handler returns true (as a bool), the release is cancelled.
+func (s *SDK) FireSessionBeforeRelease(ctx *Context, info SessionReleaseInfo) (bool, error) {
+	results := s.fire(HookSessionBeforeRelease, ctx, info)
+	for _, r := range results {
+		if cancel, ok := r.(bool); ok && cancel {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // FireSessionFork fires the session_fork hook.
 func (s *SDK) FireSessionFork(ctx *Context, info ForkInfo) error {
 	s.fire(HookSessionFork, ctx, info)

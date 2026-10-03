@@ -316,6 +316,10 @@ func (g *ExtensionGroup) FireSessionBeforeFork(ctx *Context, info ForkInfo) (boo
 	return g.fireBool(func(h *Host) (bool, error) { return h.FireSessionBeforeFork(ctx, info) })
 }
 
+func (g *ExtensionGroup) FireSessionBeforeRelease(ctx *Context, info SessionReleaseInfo) (bool, error) {
+	return g.fireBool(func(h *Host) (bool, error) { return h.FireSessionBeforeRelease(ctx, info) })
+}
+
 func (g *ExtensionGroup) FireContextDiscover(ctx *Context, info ContextDiscoverInfo) (bool, error) {
 	return g.fireBool(func(h *Host) (bool, error) { return h.FireContextDiscover(ctx, info) })
 }

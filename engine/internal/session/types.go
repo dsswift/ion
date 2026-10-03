@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -682,6 +683,10 @@ type engineSession struct {
 	// unwired so schedules and webhooks do not fire. Cleared by
 	// ResumeSession. Guarded by Manager.mu.
 	settled bool
+
+	// quiescentSince is when the idle-release evaluation first found this
+	// session quiescent, and zero while it has work. Guarded by Manager.mu.
+	quiescentSince time.Time
 
 	// parked records that this session's run exited at a turn boundary
 	// because outstandingBackgroundTasks was non-empty, and is waiting to be

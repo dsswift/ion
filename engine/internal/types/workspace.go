@@ -44,6 +44,47 @@ type WorkspaceConfig struct {
 	// enabled; false suppresses it. Pointer preserves explicit false across
 	// layered engine.json merges.
 	PromptContext *bool `json:"promptContext,omitempty"`
+
+	// SessionIdleReleaseMs is how long a session must stay quiescent before
+	// the engine releases it (full StopSession teardown). Quiescent means no
+	// run, no accepted work pending, no agent in a non-terminal status, no
+	// live background process, and no extension schedule or webhook: nothing
+	// inside the engine will act on the session again. The conversation is
+	// durable, so a consumer that prompts the key again starts it afresh.
+	//
+	// Zero means the compiled default (1800000 = 30min). A negative value
+	// disables timed release. Extensions can keep an individual session
+	// through the session_before_release hook.
+	SessionIdleReleaseMs int64 `json:"sessionIdleReleaseMs,omitempty"` // default: 1800000 (30min)
+
+	// ReleaseIdleSessionOnAbort makes a wire abort (scope all or all_work)
+	// release a session that was already quiescent, since such an abort has
+	// nothing to stop. Nil defaults to enabled. Independent of
+	// SessionIdleReleaseMs.
+	ReleaseIdleSessionOnAbort *bool `json:"releaseIdleSessionOnAbort,omitempty"`
+}
+
+// DefaultSessionIdleRelease is the quiescence duration that releases a
+// session when SessionIdleReleaseMs is unset.
+const DefaultSessionIdleRelease = 30 * time.Minute
+
+// SessionIdleRelease returns how long a session must stay quiescent before it
+// is released, and false when timed release is disabled. Nil-safe.
+func (w *WorkspaceConfig) SessionIdleRelease() (time.Duration, bool) {
+	switch {
+	case w == nil || w.SessionIdleReleaseMs == 0:
+		return DefaultSessionIdleRelease, true
+	case w.SessionIdleReleaseMs < 0:
+		return 0, false
+	default:
+		return time.Duration(w.SessionIdleReleaseMs) * time.Millisecond, true
+	}
+}
+
+// ReleaseIdleSessionOnAbortEnabled reports whether an abort releases an
+// already quiescent session. Default is enabled. Nil-safe.
+func (w *WorkspaceConfig) ReleaseIdleSessionOnAbortEnabled() bool {
+	return w == nil || w.ReleaseIdleSessionOnAbort == nil || *w.ReleaseIdleSessionOnAbort
 }
 
 // SessionReapGrace returns the orphaned-session reap grace window
@@ -89,6 +130,12 @@ func MergeWorkspace(dst, src *WorkspaceConfig) *WorkspaceConfig {
 	}
 	if src.PromptContext != nil {
 		dst.PromptContext = src.PromptContext
+	}
+	if src.SessionIdleReleaseMs != 0 {
+		dst.SessionIdleReleaseMs = src.SessionIdleReleaseMs
+	}
+	if src.ReleaseIdleSessionOnAbort != nil {
+		dst.ReleaseIdleSessionOnAbort = src.ReleaseIdleSessionOnAbort
 	}
 	return dst
 }

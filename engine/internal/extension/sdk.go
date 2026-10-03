@@ -37,6 +37,7 @@ const (
 	HookSessionBeforeFork    = "session_before_fork"
 	HookSessionFork          = "session_fork"
 	HookSessionBeforeSwitch  = "session_before_switch"
+	HookSessionBeforeRelease = "session_before_release"
 
 	// HookCompactSummaryRequest is an optional harness hook invoked
 	// inside proactive / reactive compaction. Handlers receive the

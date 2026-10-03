@@ -251,7 +251,7 @@ func main() {
 
 | Category | Hooks |
 |----------|-------|
-| **Session** | `session_start`, `session_end`, `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch` |
+| **Session** | `session_start`, `session_end`, `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `session_before_release` |
 | **Prompt** | `before_prompt`, `input`, `before_agent_start` |
 | **Turn** | `turn_start`, `turn_end`, `message_start`, `message_end`, `message_update` |
 | **Tool** | `tool_start`, `tool_end`, `tool_call`, `tool_result`, `user_bash` |

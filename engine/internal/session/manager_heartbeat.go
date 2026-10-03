@@ -106,7 +106,9 @@ func (m *Manager) runStatusHeartbeat() {
 }
 
 // emitHeartbeatTick iterates every attached session and emits a fresh
-// engine_status and engine_agent_state snapshot for each.  Internal
+// engine_status and engine_agent_state snapshot for each, after first
+// releasing any session whose quiescence has outlasted the idle-release
+// limit (idle_release.go).  Internal
 // helper exported only for the unit test that exercises one tick
 // directly without waiting on the timer.
 //
@@ -134,7 +136,13 @@ func (m *Manager) emitHeartbeatTick() {
 	}
 	utils.LogWithFields(utils.LevelDebug, "session", "status_heartbeat_tick: emitting for sessions", map[string]any{"count": len(keys)})
 
+	now := time.Now()
 	for _, key := range keys {
+		// A session released on this tick has already had its teardown
+		// emitted; there is nothing left to snapshot.
+		if m.evaluateIdleRelease(key, now) {
+			continue
+		}
 		m.emitStatusSnapshot(key, "heartbeat")
 
 		// Re-emit agent state so a reconnected client converges within

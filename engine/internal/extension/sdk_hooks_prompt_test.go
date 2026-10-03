@@ -348,3 +348,25 @@ func TestSDK_FireSessionBeforeSwitch(t *testing.T) {
 		t.Fatal("expected session_before_switch hook to fire")
 	}
 }
+
+func TestSDK_FireSessionBeforeRelease(t *testing.T) {
+	for _, keep := range []bool{true, false} {
+		sdk := NewSDK()
+		var got SessionReleaseInfo
+		sdk.On(HookSessionBeforeRelease, func(ctx *Context, payload interface{}) (interface{}, error) {
+			got, _ = payload.(SessionReleaseInfo) //nolint:errcheck // a wrong type leaves got zero and fails the assertion below
+			return keep, nil
+		})
+
+		cancel, err := sdk.FireSessionBeforeRelease(testCtx(), SessionReleaseInfo{Reason: SessionReleaseReasonIdleTimeout, IdleMs: 1800000})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cancel != keep {
+			t.Errorf("handler returned %v, release cancelled = %v", keep, cancel)
+		}
+		if got.Reason != SessionReleaseReasonIdleTimeout || got.IdleMs != 1800000 {
+			t.Errorf("handler payload = %+v", got)
+		}
+	}
+}

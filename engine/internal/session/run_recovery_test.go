@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -223,6 +224,18 @@ func TestStopSession_ClearsJournalOnExplicitStop(t *testing.T) {
 	}
 	if conversation.ActiveRunRecovery(loaded) != nil {
 		t.Fatal("journal should be cleared on explicit stop")
+	}
+}
+
+// A session stopped before its conversation was ever written has no journal;
+// that is a successful no-op, not a failure.
+func TestStopSession_MissingConversationIsNotAFailure(t *testing.T) {
+	m, s, _ := recoveryTestManager(t, true)
+	if _, err := conversation.Load(s.conversationID, ""); !errors.Is(err, conversation.ErrNotFound) {
+		t.Fatalf("precondition: conversation file exists or load failed: %v", err)
+	}
+	if !m.clearRunRecovery(s.conversationID, s.key, "explicit_stop") {
+		t.Fatal("clearing a journal for a never-written conversation reported failure")
 	}
 }
 
