@@ -441,6 +441,10 @@ func (m *Manager) startSession(
 	// Load extensions if configured (outside lock -- subprocess may block)
 	if len(plans) > 0 {
 		m.loadAndWireExtensions(s, key, config, plans)
+	} else {
+		// No extensions to wait for. The watcher still runs when wiki-link
+		// maintenance needs renames observed.
+		m.ensureWorkspaceWatcher(s, key)
 	}
 
 	// Announce any dispatches rehydration resolved as lost (persisted as

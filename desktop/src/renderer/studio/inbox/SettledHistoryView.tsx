@@ -6,6 +6,7 @@
  * occupies the same space as the inbox list when activated via the overflow
  * affordance in the settled shelf.
  */
+import { useDeveloperSurfacesLookup } from '../connection/developer-surfaces'
 import React, { useCallback, useMemo, useState } from 'react'
 import { ArrowLeft, MagnifyingGlass } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
@@ -16,7 +17,7 @@ import { formatRelativeShort } from '../../components/conversation-status'
 import { inboxProjectFor, inboxWorktreeFor } from './inbox-grouping'
 import { searchSettledTabs, paginateSettled } from './settled-history'
 import { settledRecordRestorableFromInventory } from '@ion/server/store/settled-worktree'
-import { tabListKey } from '../connection/tab-environment'
+import { tabEnvironmentId, tabListKey } from '../connection/tab-environment'
 import type { TabState, IntegrationWorkspace } from '@ion/shared/types'
 
 /* ------------------------------------------------------------------ */
@@ -116,6 +117,7 @@ export function SettledHistoryView({ history, onBack }: {
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const benches: ReadonlyMap<string, readonly IntegrationWorkspace[]> = useSessionStore((s) => s.benchWorkspaces)
   const inventory = useSessionStore((s) => s.worktreeInventory)
+  const surfacesOf = useDeveloperSurfacesLookup()
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
 
@@ -191,7 +193,7 @@ export function SettledHistoryView({ history, onBack }: {
             key={tabListKey(tab)}
             tab={tab}
             projectName={inboxProjectFor(tab, benches).name}
-            worktreeTitle={tab.worktree ? inboxWorktreeFor(tab, benches, inventory).label : null}
+            worktreeTitle={tab.worktree && surfacesOf(tabEnvironmentId(tab)).worktrees ? inboxWorktreeFor(tab, benches, inventory).label : null}
             isActive={tab.id === activeTabId}
             onSelect={() => { if (settledRecordRestorableFromInventory(tab, inventory)) selectRow(tab) }}
           />

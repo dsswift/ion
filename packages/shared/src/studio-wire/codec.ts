@@ -16,6 +16,7 @@
  */
 import { BinaryChannel, isBinaryChannel } from './channels'
 import type { StudioFrame, StudioFrameType } from './types'
+import { isDeveloperSurfaceState } from '../developer-surfaces'
 
 export class WireError extends Error {
   constructor(message: string) {
@@ -90,6 +91,8 @@ const VALIDATORS: Record<StudioFrameType, (obj: Record<string, unknown>) => bool
     isStringArray(o.scopes) &&
     (o.enterprisePolicy === null || isPlainObject(o.enterprisePolicy)) &&
     isStringArray(o.settingsHiddenGroups) &&
+    (o.developerSurfaces === undefined || isDeveloperSurfaceState(o.developerSurfaces)) &&
+    (o.policyHash === undefined || isString(o.policyHash)) &&
     isPlainObject(o.snapshot),
   studio_refused: (o) =>
     isString(o.reason) &&
@@ -107,6 +110,7 @@ const VALIDATORS: Record<StudioFrameType, (obj: Record<string, unknown>) => bool
   studio_environment_policy: (o) =>
     (o.enterprisePolicy === null || isPlainObject(o.enterprisePolicy)) &&
     isStringArray(o.settingsHiddenGroups) &&
+    (o.developerSurfaces === undefined || isDeveloperSurfaceState(o.developerSurfaces)) &&
     isString(o.policyHash),
   studio_snapshot_request: () => true,
   studio_body_request: (o) => isString(o.tabId) && (o.before === undefined || isString(o.before)) && (o.limit === undefined || (typeof o.limit === 'number' && Number.isFinite(o.limit))),

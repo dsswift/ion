@@ -19,8 +19,9 @@ vi.mock('../../components/ContextMenuItem', () => ({
 }))
 
 import { InboxProjectMenu } from './InboxProjectMenu'
+import { policyStore } from '../connection/policy-store'
 
-afterEach(() => { document.body.replaceChildren() })
+afterEach(() => { document.body.replaceChildren(); policyStore._resetForTest() })
 
 describe('InboxProjectMenu', () => {
   it('routes project conversation creation into the unified picker', async () => {
@@ -33,6 +34,7 @@ describe('InboxProjectMenu', () => {
     await act(async () => {
       root.render(<InboxProjectMenu
         anchor={{ x: 30, y: 40 }}
+        environmentId="local"
         onNewConversation={onNewConversation}
         onNewWorktreeConversation={onNewWorktreeConversation}
         onClose={onClose}
@@ -47,6 +49,24 @@ describe('InboxProjectMenu', () => {
     await act(async () => { buttons[1].click() })
     expect(onNewWorktreeConversation).toHaveBeenCalledOnce()
     expect(onClose).toHaveBeenCalledTimes(2)
+    await act(async () => { root.unmount() })
+  })
+
+  it('offers no worktree conversation on a machine that does not offer worktrees', async () => {
+    policyStore.setDeveloperSurfaces('env-finance', { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: false })
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<InboxProjectMenu
+        anchor={{ x: 30, y: 40 }}
+        environmentId="env-finance"
+        onNewConversation={vi.fn()}
+        onNewWorktreeConversation={vi.fn()}
+        onClose={vi.fn()}
+      />)
+    })
+    expect([...document.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['New conversation'])
     await act(async () => { root.unmount() })
   })
 })

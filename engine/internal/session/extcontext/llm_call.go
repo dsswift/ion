@@ -191,7 +191,8 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		var content []byte
 		var usage types.LlmUsage
 		for ev := range events {
-			// message_start carries input-token count and any cache reads.
+			// message_start carries input-token count and any cache reads,
+			// for a stream that reports them up front.
 			if ev.MessageInfo != nil {
 				usage.InputTokens = ev.MessageInfo.Usage.InputTokens
 				usage.CacheReadInputTokens = ev.MessageInfo.Usage.CacheReadInputTokens
@@ -201,9 +202,11 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 			if ev.Delta != nil && ev.Delta.Text != "" {
 				content = append(content, ev.Delta.Text...)
 			}
-			// message_delta usage carries output-token counts.
+			// message_delta usage carries output-token counts, and the
+			// input-side counts for a stream that reports them at the end.
 			if ev.DeltaUsage != nil {
 				usage.OutputTokens = ev.DeltaUsage.OutputTokens
+				usage.MergeInputDelta(ev.DeltaUsage)
 			}
 		}
 		if errc != nil {

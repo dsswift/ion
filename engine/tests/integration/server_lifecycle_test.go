@@ -159,7 +159,7 @@ func TestMultiClientBroadcast(t *testing.T) {
 	sendCmd(t, conn1, map[string]interface{}{
 		"cmd":       "start_session",
 		"key":       "broadcast-test",
-		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": "/tmp", "model": "mock-model"},
+		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": testWorkDir(), "model": "mock-model"},
 		"requestId": "req-bc-1",
 	})
 
@@ -273,7 +273,7 @@ func TestConcurrentSessions(t *testing.T) {
 	config := map[string]interface{}{
 		"profileId":        "default",
 		"extensionDir":     "/tmp",
-		"workingDirectory": "/tmp",
+		"workingDirectory": testWorkDir(),
 		"model":            "mock-model",
 	}
 
@@ -363,7 +363,7 @@ func TestServerDuplicateSession(t *testing.T) {
 	config := map[string]interface{}{
 		"profileId":        "default",
 		"extensionDir":     "/tmp",
-		"workingDirectory": "/tmp",
+		"workingDirectory": testWorkDir(),
 		"model":            "mock-model",
 	}
 

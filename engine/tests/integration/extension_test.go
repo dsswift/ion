@@ -34,7 +34,7 @@ func TestExtensionLoadNonexistentDir(t *testing.T) {
 	host := extension.NewHost()
 
 	err := host.Load("/nonexistent/extension/dir", &extension.ExtensionConfig{
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	})
 	// Should either succeed with no extension or return a non-panic error.
 	_ = err

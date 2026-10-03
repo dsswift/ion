@@ -136,6 +136,55 @@ describe('runTransferImport refusals', () => {
       rmSync(target.dataDir, { recursive: true, force: true })
     }
   })
+
+  it('refuses a conversation that brings a worktree to a server that does not offer worktrees', async () => {
+    const source = makeTestPaths('import-no-worktrees-source')
+    const target = makeTestPaths('import-no-worktrees-target')
+    try {
+      writeConversationFixture(source.conversationsDir, 'root-3')
+      const tabRecord = minimalPersistedTab({ id: 'tab-1', conversationId: 'root-3' })
+      writeTabsFile(source.tabsFile, [tabRecord])
+      writeFileSync(source.settingsFile, JSON.stringify({ projects: { '/repo/source': { repoRemote: 'github.com/org/nope' } } }))
+      const bundlePath = join(source.dataDir, 'fake.bundle')
+      writeFileSync(bundlePath, Buffer.from('bundle bytes'))
+
+      const exportResult = await runTransferExport({
+        tab: { id: 'tab-1', status: 'idle', worktree: { worktreePath: '/wt/source', branchName: 'wt/x', sourceBranch: 'main', repoPath: '/repo/source' } },
+        tabRecord,
+        tabContent: null,
+        targetEnvironmentId: 'env-target',
+        sourceEnvironmentId: 'env-source',
+        paths: source,
+        destinationPath: join(source.dataDir, 'out.zip'),
+        isWorktreeDirty: async () => false,
+        buildWorktreeBundle: async () => ({ bundlePath }),
+        carryWorktree: true,
+    persistSealPending: () => {},
+      })
+      if (!exportResult.ok) throw new Error('test setup: export unexpectedly refused')
+
+      // Target settings has no project with a matching repoRemote.
+      writeFileSync(target.settingsFile, JSON.stringify({ projects: {} }))
+
+      const result = await runTransferImport({
+        archivePath: exportResult.archivePath,
+        paths: target,
+        callerSubject: 'importer@example.com',
+        worktreesOffered: false,
+        checkoutWorktreeFromBundle: async () => {
+          throw new Error('should not be called')
+        },
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.refusal.code).toBe('worktrees_not_offered')
+      expect(existsSync(target.tabsFile)).toBe(false)
+    } finally {
+      rmSync(source.dataDir, { recursive: true, force: true })
+      rmSync(target.dataDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('runTransferImport: a conversation that was here before', () => {

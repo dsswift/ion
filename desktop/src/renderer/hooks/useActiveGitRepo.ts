@@ -27,6 +27,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useRepoState } from '@ion/server/store/git'
 import { useGitRepo } from './useGitRepo'
+import { repositoryFeedOffered } from '@ion/shared/developer-surfaces'
+import { useActiveDeveloperSurfaces } from '../studio/connection/developer-surfaces'
 
 export interface ActiveGitRepo {
   /** The active conversation's working directory, or undefined when unset. */
@@ -50,7 +52,11 @@ export function useActiveGitRepo(): ActiveGitRepo {
   const resolved = directory && directory !== '~' ? directory : undefined
   // Subscribe unconditionally once a directory is resolved — we don't yet
   // know if it's a repo, and this call is what finds out.
-  useGitRepo(resolved, resolved !== undefined)
+  // Nothing is probed where no developer surface that reads a repository is
+  // on for this conversation: there is no surface to offer, and its server
+  // refuses the subscription.
+  const feedOffered = repositoryFeedOffered(useActiveDeveloperSurfaces())
+  useGitRepo(resolved, resolved !== undefined && feedOffered)
   const repoState = useRepoState(resolved)
-  return { directory: resolved, isRepo: repoState?.isGitRepo === true }
+  return { directory: resolved, isRepo: feedOffered && repoState?.isGitRepo === true }
 }

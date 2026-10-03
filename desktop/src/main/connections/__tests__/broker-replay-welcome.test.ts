@@ -85,7 +85,7 @@ function welcomeFrame(): Record<string, unknown> {
     principal: { subject: 'local:test' },
     scopes: [],
     enterprisePolicy: null,
-    settingsHiddenGroups: [],
+    settingsHiddenGroups: [], developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }, policyHash: 'sha256:test',
     snapshot: {},
   }
 }

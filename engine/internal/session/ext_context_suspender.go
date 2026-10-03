@@ -25,6 +25,7 @@ func (m *Manager) newExtContext(s *engineSession, key string) *extension.Context
 	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) {
 		(&sessionAccessor{m: m, s: s, key: key}).SetRunRecovery(config)
 	}
+	m.wireWorkspaceQueries(ctx, key)
 	return ctx
 }
 
@@ -32,7 +33,14 @@ func (m *Manager) newCommandExtContext(s *engineSession, key string, overrides *
 	accessor := &sessionAccessor{m: m, s: s, key: key, commandOverrides: clonePromptOverrides(overrides)}
 	ctx := extcontext.NewExtContext(accessor, s.dispatchRegistry)
 	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) { accessor.SetRunRecovery(config) }
+	m.wireWorkspaceQueries(ctx, key)
 	return ctx
+}
+
+// wireWorkspaceQueries attaches the read-only workspace queries a context
+// answers from the session manager.
+func (m *Manager) wireWorkspaceQueries(ctx *extension.Context, key string) {
+	ctx.ScanWikiLinks = func() (types.WikiLinkIntegrityReport, error) { return m.ScanWikiLinks(key) }
 }
 
 // newExtContextWithSuspender builds a per-tool-call extension context whose
@@ -44,6 +52,7 @@ func (m *Manager) newExtContextWithSuspender(s *engineSession, key string, suspe
 	ctx.SetRunRecovery = func(config *types.RunRecoveryConfig) {
 		(&sessionAccessor{m: m, s: s, key: key, suspender: suspender}).SetRunRecovery(config)
 	}
+	m.wireWorkspaceQueries(ctx, key)
 	return ctx
 }
 

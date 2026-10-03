@@ -4,6 +4,7 @@ import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useInboxPartition } from './useInboxPartition'
 import { InboxRow, type InboxRowVariant } from './InboxRow'
 import { useEnvironmentViewFilter } from '../connection/view-filter'
+import { useDeveloperSurfacesLookup } from '../connection/developer-surfaces'
 import { tabListKey, withTargetEnvironment } from '../connection/tab-environment'
 import { environmentOfWorktreeRepo } from '../state/secondary-store-worktree-sync'
 import { tabMatchesEnvironmentFilter } from '../connection/view-filter'
@@ -111,11 +112,13 @@ export function InboxSidebar(): React.JSX.Element {
   }, [])
   const projectsByEnvironment = useProjectsByEnvironment(environmentCatalog)
   const scopeOf = useMemo(() => buildProjectScopeResolver(projectsByEnvironment), [projectsByEnvironment])
+  const surfacesOf = useDeveloperSurfacesLookup()
   const navigatorOptions = useMemo<InboxNavigatorOptions>(() => ({
     scopeOf,
     environmentLabel: (id) => environmentCatalog.find((entry) => entry.id === id)?.label ?? id,
     environmentOfRepo: environmentOfWorktreeRepo,
-  }), [scopeOf, environmentCatalog])
+    worktreesOffered: (id) => surfacesOf(id).worktrees,
+  }), [scopeOf, environmentCatalog, surfacesOf])
   // The inbox sections honor the Environment filter; the project picker
   // below still lists every machine's projects.
   const filteredNavigatorOptions = useMemo<InboxNavigatorOptions>(() => ({

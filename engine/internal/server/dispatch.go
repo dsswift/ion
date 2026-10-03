@@ -15,13 +15,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
-	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/tools"
-	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -553,39 +550,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchProviderLogout(conn, cmd)
 
 	case "refresh_models":
-		providerConfigs := make(map[string]types.ProviderConfig)
-		if s.config != nil {
-			providerConfigs = s.config.Providers
-		}
-		var resolveKey func(string) (string, error)
-		if s.authResolver != nil {
-			resolveKey = s.authResolver.ResolveKey
-		} else {
-			resolveKey = func(string) (string, error) { return "", nil }
-		}
-		// Provider field is optional: empty = refresh all
-		providers.RefreshModels(cmd.Provider, true, resolveKey, providerConfigs)
-		// When the request is attributed, also refresh the acting
-		// principal's OWN entitlement (R-12) -- the process-wide
-		// RefreshModels call above only re-fetches the shared metadata
-		// path (dialect, cost); a principal's discovered id set is
-		// per-(subject, provider) and needs its own invalidate+refetch.
-		if cmd.Principal != nil && cmd.Principal.Subject != "" && s.authResolver != nil {
-			cc := auth.NewCredentialContext(cmd.Principal, s.authResolver, auth.NewTenancyFallThroughPolicy(s.config))
-			providers.WireEntitlement(cc, providerConfigs)
-			refreshSubjects := []string{cmd.Provider}
-			if cmd.Provider == "" {
-				refreshSubjects = providers.ListProviderIDs()
-			}
-			for _, pid := range refreshSubjects {
-				providers.InvalidateEntitlement(cmd.Principal.Subject, pid)
-				cc.Entitlement(pid) // triggers a fresh fetch, result cached
-			}
-		}
-		// Re-probe the delegated CLIs too, so their install/auth state and
-		// model lists refresh alongside the HTTP providers.
-		s.RefreshProviderProbes()
-		s.sendResult(conn, cmd, nil, nil)
+		s.dispatchRefreshModels(conn, cmd)
 
 	case "clear_conversation_file":
 		// Wipes the LLM-visible message history for a stored conversation
@@ -737,6 +702,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "system_metrics_watch":
 		s.dispatchSystemMetricsWatch(conn, cmd)
+
+	case "scan_wiki_links":
+		s.dispatchScanWikiLinks(conn, cmd)
 
 	case "health":
 		type healthResult struct {

@@ -31,7 +31,7 @@ import (
 // model's ThinkingEfforts list), silently disabling thinking altogether.
 func TestBuildRunOptions_AdaptiveEffort(t *testing.T) {
 	newSession := func() *engineSession {
-		return &engineSession{config: types.EngineConfig{WorkingDirectory: "/tmp"}}
+		return &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 	}
 
 	t.Run("adaptive enables thinking without pinning effort", func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestApplyConfigDefaults_AdaptiveBeatsEngineDefault(t *testing.T) {
 		DefaultModel: "test-model",
 		Thinking:     &types.ThinkingConfig{Enabled: true, Effort: "high"},
 	}}
-	s := &engineSession{config: types.EngineConfig{WorkingDirectory: "/tmp"}}
+	s := &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 
 	opts := buildRunOptions(s, "hi", &PromptOverrides{
 		ThinkingEffort: types.ThinkingEffortAdaptive,

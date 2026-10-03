@@ -583,7 +583,8 @@
     "userTurnEntryId",
     "userTurnSlashFrontmatter",
     "userTurnSlashModelAlias",
-    "userTurnSlashModelEffective"
+    "userTurnSlashModelEffective",
+    "wikiLinksPropagated"
   ],
   "sharedTypes": {
     "AgentStateUpdate": [

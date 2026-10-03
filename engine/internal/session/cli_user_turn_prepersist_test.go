@@ -84,7 +84,7 @@ func runDelegatedCliPrePersist(t *testing.T, recovery bool) {
 	// retros) cannot see a conversation whose header leaves this blank.
 	if onDisk, err := conversation.Load(convID, ""); err != nil {
 		t.Fatalf("load conversation: %v", err)
-	} else if onDisk.WorkingDirectory != "/tmp" {
+	} else if onDisk.WorkingDirectory != testWorkDir() {
 		t.Fatalf("working directory must be recorded at dispatch, got %q", onDisk.WorkingDirectory)
 	}
 	// The history bridge ran (no native cursor). The turn is the prompt, so the

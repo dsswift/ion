@@ -429,6 +429,7 @@ func (b *ApiBackend) processStream(
 			if ev.DeltaUsage != nil {
 				// Accumulate final usage
 				cumUsage.OutputTokens += ev.DeltaUsage.OutputTokens
+				cumUsage.MergeInputDelta(ev.DeltaUsage)
 			}
 		}
 	}

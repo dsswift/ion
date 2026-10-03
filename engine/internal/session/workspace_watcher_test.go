@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/watcher"
 )
 
 // workspaceRecorder is a thread-safe sink that hook handlers append into.
@@ -50,12 +50,9 @@ func newWorkspaceGroup(rec *workspaceRecorder) *extension.ExtensionGroup {
 // The session is fully manager-owned so the standard stop path tears the
 // watcher down. Returns the manager, session key, recorder, and the cwd.
 //
-// The test deliberately constructs the watcher via startWorkspaceWatcher
-// (the same call StartSession uses) rather than going through the full
-// StartSession path -- the full path requires either a real loaded
-// extension or extensive mocking of helpers/backend. The behavior we care
-// about (watcher fan-out into the extension group's hook callback) is
-// identical either way.
+// StartSession starts the watcher. The recording group is attached afterward
+// rather than loaded as a real extension, which would need a subprocess; the
+// watcher looks the group up per event, so the fan-out is the same.
 func startSessionWithWatcher(t *testing.T, ignores []string) (*Manager, string, *workspaceRecorder, string) {
 	t.Helper()
 	cwd := t.TempDir()
@@ -79,13 +76,13 @@ func startSessionWithWatcher(t *testing.T, ignores []string) (*Manager, string, 
 	s.extGroup = group
 	mgr.mu.Unlock()
 
-	release := mgr.startWorkspaceWatcher(s, key, group)
-	if release == nil {
-		t.Fatal("startWorkspaceWatcher returned nil")
+	mgr.ensureWorkspaceWatcher(s, key)
+	mgr.mu.RLock()
+	running := s.fsWatcherRelease != nil
+	mgr.mu.RUnlock()
+	if !running {
+		t.Fatal("session has no workspace watcher")
 	}
-	mgr.mu.Lock()
-	s.fsWatcherRelease = release
-	mgr.mu.Unlock()
 
 	// Allow fsnotify to settle before tests start writing.
 	time.Sleep(20 * time.Millisecond)
@@ -282,19 +279,7 @@ func TestDefaultWatchIgnores_MatchNestedPaths(t *testing.T) {
 	}
 
 	ignoreMatch := func(rel string, isDir bool) bool {
-		for _, pat := range defaultWatchIgnores {
-			if match, _ := doublestar.Match(pat, rel); match {
-				return true
-			}
-			if isDir {
-				// Same directory-prune form the watcher uses (shouldIgnore):
-				// "**/node_modules/**" must match the bare dir entry too.
-				if match, _ := doublestar.Match(pat, rel+"/x"); match {
-					return true
-				}
-			}
-		}
-		return false
+		return watcher.MatchIgnore(defaultWatchIgnores, rel, isDir)
 	}
 
 	for _, tc := range mustIgnore {

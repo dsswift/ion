@@ -47,8 +47,10 @@ struct PendingBenchConversation {
 
 extension SessionViewModel {
 
+    /// Empty while the connected server does not offer worktrees: a state
+    /// cached from before the policy changed must not draw a control.
     var worktreeStates: [String: RemoteWorktreeState] {
-        get { worktreeUI.states }
+        get { developerSurfaces.worktrees ? worktreeUI.states : [:] }
         set {
             worktreeUI.states = newValue
             worktreeUI.benchPaths.update(from: Array(newValue.values))

@@ -63,6 +63,11 @@ export function fsExists(..._args: any[]): Promise<never> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function worktreesOffered(..._args: any[]): Promise<never> {
+  return reject('worktreesOffered')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function gitWorktreeAdd(..._args: any[]): Promise<never> {
   return reject('gitWorktreeAdd')
 }

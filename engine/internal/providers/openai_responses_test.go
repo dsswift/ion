@@ -47,7 +47,10 @@ func TestOpenAIResponsesProviderStream(t *testing.T) {
 		responsesSSE(w, "response.output_item.done", map[string]any{})
 		responsesSSE(w, "response.completed", map[string]any{
 			"response": map[string]any{
-				"usage": map[string]any{"input_tokens": 42, "output_tokens": 17},
+				"usage": map[string]any{
+					"input_tokens": 42, "output_tokens": 17,
+					"input_tokens_details": map[string]any{"cached_tokens": 30},
+				},
 			},
 		})
 	}))
@@ -76,6 +79,7 @@ func TestOpenAIResponsesProviderStream(t *testing.T) {
 		toolArgs    string
 		stopReason  string
 		inputToks   int
+		cachedToks  int
 		outputToks  int
 		sawStart    bool
 		sawStop     bool
@@ -107,6 +111,7 @@ func TestOpenAIResponsesProviderStream(t *testing.T) {
 			}
 			if ev.DeltaUsage != nil {
 				inputToks = ev.DeltaUsage.InputTokens
+				cachedToks = ev.DeltaUsage.CacheReadInputTokens
 				outputToks = ev.DeltaUsage.OutputTokens
 			}
 		case "message_stop":
@@ -147,8 +152,9 @@ func TestOpenAIResponsesProviderStream(t *testing.T) {
 	if stopReason != "tool_use" {
 		t.Errorf("stopReason = %q, want tool_use (tool call present)", stopReason)
 	}
-	if inputToks != 42 || outputToks != 17 {
-		t.Errorf("usage = %d/%d, want 42/17", inputToks, outputToks)
+	// input_tokens (42) includes the 30 cached tokens; they are split out.
+	if inputToks != 12 || cachedToks != 30 || outputToks != 17 {
+		t.Errorf("usage input/cached/output = %d/%d/%d, want 12/30/17", inputToks, cachedToks, outputToks)
 	}
 }
 

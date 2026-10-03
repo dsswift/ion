@@ -96,7 +96,6 @@ func TestHookRegistryMatchesForwarders(t *testing.T) {
 		HookBeforeEarlyStopDecision: true,
 		HookEarlyStopContinued:      true,
 		HookBackgroundTaskCompleted: true,
-		HookWorkspaceFileChanged:    true,
 	}
 	for hook := range specs {
 		if _, forwarded := installed[hook]; forwarded {

@@ -297,6 +297,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Workspace = types.MergeWorkspace(dst.Workspace, src.Workspace)
 	}
 
+	// WikiLinks: merge set fields, so a later layer can flip one switch
+	// without restating the others.
+	if src.WikiLinks != nil {
+		dst.WikiLinks = types.MergeWikiLinks(dst.WikiLinks, src.WikiLinks)
+	}
+
 	// ThinkingPolicy: whole-block override. A later layer that sets this
 	// install-wide policy decides; nil leaves the earlier value intact. Enterprise
 	// sealing happens later in EnforceEnterprise.

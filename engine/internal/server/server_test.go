@@ -206,7 +206,7 @@ func startSession(t *testing.T, conn net.Conn, key, requestID string) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": requestID,
@@ -290,7 +290,7 @@ func TestServerStartSession(t *testing.T) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": "req-1",
@@ -368,7 +368,7 @@ func TestMultiClientBroadcast(t *testing.T) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": "req-broadcast",
@@ -422,7 +422,7 @@ func TestClientDisconnectCleanup(t *testing.T) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": "req-dc",
@@ -1071,7 +1071,7 @@ func TestDuplicateStartSession(t *testing.T) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": "req-second",

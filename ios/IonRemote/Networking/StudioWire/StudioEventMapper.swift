@@ -38,7 +38,8 @@ struct StudioEventMapper: Sendable {
             DiagnosticLog.log("studio mapper: snapshot frame ignored, a thin view is painted by thin events", tag: "studio.map", level: .debug)
             return Output()
         case .environmentPolicy(let policy):
-            DiagnosticLog.log("studio mapper: environment policy ignored, no surface reads it", tag: "studio.map", level: .debug, fields: [
+            // The transport keeps the policy's developer surfaces; it carries no events.
+            DiagnosticLog.log("studio mapper: environment policy carries no events", tag: "studio.map", level: .debug, fields: [
                 "policy_hash": policy.policyHash
             ])
             return Output()

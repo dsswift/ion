@@ -1,3 +1,4 @@
+import { useEnvironmentDeveloperSurfaces } from '../connection/developer-surfaces'
 import React, { useEffect, useRef, useState } from 'react'
 import { Check, ClockCounterClockwise, Globe, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
@@ -98,7 +99,10 @@ export function InboxRow({
     : colors.statusComplete
   const quiet = !isActive && !selected && !unread && !woke && (status === null || status === 'Connecting' || status === 'Working' || status === 'Monitoring')
   const title = tab.customTitle || tab.title || 'Untitled'
-  const worktreeTitle = tab.worktree ? inboxWorktreeFor(tab, benches, inventory).label : null
+  // Worktree and branch labels are developer surfaces of the machine the
+  // conversation is on.
+  const developerSurfaces = useEnvironmentDeveloperSurfaces(tabEnvironmentId(tab))
+  const worktreeTitle = tab.worktree && developerSurfaces.worktrees ? inboxWorktreeFor(tab, benches, inventory).label : null
   const compact = variant === 'slim'
   const latestActivityAt = latestConversationActivityAt(tab)
   const rightLabel = compact && tab.snoozedUntil != null && tab.snoozedUntil > Date.now()
@@ -183,7 +187,7 @@ export function InboxRow({
             {projectName && <span style={{ background: colors.surfacePrimary, padding: '0 4px', borderRadius: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName}</span>}
             {harnessBadge}
             {worktreeTitle && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{worktreeTitle}</span>}
-            {tab.worktree?.branchName && tab.worktree.branchName !== worktreeTitle && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tab.worktree.branchName}</span>}
+            {developerSurfaces.repositoryStatus && tab.worktree?.branchName && tab.worktree.branchName !== worktreeTitle && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tab.worktree.branchName}</span>}
             {remoteBadge}
           </div>
         )}

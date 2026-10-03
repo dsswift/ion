@@ -22,6 +22,9 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
     /// The scopes the last welcome granted this connection. Nil until the
     /// first welcome.
     private(set) var grantedScopes: [String]?
+    /// The developer surfaces the server offers this connection, from the
+    /// last welcome or policy change. Every surface is on until the first welcome.
+    private(set) var developerSurfaces: DeveloperSurfaces = .allEnabled
 
     /// One credential serves the direct route and the relay, so a refusal of
     /// it leaves no other leg to try.
@@ -334,6 +337,19 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
 
     // MARK: - Inbound
 
+    /// Records what the server offers. A frame without the field comes from a
+    /// server that predates developer surfaces, which offers them all.
+    private func applyDeveloperSurfaces(_ offered: DeveloperSurfaces?, source: String) {
+        let next = offered ?? .allEnabled
+        guard next != developerSurfaces else { return }
+        developerSurfaces = next
+        DiagnosticLog.log("studio transport: developer surfaces changed", tag: "studio.transport", fields: [
+            "device": devicePrefix, "source": source,
+            "source_control": String(next.sourceControl), "commit_graph": String(next.commitGraph),
+            "repository_status": String(next.repositoryStatus), "worktrees": String(next.worktrees)
+        ])
+    }
+
     private func handle(_ inbound: StudioInbound) async {
         if case .welcome(let welcome) = inbound {
             DiagnosticLog.log("studio transport: welcomed", tag: "studio.transport", fields: [
@@ -341,7 +357,11 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
                 "relay_count": String(welcome.relays?.count ?? 0), "scopes": welcome.scopes.joined(separator: ",")
             ])
             grantedScopes = welcome.scopes
+            applyDeveloperSurfaces(welcome.developerSurfaces, source: "welcome")
             await onWelcome?(welcome)
+        }
+        if case .environmentPolicy(let policy) = inbound {
+            applyDeveloperSurfaces(policy.developerSurfaces, source: "environment_policy")
         }
         let output = mapper.map(inbound)
         yield(output.events)

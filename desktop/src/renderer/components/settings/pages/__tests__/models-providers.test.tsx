@@ -43,7 +43,7 @@ const { describeProviderActionError } = await import('../models/provider-action-
 
 const stub = {
   storeCredential: vi.fn(async () => ({ ok: true })),
-  refreshModels: vi.fn(async () => ({ ok: true })),
+  refreshModels: vi.fn(async (): Promise<{ ok: boolean; error?: string }> => ({ ok: true })),
   providerLogin: vi.fn(async () => ({ ok: true })),
   providerLogout: vi.fn(async () => ({ ok: true })),
   providerLoginCancel: vi.fn(async () => ({ ok: true })),
@@ -182,6 +182,15 @@ describe('Providers', () => {
       await h.click('Save')
       expect(stub.storeCredential).toHaveBeenCalledWith({ provider: 'anthropic', credential: 'sk-test' })
       expect(sent.filter((s) => s.action === 'provider.storeCredential').map((s) => s.environmentId)).toEqual(['devbox'])
+    })
+
+    it('shows why a model refresh failed', async () => {
+      stub.refreshModels.mockResolvedValueOnce({ ok: false, error: 'discovery failed for 1 of 1 provider(s): openai: status 500' })
+      await renderPanel({ id: 'openai', hasAuth: true, authSource: 'filestore' })
+      await h.click('Refresh models')
+      expect(sent).toEqual([{ environmentId: 'local', action: 'model.refresh' }])
+      expect(h.container.textContent).toContain('discovery failed for 1 of 1 provider(s): openai: status 500')
+      expect(labels(h)).toContain('Refresh models')
     })
 
     it('says which settings the organization set, without repeating a secret', async () => {

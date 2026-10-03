@@ -47,6 +47,8 @@ import {
   useSurfaceStore,
 } from "../surface-store";
 import { installFakeWire } from '../../../host/__tests__/fake-wire'
+import { policyStore } from '../../connection/policy-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 const terminalDestroyMock = vi.fn().mockResolvedValue(undefined);
 const setSettingMock = vi.fn().mockResolvedValue(true);
@@ -98,6 +100,17 @@ afterEach(() => {
 });
 
 describe("surface-store", () => {
+  it("opens no Git or Diff tab where the active conversation has those surfaces off", () => {
+    policyStore.setDeveloperSurfaces(LOCAL_ENVIRONMENT_ID, { sourceControl: false, commitGraph: false, repositoryStatus: true, worktrees: true });
+    const store = useSurfaceStore.getState();
+    store.openSingleton("gitpanel");
+    store.openSingleton("diff");
+    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toEqual(["plan"]);
+    policyStore._resetForTest();
+    store.openSingleton("gitpanel");
+    expect(useSurfaceStore.getState().tabs.map((tab) => tab.id)).toContain("gitpanel");
+  });
+
   it("keeps each conversation active tab when both have local selections", () => {
     const store = useSurfaceStore.getState();
     store.openSingleton("diff");

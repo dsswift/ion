@@ -4,10 +4,10 @@
 // context builder, console redirect, native logger, and the public
 // createIon() factory. Pure types live in ./types.ts.
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { createInterface } from 'node:readline'
-import { format as utilFormat } from 'node:util'
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { format as utilFormat } from "node:util";
 
 import {
   dispatchFireAsync,
@@ -17,7 +17,7 @@ import {
   registerRpcBridge,
   scheduleApi,
   webhooksApi,
-} from './runtime-async'
+} from "./runtime-async";
 import {
   buildResourcesAPI,
   drainPendingResourceInit,
@@ -25,11 +25,14 @@ import {
   handleResourceTransfer,
   RESOURCE_TRANSFER_METHODS,
   registerResourceRpcBridge,
-} from './runtime-resources'
-import { buildApplicationConfigAPI } from './runtime-application-config'
-import { doRegisterAgentTools } from './runtime-agents'
-import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './runtime-log'
-import { createToolRegistry } from './runtime-tools'
+} from "./runtime-resources";
+import { buildApplicationConfigAPI } from "./runtime-application-config";
+import { doRegisterAgentTools } from "./runtime-agents";
+import {
+  emitLog as sharedEmitLog,
+  type LogLevel as SharedLogLevel,
+} from "./runtime-log";
+import { createToolRegistry } from "./runtime-tools";
 import type {
   AgentSpec,
   CommandDef,
@@ -43,6 +46,7 @@ import type {
   DispatchConversationResult,
   DispatchEntry,
   DispatchHistoryEntry,
+  WikiLinkIntegrityReport,
   ElicitOptions,
   ElicitResult,
   EngineEvent,
@@ -79,26 +83,30 @@ import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts, RecallDisp
 // Internal state
 // ---------------------------------------------------------------------------
 
-const hooks = new Map<string, (ctx: IonContext, payload?: any) => any>()
-const tools = new Map<string, ToolDef>()
-let toolRegistry: ReturnType<typeof createToolRegistry>
-const commands = new Map<string, CommandDef>()
-let initConfig: ExtensionConfig | null = null
+const hooks = new Map<string, (ctx: IonContext, payload?: any) => any>();
+const tools = new Map<string, ToolDef>();
+let toolRegistry: ReturnType<typeof createToolRegistry>;
+const commands = new Map<string, CommandDef>();
+let initConfig: ExtensionConfig | null = null;
 
 // Non-null while a hook handler is executing. Events pushed here get bundled
 // into the hook response rather than sent as standalone notifications.
-let activeEvents: EngineEvent[] | null = null
+let activeEvents: EngineEvent[] | null = null;
 
 // ---------------------------------------------------------------------------
 // Logging (native API + console redirect)
 // ---------------------------------------------------------------------------
 
-type LogLevel = SharedLogLevel
+type LogLevel = SharedLogLevel;
 
-function emitLog(level: LogLevel, message: string, fields?: Record<string, unknown>): void {
+function emitLog(
+  level: LogLevel,
+  message: string,
+  fields?: Record<string, unknown>,
+): void {
   // Delegate to the shared emitter so internal SDK modules (e.g.
   // runtime-agents) and the public `log` export use a single wire path.
-  sharedEmitLog(level, message, fields)
+  sharedEmitLog(level, message, fields);
 }
 
 /**
@@ -116,13 +124,17 @@ function emitLog(level: LogLevel, message: string, fields?: Record<string, unkno
  * ```
  */
 export const log = {
-  debug: (message: string, fields?: Record<string, unknown>) => emitLog('debug', message, fields),
-  info: (message: string, fields?: Record<string, unknown>) => emitLog('info', message, fields),
-  warn: (message: string, fields?: Record<string, unknown>) => emitLog('warn', message, fields),
-  error: (message: string, fields?: Record<string, unknown>) => emitLog('error', message, fields),
-}
+  debug: (message: string, fields?: Record<string, unknown>) =>
+    emitLog("debug", message, fields),
+  info: (message: string, fields?: Record<string, unknown>) =>
+    emitLog("info", message, fields),
+  warn: (message: string, fields?: Record<string, unknown>) =>
+    emitLog("warn", message, fields),
+  error: (message: string, fields?: Record<string, unknown>) =>
+    emitLog("error", message, fields),
+};
 
-let consoleRedirectInstalled = false
+let consoleRedirectInstalled = false;
 
 /**
  * Replace `console.{log,info,warn,error,debug}` with calls to the SDK
@@ -132,14 +144,19 @@ let consoleRedirectInstalled = false
  * extension author can find and replace the call with the native API.
  */
 function installConsoleRedirect(): void {
-  if (consoleRedirectInstalled) return
-  consoleRedirectInstalled = true
-  const formatArgs = (args: unknown[]) => utilFormat(...args)
-  console.log = (...args: unknown[]) => emitLog('warn', `stray console.log: ${formatArgs(args)}`)
-  console.info = (...args: unknown[]) => emitLog('info', `stray console.info: ${formatArgs(args)}`)
-  console.warn = (...args: unknown[]) => emitLog('warn', `stray console.warn: ${formatArgs(args)}`)
-  console.error = (...args: unknown[]) => emitLog('error', `stray console.error: ${formatArgs(args)}`)
-  console.debug = (...args: unknown[]) => emitLog('debug', `stray console.debug: ${formatArgs(args)}`)
+  if (consoleRedirectInstalled) return;
+  consoleRedirectInstalled = true;
+  const formatArgs = (args: unknown[]) => utilFormat(...args);
+  console.log = (...args: unknown[]) =>
+    emitLog("warn", `stray console.log: ${formatArgs(args)}`);
+  console.info = (...args: unknown[]) =>
+    emitLog("info", `stray console.info: ${formatArgs(args)}`);
+  console.warn = (...args: unknown[]) =>
+    emitLog("warn", `stray console.warn: ${formatArgs(args)}`);
+  console.error = (...args: unknown[]) =>
+    emitLog("error", `stray console.error: ${formatArgs(args)}`);
+  console.debug = (...args: unknown[]) =>
+    emitLog("debug", `stray console.debug: ${formatArgs(args)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,32 +164,44 @@ function installConsoleRedirect(): void {
 // ---------------------------------------------------------------------------
 
 function respond(id: number, result: any): void {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
 }
 
-function respondError(id: number, code: number, message: string, data?: Record<string, any>): void {
-  const err: Record<string, any> = { code, message }
-  if (data) err.data = data
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: err }) + '\n')
+function respondError(
+  id: number,
+  code: number,
+  message: string,
+  data?: Record<string, any>,
+): void {
+  const err: Record<string, any> = { code, message };
+  if (data) err.data = data;
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", id, error: err }) + "\n",
+  );
 }
 
 function notify(method: string, params: any): void {
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n",
+  );
 }
 
-let nextRequestId = 100000
-let nextDispatchCallbackId = 1
-const pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
-const notificationHandlers = new Map<string, (params: any) => void>()
+let nextRequestId = 100000;
+let nextDispatchCallbackId = 1;
+const pendingRequests = new Map<
+  number,
+  { resolve: (v: any) => void; reject: (e: Error) => void }
+>();
+const notificationHandlers = new Map<string, (params: any) => void>();
 
 function request(method: string, params: any): Promise<any> {
-  const id = nextRequestId++
+  const id = nextRequestId++;
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject })
+    pendingRequests.set(id, { resolve, reject });
     process.stdout.write(
-      JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n',
-    )
-  })
+      JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n",
+    );
+  });
 }
 
 // IonRpcError is how an engine JSON-RPC error rejects a request. `data`
@@ -184,50 +213,71 @@ class IonRpcError extends Error {
     readonly code?: number,
     readonly data?: { outcome?: string },
   ) {
-    super(message)
-    this.name = 'IonRpcError'
+    super(message);
+    this.name = "IonRpcError";
   }
 }
 
 // recallAgentByName backs both ctx.recallAgentByName and the boolean
 // ctx.recallAgent, so the two cannot disagree about what "found" means.
-async function recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<RecallAgentResult> {
-  const result = await request('ext/recall_agent', { name, reason: opts?.reason || '' })
-  const found = !!result?.found
+async function recallAgentByName(
+  name: string,
+  opts?: RecallAgentOpts,
+): Promise<RecallAgentResult> {
+  const result = await request("ext/recall_agent", {
+    name,
+    reason: opts?.reason || "",
+  });
+  const found = !!result?.found;
   // An engine older than the outcome field answers only { found }.
-  const outcome: RecallAgentResult['outcome'] = result?.outcome ?? (found ? 'recalled' : 'not_found')
-  const out: RecallAgentResult = { found, outcome }
-  if (result?.matchingDispatchIds) out.matchingDispatchIds = result.matchingDispatchIds
-  if (result?.terminal) out.terminal = result.terminal
-  return out
+  const outcome: RecallAgentResult["outcome"] =
+    result?.outcome ?? (found ? "recalled" : "not_found");
+  const out: RecallAgentResult = { found, outcome };
+  if (result?.matchingDispatchIds)
+    out.matchingDispatchIds = result.matchingDispatchIds;
+  if (result?.terminal) out.terminal = result.terminal;
+  return out;
 }
 
 // steerResult reads an ext/steer_* response, carrying the optional fields only
 // when the engine sent them.
 function steerResult(result: any): SteerDispatchResult {
-  const steer: SteerDispatchResult = { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
-  if (result?.matchingDispatchIds) steer.matchingDispatchIds = result.matchingDispatchIds
-  if (result?.terminal) steer.terminal = result.terminal
-  return steer
+  const steer: SteerDispatchResult = {
+    delivered: !!result?.delivered,
+    outcome: result?.outcome ?? "not_found",
+  };
+  if (result?.matchingDispatchIds)
+    steer.matchingDispatchIds = result.matchingDispatchIds;
+  if (result?.terminal) steer.terminal = result.terminal;
+  return steer;
 }
 
-async function recallDispatchWithOutcome(dispatchId: string, opts?: RecallDispatchOpts): Promise<RecallDispatchResult> {
-  let result: any
+async function recallDispatchWithOutcome(
+  dispatchId: string,
+  opts?: RecallDispatchOpts,
+): Promise<RecallDispatchResult> {
+  let result: any;
   try {
-    result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
+    result = await request("ext/recall_dispatch", {
+      dispatchId,
+      reason: opts?.reason || "",
+    });
   } catch (err) {
     // The engine answers an unauthorized recall as an error carrying the
     // outcome, so older callers that expect a rejection keep one.
-    if (err instanceof IonRpcError && err.data?.outcome === 'unauthorized') {
-      return { found: false, outcome: 'unauthorized' }
+    if (err instanceof IonRpcError && err.data?.outcome === "unauthorized") {
+      return { found: false, outcome: "unauthorized" };
     }
-    throw err
+    throw err;
   }
-  const found = !!result?.found
+  const found = !!result?.found;
   // An engine older than the outcome field answers only { found }.
-  const out: RecallDispatchResult = { found, outcome: result?.outcome ?? (found ? 'recalled' : 'not_found') }
-  if (result?.terminal) out.terminal = result.terminal
-  return out
+  const out: RecallDispatchResult = {
+    found,
+    outcome: result?.outcome ?? (found ? "recalled" : "not_found"),
+  };
+  if (result?.terminal) out.terminal = result.terminal;
+  return out;
 }
 
 // requestWithId is request() that also surfaces the RPC id to the caller.
@@ -238,66 +288,81 @@ function requestWithId(
   method: string,
   params: any,
 ): { id: number; promise: Promise<any> } {
-  const id = nextRequestId++
+  const id = nextRequestId++;
   const promise = new Promise<any>((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject })
+    pendingRequests.set(id, { resolve, reject });
     process.stdout.write(
-      JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n',
-    )
-  })
-  return { id, promise }
+      JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n",
+    );
+  });
+  return { id, promise };
 }
 
-toolRegistry = createToolRegistry(request, tools)
+toolRegistry = createToolRegistry(request, tools);
 
 // ---------------------------------------------------------------------------
 // Context builder
 // ---------------------------------------------------------------------------
 
 const emptyConfig: ExtensionConfig = {
-  extensionDir: '',
-  model: '',
-  workingDirectory: '',
-}
+  extensionDir: "",
+  model: "",
+  workingDirectory: "",
+};
 
 type BuildIdentityRead = {
-  identity: string
-  diagnostic?: { message: string; fields: Record<string, unknown> }
-}
+  identity: string;
+  diagnostic?: { message: string; fields: Record<string, unknown> };
+};
 
 function readBuildIdentity(): BuildIdentityRead {
-  const home = process.env.HOME || ''
+  const home = process.env.HOME || "";
   if (!home) {
     return {
-      identity: '',
+      identity: "",
       diagnostic: {
-        message: 'SDK build identity unavailable: HOME is not set',
-        fields: { source: 'build-identity.json' },
+        message: "SDK build identity unavailable: HOME is not set",
+        fields: { source: "build-identity.json" },
       },
-    }
+    };
   }
 
-  const path = join(home, '.ion', 'extensions', 'sdk', 'ion-sdk', 'build-identity.json')
+  const path = join(
+    home,
+    ".ion",
+    "extensions",
+    "sdk",
+    "ion-sdk",
+    "build-identity.json",
+  );
   try {
-    const data: unknown = JSON.parse(readFileSync(path, 'utf8'))
-    if (typeof data === 'object' && data !== null && typeof (data as { buildIdentity?: unknown }).buildIdentity === 'string') {
-      return { identity: (data as { buildIdentity: string }).buildIdentity }
+    const data: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      typeof (data as { buildIdentity?: unknown }).buildIdentity === "string"
+    ) {
+      return { identity: (data as { buildIdentity: string }).buildIdentity };
     }
     return {
-      identity: '',
+      identity: "",
       diagnostic: {
-        message: 'SDK build identity unavailable: file has no string buildIdentity',
+        message:
+          "SDK build identity unavailable: file has no string buildIdentity",
         fields: { path },
       },
-    }
+    };
   } catch (err) {
     return {
-      identity: '',
+      identity: "",
       diagnostic: {
-        message: 'SDK build identity unavailable: read failed',
-        fields: { path, error: err instanceof Error ? err.message : String(err) },
+        message: "SDK build identity unavailable: read failed",
+        fields: {
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        },
       },
-    }
+    };
   }
 }
 
@@ -312,22 +377,33 @@ function readBuildIdentity(): BuildIdentityRead {
 // without a declared version is a normal, unversioned extension, not a
 // diagnostic-worthy state the way a missing build identity is.
 function readExtensionVersion(extensionDir: string): string {
-  if (!extensionDir) return ''
+  if (!extensionDir) return "";
   try {
-    const data: unknown = JSON.parse(readFileSync(join(extensionDir, 'extension.json'), 'utf8'))
-    if (typeof data === 'object' && data !== null && typeof (data as { version?: unknown }).version === 'string') {
-      return (data as { version: string }).version
+    const data: unknown = JSON.parse(
+      readFileSync(join(extensionDir, "extension.json"), "utf8"),
+    );
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      typeof (data as { version?: unknown }).version === "string"
+    ) {
+      return (data as { version: string }).version;
     }
   } catch {
     // No manifest, or unreadable/malformed -- unversioned, same as absent.
   }
-  return ''
+  return "";
 }
 
-function isContextIdentity(value: unknown): value is NonNullable<IonContext['identity']> {
-  return typeof value === 'object' && value !== null &&
-    typeof (value as { kind?: unknown }).kind === 'string' &&
-    typeof (value as { provider?: unknown }).provider === 'string'
+function isContextIdentity(
+  value: unknown,
+): value is NonNullable<IonContext["identity"]> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { kind?: unknown }).kind === "string" &&
+    typeof (value as { provider?: unknown }).provider === "string"
+  );
 }
 
 function buildContext(ctxData: any): IonContext {
@@ -339,68 +415,84 @@ function buildContext(ctxData: any): IonContext {
     // '' IS the no-active-run shape (same additive pattern as dispatch identity
     // below). traceId is W3C-shaped and safe to put straight into a
     // traceparent header; runId is the engine-native join key.
-    runId: typeof ctxData?.runId === 'string' ? ctxData.runId : '',
-    traceId: typeof ctxData?.traceId === 'string' ? ctxData.traceId : '',
+    runId: typeof ctxData?.runId === "string" ? ctxData.runId : "",
+    traceId: typeof ctxData?.traceId === "string" ? ctxData.traceId : "",
     // Dispatch identity: the engine omits both keys for root sessions, so
     // the defaults (0 / '') ARE the root-session shape.
-    depth: typeof ctxData?.depth === 'number' ? ctxData.depth : 0,
-    dispatchId: typeof ctxData?.dispatchId === 'string' ? ctxData.dispatchId : '',
-    identity: isContextIdentity(ctxData?.identity) ? ctxData.identity : undefined,
-    cwd: ctxData?.cwd || initConfig?.workingDirectory || '',
+    depth: typeof ctxData?.depth === "number" ? ctxData.depth : 0,
+    dispatchId:
+      typeof ctxData?.dispatchId === "string" ? ctxData.dispatchId : "",
+    identity: isContextIdentity(ctxData?.identity)
+      ? ctxData.identity
+      : undefined,
+    cwd: ctxData?.cwd || initConfig?.workingDirectory || "",
     model: ctxData?.model || null,
     config: ctxData?.config || initConfig || emptyConfig,
     emit(event: EngineEvent) {
       if (activeEvents) {
-        activeEvents.push(event)
+        activeEvents.push(event);
       } else {
-        notify('ext/emit', event)
+        notify("ext/emit", event);
       }
     },
     sendMessage(text: string) {
-      notify('ext/send_message', { text })
+      notify("ext/send_message", { text });
     },
     async registerProcess(name: string, pid: number, task: string) {
-      await request('ext/register_process', { name, pid, task })
+      await request("ext/register_process", { name, pid, task });
     },
     async deregisterProcess(name: string) {
-      await request('ext/deregister_process', { name })
+      await request("ext/deregister_process", { name });
     },
     async listProcesses(): Promise<ProcessInfo[]> {
-      const result = await request('ext/list_processes', {})
-      return result?.processes || []
+      const result = await request("ext/list_processes", {});
+      return result?.processes || [];
     },
     async terminateProcess(name: string) {
-      await request('ext/terminate_process', { name })
+      await request("ext/terminate_process", { name });
     },
     async cleanStaleProcesses(): Promise<number> {
-      const result = await request('ext/clean_stale_processes', {})
-      return result?.cleaned || 0
+      const result = await request("ext/clean_stale_processes", {});
+      return result?.cleaned || 0;
     },
     async suppressTool(name: string): Promise<void> {
-      await request('ext/suppress_tool', { name })
+      await request("ext/suppress_tool", { name });
     },
-    async walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]> {
-      const result = await request('ext/walk_context_files', {
-        cwd: opts?.cwd || '',
+    async walkContextFiles(
+      opts?: WalkContextFilesOpts,
+    ): Promise<DiscoveredContext[]> {
+      const result = await request("ext/walk_context_files", {
+        cwd: opts?.cwd || "",
         includeGlobal: opts?.includeGlobal,
         includeProject: opts?.includeProject,
         claudeCompat: opts?.claudeCompat,
-      })
-      return Array.isArray(result) ? (result as DiscoveredContext[]) : []
+      });
+      return Array.isArray(result) ? (result as DiscoveredContext[]) : [];
     },
     async setDispatchContextDefaults(policy: ContextPolicy): Promise<void> {
-      await request('ext/set_dispatch_context_defaults', policy)
+      await request("ext/set_dispatch_context_defaults", policy);
     },
-    async callTool(name: string, input: Record<string, unknown>): Promise<ToolResult> {
-      const result = await request('ext/call_tool', { name, input: input || {} })
-      const contentItems: ToolResult['contentItems'] = Array.isArray(result?.contentItems)
-        ? result.contentItems.filter((item: unknown): item is ToolContent => item !== null && typeof item === 'object')
-        : undefined
+    async callTool(
+      name: string,
+      input: Record<string, unknown>,
+    ): Promise<ToolResult> {
+      const result = await request("ext/call_tool", {
+        name,
+        input: input || {},
+      });
+      const contentItems: ToolResult["contentItems"] = Array.isArray(
+        result?.contentItems,
+      )
+        ? result.contentItems.filter(
+            (item: unknown): item is ToolContent =>
+              item !== null && typeof item === "object",
+          )
+        : undefined;
       return {
-        content: typeof result?.content === 'string' ? result.content : '',
+        content: typeof result?.content === "string" ? result.content : "",
         isError: !!result?.isError,
         ...(contentItems && contentItems.length > 0 ? { contentItems } : {}),
-      }
+      };
     },
     applicationConfig: buildApplicationConfigAPI(request),
     // Pre-authenticated outbound HTTP. Each verb funnels into the single
@@ -412,83 +504,115 @@ function buildContext(ctxData: any): IonContext {
         url: string,
         opts?: IonHttpRequestOptions,
       ): Promise<IonHttpResponse> => {
-        const result = await request('ext/http_request', {
+        const result = await request("ext/http_request", {
           method,
           url,
-          scope: opts?.scope || '',
-          audience: opts?.audience || '',
-          awsService: opts?.awsService || '',
-          awsRegion: opts?.awsRegion || '',
+          scope: opts?.scope || "",
+          audience: opts?.audience || "",
+          awsService: opts?.awsService || "",
+          awsRegion: opts?.awsRegion || "",
           headers: opts?.headers || undefined,
-          body: opts?.body || '',
+          body: opts?.body || "",
           timeoutMs: opts?.timeoutMs || 0,
           maxBytes: opts?.maxBytes || 0,
           allowPrivateNetwork: !!opts?.allowPrivateNetwork,
-        })
+        });
         return {
-          status: typeof result?.status === 'number' ? result.status : 0,
+          status: typeof result?.status === "number" ? result.status : 0,
           headers: (result?.headers as Record<string, string>) || {},
-          body: typeof result?.body === 'string' ? result.body : '',
-        }
-      }
+          body: typeof result?.body === "string" ? result.body : "",
+        };
+      };
       return {
         request: doRequest,
-        get: (url: string, opts?: IonHttpRequestOptions) => doRequest('GET', url, opts),
-        post: (url: string, opts?: IonHttpRequestOptions) => doRequest('POST', url, opts),
-        put: (url: string, opts?: IonHttpRequestOptions) => doRequest('PUT', url, opts),
-        patch: (url: string, opts?: IonHttpRequestOptions) => doRequest('PATCH', url, opts),
-        delete: (url: string, opts?: IonHttpRequestOptions) => doRequest('DELETE', url, opts),
-      }
+        get: (url: string, opts?: IonHttpRequestOptions) =>
+          doRequest("GET", url, opts),
+        post: (url: string, opts?: IonHttpRequestOptions) =>
+          doRequest("POST", url, opts),
+        put: (url: string, opts?: IonHttpRequestOptions) =>
+          doRequest("PUT", url, opts),
+        patch: (url: string, opts?: IonHttpRequestOptions) =>
+          doRequest("PATCH", url, opts),
+        delete: (url: string, opts?: IonHttpRequestOptions) =>
+          doRequest("DELETE", url, opts),
+      };
     })(),
     // Config-declared operation with an engine-injected secret. Only the name
     // and payload cross the wire; the secret never reaches this process.
-    async protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult> {
-      const result = await request('ext/protected_operation', payload === undefined ? { name } : { name, payload })
+    async protectedOperation(
+      name: string,
+      payload?: unknown,
+    ): Promise<IonProtectedOperationResult> {
+      const result = await request(
+        "ext/protected_operation",
+        payload === undefined ? { name } : { name, payload },
+      );
       return {
-        status: typeof result?.status === 'number' ? result.status : 0,
+        status: typeof result?.status === "number" ? result.status : 0,
         headers: (result?.headers as Record<string, string>) || {},
-        body: typeof result?.body === 'string' ? result.body : '',
-      }
+        body: typeof result?.body === "string" ? result.body : "",
+      };
     },
     async sendPrompt(text: string, opts?: SendPromptOpts): Promise<void> {
       // Forward per-prompt, run-scoped plan-mode bash-allowlist additions only
       // when present so the omitempty contract on the engine side holds (an
       // empty array would otherwise serialize as []). The engine unions these
       // with the session allowlist for this one run and never persists them.
-      const params: { text: string; model: string; bashAllowlistAdditions?: string[]; slashModelTierApplyMidConversation?: boolean; kind?: string } = {
+      const params: {
+        text: string;
+        model: string;
+        bashAllowlistAdditions?: string[];
+        slashModelTierApplyMidConversation?: boolean;
+        kind?: string;
+      } = {
         text,
-        model: opts?.model || '',
-      }
-      if (opts?.bashAllowlistAdditions && opts.bashAllowlistAdditions.length > 0) {
-        params.bashAllowlistAdditions = opts.bashAllowlistAdditions
+        model: opts?.model || "",
+      };
+      if (
+        opts?.bashAllowlistAdditions &&
+        opts.bashAllowlistAdditions.length > 0
+      ) {
+        params.bashAllowlistAdditions = opts.bashAllowlistAdditions;
       }
       if (opts?.slashModelTierApplyMidConversation !== undefined) {
-        params.slashModelTierApplyMidConversation = opts.slashModelTierApplyMidConversation
+        params.slashModelTierApplyMidConversation =
+          opts.slashModelTierApplyMidConversation;
       }
       if (opts?.kind) {
-        params.kind = opts.kind
+        params.kind = opts.kind;
       }
-      await request('ext/send_prompt', params)
+      await request("ext/send_prompt", params);
     },
     async suspend(): Promise<void> {
-      await request('ext/task_suspend', {})
+      await request("ext/task_suspend", {});
     },
     async suspendUntilAll(dispatchIds: string[]): Promise<void> {
-      await request('ext/task_suspend', { awaitingDispatchIds: dispatchIds })
+      await request("ext/task_suspend", { awaitingDispatchIds: dispatchIds });
     },
     async dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult> {
       const {
-        onEvent, onComplete, onError, onRecall,
-        onToolStart, onToolEnd, onToolError, onUsage, onTextDelta, onPlanProposal,
-        onChildQuestion, onParkCheckIn, waitForCompletion, background: _background,
+        onEvent,
+        onComplete,
+        onError,
+        onRecall,
+        onToolStart,
+        onToolEnd,
+        onToolError,
+        onUsage,
+        onTextDelta,
+        onPlanProposal,
+        onChildQuestion,
+        onParkCheckIn,
+        waitForCompletion,
+        background: _background,
         ...rpcOpts
-      } = opts
+      } = opts;
 
       // Dispatch is asynchronous unless the caller explicitly opts into
       // foreground terminal output. `background: false` remains accepted for
       // compatibility but cannot silently turn an async dispatch foreground.
-      const isForeground = waitForCompletion === true
-      const callbackId = `cb-${Date.now()}-${nextDispatchCallbackId++}`
+      const isForeground = waitForCompletion === true;
+      const callbackId = `cb-${Date.now()}-${nextDispatchCallbackId++}`;
       const dispatchOpts = {
         ...rpcOpts,
         callbackId,
@@ -496,91 +620,114 @@ function buildContext(ctxData: any): IonContext {
         background: !isForeground,
         // The engine asks for a check-in prompt only when told someone answers.
         ...(onParkCheckIn ? { parkCheckInAsk: true } : {}),
-      }
+      };
 
       // Build the list of lifecycle callback entries. Each entry pairs a
       // notification method name with the handler function (if provided).
       const lifecycleEntries: [string, ((p: any) => void) | undefined][] = [
-        ['dispatch_event', onEvent],
-        ['dispatch_tool_start', onToolStart],
-        ['dispatch_tool_end', onToolEnd],
-        ['dispatch_tool_error', onToolError],
-        ['dispatch_usage', onUsage],
-        ['dispatch_text_delta', onTextDelta],
-        ['dispatch_plan_proposal', onPlanProposal],
+        ["dispatch_event", onEvent],
+        ["dispatch_tool_start", onToolStart],
+        ["dispatch_tool_end", onToolEnd],
+        ["dispatch_tool_error", onToolError],
+        ["dispatch_usage", onUsage],
+        ["dispatch_text_delta", onTextDelta],
+        ["dispatch_plan_proposal", onPlanProposal],
         // dispatch_child_question is special: the engine blocks the child run
         // until we answer. The handler resolves onChildQuestion and sends the
         // answer back via ext/answer_dispatch_question (the engine's pending
         // channel keyed by dispatchId+requestId then unblocks the child).
-        ['dispatch_child_question', onChildQuestion ? async (info: any) => {
-          const result = await onChildQuestion(info)
-          await request('ext/answer_dispatch_question', {
-            dispatchId: info.dispatchId,
-            requestId: info.requestId,
-            answer: result?.answer,
-            cancelled: result?.cancelled ?? false,
-          })
-        } : undefined],
+        [
+          "dispatch_child_question",
+          onChildQuestion
+            ? async (info: any) => {
+                const result = await onChildQuestion(info);
+                await request("ext/answer_dispatch_question", {
+                  dispatchId: info.dispatchId,
+                  requestId: info.requestId,
+                  answer: result?.answer,
+                  cancelled: result?.cancelled ?? false,
+                });
+              }
+            : undefined,
+        ],
         // dispatch_park_checkin: the engine waits for the answer before it
         // decides whether to wake the parked dispatch. A handler failure
         // answers with a skip so the dispatch simply stays parked.
-        ['dispatch_park_checkin', onParkCheckIn ? async (info: any) => {
-          let reply: { prompt?: string; skip?: boolean } | undefined
-          try {
-            reply = await onParkCheckIn(info)
-          } catch (err) {
-            log.error('park check-in handler failed; skipping this check-in', {
-              dispatchId: info.dispatchId, error: String(err),
-            })
-            reply = { skip: true }
-          }
-          await request('ext/answer_dispatch_park_checkin', {
-            dispatchId: info.dispatchId,
-            requestId: info.requestId,
-            prompt: reply?.prompt,
-            skip: reply?.skip ?? false,
-          })
-        } : undefined],
-      ]
+        [
+          "dispatch_park_checkin",
+          onParkCheckIn
+            ? async (info: any) => {
+                let reply: { prompt?: string; skip?: boolean } | undefined;
+                try {
+                  reply = await onParkCheckIn(info);
+                } catch (err) {
+                  log.error(
+                    "park check-in handler failed; skipping this check-in",
+                    {
+                      dispatchId: info.dispatchId,
+                      error: String(err),
+                    },
+                  );
+                  reply = { skip: true };
+                }
+                await request("ext/answer_dispatch_park_checkin", {
+                  dispatchId: info.dispatchId,
+                  requestId: info.requestId,
+                  prompt: reply?.prompt,
+                  skip: reply?.skip ?? false,
+                });
+              }
+            : undefined,
+        ],
+      ];
 
       // Pre-register lifecycle handlers keyed by agent name so they're
       // ready before the RPC returns. These are best-effort streaming
       // callbacks that fire while the dispatch runs.
-      const agentKey = opts.name
+      const agentKey = opts.name;
       for (const [method, fn] of lifecycleEntries) {
-        if (fn) notificationHandlers.set(`${method}:${callbackId}`, fn)
+        if (fn) notificationHandlers.set(`${method}:${callbackId}`, fn);
       }
 
       const cleanupAsyncHandlers = (dispatchId?: string) => {
         for (const [method] of lifecycleEntries) {
-          notificationHandlers.delete(`${method}:${callbackId}`)
-          if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
+          notificationHandlers.delete(`${method}:${callbackId}`);
+          if (dispatchId)
+            notificationHandlers.delete(`${method}:${dispatchId}`);
         }
-        for (const method of ['dispatch_complete', 'dispatch_error', 'dispatch_recall']) {
-          notificationHandlers.delete(`${method}:${callbackId}`)
-          if (dispatchId) notificationHandlers.delete(`${method}:${dispatchId}`)
+        for (const method of [
+          "dispatch_complete",
+          "dispatch_error",
+          "dispatch_recall",
+        ]) {
+          notificationHandlers.delete(`${method}:${callbackId}`);
+          if (dispatchId)
+            notificationHandlers.delete(`${method}:${dispatchId}`);
         }
-      }
-      let terminalDispatchId: string | undefined
-      let terminalDelivered = false
+      };
+      let terminalDispatchId: string | undefined;
+      let terminalDelivered = false;
       const wrapTerminal = (fn?: (p: any) => void) => (params: any) => {
-        if (terminalDelivered) return
-        terminalDelivered = true
-        terminalDispatchId = typeof params?.dispatchId === 'string' ? params.dispatchId : callbackId
-        cleanupAsyncHandlers(terminalDispatchId)
-        if (fn) fn(params)
-      }
+        if (terminalDelivered) return;
+        terminalDelivered = true;
+        terminalDispatchId =
+          typeof params?.dispatchId === "string"
+            ? params.dispatchId
+            : callbackId;
+        cleanupAsyncHandlers(terminalDispatchId);
+        if (fn) fn(params);
+      };
       const terminalHandlers: [string, (p: any) => void][] = [
-        ['dispatch_complete', wrapTerminal(onComplete)],
-        ['dispatch_error', wrapTerminal(onError)],
-        ['dispatch_recall', wrapTerminal(onRecall)],
-      ]
+        ["dispatch_complete", wrapTerminal(onComplete)],
+        ["dispatch_error", wrapTerminal(onError)],
+        ["dispatch_recall", wrapTerminal(onRecall)],
+      ];
 
       // Register terminal handlers by name before dispatch. A child can finish
       // before its stub response reaches this process; name routing covers that
       // window, then dispatch-ID routing takes over for concurrent children.
       for (const [method, fn] of terminalHandlers) {
-        notificationHandlers.set(`${method}:${callbackId}`, fn)
+        notificationHandlers.set(`${method}:${callbackId}`, fn);
       }
 
       if (!isForeground) {
@@ -588,59 +735,103 @@ function buildContext(ctxData: any): IonContext {
         // then register terminal callbacks keyed by dispatch ID so two
         // concurrent same-name dispatches each receive their own terminal
         // callback without clobbering.
-        const stub: DispatchAgentResult = await request('ext/dispatch_agent', dispatchOpts)
-        const dispatchId = stub.dispatchId || callbackId
+        const stub: DispatchAgentResult = await request(
+          "ext/dispatch_agent",
+          dispatchOpts,
+        );
+        const dispatchId = stub.dispatchId || callbackId;
 
         // A terminal notification can arrive before the stub. Do not restore
         // handlers after it has already cleaned them up.
-        if (terminalDispatchId === dispatchId) return stub
+        if (terminalDispatchId === dispatchId) return stub;
 
         for (const [method, fn] of lifecycleEntries) {
-          if (fn) notificationHandlers.set(`${method}:${dispatchId}`, fn)
+          if (fn) notificationHandlers.set(`${method}:${dispatchId}`, fn);
         }
         for (const [method, fn] of terminalHandlers) {
-          notificationHandlers.set(`${method}:${dispatchId}`, fn)
+          notificationHandlers.set(`${method}:${dispatchId}`, fn);
         }
-        return stub
+        return stub;
       }
 
       // Foreground does not use asynchronous callbacks.
-      cleanupAsyncHandlers()
+      cleanupAsyncHandlers();
 
       // Foreground: wait for terminal output, then clean up lifecycle handlers.
       const cleanupForeground = () => {
         for (const [method] of lifecycleEntries) {
-          notificationHandlers.delete(`${method}:${callbackId}`)
+          notificationHandlers.delete(`${method}:${callbackId}`);
         }
+      };
+      try {
+        return await request("ext/dispatch_agent", dispatchOpts);
+      } finally {
+        cleanupForeground();
       }
-      try { return await request('ext/dispatch_agent', dispatchOpts) }
-      finally { cleanupForeground() }
     },
     async recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean> {
-      return (await recallAgentByName(name, opts)).found
+      return (await recallAgentByName(name, opts)).found;
     },
     recallAgentByName,
     recallDispatchWithOutcome,
-    async recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean> {
-      const result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
-      return !!result?.found
+    async recallDispatch(
+      dispatchId: string,
+      opts?: RecallDispatchOpts,
+    ): Promise<boolean> {
+      const result = await request("ext/recall_dispatch", {
+        dispatchId,
+        reason: opts?.reason || "",
+      });
+      return !!result?.found;
     },
-    async steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult> {
-      return steerResult(await request('ext/steer_dispatch', { dispatchId, message }))
+    async steerDispatch(
+      dispatchId: string,
+      message: string,
+    ): Promise<SteerDispatchResult> {
+      return steerResult(
+        await request("ext/steer_dispatch", { dispatchId, message }),
+      );
     },
-    async steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult> {
-      return steerResult(await request('ext/steer_dispatch_by_name', { name, message }))
+    async steerDispatchByName(
+      name: string,
+      message: string,
+    ): Promise<SteerDispatchResult> {
+      return steerResult(
+        await request("ext/steer_dispatch_by_name", { name, message }),
+      );
     },
-    async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
-      await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
+    async answerDispatchQuestion(
+      dispatchId: string,
+      requestId: string,
+      answer: string | undefined,
+      cancelled: boolean,
+    ): Promise<void> {
+      await request("ext/answer_dispatch_question", {
+        dispatchId,
+        requestId,
+        answer,
+        cancelled,
+      });
     },
-    async answerDispatchParkCheckIn(dispatchId: string, requestId: string, reply: { prompt?: string; skip?: boolean }): Promise<void> {
-      await request('ext/answer_dispatch_park_checkin', { dispatchId, requestId, prompt: reply.prompt, skip: reply.skip ?? false })
+    async answerDispatchParkCheckIn(
+      dispatchId: string,
+      requestId: string,
+      reply: { prompt?: string; skip?: boolean },
+    ): Promise<void> {
+      await request("ext/answer_dispatch_park_checkin", {
+        dispatchId,
+        requestId,
+        prompt: reply.prompt,
+        skip: reply.skip ?? false,
+      });
     },
     async ackDispatchLost(dispatchId: string): Promise<void> {
-      await request('ext/ack_dispatch_lost', { dispatchId })
+      await request("ext/ack_dispatch_lost", { dispatchId });
     },
-    async steerSelf(message: string, opts?: SteerSelfOpts): Promise<SteerDispatchResult> {
+    async steerSelf(
+      message: string,
+      opts?: SteerSelfOpts,
+    ): Promise<SteerDispatchResult> {
       // Deliver `message` to the run that owns this context. The engine picks
       // the mechanism: a live owning run is steered (outcome "steered"); an
       // idle one receives a fresh prompt (outcome "sent"). This is how a
@@ -653,12 +844,15 @@ function buildContext(ctxData: any): IonContext {
       // an older SDK sent. The engine threads it through both delivery arms,
       // so a machine-to-machine message is recorded as machine-authored
       // whether the owning run was live or idle.
-      const params: { message: string; kind?: string } = { message }
+      const params: { message: string; kind?: string } = { message };
       if (opts?.kind) {
-        params.kind = opts.kind
+        params.kind = opts.kind;
       }
-      const result = await request('ext/steer_self', params)
-      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+      const result = await request("ext/steer_self", params);
+      return {
+        delivered: !!result?.delivered,
+        outcome: result?.outcome ?? "not_found",
+      };
     },
     async listDispatchState(): Promise<DispatchEntry[]> {
       // Returns a point-in-time snapshot of every active dispatch in the
@@ -668,101 +862,126 @@ function buildContext(ctxData: any): IonContext {
       // support this RPC (older builds without ext/list_dispatch_state return
       // an error; the catch returns the empty default gracefully).
       try {
-        const result = await request('ext/list_dispatch_state', {})
-        return result?.dispatches ?? []
+        const result = await request("ext/list_dispatch_state", {});
+        return result?.dispatches ?? [];
       } catch {
-        return []
+        return [];
       }
     },
     async listDispatchHistory(): Promise<DispatchHistoryEntry[]> {
       // Terminal peer of listDispatchState. An engine without
       // ext/list_dispatch_history answers -32601; that degrades to [].
       try {
-        const result = await request('ext/list_dispatch_history', {})
-        return result?.dispatches ?? []
+        const result = await request("ext/list_dispatch_history", {});
+        return result?.dispatches ?? [];
       } catch {
         // silent-ok: an engine without ext/list_dispatch_history has no history to return
-        return []
+        return [];
       }
     },
-    async readDispatchConversation(opts: ReadDispatchConversationOpts): Promise<DispatchConversationResult> {
+    async readDispatchConversation(
+      opts: ReadDispatchConversationOpts,
+    ): Promise<DispatchConversationResult> {
       try {
-        const result = await request('ext/read_dispatch_conversation', opts)
-        return { ...result, entries: result?.entries ?? [] }
+        const result = await request("ext/read_dispatch_conversation", opts);
+        return { ...result, entries: result?.entries ?? [] };
       } catch (err) {
         // An engine without ext/read_dispatch_conversation answers -32601.
         // That is a capability answer, so it becomes an outcome. Any other
         // failure is a real error and still rejects.
         if (err instanceof IonRpcError && err.code === -32601) {
-          return { outcome: 'unsupported', terminal: false, entries: [], hasMore: false, totalEntries: 0 }
+          return {
+            outcome: "unsupported",
+            terminal: false,
+            entries: [],
+            hasMore: false,
+            totalEntries: 0,
+          };
         }
-        throw err
+        throw err;
       }
     },
-    async discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]> {
-      const result = await request('ext/discover_agents', opts || {})
-      return result?.agents || []
+    async scanWikiLinks(): Promise<WikiLinkIntegrityReport> {
+      return await request("ext/scan_wiki_links", {});
     },
-    async sandboxWrap(command: string, profile?: SandboxProfile): Promise<SandboxWrapResult> {
-      const result = await request('ext/sandbox_wrap', { command, ...(profile || {}) })
-      return { wrapped: result?.wrapped ?? command, platform: result?.platform ?? '' }
+    async discoverAgents(
+      opts?: DiscoverAgentsOpts,
+    ): Promise<DiscoveredAgent[]> {
+      const result = await request("ext/discover_agents", opts || {});
+      return result?.agents || [];
+    },
+    async sandboxWrap(
+      command: string,
+      profile?: SandboxProfile,
+    ): Promise<SandboxWrapResult> {
+      const result = await request("ext/sandbox_wrap", {
+        command,
+        ...(profile || {}),
+      });
+      return {
+        wrapped: result?.wrapped ?? command,
+        platform: result?.platform ?? "",
+      };
     },
     async getSessionMemory(): Promise<string> {
       // The engine answers {content: ""} when the conversation has no memory
       // or the extension is running outside a session, so the empty string is
       // a real answer rather than a missing one.
-      const result = await request('ext/get_session_memory', {})
-      return typeof result?.content === 'string' ? result.content : ''
+      const result = await request("ext/get_session_memory", {});
+      return typeof result?.content === "string" ? result.content : "";
     },
     async setSessionMemory(content: string): Promise<void> {
-      await request('ext/set_session_memory', { content: content ?? '' })
+      await request("ext/set_session_memory", { content: content ?? "" });
     },
     async intercept(opts: InterceptOpts): Promise<void> {
       // `source` is deliberately not forwarded: the engine stamps the calling
       // extension's name so one extension cannot attribute an intercept to
       // another.
-      await request('ext/intercept', {
-        level: opts?.level ?? 'banner',
-        title: opts?.title ?? '',
-        message: opts?.message ?? '',
-        targetSessionKey: opts?.targetSessionKey || '',
+      await request("ext/intercept", {
+        level: opts?.level ?? "banner",
+        title: opts?.title ?? "",
+        message: opts?.message ?? "",
+        targetSessionKey: opts?.targetSessionKey || "",
         ...(opts?.metadata ? { metadata: opts.metadata } : {}),
-      })
+      });
     },
     async registerAgentSpec(spec: AgentSpec): Promise<void> {
-      await request('ext/register_agent_spec', spec)
+      await request("ext/register_agent_spec", spec);
     },
     async deregisterAgentSpec(name: string): Promise<void> {
-      await request('ext/deregister_agent_spec', { name })
+      await request("ext/deregister_agent_spec", { name });
     },
     async elicit(opts: ElicitOptions): Promise<ElicitResult> {
-      const result = await request('ext/elicit', opts || {})
+      const result = await request("ext/elicit", opts || {});
       return {
         response: result?.response,
         cancelled: !!result?.cancelled,
-      }
+      };
     },
     async getContextUsage(): Promise<ContextUsage | null> {
       // Engine returns null when no run is active; preserve that signal so
       // callers can branch on it (`if (!usage) ...`).
-      const result = await request('ext/get_context_usage', {})
-      if (result == null) return null
+      const result = await request("ext/get_context_usage", {});
+      if (result == null) return null;
       return {
-        percent: typeof result?.percent === 'number' ? result.percent : 0,
-        tokens: typeof result?.tokens === 'number' ? result.tokens : 0,
-        cost: typeof result?.cost === 'number' ? result.cost : 0,
-      }
+        percent: typeof result?.percent === "number" ? result.percent : 0,
+        tokens: typeof result?.tokens === "number" ? result.tokens : 0,
+        cost: typeof result?.cost === "number" ? result.cost : 0,
+      };
     },
-    async searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]> {
+    async searchHistory(
+      query: string,
+      maxResults?: number,
+    ): Promise<HistoryMatch[]> {
       // Engine returns [] when no conversation is active or the searcher is
       // unwired. Defend against any other shape by coercing to [] -- the
       // typed return promises an array, never undefined.
-      const result = await request('ext/search_history', {
-        query: query || '',
-        maxResults: typeof maxResults === 'number' ? maxResults : 0,
-      })
-      if (!Array.isArray(result)) return []
-      return result as HistoryMatch[]
+      const result = await request("ext/search_history", {
+        query: query || "",
+        maxResults: typeof maxResults === "number" ? maxResults : 0,
+      });
+      if (!Array.isArray(result)) return [];
+      return result as HistoryMatch[];
     },
     async llmCall(opts: LLMCallOpts): Promise<LLMCallResult> {
       // One-shot lightweight inference. Forwards the opts to the engine's
@@ -779,16 +998,16 @@ function buildContext(ctxData: any): IonContext {
       // alongside the value so the engine can distinguish a deliberate 0
       // (deterministic) from "unset" (provider default) — the omitempty wire
       // tag would otherwise erase a real 0.
-      const hasTemp = typeof opts.temperature === 'number'
-      const { id, promise } = requestWithId('ext/llm_call', {
-        model: opts.model || '',
-        system: opts.system || '',
-        prompt: opts.prompt || '',
+      const hasTemp = typeof opts.temperature === "number";
+      const { id, promise } = requestWithId("ext/llm_call", {
+        model: opts.model || "",
+        system: opts.system || "",
+        prompt: opts.prompt || "",
         jsonMode: !!opts.jsonMode,
-        maxTokens: typeof opts.maxTokens === 'number' ? opts.maxTokens : 0,
+        maxTokens: typeof opts.maxTokens === "number" ? opts.maxTokens : 0,
         temperature: hasTemp ? opts.temperature : 0,
         temperatureSet: hasTemp,
-      })
+      });
 
       // Wire the optional AbortSignal to per-call cancellation. The signal
       // is consumed runtime-side and converted to a fire-and-forget
@@ -796,42 +1015,48 @@ function buildContext(ctxData: any): IonContext {
       // engine looks up the call's CancelFunc and cancels it. If the signal
       // is already aborted, fire immediately. The listener is removed once
       // the call settles so a later abort cannot fire a stale cancel.
-      let removeAbortListener: (() => void) | undefined
+      let removeAbortListener: (() => void) | undefined;
       if (opts.signal) {
         const fireCancel = () => {
-          notify('ext/llm_call_cancel', { requestId: id })
-        }
+          notify("ext/llm_call_cancel", { requestId: id });
+        };
         if (opts.signal.aborted) {
-          fireCancel()
+          fireCancel();
         } else {
-          opts.signal.addEventListener('abort', fireCancel, { once: true })
+          opts.signal.addEventListener("abort", fireCancel, { once: true });
           removeAbortListener = () =>
-            opts.signal?.removeEventListener('abort', fireCancel)
+            opts.signal?.removeEventListener("abort", fireCancel);
         }
       }
 
       try {
-        const result = await promise
+        const result = await promise;
         return {
-          content: typeof result?.content === 'string' ? result.content : '',
-          inputTokens: typeof result?.inputTokens === 'number' ? result.inputTokens : 0,
-          outputTokens: typeof result?.outputTokens === 'number' ? result.outputTokens : 0,
-          cost: typeof result?.cost === 'number' ? result.cost : 0,
-        }
+          content: typeof result?.content === "string" ? result.content : "",
+          inputTokens:
+            typeof result?.inputTokens === "number" ? result.inputTokens : 0,
+          outputTokens:
+            typeof result?.outputTokens === "number" ? result.outputTokens : 0,
+          cost: typeof result?.cost === "number" ? result.cost : 0,
+        };
       } finally {
-        removeAbortListener?.()
+        removeAbortListener?.();
       }
     },
     async notify(opts: NotifyOpts): Promise<void> {
-      await request('ext/notify', opts)
+      await request("ext/notify", opts);
     },
     sessions: {
       async list(): Promise<SessionListEntry[]> {
-        const result = await request('ext/list_sessions', {})
-        return (result as SessionListEntry[]) ?? []
+        const result = await request("ext/list_sessions", {});
+        return (result as SessionListEntry[]) ?? [];
       },
-      async send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void> {
-        await request('ext/send_to_session', { targetKey, kind, payload })
+      async send(
+        targetKey: string,
+        kind: string,
+        payload: Record<string, unknown>,
+      ): Promise<void> {
+        await request("ext/send_to_session", { targetKey, kind, payload });
       },
     },
     conversations: {
@@ -849,50 +1074,68 @@ function buildContext(ctxData: any): IonContext {
       },
     },
     async fireSchedule(id: string): Promise<void> {
-      await request('ext/fire_schedule', { id })
+      await request("ext/fire_schedule", { id });
     },
-    async getScheduleStatus(id?: string): Promise<import('./types').ScheduleStatus[]> {
-      const r = await request('ext/get_schedule_status', { id: id ?? '' })
-      return Array.isArray(r) ? r as import('./types').ScheduleStatus[] : []
+    async getScheduleStatus(
+      id?: string,
+    ): Promise<import("./types").ScheduleStatus[]> {
+      const r = await request("ext/get_schedule_status", { id: id ?? "" });
+      return Array.isArray(r) ? (r as import("./types").ScheduleStatus[]) : [];
     },
-    async setRunRecovery(config: import('./types').RunRecoveryConfig): Promise<void> {
-      await request('ext/set_run_recovery', config)
+    async setRunRecovery(
+      config: import("./types").RunRecoveryConfig,
+    ): Promise<void> {
+      await request("ext/set_run_recovery", config);
     },
     async enterPlanMode(): Promise<void> {
-      await request('ext/set_plan_mode', { enabled: true, source: 'extension' })
+      await request("ext/set_plan_mode", {
+        enabled: true,
+        source: "extension",
+      });
     },
     async exitPlanMode(): Promise<void> {
-      await request('ext/set_plan_mode', { enabled: false, source: 'extension' })
+      await request("ext/set_plan_mode", {
+        enabled: false,
+        source: "extension",
+      });
     },
-    async getPlanMode(): Promise<import('./types').PlanModeState> {
-      const r = await request('ext/get_plan_mode', {})
-      return (r as import('./types').PlanModeState) ?? { enabled: false, planFilePath: '' }
+    async getPlanMode(): Promise<import("./types").PlanModeState> {
+      const r = await request("ext/get_plan_mode", {});
+      return (
+        (r as import("./types").PlanModeState) ?? {
+          enabled: false,
+          planFilePath: "",
+        }
+      );
     },
     async runOnce<T = void>(
       id: string,
       opts: RunOnceOpts,
       fn: () => Promise<T>,
     ): Promise<RunOnceResult<T>> {
-      const debounceMs = typeof opts?.debounceMs === 'number' ? opts.debounceMs : 60000
-      const check = await request('ext/run_once_check', { id, debounceMs })
+      const debounceMs =
+        typeof opts?.debounceMs === "number" ? opts.debounceMs : 60000;
+      const check = await request("ext/run_once_check", { id, debounceMs });
       if (!check?.execute) {
         return {
           executed: false,
-          reason: (check?.reason as RunOnceResult<T>['reason']) ?? 'debounced',
-        }
+          reason: (check?.reason as RunOnceResult<T>["reason"]) ?? "debounced",
+        };
       }
       try {
-        const result = await fn()
-        await request('ext/run_once_complete', { id, failed: false })
-        return { executed: true, result }
+        const result = await fn();
+        await request("ext/run_once_complete", { id, failed: false });
+        return { executed: true, result };
       } catch (err) {
         // Release the lock on failure so the next instance can retry.
-        await request('ext/run_once_complete', { id, failed: true }).catch(() => {})
-        throw err
+        await request("ext/run_once_complete", { id, failed: true }).catch(
+          () => {},
+        );
+        throw err;
       }
     },
     resources: buildResourcesAPI(),
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -906,20 +1149,24 @@ async function handleRequest(
 ): Promise<void> {
   try {
     // -- Init handshake -----------------------------------------------------
-    if (method === 'init') {
-      initConfig = params || emptyConfig
+    if (method === "init") {
+      initConfig = params || emptyConfig;
       // Drain any module-scope webhook / schedule registrations into
       // the init payload so the engine sees them in the same response.
       // After this call, subsequent registrations route through the
       // ext/register_* RPCs instead of the pending queue.
-      const pending = drainPendingInit()
+      const pending = drainPendingInit();
       // Drain resource declarations declared at module scope.
-      const resourcePending = drainPendingResourceInit()
-      const buildIdentity = readBuildIdentity()
+      const resourcePending = drainPendingResourceInit();
+      const buildIdentity = readBuildIdentity();
       if (buildIdentity.diagnostic) {
-        emitLog('warn', buildIdentity.diagnostic.message, buildIdentity.diagnostic.fields)
+        emitLog(
+          "warn",
+          buildIdentity.diagnostic.message,
+          buildIdentity.diagnostic.fields,
+        );
       }
-      toolRegistry.setInitialized()
+      toolRegistry.setInitialized();
       respond(id, {
         tools: Array.from(tools.values()).map((t) => ({
           name: t.name,
@@ -938,137 +1185,140 @@ async function handleRequest(
         resources: resourcePending.resources,
         hooks: Array.from(hooks.keys()).sort(),
         buildIdentity: buildIdentity.identity,
-        version: readExtensionVersion(initConfig?.extensionDir || ''),
-      })
-      return
+        version: readExtensionVersion(initConfig?.extensionDir || ""),
+      });
+      return;
     }
 
     // -- Async-trigger fires from the engine --------------------------------
-    if (method === 'engine/fire_async') {
-      const result = await dispatchFireAsync(params, buildContext)
-      respond(id, result)
-      return
+    if (method === "engine/fire_async") {
+      const result = await dispatchFireAsync(params, buildContext);
+      respond(id, result);
+      return;
     }
-    if (method === 'engine/resolve_token') {
-      const result = await dispatchResolveToken(params)
-      respond(id, result)
-      return
+    if (method === "engine/resolve_token") {
+      const result = await dispatchResolveToken(params);
+      respond(id, result);
+      return;
     }
-    if (method === 'engine/resolve_predicate') {
-      const result = await dispatchResolvePredicate(params)
-      respond(id, result)
-      return
+    if (method === "engine/resolve_predicate") {
+      const result = await dispatchResolvePredicate(params);
+      respond(id, result);
+      return;
     }
 
     // -- Resource query from the engine (when a client subscribes) ----------
-    if (method === 'resource/query') {
-      const items = await handleResourceQuery(params as any)
-      respond(id, items)
-      return
+    if (method === "resource/query") {
+      const items = await handleResourceQuery(params as any);
+      respond(id, items);
+      return;
     }
 
     // -- Resource transfer from the engine (a conversation is moving) -------
     if ((RESOURCE_TRANSFER_METHODS as readonly string[]).includes(method)) {
-      const outcome = await handleResourceTransfer(method as (typeof RESOURCE_TRANSFER_METHODS)[number], params as any)
-      if (outcome.handled) respond(id, outcome.result)
-      else respondError(id, -32601, outcome.message)
-      return
+      const outcome = await handleResourceTransfer(
+        method as (typeof RESOURCE_TRANSFER_METHODS)[number],
+        params as any,
+      );
+      if (outcome.handled) respond(id, outcome.result);
+      else respondError(id, -32601, outcome.message);
+      return;
     }
 
     // -- Hook calls ---------------------------------------------------------
-    if (method.startsWith('hook/')) {
-      const hookName = method.slice(5)
-      const handler = hooks.get(hookName)
+    if (method.startsWith("hook/")) {
+      const hookName = method.slice(5);
+      const handler = hooks.get(hookName);
       if (!handler) {
-        respond(id, null)
-        return
+        respond(id, null);
+        return;
       }
 
-      const ctxData = params?._ctx
-      const payload = { ...params }
-      delete payload._ctx
+      const ctxData = params?._ctx;
+      const payload = { ...params };
+      delete payload._ctx;
 
       // The engine wraps non-object payloads (bare strings) as
       // {_payload: value} because they can't be merged into the
       // params map. Unwrap so handlers receive the bare value.
-      const payloadKeys = Object.keys(payload)
+      const payloadKeys = Object.keys(payload);
       const unwrapped =
-        payloadKeys.length === 1 && payloadKeys[0] === '_payload'
+        payloadKeys.length === 1 && payloadKeys[0] === "_payload"
           ? payload._payload
           : payloadKeys.length > 0
             ? payload
-            : undefined
+            : undefined;
 
       // Use a local array to collect events. Save/restore the global so
       // reentrant hook calls (possible when handlers await) don't clobber.
-      const savedEvents = activeEvents
-      const localEvents: EngineEvent[] = []
-      activeEvents = localEvents
-      const ctx = buildContext(ctxData)
-      const identityTransaction = hookName === 'identity_changed'
-      if (identityTransaction) toolRegistry.begin()
-      let result: unknown
+      const savedEvents = activeEvents;
+      const localEvents: EngineEvent[] = [];
+      activeEvents = localEvents;
+      const ctx = buildContext(ctxData);
+      const identityTransaction = hookName === "identity_changed";
+      if (identityTransaction) toolRegistry.begin();
+      let result: unknown;
       try {
-        result = await handler(ctx, unwrapped)
-        if (identityTransaction) await toolRegistry.commit()
+        result = await handler(ctx, unwrapped);
+        if (identityTransaction) await toolRegistry.commit();
       } catch (err) {
-        if (identityTransaction) toolRegistry.rollback()
-        throw err
+        if (identityTransaction) toolRegistry.rollback();
+        throw err;
       } finally {
-        activeEvents = savedEvents
+        activeEvents = savedEvents;
       }
 
       // Wrap the handler return value with any accumulated events.
       if (localEvents.length > 0) {
-        if (result && typeof result === 'object') {
-          respond(id, { ...result, events: localEvents })
+        if (result && typeof result === "object") {
+          respond(id, { ...result, events: localEvents });
         } else if (result != null) {
-          respond(id, { value: result, events: localEvents })
+          respond(id, { value: result, events: localEvents });
         } else {
-          respond(id, { events: localEvents })
+          respond(id, { events: localEvents });
         }
       } else {
-        respond(id, result ?? null)
+        respond(id, result ?? null);
       }
-      return
+      return;
     }
 
     // -- Tool calls ---------------------------------------------------------
-    if (method.startsWith('tool/')) {
-      const toolName = method.slice(5)
-      const tool = tools.get(toolName)
+    if (method.startsWith("tool/")) {
+      const toolName = method.slice(5);
+      const tool = tools.get(toolName);
       if (!tool) {
-        respondError(id, -32601, `Tool not found: ${toolName}`)
-        return
+        respondError(id, -32601, `Tool not found: ${toolName}`);
+        return;
       }
-      const ctx = buildContext(params?._ctx)
-      const toolParams = { ...params }
-      delete toolParams._ctx
-      const result = await tool.execute(toolParams, ctx)
-      respond(id, result)
-      return
+      const ctx = buildContext(params?._ctx);
+      const toolParams = { ...params };
+      delete toolParams._ctx;
+      const result = await tool.execute(toolParams, ctx);
+      respond(id, result);
+      return;
     }
 
     // -- Command calls ------------------------------------------------------
-    if (method.startsWith('command/')) {
-      const cmdName = method.slice(8)
-      const cmd = commands.get(cmdName)
+    if (method.startsWith("command/")) {
+      const cmdName = method.slice(8);
+      const cmd = commands.get(cmdName);
       if (!cmd) {
-        respondError(id, -32601, `Command not found: ${cmdName}`)
-        return
+        respondError(id, -32601, `Command not found: ${cmdName}`);
+        return;
       }
-      const ctx = buildContext(params?._ctx)
-      await cmd.execute(params?.args || '', ctx)
-      respond(id, null)
-      return
+      const ctx = buildContext(params?._ctx);
+      await cmd.execute(params?.args || "", ctx);
+      respond(id, null);
+      return;
     }
 
-    respondError(id, -32601, `Method not found: ${method}`)
+    respondError(id, -32601, `Method not found: ${method}`);
   } catch (err: any) {
     respondError(id, -32603, err?.message || String(err), {
       stack: err?.stack,
       type: err?.constructor?.name,
-    })
+    });
   }
 }
 
@@ -1077,26 +1327,32 @@ async function handleRequest(
 // ---------------------------------------------------------------------------
 
 function startListening(): void {
-  const rl = createInterface({ input: process.stdin, terminal: false })
+  const rl = createInterface({ input: process.stdin, terminal: false });
 
-  rl.on('line', (line: string) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
+  rl.on("line", (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
     try {
-      const msg = JSON.parse(trimmed)
+      const msg = JSON.parse(trimmed);
       if (msg.id !== undefined && msg.method) {
         // Incoming request from engine (fire-and-forget; reentrancy guarded
         // by per-call activeEvents save/restore in handleRequest)
-        handleRequest(msg.id, msg.method, msg.params).catch(() => {})
+        handleRequest(msg.id, msg.method, msg.params).catch(() => {});
       } else if (msg.id !== undefined && !msg.method) {
         // Response to an outgoing request
-        const pending = pendingRequests.get(msg.id)
+        const pending = pendingRequests.get(msg.id);
         if (pending) {
-          pendingRequests.delete(msg.id)
+          pendingRequests.delete(msg.id);
           if (msg.error) {
-            pending.reject(new IonRpcError(msg.error.message || 'RPC error', msg.error.code, msg.error.data))
+            pending.reject(
+              new IonRpcError(
+                msg.error.message || "RPC error",
+                msg.error.code,
+                msg.error.data,
+              ),
+            );
           } else {
-            pending.resolve(msg.result)
+            pending.resolve(msg.result);
           }
         }
       } else if (msg.method && msg.id === undefined) {
@@ -1109,24 +1365,31 @@ function startListening(): void {
         // dispatch instance) and a `name` field (agent name, shared by
         // parallel same-name dispatches). Try dispatchId first for
         // parallel-safe routing, fall back to name, then global handler.
-        const params = msg.params
-        const dispatchId = params?.dispatchId
-        const agentName = params?.name
+        const params = msg.params;
+        const dispatchId = params?.dispatchId;
+        const agentName = params?.name;
         const handler =
-          (dispatchId && notificationHandlers.get(`${msg.method}:${dispatchId}`))
-          || (params?.callbackId && notificationHandlers.get(`${msg.method}:${params.callbackId}`))
-          || (agentName && notificationHandlers.get(`${msg.method}:${agentName}`))
-          || notificationHandlers.get(msg.method)
+          (dispatchId &&
+            notificationHandlers.get(`${msg.method}:${dispatchId}`)) ||
+          (params?.callbackId &&
+            notificationHandlers.get(`${msg.method}:${params.callbackId}`)) ||
+          (agentName &&
+            notificationHandlers.get(`${msg.method}:${agentName}`)) ||
+          notificationHandlers.get(msg.method);
         if (handler) {
-          const saved = activeEvents
-          activeEvents = null
-          try { handler(params) } finally { activeEvents = saved }
+          const saved = activeEvents;
+          activeEvents = null;
+          try {
+            handler(params);
+          } finally {
+            activeEvents = saved;
+          }
         }
       }
     } catch {
       // Ignore malformed input
     }
-  })
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,39 +1407,45 @@ export function createIon(): IonSDK {
   // transitive node_modules) before they reach raw stdout and corrupt the
   // JSON-RPC frame stream. The redirect routes them through the same
   // `log` notification the native API uses.
-  installConsoleRedirect()
+  installConsoleRedirect();
 
   // Wire the async-trigger runtime's RPC bridge so ion.webhooks /
   // ion.schedule can issue ext/register_* and ext/deregister_* calls
   // for dynamic registrations after init.
-  registerRpcBridge(request)
+  registerRpcBridge(request);
   // Wire the resource runtime's RPC bridge so ion.resources.declare
   // and ion.resources.publish route correctly after init.
-  registerResourceRpcBridge(request)
+  registerResourceRpcBridge(request);
 
-  process.nextTick(() => startListening())
+  process.nextTick(() => startListening());
 
   return {
-    on(hook: string, handler: (ctx: IonContext, payload: unknown) => unknown | Promise<unknown>) {
-      hooks.set(hook, handler)
+    on(
+      hook: string,
+      handler: (
+        ctx: IonContext,
+        payload: unknown,
+      ) => unknown | Promise<unknown>,
+    ) {
+      hooks.set(hook, handler);
     },
     registerTool(def) {
-      toolRegistry.register(def)
+      toolRegistry.register(def);
     },
     deregisterTool(name) {
-      return toolRegistry.deregister(name)
+      return toolRegistry.deregister(name);
     },
     syncTools() {
-      return toolRegistry.sync()
+      return toolRegistry.sync();
     },
     registerCommand(name, def) {
-      commands.set(name, def)
+      commands.set(name, def);
     },
     registerAgentTools(opts?) {
-      doRegisterAgentTools(tools, opts)
+      doRegisterAgentTools(tools, opts);
     },
     webhooks: webhooksApi,
     schedule: scheduleApi,
     resources: buildResourcesAPI(),
-  }
+  };
 }

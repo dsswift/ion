@@ -34,6 +34,7 @@ import { Sash } from './git/Sash'
 import { rDebug, rTrace } from '../rendererLogger'
 import { pathSegments } from '@ion/shared/paths'
 import { host } from '../host/host-instance'
+import { useActiveDeveloperSurfaces } from '../studio/connection/developer-surfaces'
 
 /** Panel-header icon button (close, refresh, tree/list toggle). */
 function PanelIconButton({
@@ -215,7 +216,15 @@ export function GitPanel({
     { id: 'graph', expanded: graphOpen },
   ]), [changesOpen, graphOpen])
 
-  const hiddenPanes = useMemo<PaneId[]>(() => (inBench ? ['changes', 'graph'] : []), [inBench])
+  // The changes list and the commit graph are separate developer surfaces:
+  // either can be off for this conversation while the other stays.
+  const developerSurfaces = useActiveDeveloperSurfaces()
+  const showChanges = !inBench && developerSurfaces.sourceControl
+  const showGraph = !inBench && developerSurfaces.commitGraph
+  const hiddenPanes = useMemo<PaneId[]>(
+    () => [...(showChanges ? [] : ['changes' as const]), ...(showGraph ? [] : ['graph' as const])],
+    [showChanges, showGraph],
+  )
 
   // The panel keeps its full height in every state. Space freed by a collapsed
   // pane is redistributed to the expanded ones (distributeEmptySpace), never
@@ -350,7 +359,7 @@ export function GitPanel({
       {/* Conflict banner: any directory of this project mid-operation with
           conflicts. Lives above the bench banner because a conflict blocks
           everything else the panel offers. */}
-      <GitConflictBanner repoPath={repoRootPath} />
+      {developerSurfaces.sourceControl && <GitConflictBanner repoPath={repoRootPath} />}
 
       {/* Bench banner: names WHICH bench, so the operator can tell without
           opening Integration. Only rendered in a bench. */}
@@ -380,7 +389,7 @@ export function GitPanel({
           never hold uncommitted changes, because the next assembly discards
           them, so offering the zone would invite exactly the work that gets
           lost. */}
-      {!inBench && (
+      {showChanges && (
       <div className="flex flex-col" style={{
         height: totalOf('changes'),
         flexShrink: 0,
@@ -449,7 +458,7 @@ export function GitPanel({
           Absent in a bench: the history there is synthetic — one merge commit
           per member, recreated from scratch on every assembly — so reading it
           tells the operator nothing about real history. */}
-      {!inBench && (
+      {showGraph && (
       <div className="flex flex-col" style={{
         height: totalOf('graph'),
         flexShrink: 0,

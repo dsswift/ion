@@ -140,8 +140,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 		inTextBlock     bool
 		inThinkingBlock bool
 		currentToolID   string
-		totalInputToks  int
-		totalOutputToks int
+		usage           types.LlmUsage
 		sawToolCall     bool
 	)
 
@@ -281,9 +280,12 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 
 		case "response.completed", "response.incomplete":
 			if ev.Response != nil && ev.Response.Usage != nil {
-				totalInputToks = ev.Response.Usage.InputTokens
-				totalOutputToks = ev.Response.Usage.OutputTokens
+				usage = ev.Response.Usage.llmUsage()
 			}
+			utils.LogWithFields(utils.LevelDebug, "OpenAIResponses", "stream usage", map[string]any{
+				"provider": p.id, "model": opts.Model, "reported": ev.Response != nil && ev.Response.Usage != nil,
+				"input_tokens": usage.InputTokens, "cache_read_input_tokens": usage.CacheReadInputTokens, "output_tokens": usage.OutputTokens,
+			})
 			if err := closeOpenBlock(); err != nil {
 				return err
 			}
@@ -303,10 +305,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 					Type:       "message_delta",
 					StopReason: &stopReason,
 				},
-				DeltaUsage: &types.LlmUsage{
-					InputTokens:  totalInputToks,
-					OutputTokens: totalOutputToks,
-				},
+				DeltaUsage: &usage,
 			}); err != nil {
 				return err
 			}
@@ -509,8 +508,22 @@ type responsesResponseState struct {
 }
 
 type responsesUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	InputTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"input_tokens_details,omitempty"`
+}
+
+// llmUsage splits the Responses API usage into the engine's raw components.
+// input_tokens counts the whole prompt, cached part included, so the cached
+// part is moved out into CacheReadInputTokens.
+func (u *responsesUsage) llmUsage() types.LlmUsage {
+	cached := 0
+	if u.InputTokensDetails != nil {
+		cached = u.InputTokensDetails.CachedTokens
+	}
+	return splitCachedPrompt(u.InputTokens, cached, u.OutputTokens)
 }
 
 type responsesError struct {

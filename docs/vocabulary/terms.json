@@ -1238,6 +1238,31 @@
       "notes": "Studio is the Desktop's application window. The splash and the worktree-overlap visualizer are auxiliary windows with no store."
     },
     {
+      "id": "developer-surface",
+      "term": "Developer Surface",
+      "definition": "One of the source-control features an organization can switch off: source control, the commit graph, repository status, or worktrees. A server's policy says which it offers, binding every connection; a desktop's device policy narrows that desktop alone. A disabled surface is refused by the server and has no controls on any client.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function computeDeveloperSurfaces",
+          "path": "server/src/protocol/developer-surfaces.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "developerSurfacesFor(environmentId: string): DeveloperSurfaceState",
+          "path": "desktop/src/renderer/studio/connection/policy-store.ts"
+        }
+      ]
+    },
+    {
       "id": "device-metrics",
       "term": "Device Metrics",
       "definition": "What Ion Studio itself uses on the machine it runs on: CPU, memory, and GPU time of each of its own Electron processes (main, GPU helper, renderer, utility helpers), and the idle-repaint warning when the GPU helper or a renderer stays busy while nobody is looking at Studio. They describe the device, not an Environment, so they are read and kept on the device and never sent to a server or another client.",
@@ -2317,8 +2342,8 @@
           "platform": "sdk",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "on(hook: string",
-          "path": "engine/extensions/sdk/ion-sdk/runtime.ts"
+          "symbol": "on(hook: string, handler: HookHandler<any>): void;",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
         },
         {
           "platform": "engine",
@@ -2601,6 +2626,31 @@
           "language": "typescript",
           "symbol": "DiscoverySection",
           "path": "desktop/src/renderer/components/settings/pages/access/DiscoverySection.tsx"
+        }
+      ]
+    },
+    {
+      "id": "link-integrity-scan",
+      "term": "Link Integrity Scan",
+      "definition": "A read-only pass over a session's working directory that resolves every wiki link in every document and reports the ones that name no single file: a missing target, or a bare name more than one file carries. It writes nothing and runs only when asked (scan_wiki_links, ctx.scanWikiLinks). It finds the links broken by renames the engine never observed, which Wiki-Link Propagation cannot repair.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func Scan",
+          "path": "engine/internal/wikilinks/scan.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WikiLinkIntegrityReport",
+          "path": "engine/internal/types/wiki_links.go"
         }
       ]
     },
@@ -3679,7 +3729,7 @@
           "platform": "sdk",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>",
+          "symbol": "protectedOperation(",
           "path": "engine/extensions/sdk/ion-sdk/types.ts"
         }
       ]
@@ -5499,6 +5549,31 @@
       ]
     },
     {
+      "id": "wiki-link-propagation",
+      "term": "Wiki-Link Propagation",
+      "definition": "Rewriting wiki links ([[target]], [[target|alias]]) after a Workspace Rename so every link keeps naming the file it named before. One pass handles a batch of renames, changes only link targets (alias, section, and link style are kept), is confined to the watched working directory, and produces one report of every file and link it changed (engine_wiki_links_propagated, the wiki_links_propagated hook).",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func Propagate",
+          "path": "engine/internal/wikilinks/propagate.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WikiLinkPropagationReport",
+          "path": "engine/internal/types/wiki_links.go"
+        }
+      ]
+    },
+    {
       "id": "workspace",
       "term": "Workspace",
       "definition": "The filesystem root that scopes tool execution and file access for a conversation. The engine enforces containment against it.",
@@ -5530,6 +5605,31 @@
           "language": "typescript",
           "symbol": "WorkspaceStatusIndicator",
           "path": "desktop/src/renderer/components/WorkspaceStatusIndicator.tsx"
+        }
+      ]
+    },
+    {
+      "id": "workspace-rename",
+      "term": "Workspace Rename",
+      "definition": "One file moving from one path to another inside a watched working directory, detected by the engine from what changed on disk: a removal and a creation that describe the same file (same file, size, and modification time). Whatever performed the move is irrelevant. Reported as a single event carrying both paths (the workspace_file_renamed hook), in addition to the delete and create the watcher always reports. Detected only for documents, the extensions named by the wikiLinks config.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type renameTracker",
+          "path": "engine/internal/watcher/rename.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type WorkspaceFileRenamedInfo",
+          "path": "engine/internal/extension/sdk_hook_types_workspace.go"
         }
       ]
     },

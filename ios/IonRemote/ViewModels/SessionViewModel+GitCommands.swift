@@ -22,6 +22,7 @@ extension SessionViewModel {
     /// already have cached data. Called when the "Show Git Info" toggle is
     /// enabled so rows populate without waiting for the next watcher event.
     func requestMissingGitChanges() {
+        guard developerSurfaces.repositoryFeedOffered else { return }
         let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
         for dir in dirs where gitChanges[dir] == nil {
             requestGitChanges(directory: dir)
@@ -35,6 +36,7 @@ extension SessionViewModel {
     /// is best-effort and can silently stop delivering events; this guarantees
     /// the iOS tab list reflects current state.
     func requestAllGitChanges() {
+        guard developerSurfaces.repositoryFeedOffered else { return }
         let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
         for dir in dirs {
             requestGitChanges(directory: dir)

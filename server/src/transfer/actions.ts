@@ -24,6 +24,8 @@
  * (before its first `await`) so a chunk arriving on the very next frame
  * cannot race the registration (see `inbound-transfer.ts`'s doc comment).
  */
+import { deriveEnvironmentDeveloperSurfaces } from '@ion/shared/developer-surfaces'
+import { enterprisePolicyCache } from '../enterprise-policy-state'
 import { mergeResourceState, resourceStateFor } from '../engine/event-wiring-resource-state'
 import { forgetMovedCharts, seedImportedCharts } from './charts'
 import { defaultResourceWire, exportExtensionResources, forgetExtensionResources, importExtensionResources } from './extension-resources'
@@ -223,6 +225,7 @@ async function handleTransferImport(conn: Connection, args: unknown[]): Promise<
       paths,
       callerSubject: conn.principal?.subject ?? 'unknown',
       checkoutWorktreeFromBundle,
+      worktreesOffered: deriveEnvironmentDeveloperSurfaces(enterprisePolicyCache.policy).worktrees,
       // The producers load in the tab's own session, so the tab joins the
       // live store first. On a refusal the import is undone and the tab
       // leaves the store again below.

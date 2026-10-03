@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -125,7 +124,7 @@ var (
 
 // countingWriter wraps an io.Writer and accumulates the number of bytes
 // written into bytesWritten so the rotation check can run cheaply on the hot
-// path without re-stat-ing the file. Not safe for concurrent use on its own;
+// path between follow checks, which re-measure the file (logger_file.go). Not safe for concurrent use on its own;
 // all writes happen under logMu.
 type countingWriter struct {
 	w io.Writer
@@ -346,15 +345,12 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 		return
 	}
 
-	// Rotate if over the size limit, then re-init so the next write goes to the
-	// fresh file. rotateLocked sets logger=nil; initLogger reopens the file.
-	if !disableRotation && bytesWritten >= maxLogSize {
-		rotateLocked()
-		initLogger()
-		if logger == nil {
-			logMu.Unlock()
-			return
-		}
+	// Follow a file another process rotated away, and rotate when the live
+	// file is over the cap. Either may reopen the logger.
+	maintainLogFileLocked(time.Now())
+	if logger == nil {
+		logMu.Unlock()
+		return
 	}
 
 	if withheld > 0 {
@@ -562,15 +558,17 @@ func initLogger() {
 
 	if outputMode == "file" || outputMode == "both" || outputMode == "" {
 		path := filepath.Join(logDir, "engine.jsonl")
-		// Seed the byte counter from the existing file so rotation accounts
-		// for lines written by a previous process.
-		if info, err := os.Stat(path); err == nil {
-			bytesWritten = info.Size()
-		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		f, err := openLogFile(path)
 		if err != nil {
 			return
 		}
+		// Seed the byte counter from the file itself, so rotation accounts
+		// for lines every other process has written to it.
+		bytesWritten = 0
+		if info, err := f.Stat(); err == nil {
+			bytesWritten = info.Size()
+		}
+		logFollowCheckedAt = time.Now()
 		logFile = f
 		writers = append(writers, &countingWriter{w: f})
 	}
@@ -595,35 +593,6 @@ func initLogger() {
 		ReplaceAttr: schemaReplaceAttr,
 	})
 	logger = slog.New(h)
-}
-
-// rotateLocked implements rename-rotate: the live engine.jsonl is renamed to
-// engine.jsonl.1, older generations are shifted (.1→.2, .2→.3, up to
-// maxLogFiles), and the logger is reset so the next initLogger() call opens a
-// fresh engine.jsonl. Files beyond maxLogFiles are deleted before shifting so
-// no OS-level rename error can occur. Must be called with logMu held.
-func rotateLocked() {
-	if logFile == nil || logDir == "" {
-		return
-	}
-	logPath := filepath.Join(logDir, "engine.jsonl")
-
-	// Shift old generations: .{maxLogFiles-1} → .{maxLogFiles}, …, .1 → .2.
-	// Remove the oldest slot first so the rename never fails on a pre-existing file.
-	for i := maxLogFiles; i >= 2; i-- {
-		older := fmt.Sprintf("%s.%d", logPath, i)
-		newer := fmt.Sprintf("%s.%d", logPath, i-1)
-		os.Remove(older)        //nolint:errcheck // best-effort cleanup
-		os.Rename(newer, older) //nolint:errcheck // best-effort rename
-	}
-
-	// Close the current handle, rename the live file to .1, and let the next
-	// initLogger() call open a fresh engine.jsonl.
-	logFile.Close() //nolint:errcheck // resource close
-	logFile = nil
-	logger = nil
-	os.Rename(logPath, logPath+".1") //nolint:errcheck // best-effort rename
-	bytesWritten = 0
 }
 
 // ErrStr renders an error as a string for a structured log field, nil-safe.

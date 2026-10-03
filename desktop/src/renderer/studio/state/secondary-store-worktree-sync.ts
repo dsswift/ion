@@ -19,6 +19,8 @@ import type { StudioWorktreeSnapshot, StudioGitConflictAlert, StudioWorktreePipe
 import type { WorktreeInventoryEntry, IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { rDebug, rWarn } from '../../rendererLogger'
+import { projectWorktreeSnapshotForSurfaces } from '@ion/shared/developer-surfaces'
+import { policyStore } from '../connection/policy-store'
 
 /** Last applied snapshot per Environment; the store fields below are recomputed from all of them on every change. */
 const snapshotsByEnvironment = new Map<string, StudioWorktreeSnapshot>()
@@ -88,7 +90,10 @@ function publishMerged(): void {
   const gitConflictAlerts = new Map<string, StudioGitConflictAlert>()
   const workspaceOperationLedger = new Map<string, StudioWorkspaceOperation>()
   let worktreePipeline: StudioWorktreePipeline | null = null
-  for (const [environmentId, snapshot] of ordered) {
+  for (const [environmentId, stored] of ordered) {
+    // Cut to the developer surfaces on offer for this Environment here, at
+    // merge time, so the stored snapshot survives a policy change both ways.
+    const snapshot = projectWorktreeSnapshotForSurfaces(stored, policyStore.developerSurfacesFor(environmentId))
     mergeRecords(worktreeInventory, snapshot.inventory, environmentId, 'inventory')
     mergeRecords(benchWorkspaces, snapshot.workspaces, environmentId, 'workspaces')
     mergePairs(benchSourceTips, snapshot.benchSourceTips)
@@ -105,6 +110,16 @@ function publishMerged(): void {
     gitConflictAlerts,
     worktreePipeline: worktreePipeline as never,
     workspaceOperationLedger,
+  })
+}
+
+/**
+ * Recompute the merged read model when a policy changes, since that alters
+ * what each stored snapshot contributes. Called once at Studio boot.
+ */
+export function republishWorktreesOnPolicyChange(): () => void {
+  return policyStore.subscribe(() => {
+    if (snapshotsByEnvironment.size > 0) publishMerged()
   })
 }
 

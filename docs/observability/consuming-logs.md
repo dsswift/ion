@@ -152,7 +152,7 @@ All surfaces share one schema and one JSONL format.
 
 | Surface | File | Rotation |
 |---|---|---|
-| Engine | `~/.ion/engine.jsonl` | Rename rotation, config-driven size cap; `.1` is the newest archive |
+| Engine | `~/.ion/engine.jsonl` | Rename rotation, config-driven size cap; `.1` is the newest archive. The daemon and every short-lived `ion` process write this one file; any of them may rotate it, and the others move to the new live file within a second |
 | Extensions | `~/.ion/engine.jsonl` (`component=extension`, `tag=<extension-name>`) | Same file as engine |
 | Server | `<ION_DATA_DIR>/server.jsonl` (`component=server`) | Rename rotation at 20 MB; `.1` is the newest archive |
 | Browser Studio client | `<ION_DATA_DIR>/server.jsonl` (`component=web`, forwarded through the server's `POST /log`) | Same file as server |

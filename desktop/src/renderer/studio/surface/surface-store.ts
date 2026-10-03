@@ -50,6 +50,7 @@ import {
   normalizeTabs,
 } from "@ion/shared/studio-surface-ordering";
 import { rDebug, rInfo } from "../../rendererLogger";
+import { surfaceTabOfferedNow } from "./surface-tab-offer";
 import { createRuntimePanelActions } from "./surface-runtime-panel-actions";
 import { scratchTabsForProject } from "./surface-scratch";
 import { createScratchSurfaceActions } from "./surface-scratch-actions";
@@ -329,6 +330,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   ...createSurfacePaneActions(set, get, updateCurrent),
 
   openSingleton: (id) => {
+    if (!surfaceTabOfferedNow(id)) {
+      rInfo("studio.surface", "surface tab not opened: its developer surface is off for this conversation", { surface_tab: id });
+      return;
+    }
     const state = get();
     if (state.pinnedTabs.includes(id as PinnableSingletonId)) {
       updateCurrent(set, get, (current) => ({ ...current, activeTabId: id }));

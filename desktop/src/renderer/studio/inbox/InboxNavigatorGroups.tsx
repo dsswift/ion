@@ -504,6 +504,7 @@ export function InboxNavigatorGroups({
       <InboxProjectMenu
         key="inbox-project-menu"
         anchor={projectMenu.anchor}
+        environmentId={projectMenu.environmentId}
         onNewConversation={() =>
           openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, false)
         }

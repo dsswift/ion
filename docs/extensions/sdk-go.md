@@ -375,7 +375,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
-| Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
+| Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `ScanWikiLinks`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
 | Conversation records | `Conversations().Read`                                                                                                                |
@@ -453,6 +453,8 @@ for {
 ```
 
 On a live dispatch, keep the cursor after `HasMore` turns false and read again later to get only new entries. `Limit` and `MaxBytes` ask for a page size. The engine lowers either to its maximum and reports what it used in `Limits`. A block cut to fit is marked `Truncated`. The bounds live in the `dispatchConversationRead` block in [`engine.json`](../configuration/engine-json.md#dispatchconversationread).
+
+`ScanWikiLinks` runs the read-only link integrity scan over the session's working directory and returns a `WikiLinkIntegrityReport`: every wiki link that names no single file, with `Reason` `ion.WikiLinkMissing` or `ion.WikiLinkAmbiguous`. It returns an error when the engine's `wikiLinks` config turns the scan off. Subscribe to `ion.HookWorkspaceFileRenamed` and `ion.HookWikiLinksPropagated` to observe renames and the link rewrites that follow them. See [Wiki-Link Maintenance](../architecture/wiki-links.md).
 
 Steer and recall act only on dispatches the caller owns: the root context owns every dispatch in its session, a dispatched agent only its descendants. `SteerDispatch` returns outcome `unauthorized` otherwise, and `completed` with `Terminal` set when the target already finished. `RecallDispatch` returns an `*RPCError` for an unauthorized target, as before; `RecallDispatchWithOutcome` returns `recalled`, `completed`, `unauthorized`, or `not_found` as a result. The engine bounds retention with the `dispatchHistory` block in `engine.json`.
 

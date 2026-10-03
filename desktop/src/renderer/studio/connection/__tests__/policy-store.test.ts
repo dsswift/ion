@@ -101,4 +101,41 @@ describe('policyStore', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
   })
+
+  describe('developerSurfacesFor', () => {
+    const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }
+
+    it('has every surface on for an environment that has sent nothing', () => {
+      expect(policyStore.developerSurfacesFor('env-b')).toEqual(ALL_ON)
+    })
+
+    it('follows what each server offers, per environment', () => {
+      policyStore.setDeveloperSurfaces('env-finance', { ...ALL_ON, sourceControl: false, worktrees: false })
+      expect(policyStore.developerSurfacesFor('env-finance')).toEqual({ ...ALL_ON, sourceControl: false, worktrees: false })
+      expect(policyStore.developerSurfacesFor(LOCAL_ENVIRONMENT_ID)).toEqual(ALL_ON)
+    })
+
+    it('narrows every environment by this desktop\'s own device policy', () => {
+      policyStore.set(LOCAL_ENVIRONMENT_ID, policy({ customFields: { 'ion-desktop': { developerSurfaces: { commitGraph: 'disabled' } } } }))
+      policyStore.setDeveloperSurfaces('env-b', { ...ALL_ON, worktrees: false })
+      expect(policyStore.developerSurfacesFor('env-b')).toEqual({ ...ALL_ON, commitGraph: false, worktrees: false })
+    })
+
+    it('ignores a remote server\'s device policy', () => {
+      policyStore.set('env-work', policy({ customFields: { 'ion-desktop': { developerSurfaces: { sourceControl: 'disabled' } } } }))
+      policyStore.setDeveloperSurfaces('env-work', ALL_ON)
+      expect(policyStore.developerSurfacesFor('env-work')).toEqual(ALL_ON)
+      expect(policyStore.developerSurfacesFor(LOCAL_ENVIRONMENT_ID)).toEqual(ALL_ON)
+    })
+
+    it('returns a stable snapshot until a policy changes, and forgets a cleared environment', () => {
+      policyStore.setDeveloperSurfaces('env-b', { ...ALL_ON, worktrees: false })
+      const first = policyStore.developerSurfacesFor('env-b')
+      expect(policyStore.developerSurfacesFor('env-b')).toBe(first)
+      const before = policyStore.revision()
+      policyStore.clear('env-b')
+      expect(policyStore.revision()).toBeGreaterThan(before)
+      expect(policyStore.developerSurfacesFor('env-b')).toEqual(ALL_ON)
+    })
+  })
 })

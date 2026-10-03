@@ -36,6 +36,8 @@
  * bookkeeping. Keeping it out of the menu component means the row's JSX reads
  * as three plain values.
  */
+import { useEnvironmentDeveloperSurfaces } from '../studio/connection/developer-surfaces'
+import { tabEnvironmentId } from '../studio/connection/tab-environment'
 import { useState, useEffect } from 'react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { evaluateSessionBusyGuard } from '@ion/server/store/slices/session-busy-guard'
@@ -68,9 +70,13 @@ export function useConvertToWorktreeGate(tab: TabState): ConvertToWorktreeGate {
   // at the moment the menu opened.
   const conversationPanes = useSessionStore((s) => s.conversationPanes)
 
+  // Absent, with no repository probe, where the conversation's machine does
+  // not offer worktrees.
+  const worktreesOffered = useEnvironmentDeveloperSurfaces(tabEnvironmentId(tab)).worktrees
+
   useEffect(() => {
     let cancelled = false
-    if (!tab.workingDirectory || tab.worktree) {
+    if (!tab.workingDirectory || tab.worktree || !worktreesOffered) {
       setIsGitRepo(false)
       return () => { cancelled = true }
     }
@@ -108,7 +114,7 @@ export function useConvertToWorktreeGate(tab: TabState): ConvertToWorktreeGate {
     })
 
     return () => { cancelled = true }
-  }, [tab.id, tab.workingDirectory, tab.worktree])
+  }, [tab.id, tab.workingDirectory, tab.worktree, worktreesOffered])
 
   // `tab.status` covers the orchestrator as the Inbox sees it; the guard
   // covers per-instance state, dispatched children, and background shells that
@@ -129,7 +135,7 @@ export function useConvertToWorktreeGate(tab: TabState): ConvertToWorktreeGate {
         : 'Convert to worktree'
 
   return {
-    show: !tab.worktree && isGitRepo,
+    show: worktreesOffered && !tab.worktree && isGitRepo,
     disabled: busy || uncommitted !== false,
     label,
   }

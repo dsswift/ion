@@ -683,9 +683,32 @@ func (g *ExtensionGroup) FireFileChanged(ctx *Context, info FileChangedInfo) {
 // FireWorkspaceFileChanged fans the workspace_file_changed hook out to every
 // host in the group. Called by the session-scoped fsnotify watcher on every
 // non-ignored create / modify / delete event under the working directory.
+//
+// A host that declared no handler for the hook is skipped. Filesystem events
+// are high-volume, and a subprocess round trip per event per extension would
+// be paid even by extensions that never asked for them.
 func (g *ExtensionGroup) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFileChangedInfo) {
 	for _, h := range g.hosts {
+		if !h.DeclaresHook(HookWorkspaceFileChanged) {
+			continue
+		}
 		h.SDK().FireWorkspaceFileChanged(ctx, info)
+	}
+}
+
+// FireWorkspaceFileRenamed fans the workspace_file_renamed hook out to every
+// host in the group.
+func (g *ExtensionGroup) FireWorkspaceFileRenamed(ctx *Context, info WorkspaceFileRenamedInfo) {
+	for _, h := range g.hosts {
+		h.SDK().FireWorkspaceFileRenamed(ctx, info)
+	}
+}
+
+// FireWikiLinksPropagated fans the wiki_links_propagated hook out to every
+// host in the group.
+func (g *ExtensionGroup) FireWikiLinksPropagated(ctx *Context, report WikiLinkPropagationReport) {
+	for _, h := range g.hosts {
+		h.SDK().FireWikiLinksPropagated(ctx, report)
 	}
 }
 

@@ -13,7 +13,7 @@
  * revision-guarded per Environment, so the overlap is a no-op.
  */
 import { hydrateConversationTerminals } from './secondary-store'
-import { hydrateWorktreeFromSync } from './secondary-store-worktree-sync'
+import { hydrateWorktreeFromSync, republishWorktreesOnPolicyChange } from './secondary-store-worktree-sync'
 import type { StudioWorktreeSnapshot } from '@ion/shared/types-studio'
 import { host } from '../../host/host-instance'
 
@@ -30,11 +30,13 @@ export function initConversationTerminalSyncFromWire(): () => void {
 
 /** Hydrate the worktree read model of every Environment from its frames. */
 export function initWorktreeSyncFromWire(): () => void {
-  return host.onFrame((environmentId, frame) => {
+  const offPolicy = republishWorktreesOnPolicyChange()
+  const offFrame = host.onFrame((environmentId, frame) => {
     if (frame.type === 'studio_welcome' || frame.type === 'studio_snapshot') {
       hydrateWorktreeFromSync(frame.snapshot.worktrees, environmentId)
     } else if (frame.type === 'studio_event' && frame.channel === 'studio:worktree-sync') {
       hydrateWorktreeFromSync(frame.payload as StudioWorktreeSnapshot, environmentId)
     }
   })
+  return () => { offPolicy(); offFrame() }
 }

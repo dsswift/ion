@@ -114,7 +114,7 @@ func startSessionWithPrincipal(t *testing.T, conn net.Conn, key, requestID, subj
 		"cmd": "start_session",
 		"key": key,
 		"config": map[string]interface{}{
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 		},
 		"principal": map[string]interface{}{
 			"subject":  subject,

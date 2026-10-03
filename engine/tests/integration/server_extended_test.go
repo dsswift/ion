@@ -92,7 +92,7 @@ func TestServerSessionStartAndPrompt(t *testing.T) {
 	sendCmd(t, conn, map[string]interface{}{
 		"cmd":       "start_session",
 		"key":       "prompt-via-socket",
-		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": "/tmp", "model": "mock-model"},
+		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": testWorkDir(), "model": "mock-model"},
 		"requestId": "req-s1",
 	})
 	scanForResult(t, conn, scanner, "req-s1", 2*time.Second)
@@ -136,7 +136,7 @@ func TestMultiClientBroadcastExtended(t *testing.T) {
 	sendCmd(t, conn1, map[string]interface{}{
 		"cmd":       "start_session",
 		"key":       "mc-ext-test",
-		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": "/tmp", "model": "mock-model"},
+		"config":    map[string]interface{}{"profileId": "default", "extensionDir": "/tmp", "workingDirectory": testWorkDir(), "model": "mock-model"},
 		"requestId": "req-mc-1",
 	})
 

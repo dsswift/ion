@@ -6,9 +6,12 @@ import { ContextMenuItem } from '../../components/ContextMenuItem'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useOutsideDismiss } from '../../hooks/useOutsideDismiss'
 import { usePopoverLayer } from '../../components/PopoverLayer'
+import { useEnvironmentDeveloperSurfaces } from '../connection/developer-surfaces'
 
 interface InboxProjectMenuProps {
   anchor: { x: number; y: number }
+  /** The machine the project's checkout is on. */
+  environmentId: string
   onNewConversation(): void
   onNewWorktreeConversation(): void
   onClose(): void
@@ -17,6 +20,7 @@ interface InboxProjectMenuProps {
 /** Context actions for a project Inbox header. */
 export function InboxProjectMenu({
   anchor,
+  environmentId,
   onNewConversation,
   onNewWorktreeConversation,
   onClose,
@@ -26,7 +30,8 @@ export function InboxProjectMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const dismiss = useCallback(() => onClose(), [onClose])
   useOutsideDismiss([menuRef], dismiss)
-  const pos = useAnchoredPopover(anchor)
+  const worktreesOffered = useEnvironmentDeveloperSurfaces(environmentId).worktrees
+  const pos = useAnchoredPopover(anchor, { deps: [worktreesOffered] })
   const menu = (
     <div
       ref={(node) => {
@@ -54,10 +59,12 @@ export function InboxProjectMenu({
         <ChatCircle size={14} />
         <span>New conversation</span>
       </ContextMenuItem>
-      <ContextMenuItem onClick={() => { onNewWorktreeConversation(); onClose() }}>
-        <GitBranch size={14} />
-        <span>New conversation in worktree</span>
-      </ContextMenuItem>
+      {worktreesOffered && (
+        <ContextMenuItem onClick={() => { onNewWorktreeConversation(); onClose() }}>
+          <GitBranch size={14} />
+          <span>New conversation in worktree</span>
+        </ContextMenuItem>
+      )}
     </div>
   )
   return layer ? createPortal(menu, layer) : menu

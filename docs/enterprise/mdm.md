@@ -220,6 +220,7 @@ Use it for nested fields that have no top-level value name of their own:
 |---------|--------------------|
 | Require operator sign-in | `{"auth":{"requireOperatorIdentity":true}}` |
 | Disable the desktop auto-updater | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
+| Switch off source-control surfaces for everyone who connects to this server | `{"customFields":{"ion-server":{"developerSurfaces":{"sourceControl":"disabled","commitGraph":"disabled","worktrees":"disabled"}}}}` |
 | Lock the desktop theme | `{"customFields":{"ion-desktop":{"themePolicy":{"themeId":"<theme id>","locked":true}}}}` |
 | Seal one setting | `{"customFields":{"ion-server":{"settingsPolicy":{"keys":{"gitOpsMode":{"class":"sealed","value":"worktree"}}}}}}` |
 

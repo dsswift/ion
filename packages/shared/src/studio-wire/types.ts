@@ -9,6 +9,7 @@
  * part of this union, which describes only the JSON side.
  */
 import type { EnterprisePolicy } from '../types-enterprise'
+import type { DeveloperSurfaceState } from '../developer-surfaces'
 import type { PersistedTab } from '../types-persistence'
 import type { AutomationDefinition } from '../types-automation'
 import type { StudioWorktreeSnapshot } from '../types-studio'
@@ -247,6 +248,16 @@ export type StudioFrame =
        */
       settingsHiddenGroups: string[]
       /**
+       * The developer surfaces this connection may reach on this server.
+       * What the server offers binds every connection; the local connection
+       * is narrowed further by its own device policy. A client shows no
+       * control for a surface that is off here. A server that predates
+       * developer surfaces sends none, and offers them all.
+       */
+      developerSurfaces?: DeveloperSurfaceState
+      /** Hash of `enterprisePolicy`, so a client can tell a changed policy without comparing values. */
+      policyHash?: string
+      /**
        * Whether this connection runs on the server's own host (it arrived on
        * the local socket). A sign-in that finishes through a loopback
        * callback on the host can only finish for a client where this is
@@ -324,6 +335,7 @@ export type StudioFrame =
       type: 'studio_environment_policy'
       enterprisePolicy: EnterprisePolicySnapshot | null
       settingsHiddenGroups: string[]
+      developerSurfaces?: DeveloperSurfaceState
       policyHash: string
     }
   | {

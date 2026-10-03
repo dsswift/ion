@@ -143,7 +143,9 @@ When the engine clamps an entry it stamps `_truncated: true` and `_truncatedKeys
 
 These are **not** redundant surfaces for one signal, which the typed-event rule would otherwise forbid. The event answers "a clamp happened in this session and here is how much was lost". The in-band marker answers "*this* value on *this* agent in *this* snapshot is not what the producer wrote" — which is what a consumer needs to render an ellipsis or a tooltip, and which cannot be reliably reconstructed by correlating an out-of-band event back to one field of one agent inside one snapshot.
 
-The advisory is rate-limited per `(agent, scope)`; every clamp is logged at WARN regardless, so log-based diagnosis stays complete.
+The advisory is rate-limited per `(agent, scope)`.
+
+The log follows its own rule. A clamp writes one `agent_metadata_clamped` line the first time a given condition is seen: the session, the agent, the keys affected, and the size class of the original. The same condition on a later snapshot writes nothing. A change in the keys, or a doubling of the size, is a new condition and writes a new line. The line is WARN for a live agent and DEBUG for an agent already in a terminal status. The roster-level `agent_snapshot_clamped` line is written once per session, roster width, and size class.
 
 ### Dispatch transcript durability
 

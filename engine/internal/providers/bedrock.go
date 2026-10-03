@@ -276,7 +276,6 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 	// The proper implementation would parse the event-stream binary protocol.
 	// For now we read SSE events which works with the REST API streaming.
 	contentIndex := 0
-	var totalInputToks, totalOutputToks int
 
 	rawCh, rawErr := ParseSSEStream(reader)
 	// Per-event idle deadline + heartbeat (see sse_idle.go): a stream that
@@ -355,14 +354,34 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 			contentIndex++
 		}
 
-		// metadata
+		// metadata. The usage totals arrive here, after messageStop, so they
+		// are reported on their own message_delta. inputTokens excludes the
+		// cache read and cache write counts.
 		if meta, ok := event["metadata"].(map[string]any); ok {
 			if usage, ok := meta["usage"].(map[string]any); ok {
+				var usageTotals types.LlmUsage
 				if v, ok := usage["inputTokens"].(float64); ok {
-					totalInputToks = int(v)
+					usageTotals.InputTokens = int(v)
 				}
 				if v, ok := usage["outputTokens"].(float64); ok {
-					totalOutputToks = int(v)
+					usageTotals.OutputTokens = int(v)
+				}
+				if v, ok := usage["cacheReadInputTokens"].(float64); ok {
+					usageTotals.CacheReadInputTokens = int(v)
+				}
+				if v, ok := usage["cacheWriteInputTokens"].(float64); ok {
+					usageTotals.CacheCreationInputTokens = int(v)
+				}
+				utils.LogWithFields(utils.LevelDebug, "Bedrock", "stream usage", map[string]any{
+					"input_tokens": usageTotals.InputTokens, "cache_read_input_tokens": usageTotals.CacheReadInputTokens,
+					"cache_creation_input_tokens": usageTotals.CacheCreationInputTokens, "output_tokens": usageTotals.OutputTokens,
+				})
+				if err := sendEvent(ctx, events, types.LlmStreamEvent{
+					Type:       "message_delta",
+					Delta:      &types.LlmStreamDelta{Type: "message_delta"},
+					DeltaUsage: &usageTotals,
+				}); err != nil {
+					return err
 				}
 			}
 		}
@@ -381,10 +400,6 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 			if err := sendEvent(ctx, events, types.LlmStreamEvent{
 				Type:  "message_delta",
 				Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &reason},
-				DeltaUsage: &types.LlmUsage{
-					InputTokens:  totalInputToks,
-					OutputTokens: totalOutputToks,
-				},
 			}); err != nil {
 				return err
 			}

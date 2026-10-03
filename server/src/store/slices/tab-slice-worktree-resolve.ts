@@ -29,7 +29,7 @@
 import { usePreferencesStore } from '../../persistence/preferences'
 import { rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInfo } from '@ion/shared/types'
-import { gitIsRepo, gitWorktreeAdd } from '../host-api'
+import { gitIsRepo, gitWorktreeAdd, worktreesOffered } from '../host-api'
 
 export interface WorktreeResolution {
   /**
@@ -67,6 +67,13 @@ export async function resolveWorktreeForNewTab(
   const unchanged: WorktreeResolution = { dir, worktree: null, pendingSetup: false }
 
   if (!useWorktree) return unchanged
+
+  // Checked before the repo probe so a server that does not offer worktrees
+  // never parks a conversation on the branch picker it cannot complete.
+  if (!(await worktreesOffered())) {
+    rInfo('worktree.resolve', 'worktrees are not offered on this server; creating without a worktree', { dir })
+    return unchanged
+  }
 
   let isRepo = false
   try {

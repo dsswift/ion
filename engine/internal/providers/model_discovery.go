@@ -123,38 +123,11 @@ func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]type
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "on-demand discovery", map[string]any{"provider": providerID, "path": baseURL, "status": apiKey != ""})
-	go discoverOne(providerID, baseURL, apiKey, resolveAuthHeader(providerID, providerConfigs))
-}
-
-// RefreshModels re-discovers models for the given provider (or all
-// providers if providerID is empty). Runs synchronously so the caller
-// can return the result. Skips providers that were fetched less than
-// 24h ago unless force is true.
-func RefreshModels(providerID string, force bool, resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig) {
-	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "refresh requested", map[string]any{"provider": providerID, "status": force})
-	if providerID != "" {
-		if isCliBacked(providerID) {
-			utils.LogWithFields(utils.LevelDebug, "ModelDiscovery", "skipping http refresh for cli-backed provider", map[string]any{"provider": providerID})
-			return
-		}
-		apiKey, err := resolveKey(providerID)
-		if apiKey == "" && providerID != "ollama" {
-			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no api key skipping refresh", map[string]any{"provider": providerID, "error": err})
-			return
-		}
-		baseURL := resolveBaseURL(providerID, providerConfigs)
-		if baseURL == "" {
-			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no base url skipping refresh", map[string]any{"provider": providerID})
-			return
-		}
-		if !force && !isStale(providerID) {
-			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "skipping refresh last fetch under 24h", map[string]any{"provider": providerID})
-			return
-		}
-		discoverOne(providerID, baseURL, apiKey, resolveAuthHeader(providerID, providerConfigs))
-	} else {
-		runDiscoveryAll(resolveKey, providerConfigs, force)
-	}
+	authHeader := resolveAuthHeader(providerID, providerConfigs)
+	go func() {
+		models, err := fetchModelsForProvider(providerID, baseURL, apiKey, authHeader)
+		storeResult(providerID, models, err)
+	}()
 }
 
 // GetDiscoveredModels returns live-fetched models for a provider, or
@@ -200,57 +173,6 @@ func resolveAuthHeader(providerID string, configs map[string]types.ProviderConfi
 		return cfg.AuthHeader
 	}
 	return ""
-}
-
-func runDiscoveryAll(resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig, force bool) {
-	providerIDs := ListProviderIDs()
-	var wg sync.WaitGroup
-	type result struct {
-		pid    string
-		models []types.ModelEntry
-		err    error
-	}
-	results := make(chan result, len(providerIDs))
-
-	for _, pid := range providerIDs {
-		pid := pid
-		if isCliBacked(pid) {
-			// CLI-backed providers get their model list from the delegated CLI
-			// (via SetExternalModels), not the HTTP /models endpoint. Skipping
-			// the fetch is the structural fix for the ChatGPT-token 403 + stale
-			// fallback catalog.
-			utils.LogWithFields(utils.LevelDebug, "ModelDiscovery", "skipping http discovery for cli-backed provider", map[string]any{"provider": pid})
-			continue
-		}
-		if !force && !isStale(pid) {
-			continue
-		}
-		apiKey, err := resolveKey(pid)
-		if (err != nil || apiKey == "") && pid != "ollama" {
-			continue
-		}
-		baseURL := resolveBaseURL(pid, providerConfigs)
-		if baseURL == "" {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			models, err := fetchModelsForProvider(pid, baseURL, apiKey, resolveAuthHeader(pid, providerConfigs))
-			results <- result{pid: pid, models: models, err: err}
-		}()
-	}
-	go func() { wg.Wait(); close(results) }()
-
-	for r := range results {
-		storeResult(r.pid, r.models, r.err)
-	}
-	utils.Log("ModelDiscovery", "bulk discovery complete")
-}
-
-func discoverOne(providerID, baseURL, apiKey, authHeader string) {
-	models, err := fetchModelsForProvider(providerID, baseURL, apiKey, authHeader)
-	storeResult(providerID, models, err)
 }
 
 func storeResult(providerID string, models []types.ModelEntry, err error) {

@@ -21,6 +21,7 @@ import { getEngineHostInfo } from '../engine/engine-bridge-fs'
 import { enterprisePolicyHash, onEnterprisePolicyChange } from '../enterprise-policy-publish'
 import { enterprisePolicyFor } from '../enterprise-policy-principal'
 import { computeSettingsHiddenGroups } from './settings-visibility'
+import { computeDeveloperSurfaces } from './developer-surfaces'
 import type { HealthHandle } from '../http/health'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 import { Connection, connectionRegistry, type ConnectionTransport } from './connection'
@@ -377,7 +378,12 @@ export function startStudioListeners(health: HealthHandle, options: StudioListen
       void enterprisePolicyFor(principal).then((policy) => {
         if (conn.isClosed) return
         const policyHash = enterprisePolicyHash(policy)
-        conn.send({ type: 'studio_environment_policy', enterprisePolicy: policy, settingsHiddenGroups: computeSettingsHiddenGroups(conn, policy), policyHash })
+        conn.developerSurfaces = computeDeveloperSurfaces(conn, policy)
+        conn.policyHash = policyHash
+        conn.send({ type: 'studio_environment_policy', enterprisePolicy: policy, settingsHiddenGroups: computeSettingsHiddenGroups(conn, policy), developerSurfaces: conn.developerSurfaces, policyHash })
+        // The snapshot's worktree state is cut to the surfaces a connection may
+        // reach, so a policy change is followed by a snapshot cut to the new one.
+        handleSnapshotRequest(conn, buildStudioSnapshot)
         log('enterprise policy sent to live connection', { connection_id: conn.id, subject: principal.subject, policy_hash: policyHash })
       })
     }

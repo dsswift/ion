@@ -19,6 +19,7 @@ import type {
   SessionStatus,
 } from "./types-engine";
 import type { ClientToolCallState } from "./types-tool-gate";
+import type { WikiLinkPropagationReport } from "./types-wiki-links";
 import type { EngineEventAsync } from "./types-engine-event-async";
 import type { EngineEventLifecycle } from "./types-engine-event-lifecycle";
 import type { EngineEventInjection } from "./types-engine-event-injection";
@@ -502,6 +503,14 @@ export type EngineEvent =
         command?: string;
         remainingTaskIds?: string[];
       };
+    }
+  // engine_wiki_links_propagated — the engine rewrote wiki links after one or
+  // more documents in the session's working directory were renamed. The
+  // payload is the complete record of that pass, emitted once per pass even
+  // when no link needed rewriting.
+  | {
+      type: "engine_wiki_links_propagated";
+      wikiLinksPropagated?: WikiLinkPropagationReport;
     }
   // engine_dispatch_lost — a dispatch that was running when the engine
   // process died is unrecoverable after restart. One event per orphan,

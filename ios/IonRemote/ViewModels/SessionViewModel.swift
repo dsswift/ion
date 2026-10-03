@@ -378,6 +378,10 @@ final class SessionViewModel {
 
     var transportState: TransportState { transport?.state ?? .disconnected }
 
+    /// The developer surfaces the connected server offers. Views show no
+    /// control for one that is off.
+    var developerSurfaces: DeveloperSurfaces { transport?.developerSurfaces ?? .allEnabled }
+
     /// The live transport. Every path that builds one assigns it here, so
     /// this is the single place that guarantees log lines written while a
     /// transport exists carry the pairing that transport serves — the same id

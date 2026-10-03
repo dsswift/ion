@@ -20,6 +20,7 @@ import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState
 import { transitions } from '../theme-tokens'
 import { Chevron } from './Chevron'
 import { useRepoState } from '@ion/server/store/git'
+import { useActiveDeveloperSurfaces } from '../studio/connection/developer-surfaces'
 import { useGitRepo } from '../hooks/useGitRepo'
 import { GitChangesSection } from './GitChangesSection'
 import { CommitForm } from './git/CommitForm'
@@ -87,6 +88,7 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
 
   // Per-section subscription (refcounted — safe beside StatusBar's).
   useGitRepo(directory, true)
+  const worktreesOffered = useActiveDeveloperSurfaces().worktrees
   const repoState = useRepoState(directory)
   const files = useMemo(() => repoState?.files ?? [], [repoState?.files])
   const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files])
@@ -161,7 +163,7 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <WorktreeOverlapLauncher repoPath={directory} sourceBranch={repoState?.branch} />
+        {worktreesOffered && <WorktreeOverlapLauncher repoPath={directory} sourceBranch={repoState?.branch} />}
         <HeaderIconButton
           title={`Refresh ${baseName}`}
           onClick={(e) => { e.stopPropagation(); refresh() }}

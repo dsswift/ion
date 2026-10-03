@@ -6,25 +6,26 @@
 import type { DispatchControlContext } from './types-dispatch-control'
 import type { ConversationRecord, ReadConversationOpts } from './types-conversations'
 
-export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
+export type JSONValue =
+  string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue };
 
 /** Credential-free verified identity available for one handler invocation. */
 export interface ContextIdentity {
-  kind: string
-  provider: string
-  subject?: string
-  username?: string
-  displayName?: string
-  attribution?: string
-  source?: string
-  claims?: Record<string, JSONValue>
+  kind: string;
+  provider: string;
+  subject?: string;
+  username?: string;
+  displayName?: string;
+  attribution?: string;
+  source?: string;
+  claims?: Record<string, JSONValue>;
   /**
    * Absolute directory this identity's conversations live under, mirroring
    * the engine's StartSessionResult.storageRoot -- present only when
    * principal partitioning is enabled and subject is non-empty; absent
    * otherwise, meaning "unchanged from the pre-partitioning behavior."
    */
-  storageRoot?: string
+  storageRoot?: string;
 }
 
 /**
@@ -35,34 +36,34 @@ export interface ContextIdentity {
  * reports what it is told.
  */
 export interface SessionPrincipal {
-  subject: string
-  provider: string
-  kind: string
-  username?: string
-  displayName?: string
-  attribution?: string
+  subject: string;
+  provider: string;
+  kind: string;
+  username?: string;
+  displayName?: string;
+  attribution?: string;
   /** Never persisted to disk; wire and hook consumption only. */
-  claims?: Record<string, JSONValue>
+  claims?: Record<string, JSONValue>;
 }
 
 export interface ExtensionConfig {
-  extensionDir: string
-  model: string
-  workingDirectory: string
-  mcpConfigPath?: string
-  buildIdentity?: string
+  extensionDir: string;
+  model: string;
+  workingDirectory: string;
+  mcpConfigPath?: string;
+  buildIdentity?: string;
 }
 
 export interface ProcessInfo {
-  name: string
-  pid: number
-  task: string
-  startedAt: string
+  name: string;
+  pid: number;
+  task: string;
+  startedAt: string;
 }
 
 export interface DispatchAgentOpts {
-  name: string
-  task: string
+  name: string;
+  task: string;
   /**
    * Deterministic extension-selected model. Extensions may select another
    * provider; model-authored Agent tool requests cannot.
@@ -76,7 +77,7 @@ export interface DispatchAgentOpts {
    * hardcoded in the extension, and lets the operator pick the cheapest model
    * that suits mechanical child work.
    */
-  model?: string
+  model?: string;
   /**
    * How long this dispatch's agent-state row survives in a client roster.
    *
@@ -90,7 +91,7 @@ export interface DispatchAgentOpts {
    * omitted the field, which meant a finished child vanished from its parent's
    * drill-down before it could be inspected.
    */
-  visibility?: 'sticky' | 'ephemeral' | 'always'
+  visibility?: "sticky" | "ephemeral" | "always";
   /**
    * Extension to load into the child session so the child receives the
    * extension's hooks, persona composition, AND its registered tools
@@ -101,10 +102,10 @@ export interface DispatchAgentOpts {
    * Pass `ctx.config.extensionDir` to give the child the same extension
    * as the dispatcher.
    */
-  extensionDir?: string
-  systemPrompt?: string
-  projectPath?: string
-  sessionId?: string
+  extensionDir?: string;
+  systemPrompt?: string;
+  projectPath?: string;
+  sessionId?: string;
   /**
    * Register your OWN identifier for this dispatch as an alias for the
    * engine's dispatch ID, so a later `steerDispatch` / `recallDispatch`
@@ -122,7 +123,7 @@ export interface DispatchAgentOpts {
    * where you can. The alias is dropped when the dispatch ends, so a reused
    * key never resolves to a stale dispatch.
    */
-  clientDispatchId?: string
+  clientDispatchId?: string;
   /**
    * Cap how many dispatches of THIS agent name may be live at once under the
    * same parent. Omit or pass <= 0 for no cap.
@@ -143,13 +144,13 @@ export interface DispatchAgentOpts {
    * wait for, steer, or read the result of the running dispatch rather than
    * retrying blindly.
    */
-  maxConcurrentPerName?: number
+  maxConcurrentPerName?: number;
   /**
    * Cap the child session's agent loop turn count. Omit or pass <= 0 for
    * unlimited (the engine ships unopinionated). Lets harness engineers bound
    * dispatched agent budgets per-call without touching global engine config.
    */
-  maxTurns?: number
+  maxTurns?: number;
   /**
    * Overrides the engine-config dispatch-depth cap for this dispatch tree.
    * When > 0, the child and its descendants use this cap instead of the
@@ -157,7 +158,7 @@ export interface DispatchAgentOpts {
    * caller grant one dispatch tree more (or fewer) nesting levels without
    * changing the engine-wide cap.
    */
-  maxDispatchDepth?: number
+  maxDispatchDepth?: number;
   /**
    * Declares whether this dispatch is expected to produce work — that is, to
    * call at least one tool. Tri-state:
@@ -178,7 +179,7 @@ export interface DispatchAgentOpts {
    * engine never infers the expectation from task text: only the caller knows
    * which kind of dispatch it issued.
    */
-  requireToolUse?: boolean
+  requireToolUse?: boolean;
   /**
    * Wakes this dispatch for one turn every interval while it is parked on
    * work it started (child dispatches, background commands, polls) and that
@@ -186,8 +187,8 @@ export interface DispatchAgentOpts {
    * ends with the work still outstanding the dispatch parks again. Omit or
    * set to 0 for no check-ins.
    */
-  parkCheckInIntervalMs?: number
-  onEvent?: (event: EngineEvent) => void
+  parkCheckInIntervalMs?: number;
+  onEvent?: (event: EngineEvent) => void;
 
   // --- Async dispatch ---
 
@@ -196,38 +197,38 @@ export interface DispatchAgentOpts {
    * caller needs terminal child output before continuing. Foreground dispatch
    * does not deliver terminal lifecycle callbacks.
    */
-  waitForCompletion?: boolean
+  waitForCompletion?: boolean;
 
   /**
    * Legacy compatibility flag. Dispatch is asynchronous regardless of this
    * value; set `waitForCompletion: true` for explicit foreground dispatch.
    * @deprecated Use `waitForCompletion`.
    */
-  background?: boolean
+  background?: boolean;
 
   /**
    * Reserved for raw-protocol clients. The TypeScript runtime replaces any
    * caller-supplied value with a unique token for each dispatch.
    */
-  callbackId?: string
+  callbackId?: string;
 
   /**
    * Fires when an asynchronous dispatch finishes successfully (exit code 0).
    * Not called for foreground dispatches.
    */
-  onComplete?: (result: DispatchAgentResult) => void
+  onComplete?: (result: DispatchAgentResult) => void;
 
   /**
    * Fires when an asynchronous dispatch finishes with an error (non-zero exit
    * code or child error). Not called for foreground dispatches.
    */
-  onError?: (err: DispatchError) => void
+  onError?: (err: DispatchError) => void;
 
   /**
    * Fires when an asynchronous dispatch is cancelled via
    * {@link IonContext.recallDispatch}. Not called for foreground dispatches.
    */
-  onRecall?: (info: RecallInfo) => void
+  onRecall?: (info: RecallInfo) => void;
 
   // --- Lifecycle event callbacks ---
 
@@ -235,31 +236,31 @@ export interface DispatchAgentOpts {
    * Fires when the dispatched agent begins a tool invocation. Delivers
    * structured data parsed from the child session's ToolCallEvent.
    */
-  onToolStart?: (info: DispatchToolStartInfo) => void
+  onToolStart?: (info: DispatchToolStartInfo) => void;
 
   /**
    * Fires when a dispatched agent's tool invocation completes successfully
    * (isError=false on the ToolResultEvent).
    */
-  onToolEnd?: (info: DispatchToolEndInfo) => void
+  onToolEnd?: (info: DispatchToolEndInfo) => void;
 
   /**
    * Fires when a dispatched agent's tool invocation completes with an error
    * (isError=true on the ToolResultEvent).
    */
-  onToolError?: (info: DispatchToolErrorInfo) => void
+  onToolError?: (info: DispatchToolErrorInfo) => void;
 
   /**
    * Fires when the dispatched agent emits a usage event, carrying both
    * per-turn usage and cumulative totals across the dispatch.
    */
-  onUsage?: (info: DispatchUsageInfo) => void
+  onUsage?: (info: DispatchUsageInfo) => void;
 
   /**
    * Fires when the dispatched agent emits a text chunk, carrying the delta
    * and accumulated text so far.
    */
-  onTextDelta?: (info: DispatchTextDeltaInfo) => void
+  onTextDelta?: (info: DispatchTextDeltaInfo) => void;
 
   // --- Plan mode ---
 
@@ -269,21 +270,21 @@ export interface DispatchAgentOpts {
    * child calls ExitPlanMode, the run terminates with the plan file path in
    * the result (DispatchAgentResult.planFilePath, planExited=true).
    */
-  planMode?: boolean
+  planMode?: boolean;
 
   /**
    * Overrides the plan file path for the child session. When empty and
    * planMode is true, the engine allocates a fresh plan file with a
    * word-slug name (the default behavior for any plan-mode session).
    */
-  planFilePath?: string
+  planFilePath?: string;
 
   /**
    * Overrides the set of allowed tools during plan mode for the child
    * session. When nil/empty and planMode is true, the engine uses the
    * default plan-mode tool set.
    */
-  planModeTools?: string[]
+  planModeTools?: string[];
 
   /**
    * Restricts the child session's tool set for the entire dispatch (not just
@@ -292,7 +293,7 @@ export interface DispatchAgentOpts {
    * restriction). Use it to scope a dispatched agent to a narrow remit.
    * Distinct from planModeTools, which applies only while in plan mode.
    */
-  allowedTools?: string[]
+  allowedTools?: string[];
 
   /**
    * The set of agent names this dispatch's agent is permitted to dispatch in
@@ -304,7 +305,7 @@ export interface DispatchAgentOpts {
    * passes the permitted set per dispatch. See `subAgentPolicy` to make an
    * EMPTY list mean "may dispatch nothing" instead of "unrestricted".
    */
-  allowedSubAgents?: string[]
+  allowedSubAgents?: string[];
 
   /**
    * How `allowedSubAgents` is enforced for this dispatch's own nested
@@ -321,7 +322,7 @@ export interface DispatchAgentOpts {
    * - `'unrestricted'` — explicitly opt out of the allowlist layer (the
    *   self-dispatch rail still applies).
    */
-  subAgentPolicy?: 'allowlist' | 'unrestricted'
+  subAgentPolicy?: "allowlist" | "unrestricted";
 
   /**
    * Excludes this asynchronous dispatch from its PARENT's park-on-children set. By
@@ -334,7 +335,7 @@ export interface DispatchAgentOpts {
    * run completes at its turn boundary regardless of this child, and the
    * child's completion routes wherever your lifecycle callbacks send it.
    */
-  detached?: boolean
+  detached?: boolean;
 
   /**
    * Marks this dispatch as the "implement" half of a plan-then-implement
@@ -344,7 +345,7 @@ export interface DispatchAgentOpts {
    * proposing plan mode mid-implementation. Set this on every dispatch that
    * hands over an approved plan or a pre-investigated execute-mode brief.
    */
-  implementationPhase?: boolean
+  implementationPhase?: boolean;
 
   /**
    * Removes the named tools from the child session's tool set. Unlike
@@ -354,7 +355,7 @@ export interface DispatchAgentOpts {
    * whose delegation must route through the harness's own dispatch tool, so
    * the child cannot bypass the harness's tier resolution and allowlists.
    */
-  suppressTools?: string[]
+  suppressTools?: string[];
 
   /**
    * Ordered list of alternative model IDs the child run's retry loop walks
@@ -362,14 +363,14 @@ export interface DispatchAgentOpts {
    * tier chain). When empty, the child relies only on the engine's default
    * model for the unresolvable-model case.
    */
-  fallbackChain?: string[]
+  fallbackChain?: string[];
 
   /**
    * Overrides the human-readable label shown on the dispatched agent's pill.
    * When empty, the engine resolves a display name from the matched agent
    * spec's description, then the extension roster, then the agent name.
    */
-  displayName?: string
+  displayName?: string;
 
   /**
    * Fires when the dispatched agent calls ExitPlanMode, proposing a plan
@@ -377,7 +378,7 @@ export interface DispatchAgentOpts {
    * forwarded to the parent session via onEvent regardless of whether this
    * callback is set.
    */
-  onPlanProposal?: (info: DispatchPlanProposalInfo) => void
+  onPlanProposal?: (info: DispatchPlanProposalInfo) => void;
 
   /**
    * Fires when a dispatched child calls AskUserQuestion. The dispatcher
@@ -385,7 +386,9 @@ export interface DispatchAgentOpts {
    * Return { answer: string } to resume the child; { cancelled: true }
    * to let the child terminate; omit for default termination behavior.
    */
-  onChildQuestion?: (info: DispatchChildQuestionInfo) => Promise<DispatchChildQuestionAnswer>
+  onChildQuestion?: (
+    info: DispatchChildQuestionInfo,
+  ) => Promise<DispatchChildQuestionAnswer>;
 
   /**
    * Fires each time a parked dispatch's check-in interval elapses (see
@@ -394,7 +397,9 @@ export interface DispatchAgentOpts {
    * interval. When omitted, the engine delivers its own generic prompt. The
    * engine waits a bounded time for the answer.
    */
-  onParkCheckIn?: (info: DispatchParkCheckInInfo) => Promise<DispatchParkCheckInReply> | DispatchParkCheckInReply
+  onParkCheckIn?: (
+    info: DispatchParkCheckInInfo,
+  ) => Promise<DispatchParkCheckInReply> | DispatchParkCheckInReply;
 
   /**
    * Per-dispatch context-layer override (level 4 of the four-level context
@@ -403,7 +408,7 @@ export interface DispatchAgentOpts {
    * dispatchContext config, and the built-in default (all layers on). Tri-state
    * fields: omit a field to inherit from the level below.
    */
-  contextPolicy?: ContextPolicy
+  contextPolicy?: ContextPolicy;
 }
 
 /**
@@ -412,11 +417,11 @@ export interface DispatchAgentOpts {
  */
 export interface ContextPolicy {
   /** Include home roots (~/.ion, ~/.claude under compat). Default: true. */
-  includeGlobalContext?: boolean
+  includeGlobalContext?: boolean;
   /** Include the child's cwd + ancestor walk. Default: true. */
-  includeProjectContext?: boolean
+  includeProjectContext?: boolean;
   /** Override ClaudeCompat for this walk. Default: inherit from engine. */
-  claudeCompat?: boolean
+  claudeCompat?: boolean;
   /**
    * Cap total injected context-file bytes for this dispatch. Omit or pass <= 0
    * for no cap. Files are included WHOLE, nearest-first (cwd, then ancestors,
@@ -428,33 +433,33 @@ export interface ContextPolicy {
    * task text. Set this on fan-out dispatches where the child only needs its
    * own repo's guidance.
    */
-  maxContextBytes?: number
+  maxContextBytes?: number;
 }
 
 /** A single context file discovered during a walk. */
 export interface DiscoveredContext {
-  path: string
-  content: string
-  source: 'global' | 'project' | 'parent' | 'include'
-  level: number
+  path: string;
+  content: string;
+  source: "global" | "project" | "parent" | "include";
+  level: number;
 }
 
 /** Options for {@link IonContext.walkContextFiles}. */
 export interface WalkContextFilesOpts {
-  cwd?: string
-  includeGlobal?: boolean
-  includeProject?: boolean
-  claudeCompat?: boolean
+  cwd?: string;
+  includeGlobal?: boolean;
+  includeProject?: boolean;
+  claudeCompat?: boolean;
 }
 
 export interface DispatchAgentResult {
-  name: string
-  output: string
-  exitCode: number
-  elapsed: number
-  cost: number
-  inputTokens: number
-  outputTokens: number
+  name: string;
+  output: string;
+  exitCode: number;
+  elapsed: number;
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
   /**
    * Number of tool calls the child made across its whole run (every LLM turn,
    * including suspend/revive iterations and any work-gate continuation).
@@ -466,83 +471,83 @@ export interface DispatchAgentResult {
    * ended its turn. Prefer this over reconstructing a count from local
    * lifecycle-callback state: this is the engine's own count.
    */
-  toolCount: number
+  toolCount: number;
   /**
    * Estimated reasoning-token count for the dispatch — a subset of
    * `outputTokens` that providers fold into the output usage. Zero when the
    * model produced no extended thinking. Lets cost and audit consumers
    * separate reasoning spend from user-facing output.
    */
-  thinkingTokens?: number
+  thinkingTokens?: number;
   /** Tokens served from the provider's prompt cache across the child's run. */
-  cacheReadInputTokens?: number
+  cacheReadInputTokens?: number;
   /** Tokens written into the provider's prompt cache across the child's run. */
-  cacheCreationInputTokens?: number
+  cacheCreationInputTokens?: number;
   /** SDK-generated identifier for routing pre-stub callbacks. Internal to extension-host RPC. */
-  callbackId?: string
+  callbackId?: string;
   /** True when engine refused to launch child at dispatch-depth cap. */
-  depthCapExceeded?: boolean
+  depthCapExceeded?: boolean;
   /** Remaining child levels available from caller at dispatch-depth cap. */
-  remainingDepthBudget?: number
+  remainingDepthBudget?: number;
   /** Engine-assigned unique identifier for this dispatch instance. Collision-safe. */
-  dispatchId?: string
-  sessionId?: string
+  dispatchId?: string;
+  sessionId?: string;
   /**
    * The durable conversation the child wrote. Set on terminal results whose
    * child initialized a conversation; absent on the asynchronous stub and when
    * the dispatch ended before one existed. {@link DispatchError} and
    * {@link RecallInfo} carry the same value for the same dispatch.
    */
-  childConversationId?: string
+  childConversationId?: string;
   /**
    * Dispatch depth of this agent in the dispatch tree. The orchestrator runs
    * at depth 0, its direct dispatches at depth 1, their dispatches at depth 2.
    * Set by the engine, never by the caller.
    */
-  depth?: number
+  depth?: number;
   /**
    * The dispatchId of the parent dispatch that spawned this agent. Empty for
    * a top-level dispatch, whose parent is the orchestrator at depth 0.
    * Consumers reconstruct the dispatch tree from this.
    */
-  parentDispatchId?: string
+  parentDispatchId?: string;
   /**
    * The absolute path of the plan file written by the child session. Non-empty
    * only when the child was in plan mode and wrote a plan (regardless of whether
    * it called ExitPlanMode).
    */
-  planFilePath?: string
+  planFilePath?: string;
   /**
    * True when the child called ExitPlanMode (the run terminated because the
    * model proposed a plan for approval). When false and planFilePath is
    * non-empty, the child was in plan mode but finished without proposing
    * (e.g. hit max turns or was recalled).
    */
-  planExited?: boolean
+  planExited?: boolean;
 }
 
 /** Describes a failed asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onError}. */
 export interface DispatchError {
-  name: string
-  callbackId?: string
-  dispatchId?: string
-  message: string
-  exitCode: number
-  elapsed: number
+  name: string;
+  callbackId?: string;
+  dispatchId?: string;
+  message: string;
+  exitCode: number;
+  elapsed: number;
   /** The durable conversation the failed child wrote. Absent when the dispatch failed before its child conversation existed. */
-  childConversationId?: string
+  childConversationId?: string;
 }
 
 /** Describes a recalled (cancelled) asynchronous dispatch. Delivered via {@link DispatchAgentOpts.onRecall}. */
 export interface RecallInfo {
-  name: string
-  callbackId?: string
-  dispatchId?: string
-  reason: string
-  elapsed: number
-  toolCount: number
+  name: string;
+  callbackId?: string;
+  dispatchId?: string;
+  reason: string;
+  elapsed: number;
+  toolCount: number;
   /** The durable conversation the recalled child wrote. Absent when the dispatch was recalled before its child conversation existed. */
-  childConversationId?: string
+  childConversationId?: string;
 }
 
 /**
@@ -574,14 +579,14 @@ export interface RecallInfo {
  * cannot vouch for a classification it did not make.
  */
 export type InjectionKind =
-  | 'agent_completion'
-  | 'slash_command'
-  | 'background_task_completion'
-  | 'checkin'
-  | 'revive'
-  | 'steer'
-  | 'plan_retained'
-  | string
+  | "agent_completion"
+  | "slash_command"
+  | "background_task_completion"
+  | "checkin"
+  | "revive"
+  | "steer"
+  | "plan_retained"
+  | string;
 
 /** Options for {@link IonContext.steerSelf}. */
 export interface SteerSelfOpts {
@@ -590,13 +595,13 @@ export interface SteerSelfOpts {
    * machine-to-machine message; omit it only when the message genuinely is a
    * user turn.
    */
-  kind?: InjectionKind
+  kind?: InjectionKind;
 }
 
 /** Result of {@link IonContext.steerDispatch} and {@link IonContext.steerSelf}. */
 export interface SteerDispatchResult {
   /** True when the message reached a run (steered or sent). */
-  delivered: boolean
+  delivered: boolean;
   /**
    * Delivery verdict. `steerDispatch` returns one of 'delivered',
    * 'channel_full', 'no_run', 'not_found', 'unauthorized' (the caller does
@@ -607,69 +612,78 @@ export interface SteerDispatchResult {
    * run) or 'sent' (owning run was idle, so the message was delivered as a
    * fresh prompt).
    */
-  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'unauthorized' | 'completed' | 'ambiguous' | 'steered' | 'sent'
+  outcome:
+    | "delivered"
+    | "channel_full"
+    | "no_run"
+    | "not_found"
+    | "unauthorized"
+    | "completed"
+    | "ambiguous"
+    | "steered"
+    | "sent";
   /**
    * Set only when `outcome` is 'ambiguous': the dispatch ID of every live
    * dispatch in the caller's scope that carries the name. Retry with
    * {@link IonContext.steerDispatch} against the one you mean.
    */
-  matchingDispatchIds?: string[]
+  matchingDispatchIds?: string[];
   /** Set only when `outcome` is 'completed': how the dispatch ended. */
-  terminal?: DispatchHistoryEntry
+  terminal?: DispatchHistoryEntry;
 }
 
 // --- Dispatch lifecycle callback payloads ---
 
 /** Payload for {@link DispatchAgentOpts.onToolStart}. */
 export interface DispatchToolStartInfo {
-  name: string
-  callbackId?: string
-  toolName: string
-  toolId: string
+  name: string;
+  callbackId?: string;
+  toolName: string;
+  toolId: string;
 }
 
 /** Payload for {@link DispatchAgentOpts.onToolEnd}. */
 export interface DispatchToolEndInfo {
-  name: string
-  callbackId?: string
-  toolName: string
-  toolId: string
-  content: string
+  name: string;
+  callbackId?: string;
+  toolName: string;
+  toolId: string;
+  content: string;
 }
 
 /** Payload for {@link DispatchAgentOpts.onToolError}. */
 export interface DispatchToolErrorInfo {
-  name: string
-  callbackId?: string
-  toolName: string
-  toolId: string
-  content: string
+  name: string;
+  callbackId?: string;
+  toolName: string;
+  toolId: string;
+  content: string;
 }
 
 /** Payload for {@link DispatchAgentOpts.onUsage}. */
 export interface DispatchUsageInfo {
-  name: string
-  callbackId?: string
+  name: string;
+  callbackId?: string;
   /** Per-turn input tokens from the current UsageEvent. */
-  inputTokens: number
+  inputTokens: number;
   /** Per-turn output tokens from the current UsageEvent. */
-  outputTokens: number
+  outputTokens: number;
   /** Cumulative input tokens across all turns in this dispatch. */
-  cumulativeInputTokens: number
+  cumulativeInputTokens: number;
   /** Cumulative output tokens across all turns in this dispatch. */
-  cumulativeOutputTokens: number
+  cumulativeOutputTokens: number;
   /** Cumulative USD cost across all turns. Updated from TaskCompleteEvent. */
-  cumulativeCost: number
+  cumulativeCost: number;
 }
 
 /** Payload for {@link DispatchAgentOpts.onTextDelta}. */
 export interface DispatchTextDeltaInfo {
-  name: string
-  callbackId?: string
+  name: string;
+  callbackId?: string;
   /** The new text chunk. */
-  delta: string
+  delta: string;
   /** All text accumulated so far across the dispatch. */
-  accumulated: string
+  accumulated: string;
 }
 
 /**
@@ -681,20 +695,20 @@ export interface DispatchTextDeltaInfo {
  */
 export interface DispatchPlanProposalInfo {
   /** Canonical agent name (the name field from DispatchAgentOpts). */
-  name: string
-  callbackId?: string
+  name: string;
+  callbackId?: string;
   /** Engine-assigned dispatch ID for this dispatch instance. */
-  agentId: string
+  agentId: string;
   /** Absolute filesystem path of the plan markdown file. */
-  planFilePath: string
+  planFilePath: string;
   /** Human-readable slug portion of the plan file path (basename without extension). */
-  planSlug: string
+  planSlug: string;
   /**
    * True when the caller explicitly set planMode=true on the dispatch opts.
    * False when the child agent self-initiated plan mode (called EnterPlanMode
    * without being told to).
    */
-  planRequested: boolean
+  planRequested: boolean;
 }
 
 /**
@@ -706,21 +720,21 @@ export interface DispatchPlanProposalInfo {
  */
 export interface DispatchChildQuestionInfo {
   /** Canonical agent name (the name field from DispatchAgentOpts). */
-  name: string
-  callbackId?: string
+  name: string;
+  callbackId?: string;
   /** Engine-assigned dispatch ID for this dispatch instance. */
-  dispatchId: string
+  dispatchId: string;
   /**
    * Engine-assigned request ID unique within this dispatch. Keyed together
    * with dispatchId on the engine's pending reply channel so a single dispatch
    * can ask multiple sequential questions without collisions. The SDK runtime
    * sends this back via ext/answer_dispatch_question to unblock the child.
    */
-  requestId: string
+  requestId: string;
   /** The text from the child's AskUserQuestion call. */
-  question: string
+  question: string;
   /** Dispatch nesting depth of the child (1 = direct child of orchestrator). */
-  depth: number
+  depth: number;
 }
 
 /**
@@ -732,8 +746,8 @@ export interface DispatchChildQuestionInfo {
  * best-judgment placeholder.
  */
 export interface DispatchChildQuestionAnswer {
-  answer?: string
-  cancelled?: boolean
+  answer?: string;
+  cancelled?: boolean;
 }
 
 /**
@@ -742,77 +756,77 @@ export interface DispatchChildQuestionAnswer {
  */
 export interface DispatchParkCheckInInfo {
   /** Canonical agent name (the name field from DispatchAgentOpts). */
-  name: string
-  callbackId?: string
+  name: string;
+  callbackId?: string;
   /** Engine-assigned dispatch ID of the parked dispatch. */
-  dispatchId: string
+  dispatchId: string;
   /** Engine-assigned request ID; the SDK runtime echoes it back with the answer. */
-  requestId: string
+  requestId: string;
   /** Dispatch nesting depth of the parked dispatch (1 = direct child of the root session). */
-  depth: number
+  depth: number;
   /** How long the current park has lasted. */
-  parkedMs: number
+  parkedMs: number;
   /** 1-based number of this check-in within the current park. */
-  checkInCount: number
+  checkInCount: number;
   /** The work the dispatch parked on. */
-  awaitingDispatchIds?: string[]
-  awaitingTaskIds?: string[]
-  awaitingPollIds?: string[]
+  awaitingDispatchIds?: string[];
+  awaitingTaskIds?: string[];
+  awaitingPollIds?: string[];
   /**
    * Live state of each awaited child dispatch still in flight. This callback
    * runs outside any hook or tool context, where `listDispatchState` is
    * unavailable, so the engine supplies it here.
    */
-  awaitingDispatches?: DispatchEntry[]
+  awaitingDispatches?: DispatchEntry[];
 }
 
 /** Return value of {@link DispatchAgentOpts.onParkCheckIn}. */
 export interface DispatchParkCheckInReply {
   /** The message the parked agent is woken with. Empty is a skip. */
-  prompt?: string
+  prompt?: string;
   /** Leave the dispatch parked for another interval. */
-  skip?: boolean
+  skip?: boolean;
 }
 
 export interface DiscoverAgentsOpts {
   /** Named sources in precedence order (later overrides earlier).
    *  "extension" = {extDir}/agents/, "user" = ~/.ion/agents/, "project" = {cwd}/.ion/agents/
    *  Default: ["extension", "user", "project"] */
-  sources?: string[]
+  sources?: string[];
   /** Additional directories to scan (appended after named sources) */
-  extraDirs?: string[]
+  extraDirs?: string[];
   /** Filter to a specific bundle subdirectory (e.g., "platform") */
-  bundleName?: string
+  bundleName?: string;
   /** Walk subdirectories. Default true. */
-  recursive?: boolean
+  recursive?: boolean;
 }
 
 export interface DiscoveredAgent {
-  name: string
-  path: string
-  source: string       // "extension" | "user" | "project" | "extra"
-  parent?: string
-  description?: string
-  model?: string
-  tools?: string[]
-  systemPrompt?: string
-  meta?: Record<string, string>
+  name: string;
+  path: string;
+  source: string; // "extension" | "user" | "project" | "extra"
+  parent?: string;
+  description?: string;
+  model?: string;
+  tools?: string[];
+  systemPrompt?: string;
+  meta?: Record<string, string>;
 }
 
 /** Options for {@link IonSDK.registerAgentTools}. All fields are optional. */
 export interface RegisterAgentToolsOpts {
   /** Filter which agents get dispatch tools. Default: agents with a parent
    *  (excludes root orchestrators). */
-  filter?: (agent: DiscoveredAgent) => boolean
+  filter?: (agent: DiscoveredAgent) => boolean;
   /** Customize the tool name. Default: `dispatch_<name>` with hyphens→underscores. */
-  toolName?: (agent: DiscoveredAgent) => string
+  toolName?: (agent: DiscoveredAgent) => string;
   /** Customize the tool description. Default: "Dispatch the <description> specialist". */
-  description?: (agent: DiscoveredAgent) => string
+  description?: (agent: DiscoveredAgent) => string;
 }
 
 export interface SandboxPattern {
-  pattern: string
-  reason: string
+  pattern: string;
+  reason: string;
 }
 
 /**
@@ -831,9 +845,9 @@ export interface SandboxPattern {
  *   treat as "unknown" until non-zero.
  */
 export interface ContextUsage {
-  percent: number
-  tokens: number
-  cost: number
+  percent: number;
+  tokens: number;
+  cost: number;
 }
 
 /**
@@ -851,12 +865,12 @@ export interface ContextUsage {
  *   segment; absent otherwise.
  */
 export interface HistoryMatch {
-  index: number
-  role: string
-  type: string
-  snippet: string
-  toolName?: string
-  toolUseId?: string
+  index: number;
+  role: string;
+  type: string;
+  snippet: string;
+  toolName?: string;
+  toolUseId?: string;
 }
 
 /**
@@ -893,19 +907,19 @@ export interface HistoryMatch {
  * - `pendingChildren`: compatibility projection of `waitingOn.childDispatchIds`.
  */
 export interface DispatchEntry {
-  dispatchId: string
-  name: string
-  status: 'running' | 'suspended'
-  parentDispatchId?: string
-  depth: number
-  startedAt: string
-  elapsedMs: number
-  toolCount: number
-  lastWork?: string
-  lastActivityMs: number
-  childConversationId?: string
-  pendingChildren?: string[]
-  waitingOn?: DispatchWaitingOn
+  dispatchId: string;
+  name: string;
+  status: "running" | "suspended";
+  parentDispatchId?: string;
+  depth: number;
+  startedAt: string;
+  elapsedMs: number;
+  toolCount: number;
+  lastWork?: string;
+  lastActivityMs: number;
+  childConversationId?: string;
+  pendingChildren?: string[];
+  waitingOn?: DispatchWaitingOn;
 }
 
 /**
@@ -924,18 +938,18 @@ export interface DispatchEntry {
  * - `toolCount`: tool calls the dispatch had executed when it ended.
  */
 export interface DispatchHistoryEntry {
-  dispatchId: string
-  name: string
-  status: 'done' | 'error' | 'cancelled' | 'lost'
-  reason?: string
-  exitCode?: number
-  parentDispatchId?: string
-  depth: number
-  startedAt: string
-  completedAt: string
-  durationMs: number
-  toolCount: number
-  childConversationId?: string
+  dispatchId: string;
+  name: string;
+  status: "done" | "error" | "cancelled" | "lost";
+  reason?: string;
+  exitCode?: number;
+  parentDispatchId?: string;
+  depth: number;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  toolCount: number;
+  childConversationId?: string;
 }
 
 /**
@@ -950,11 +964,11 @@ export interface DispatchHistoryEntry {
  *   for the engine default. A value above the engine maximum is lowered to it.
  */
 export interface ReadDispatchConversationOpts {
-  conversationId?: string
-  dispatchId?: string
-  cursor?: string
-  limit?: number
-  maxBytes?: number
+  conversationId?: string;
+  dispatchId?: string;
+  cursor?: string;
+  limit?: number;
+  maxBytes?: number;
 }
 
 /**
@@ -972,15 +986,15 @@ export interface ReadDispatchConversationOpts {
  *   cut to fit the page's byte budget, with the size before the cut.
  */
 export interface DispatchConversationBlock {
-  type: string
-  text?: string
-  toolCallId?: string
-  toolName?: string
-  input?: Record<string, unknown>
-  content?: string
-  isError?: boolean
-  truncated?: boolean
-  originalBytes?: number
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  input?: Record<string, unknown>;
+  content?: string;
+  isError?: boolean;
+  truncated?: boolean;
+  originalBytes?: number;
 }
 
 /**
@@ -989,22 +1003,22 @@ export interface DispatchConversationBlock {
  * assistant text, tool calls, and tool results keep their interleaving.
  */
 export interface DispatchConversationEntry {
-  id: string
-  role: string
-  timestamp: number
-  blocks: DispatchConversationBlock[]
+  id: string;
+  role: string;
+  timestamp: number;
+  blocks: DispatchConversationBlock[];
 }
 
 /** The bounds a {@link IonContext.readDispatchConversation} call ran under. */
 export interface DispatchConversationLimits {
   /** Entry bound applied to this page. */
-  entries: number
+  entries: number;
   /** Serialized-byte bound applied to this page. */
-  bytes: number
+  bytes: number;
   /** The most entries a caller may ask for. */
-  maxEntries: number
+  maxEntries: number;
   /** The largest byte budget a caller may ask for. */
-  maxBytes: number
+  maxBytes: number;
 }
 
 /**
@@ -1034,26 +1048,27 @@ export interface DispatchConversationLimits {
  * current page reports `hasMore: false`.
  */
 export interface DispatchConversationResult {
-  outcome: 'ok' | 'unauthorized' | 'unavailable' | 'invalid_cursor' | 'unsupported'
-  unavailableReason?: 'not_created' | 'not_found'
-  conversationId?: string
-  dispatchId?: string
-  agentName?: string
-  status?: 'running' | 'suspended' | 'done' | 'error' | 'cancelled' | 'lost'
-  terminal: boolean
-  reason?: string
-  exitCode?: number
-  entries: DispatchConversationEntry[]
-  nextCursor?: string
-  hasMore: boolean
-  totalEntries: number
-  limits?: DispatchConversationLimits
+  outcome:
+    "ok" | "unauthorized" | "unavailable" | "invalid_cursor" | "unsupported";
+  unavailableReason?: "not_created" | "not_found";
+  conversationId?: string;
+  dispatchId?: string;
+  agentName?: string;
+  status?: "running" | "suspended" | "done" | "error" | "cancelled" | "lost";
+  terminal: boolean;
+  reason?: string;
+  exitCode?: number;
+  entries: DispatchConversationEntry[];
+  nextCursor?: string;
+  hasMore: boolean;
+  totalEntries: number;
+  limits?: DispatchConversationLimits;
 }
 
 /** Complete task and child wait metadata for a parked dispatch. */
 export interface DispatchWaitingOn {
-  taskIds?: string[]
-  childDispatchIds?: string[]
+  taskIds?: string[];
+  childDispatchIds?: string[];
 }
 
 /**
@@ -1091,13 +1106,13 @@ export interface DispatchWaitingOn {
  *   abort: either cancels the call.
  */
 export interface LLMCallOpts {
-  model: string
-  system?: string
-  prompt: string
-  jsonMode?: boolean
-  maxTokens?: number
-  temperature?: number
-  signal?: AbortSignal
+  model: string;
+  system?: string;
+  prompt: string;
+  jsonMode?: boolean;
+  maxTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -1114,10 +1129,10 @@ export interface LLMCallOpts {
  *   metadata) — treat as "unknown" not "free".
  */
 export interface LLMCallResult {
-  content: string
-  inputTokens: number
-  outputTokens: number
-  cost: number
+  content: string;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
 }
 
 /**
@@ -1129,21 +1144,21 @@ export interface LLMCallResult {
  * - `platform`: override target platform (defaults to engine host OS).
  */
 export interface SandboxProfile {
-  fsAllowWrite?: string[]
-  fsDenyWrite?: string[]
-  fsDenyRead?: string[]
-  netAllowedDomains?: string[]
-  netBlockedDomains?: string[]
-  netAllowLocalBind?: boolean
-  extraPatterns?: SandboxPattern[]
-  platform?: 'darwin' | 'linux' | 'windows' | string
+  fsAllowWrite?: string[];
+  fsDenyWrite?: string[];
+  fsDenyRead?: string[];
+  netAllowedDomains?: string[];
+  netBlockedDomains?: string[];
+  netAllowLocalBind?: boolean;
+  extraPatterns?: SandboxPattern[];
+  platform?: "darwin" | "linux" | "windows" | string;
 }
 
 export interface SandboxWrapResult {
   /** Wrapped command string ready to pass to a shell. */
-  wrapped: string
+  wrapped: string;
   /** Resolved platform the wrap was generated for. */
-  platform: string
+  platform: string;
 }
 
 /**
@@ -1157,21 +1172,21 @@ export interface InterceptOpts {
    * non-disruptive; "redirect" is urgent and a client may abort the run and
    * re-prompt. The engine does not validate or branch on this value.
    */
-  level: 'banner' | 'redirect' | string
+  level: "banner" | "redirect" | string;
   /** Short headline. Required. */
-  title: string
+  title: string;
   /**
    * Body content. At "redirect" level a client may use this as the injected
    * user prompt if it chooses to redirect.
    */
-  message?: string
+  message?: string;
   /**
    * Which session receives the event. Empty emits on the caller's own
    * session.
    */
-  targetSessionKey?: string
+  targetSessionKey?: string;
   /** Opaque map forwarded to clients unchanged. */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1182,12 +1197,12 @@ export interface InterceptOpts {
  * harness's job.
  */
 export interface AgentSpec {
-  name: string
-  description?: string
-  model?: string
-  tools?: string[]
-  parent?: string
-  systemPrompt?: string
+  name: string;
+  description?: string;
+  model?: string;
+  tools?: string[];
+  parent?: string;
+  systemPrompt?: string;
 }
 
 /**
@@ -1196,37 +1211,37 @@ export interface AgentSpec {
 export interface IonHttpRequestOptions {
   /** Downstream resource scope for the minted token (e.g.
    *  `api://<app-id>/Billing.Read`). Omit for the base grant's scope. */
-  scope?: string
+  scope?: string;
   /** Explicit audience/resource for the minted token, for identity
    *  providers that bind grants to one (Auth0, RFC 8707) instead of
    *  encoding the resource in the scope string. Omit to use the
    *  provider's configured default audience. */
-  audience?: string
+  audience?: string;
   /** AWS service name for Signature V4 authentication (for example `s3`,
    *  `execute-api`, or `dynamodb`). Setting this selects the engine-owned AWS
    *  credential provider instead of OAuth bearer authentication. */
-  awsService?: string
+  awsService?: string;
   /** AWS region used in the SigV4 credential scope. Required with awsService. */
-  awsRegion?: string
+  awsRegion?: string;
   /** Request headers. `Authorization` is reserved and overwritten by the
    *  engine-owned bearer token or SigV4 signature. */
-  headers?: Record<string, string>
+  headers?: Record<string, string>;
   /** Request body, sent verbatim. */
-  body?: string
+  body?: string;
   /** Request deadline in milliseconds (default 30 000). */
-  timeoutMs?: number
+  timeoutMs?: number;
   /** Response size cap in bytes (default 5 MB). */
-  maxBytes?: number
+  maxBytes?: number;
   /** Opt this request out of the private/reserved-address guard to reach
    *  intranet APIs. Default false. */
-  allowPrivateNetwork?: boolean
+  allowPrivateNetwork?: boolean;
 }
 
 /** Response from a pre-authenticated HTTP request. Carries no token. */
 export interface IonHttpResponse {
-  status: number
-  headers: Record<string, string>
-  body: string
+  status: number;
+  headers: Record<string, string>;
+  body: string;
 }
 
 /**
@@ -1234,9 +1249,9 @@ export interface IonHttpResponse {
  * Wherever the response reflected the injected secret, it reads `[redacted]`.
  */
 export interface IonProtectedOperationResult {
-  status: number
-  headers: Record<string, string>
-  body: string
+  status: number;
+  headers: Record<string, string>;
+  body: string;
 }
 
 /**
@@ -1247,7 +1262,8 @@ export interface IonProtectedOperationResult {
  * are available. `refreshing`: a refresh is in flight and the previous values
  * stay available. `failed`: resolution failed; `error` says why.
  */
-export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'ready' | 'refreshing' | 'failed'
+export type ApplicationConfigState =
+  "disabled" | "deferred" | "fetching" | "ready" | "refreshing" | "failed";
 
 /**
  * One complete view of the application config. Also the
@@ -1255,42 +1271,42 @@ export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'rea
  * the highest `revision` if two arrive out of order.
  */
 export interface ApplicationConfigSnapshot {
-  state: ApplicationConfigState
-  revision: number
+  state: ApplicationConfigState;
+  revision: number;
   /** The principal the values belong to. Absent while deferred. */
-  subject?: string
-  provider?: string
+  subject?: string;
+  provider?: string;
   /** The common section merged with this extension's own section. Present
    *  only when `ready` or `refreshing`. */
-  values?: Record<string, unknown>
+  values?: Record<string, unknown>;
   /** Names of the secrets the engine holds for this extension. Their values
    *  never reach extension code. */
-  secretKeys?: string[]
+  secretKeys?: string[];
   /** Failure reason. Present only when failed. */
-  error?: string
+  error?: string;
   /** RFC 3339 resolution time. Present only when `ready` or `refreshing`. */
-  fetchedAt?: string
+  fetchedAt?: string;
 }
 
 /** One keyed read of the application config. */
 export interface ApplicationConfigValue {
-  state: ApplicationConfigState
-  revision: number
-  error?: string
-  key: string
+  state: ApplicationConfigState;
+  revision: number;
+  error?: string;
+  key: string;
   /** Meaningful only when `state` is `ready` or `refreshing`: false then
    *  means the key is not a readable value. */
-  found: boolean
-  value?: unknown
+  found: boolean;
+  value?: unknown;
   /** True when `key` names a secret the engine holds. Its value is never
    *  returned. */
-  secret: boolean
+  secret: boolean;
 }
 
 /** Result of {@link IonApplicationConfig.await}. */
 export interface ApplicationConfigAwaitResult extends ApplicationConfigSnapshot {
   /** True when the view had not settled before the timeout. */
-  timedOut: boolean
+  timedOut: boolean;
 }
 
 /**
@@ -1303,58 +1319,62 @@ export interface ApplicationConfigAwaitResult extends ApplicationConfigSnapshot 
  */
 export interface IonApplicationConfig {
   /** The current view, without waiting. */
-  snapshot(): Promise<ApplicationConfigSnapshot>
+  snapshot(): Promise<ApplicationConfigSnapshot>;
   /** One key, without waiting. */
-  get(key: string): Promise<ApplicationConfigValue>
+  get(key: string): Promise<ApplicationConfigValue>;
   /** Wait until the view has values or failed, or `timeoutMs` passes (engine
    *  default 30 000). Always resolves with the latest view. */
-  await(opts?: { timeoutMs?: number }): Promise<ApplicationConfigAwaitResult>
+  await(opts?: { timeoutMs?: number }): Promise<ApplicationConfigAwaitResult>;
 }
 
 /** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
 export interface IonHttp {
-  request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
-  get(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
-  post(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
-  put(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
-  patch(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
-  delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  request(
+    method: string,
+    url: string,
+    opts?: IonHttpRequestOptions,
+  ): Promise<IonHttpResponse>;
+  get(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>;
+  post(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>;
+  put(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>;
+  patch(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>;
+  delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>;
 }
 
 export interface EmbeddedResource {
-  uri?: string
-  mimeType?: string
-  text?: string
-  blob?: string
+  uri?: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
 }
 
 export interface ToolAnnotations {
-  audience?: string[]
-  priority?: number
-  lastModified?: string
+  audience?: string[];
+  priority?: number;
+  lastModified?: string;
 }
 
 /** One ordered typed item from an MCP tool result. Binary data stays base64. */
 export interface ToolContent {
-  type: string
-  text?: string
-  data?: string
-  mimeType?: string
-  resource?: EmbeddedResource
-  uri?: string
-  name?: string
-  title?: string
-  description?: string
-  size?: number
-  annotations?: ToolAnnotations
-  unknown?: unknown
+  type: string;
+  text?: string;
+  data?: string;
+  mimeType?: string;
+  resource?: EmbeddedResource;
+  uri?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  size?: number;
+  annotations?: ToolAnnotations;
+  unknown?: unknown;
 }
 
 /** Result from `ctx.callTool` or an extension tool handler. */
 export interface ToolResult {
-  content: string
-  isError?: boolean
-  contentItems?: ToolContent[]
+  content: string;
+  isError?: boolean;
+  contentItems?: ToolContent[];
 }
 
 export interface IonContext extends DispatchControlContext {
@@ -1382,7 +1402,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  sessionKey: string
+  sessionKey: string;
   /** Durable conversation identity ({unix_millis}-{hex}). Stable across
    *  engine restarts. Use this for resource scoping, audit trails, and
    *  persistent identity. Empty when no conversation is active. */
@@ -1403,7 +1423,7 @@ export interface IonContext extends DispatchControlContext {
    * process boundaries use {@link IonContext.traceId} instead — run IDs are
    * not W3C-shaped.
    */
-  runId: string
+  runId: string;
   /**
    * W3C trace-context trace-id of the run in flight: 32 lowercase hex
    * characters, scoped to ONE prompt-to-completion run. Empty (`''`) when no
@@ -1432,7 +1452,7 @@ export interface IonContext extends DispatchControlContext {
    * {@link IonContext.conversationId}; for the engine session use
    * {@link IonContext.sessionKey}.
    */
-  traceId: string
+  traceId: string;
   /**
    * Dispatch depth of the session that fired the hook: `0` for the root
    * (orchestrator) session, `1` for a directly dispatched child agent,
@@ -1454,25 +1474,25 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  depth: number
+  depth: number;
   /** Dispatch ID owning this context. Empty for the root session
    *  (`depth === 0`); populated for child sessions with the ID minted when
    *  the agent was spawned, so per-dispatch state can be keyed without
    *  inventing a session-local identity. */
-  dispatchId: string
+  dispatchId: string;
   /** Optional credential-free verified identity for this invocation. */
-  identity?: ContextIdentity
-  cwd: string
-  model: { id: string; contextWindow: number } | null
-  config: ExtensionConfig
-  emit(event: EngineEvent): void
-  sendMessage(text: string): void
-  registerProcess(name: string, pid: number, task: string): Promise<void>
-  deregisterProcess(name: string): Promise<void>
-  listProcesses(): Promise<ProcessInfo[]>
-  terminateProcess(name: string): Promise<void>
-  cleanStaleProcesses(): Promise<number>
-  suppressTool(name: string): Promise<void>
+  identity?: ContextIdentity;
+  cwd: string;
+  model: { id: string; contextWindow: number } | null;
+  config: ExtensionConfig;
+  emit(event: EngineEvent): void;
+  sendMessage(text: string): void;
+  registerProcess(name: string, pid: number, task: string): Promise<void>;
+  deregisterProcess(name: string): Promise<void>;
+  listProcesses(): Promise<ProcessInfo[]>;
+  terminateProcess(name: string): Promise<void>;
+  cleanStaleProcesses(): Promise<number>;
+  suppressTool(name: string): Promise<void>;
 
   /**
    * Dispatch an extension-initiated tool call through the session's tool
@@ -1505,10 +1525,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  callTool(
-    name: string,
-    input: Record<string, unknown>,
-  ): Promise<ToolResult>
+  callTool(name: string, input: Record<string, unknown>): Promise<ToolResult>;
 
   /**
    * Pre-authenticated outbound HTTP using the configured operator or machine
@@ -1542,7 +1559,7 @@ export interface IonContext extends DispatchControlContext {
    * if (res.status === 201) ctx.sendMessage('created')
    * ```
    */
-  http: IonHttp
+  http: IonHttp;
 
   /**
    * Run an operation the operator declared under `protectedOperations` in the
@@ -1564,7 +1581,10 @@ export interface IonContext extends DispatchControlContext {
    * if (res.status !== 202) ctx.sendMessage(`metric rejected: ${res.status}`)
    * ```
    */
-  protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>
+  protectedOperation(
+    name: string,
+    payload?: unknown,
+  ): Promise<IonProtectedOperationResult>;
 
   /**
    * Authenticated application config resolved for the signed-in principal.
@@ -1576,7 +1596,7 @@ export interface IonContext extends DispatchControlContext {
    * if (endpoint.found) useEndpoint(endpoint.value)
    * ```
    */
-  applicationConfig: IonApplicationConfig
+  applicationConfig: IonApplicationConfig;
 
   /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
@@ -1603,7 +1623,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
+  sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>;
 
   /**
    * End the LLM run for this dispatch without completing it. The agent goes
@@ -1625,7 +1645,7 @@ export interface IonContext extends DispatchControlContext {
    * outstanding notifying background commands to park on — parking with
    * nothing to wait for would strand the session.
    */
-  suspend(): Promise<void>
+  suspend(): Promise<void>;
 
   /**
    * Like `suspend()` but waits for ALL listed child dispatches to complete
@@ -1635,9 +1655,9 @@ export interface IonContext extends DispatchControlContext {
    * Used internally by the `dispatch_agents` fan-out tool; prefer that tool
    * over calling `suspendUntilAll()` directly for parallel fan-out.
    */
-  suspendUntilAll(dispatchIds: string[]): Promise<void>
+  suspendUntilAll(dispatchIds: string[]): Promise<void>;
 
-  dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
+  dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>;
 
   /**
    * Walk context files (read-only). Returns discovered AGENTS.md/ION.md/
@@ -1645,15 +1665,14 @@ export interface IonContext extends DispatchControlContext {
    * before_agent_start to compose custom context. Part of the four-level
    * context cascade seam (see docs/context-loading.md).
    */
-  walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]>
+  walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]>;
 
   /**
    * Set the session-level default context policy for all subsequent dispatches
    * (level 3 of the four-level cascade). A per-dispatch
    * {@link DispatchAgentOpts.contextPolicy} overrides it.
    */
-  setDispatchContextDefaults(policy: ContextPolicy): Promise<void>
-
+  setDispatchContextDefaults(policy: ContextPolicy): Promise<void>;
 
   /**
    * Deliver a steering message to a running asynchronous dispatch. The message
@@ -1667,7 +1686,10 @@ export interface IonContext extends DispatchControlContext {
    * @param message - The steering message to inject.
    * @returns A result describing the delivery outcome.
    */
-  steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult>
+  steerDispatch(
+    dispatchId: string,
+    message: string,
+  ): Promise<SteerDispatchResult>;
   /**
    * Deliver a steering message to a running asynchronous dispatch identified by
    * its agent **name**. This is the name-based peer of {@link steerDispatch}:
@@ -1684,7 +1706,10 @@ export interface IonContext extends DispatchControlContext {
    * @param message - The steering message to inject.
    * @returns A result describing the delivery outcome.
    */
-  steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult>
+  steerDispatchByName(
+    name: string,
+    message: string,
+  ): Promise<SteerDispatchResult>;
   /**
    * Answer a pending child dispatch question raised via AskUserQuestion.
    * Normally called by the SDK runtime on the dispatcher's behalf after the
@@ -1697,7 +1722,12 @@ export interface IonContext extends DispatchControlContext {
    *                     undefined to let the engine use a best-judgment placeholder.
    * @param cancelled  - When true, the child run terminates instead of resuming.
    */
-  answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void>
+  answerDispatchQuestion(
+    dispatchId: string,
+    requestId: string,
+    answer: string | undefined,
+    cancelled: boolean,
+  ): Promise<void>;
   /**
    * Answer a pending park check-in. Normally called by the SDK runtime after
    * the `onParkCheckIn` callback resolves; harnesses implementing custom
@@ -1707,9 +1737,13 @@ export interface IonContext extends DispatchControlContext {
    * @param requestId  - The engine-assigned id echoed from the check-in notification.
    * @param reply      - The prompt to wake the dispatch with, or a skip.
    */
-  answerDispatchParkCheckIn(dispatchId: string, requestId: string, reply: DispatchParkCheckInReply): Promise<void>
+  answerDispatchParkCheckIn(
+    dispatchId: string,
+    requestId: string,
+    reply: DispatchParkCheckInReply,
+  ): Promise<void>;
   /** Acknowledge durable delivery of a lost-dispatch notice. */
-  ackDispatchLost(dispatchId: string): Promise<void>
+  ackDispatchLost(dispatchId: string): Promise<void>;
   /**
    * Deliver a message to the run that OWNS this context, letting the engine
    * pick the mechanism based on that run's live state:
@@ -1743,8 +1777,11 @@ export interface IonContext extends DispatchControlContext {
    * @param opts    - Optional classification for the injected turn.
    * @returns A result describing the delivery outcome (`'steered'` or `'sent'`).
    */
-  steerSelf(message: string, opts?: SteerSelfOpts): Promise<SteerDispatchResult>
-  discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
+  steerSelf(
+    message: string,
+    opts?: SteerSelfOpts,
+  ): Promise<SteerDispatchResult>;
+  discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>;
   /**
    * Wrap a shell command with platform-appropriate sandbox restrictions.
    * macOS uses `sandbox-exec` (Seatbelt); Linux uses `bwrap` (bubblewrap);
@@ -1762,7 +1799,10 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  sandboxWrap(command: string, profile?: SandboxProfile): Promise<SandboxWrapResult>
+  sandboxWrap(
+    command: string,
+    profile?: SandboxProfile,
+  ): Promise<SandboxWrapResult>;
 
   /**
    * Read the conversation's session memory (`.memory.md`). Returns an empty
@@ -1773,7 +1813,7 @@ export interface IonContext extends DispatchControlContext {
    * the transcript. It is not cross-session memory, which the engine
    * deliberately does not own.
    */
-  getSessionMemory(): Promise<string>
+  getSessionMemory(): Promise<string>;
 
   /**
    * Replace the conversation's session memory (`.memory.md`).
@@ -1785,7 +1825,7 @@ export interface IonContext extends DispatchControlContext {
    * await ctx.setSessionMemory(`${existing}\n\n- new fact`)
    * ```
    */
-  setSessionMemory(content: string): Promise<void>
+  setSessionMemory(content: string): Promise<void>;
 
   /**
    * Emit an `engine_intercept` event on a session's stream.
@@ -1803,7 +1843,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  intercept(opts: InterceptOpts): Promise<void>
+  intercept(opts: InterceptOpts): Promise<void>;
 
   /**
    * Register an LLM-visible agent spec at runtime. The next Agent tool call
@@ -1814,12 +1854,12 @@ export interface IonContext extends DispatchControlContext {
    * specialist, calls `registerAgentSpec`, and the original Agent tool call
    * resolves on the same dispatch — no retry loop required.
    */
-  registerAgentSpec(spec: AgentSpec): Promise<void>
+  registerAgentSpec(spec: AgentSpec): Promise<void>;
 
   /**
    * Remove an agent spec previously registered via {@link registerAgentSpec}.
    */
-  deregisterAgentSpec(name: string): Promise<void>
+  deregisterAgentSpec(name: string): Promise<void>;
 
   /**
    * Raise an elicitation request. The engine fans out an
@@ -1844,7 +1884,7 @@ export interface IonContext extends DispatchControlContext {
    * }
    * ```
    */
-  elicit(opts: ElicitOptions): Promise<ElicitResult>
+  elicit(opts: ElicitOptions): Promise<ElicitResult>;
 
   /**
    * Return a snapshot of the active run's context window usage, or `null`
@@ -1868,7 +1908,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  getContextUsage(): Promise<ContextUsage | null>
+  getContextUsage(): Promise<ContextUsage | null>;
 
   /**
    * Search the active conversation's message history for content matching
@@ -1892,7 +1932,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]>
+  searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]>;
 
   /**
    * Returns a point-in-time snapshot of every dispatch currently active in
@@ -1909,7 +1949,7 @@ export interface IonContext extends DispatchControlContext {
    * Returns an empty array when no dispatches are active or when the engine
    * does not support this RPC (older engine builds).
    */
-  listDispatchState(): Promise<DispatchEntry[]>
+  listDispatchState(): Promise<DispatchEntry[]>;
 
   /**
    * Returns the retained terminal dispatches this context owns, oldest
@@ -1922,7 +1962,7 @@ export interface IonContext extends DispatchControlContext {
    * Returns an empty array when nothing is retained or when the engine does
    * not support this RPC (older engine builds).
    */
-  listDispatchHistory(): Promise<DispatchHistoryEntry[]>
+  listDispatchHistory(): Promise<DispatchHistoryEntry[]>;
 
   /**
    * Returns one bounded page of the conversation of a dispatch this context
@@ -1944,7 +1984,19 @@ export interface IonContext extends DispatchControlContext {
    * } while (cursor)
    * ```
    */
-  readDispatchConversation(opts: ReadDispatchConversationOpts): Promise<DispatchConversationResult>
+  readDispatchConversation(
+    opts: ReadDispatchConversationOpts,
+  ): Promise<DispatchConversationResult>;
+
+  /**
+   * Run the read-only link integrity scan over the session's working
+   * directory. Returns every wiki link (`[[target]]`, `[[target|alias]]`)
+   * that names no single file. Nothing is written.
+   *
+   * Rejects when the engine's `wikiLinks` config turns the scan off, and on
+   * an engine that does not support this RPC.
+   */
+  scanWikiLinks(): Promise<WikiLinkIntegrityReport>;
 
   /**
    * One-shot lightweight inference call. Fires a single round-trip to
@@ -1987,7 +2039,7 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  llmCall(opts: LLMCallOpts): Promise<LLMCallResult>
+  llmCall(opts: LLMCallOpts): Promise<LLMCallResult>;
 
   // --- Resource subsystem (D-007) ---
 
@@ -2000,28 +2052,33 @@ export interface IonContext extends DispatchControlContext {
    */
   resources: {
     /** Declare this extension as the producer for a resource kind. */
-    declare(decl: ResourceDeclaration): Promise<ResourceHandle>
+    declare(decl: ResourceDeclaration): Promise<ResourceHandle>;
     /** Register a query handler for the given kind. Called when clients subscribe. */
-    onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+    onQuery(
+      kind: string,
+      handler: (
+        filter: ResourceFilter,
+      ) => Promise<ResourceItem[]> | ResourceItem[],
+    ): void;
     /**
      * Register the handler that returns every item of this kind held for the
      * given conversations, with full content. Called when a conversation moves
      * to another machine. Without it, the engine reads the items through the
      * query handler instead.
      */
-    onExport(kind: string, handler: ResourceExportHandler): void
+    onExport(kind: string, handler: ResourceExportHandler): void;
     /**
      * Register the handler that persists items the same-named producer
      * exported on another machine. Without it, a conversation holding items of
      * this kind cannot move here.
      */
-    onImport(kind: string, handler: ResourceImportHandler): void
+    onImport(kind: string, handler: ResourceImportHandler): void;
     /**
      * Register the handler that drops every item of this kind held for the
      * given conversations, once they have moved to another machine.
      */
-    onForget(kind: string, handler: ResourceForgetHandler): void
-  }
+    onForget(kind: string, handler: ResourceForgetHandler): void;
+  };
 
   /**
    * Send a push notification through the engine's notification pipeline.
@@ -2034,18 +2091,22 @@ export interface IonContext extends DispatchControlContext {
    * await ctx.notify({ kind: 'briefing', title: 'New Brief', body: 'Summary ready.' })
    * ```
    */
-  notify(opts: NotifyOpts): Promise<void>
+  notify(opts: NotifyOpts): Promise<void>;
 
   /** List all active sessions in the engine. Extensions use this to discover
    *  other sessions (e.g. for cross-session notification targeting). The engine
    *  returns all sessions; filter by extensionName on your side. */
   sessions: {
-    list(): Promise<SessionListEntry[]>
+    list(): Promise<SessionListEntry[]>;
     /** Send a structured message to another session of the same extension
      *  type. The target must have a session_message hook registered.
      *  Same extension type only — the engine enforces this. */
-    send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void>
-  }
+    send(
+      targetKey: string,
+      kind: string,
+      payload: Record<string, unknown>,
+    ): Promise<void>;
+  };
 
   /** Conversation records on this engine's host. */
   conversations: {
@@ -2075,14 +2136,14 @@ export interface IonContext extends DispatchControlContext {
    * a backfill from a live tick fire. Returns when the fire is queued (the
    * handler runs asynchronously).
    */
-  fireSchedule(id: string): Promise<void>
+  fireSchedule(id: string): Promise<void>;
 
   /**
    * Query the status of registered schedule jobs. When `id` is provided,
    * returns only the matching job (or an empty array when not found). When
    * `id` is omitted, returns all schedule jobs on this session.
    */
-  getScheduleStatus(id?: string): Promise<ScheduleStatus[]>
+  getScheduleStatus(id?: string): Promise<ScheduleStatus[]>;
 
   /**
    * Run an operation on exactly one instance when multiple sessions load the
@@ -2109,7 +2170,11 @@ export interface IonContext extends DispatchControlContext {
    * })
    * ```
    */
-  runOnce<T = void>(id: string, opts: RunOnceOpts, fn: () => Promise<T>): Promise<RunOnceResult<T>>
+  runOnce<T = void>(
+    id: string,
+    opts: RunOnceOpts,
+    fn: () => Promise<T>,
+  ): Promise<RunOnceResult<T>>;
 
   /**
    * Programmatically enter plan mode for this session. The engine flips the
@@ -2122,7 +2187,7 @@ export interface IonContext extends DispatchControlContext {
    * Useful for safety-gated workflows, approval loops, and headless sessions
    * that want to capture a plan before execution.
    */
-  enterPlanMode(): Promise<void>
+  enterPlanMode(): Promise<void>;
 
   /**
    * Programmatically exit plan mode for this session. The engine transitions
@@ -2130,7 +2195,7 @@ export interface IonContext extends DispatchControlContext {
    * Fires the existing `before_plan_mode_exit` hook. No-op when the session
    * is already not in plan mode.
    */
-  exitPlanMode(): Promise<void>
+  exitPlanMode(): Promise<void>;
 
   /**
    * Query the current plan-mode state for this session.
@@ -2138,14 +2203,14 @@ export interface IonContext extends DispatchControlContext {
    * whenever a plan file has been allocated, even when plan mode is currently
    * off — the path is preserved across toggles until the session is reset).
    */
-  getPlanMode(): Promise<PlanModeState>
+  getPlanMode(): Promise<PlanModeState>;
 
   /**
    * Configure restart recovery for later runs in this session. The engine only
    * resumes work interrupted by engine process loss. Provider errors and normal
    * terminal exits are not retried.
    */
-  setRunRecovery(config: RunRecoveryConfig): Promise<void>
+  setRunRecovery(config: RunRecoveryConfig): Promise<void>;
 }
 
 /**
@@ -2156,30 +2221,30 @@ export interface IonContext extends DispatchControlContext {
  * engine every session shares the same subject, so nothing is hidden there.
  */
 export interface SessionListEntry {
-  key: string
-  hasActiveRun: boolean
-  extensionName?: string
-  conversationId?: string
-  principalSubject?: string
+  key: string;
+  hasActiveRun: boolean;
+  extensionName?: string;
+  conversationId?: string;
+  principalSubject?: string;
 }
 
 /** Result returned by {@link IonContext.getPlanMode}. */
 export interface PlanModeState {
   /** Whether plan mode is currently active for this session. */
-  enabled: boolean
+  enabled: boolean;
   /**
    * The plan file path allocated for this session. Non-empty whenever a plan
    * file has been created (even when plan mode is currently off — the path is
    * preserved across toggles until the session resets). Empty when no plan
    * file has ever been allocated.
    */
-  planFilePath: string
+  planFilePath: string;
 }
 
 /** Options for {@link IonContext.sendPrompt}. */
 export interface SendPromptOpts {
   /** Per-prompt model override. Empty/undefined uses the session default. */
-  model?: string
+  model?: string;
 
   /**
    * Per-prompt, run-scoped plan-mode Bash command-prefix allowances.
@@ -2206,14 +2271,14 @@ export interface SendPromptOpts {
    *
    * An empty/omitted array is a no-op.
    */
-  bashAllowlistAdditions?: string[]
+  bashAllowlistAdditions?: string[];
 
   /**
    * Per-prompt policy for a resolved slash command that declares a model tier.
    * Omit to inherit engine.json. True permits a mid-conversation switch; false
    * retains the serving model. `before_slash_model_boundary` has final say.
    */
-  slashModelTierApplyMidConversation?: boolean
+  slashModelTierApplyMidConversation?: boolean;
 
   /**
    * Semantic classification of this injection. See {@link InjectionKind} for
@@ -2230,25 +2295,25 @@ export interface SendPromptOpts {
    * they choose — the engine carries no opinion about what any consumer
    * should do with it.
    */
-  kind?: InjectionKind
+  kind?: InjectionKind;
 }
 
 export interface ElicitOptions {
   /** Optional client-supplied request id; engine assigns one if omitted. */
-  requestId?: string
+  requestId?: string;
   /** JSON Schema describing the expected response shape (harness-defined). */
-  schema?: Record<string, unknown>
+  schema?: Record<string, unknown>;
   /** Optional URL clients can deep-link to (web flows). */
-  url?: string
+  url?: string;
   /** Mode label clients use to choose a renderer ("approval", "select", ...) */
-  mode?: string
+  mode?: string;
 }
 
 export interface ElicitResult {
   /** Response payload from the client or peer extension. */
-  response?: Record<string, unknown>
+  response?: Record<string, unknown>;
   /** True when the user cancelled or the request timed out. */
-  cancelled: boolean
+  cancelled: boolean;
 }
 
 /**
@@ -2256,8 +2321,8 @@ export interface ElicitResult {
  */
 export interface RunRecoveryConfig {
   /** Required by current engines. Omit only when supporting older SDK callers. */
-  enabled?: boolean
-  maxAttempts?: number
+  enabled?: boolean;
+  maxAttempts?: number;
 }
 
 export interface RunOnceOpts {
@@ -2274,7 +2339,7 @@ export interface RunOnceOpts {
    *
    * @default 60000
    */
-  debounceMs?: number
+  debounceMs?: number;
 }
 
 /**
@@ -2285,19 +2350,19 @@ export interface RunOnceResult<T = void> {
    * True when this instance ran `fn` and it completed. False when the
    * engine decided another instance should handle it (or already has).
    */
-  executed: boolean
+  executed: boolean;
   /**
    * Why execution was skipped. Only present when `executed` is false.
    * - `"in_progress"`: another instance is currently running the operation.
    * - `"debounced"`: the operation ran recently enough to be within the window.
    * - `"already_ran"`: debounceMs=0 and the operation already ran this lifecycle.
    */
-  reason?: 'in_progress' | 'debounced' | 'already_ran'
+  reason?: "in_progress" | "debounced" | "already_ran";
   /**
    * The return value of `fn`, when `executed` is true and `fn` returned
    * a value.
    */
-  result?: T
+  result?: T;
 }
 
 /**
@@ -2319,10 +2384,31 @@ export type EngineEvent =
    * output or conversation content. Put durable content in conversation history
    * or a resource item so clients can retrieve it on demand.
    */
-  | { type: 'engine_agent_state'; agents: Array<{ name: string; status: string; metadata?: Record<string, any>; [key: string]: unknown }> }
-  | { type: 'engine_status'; fields: { extensionName?: string; [key: string]: unknown }; metadata?: Record<string, unknown> }
-  | { type: 'engine_working_message'; message: string; metadata?: Record<string, unknown> }
-  | { type: 'engine_notify'; message: string; level: string; metadata?: Record<string, unknown> }
+  | {
+      type: "engine_agent_state";
+      agents: Array<{
+        name: string;
+        status: string;
+        metadata?: Record<string, any>;
+        [key: string]: unknown;
+      }>;
+    }
+  | {
+      type: "engine_status";
+      fields: { extensionName?: string; [key: string]: unknown };
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_working_message";
+      message: string;
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      type: "engine_notify";
+      message: string;
+      level: string;
+      metadata?: Record<string, unknown>;
+    }
   // `metadata` is an opaque pass-through map the engine forwards verbatim
   // to clients. The desktop renderer honors `metadata.dedupKey` on harness
   // messages to suppress repeated emissions within a single engine-instance
@@ -2331,20 +2417,25 @@ export type EngineEvent =
   // well-known metadata keys. The convention is renderer-honored, not
   // engine-enforced; any extension may pick its own keys (namespace as
   // `<extensionName>:<messageKey>`).
-  | { type: 'engine_harness_message'; message: string; source?: string; metadata?: Record<string, unknown> }
-  | { type: string; [key: string]: unknown }
+  | {
+      type: "engine_harness_message";
+      message: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+    }
+  | { type: string; [key: string]: unknown };
 
 export interface ToolDef {
-  name: string
-  description: string
-  parameters: any // JSON Schema
-  planModeSafe?: boolean
-  execute: (params: any, ctx: IonContext) => Promise<ToolResult>
+  name: string;
+  description: string;
+  parameters: any; // JSON Schema
+  planModeSafe?: boolean;
+  execute: (params: any, ctx: IonContext) => Promise<ToolResult>;
 }
 
 export interface CommandDef {
-  description: string
-  execute: (args: string, ctx: IonContext) => Promise<void>
+  description: string;
+  execute: (args: string, ctx: IonContext) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -2358,64 +2449,64 @@ export interface CommandDef {
 
 /** Payload for `tool_call` and `*_tool_call` hooks (block to refuse a call). */
 export interface ToolCallInfo {
-  toolName: string
-  toolId: string
-  input: Record<string, unknown>
+  toolName: string;
+  toolId: string;
+  input: Record<string, unknown>;
 }
 
 /** Optional return from a `tool_call` handler to block the call. */
 export interface ToolCallResult {
-  block?: boolean
-  reason?: string
+  block?: boolean;
+  reason?: string;
 }
 
 /** Optional return from a per-tool hook (`bash_tool_call`, etc). */
 export interface PerToolCallResult {
-  block?: boolean
-  reason?: string
+  block?: boolean;
+  reason?: string;
   /** Replacement input fields. Engine merges over the original input. */
-  mutate?: Record<string, unknown>
+  mutate?: Record<string, unknown>;
 }
 
 /** Payload for `tool_start`. */
 export interface ToolStartInfo {
-  toolName: string
-  toolId: string
+  toolName: string;
+  toolId: string;
 }
 
 /** Payload for the `tool_result` hook (engine-side ToolResultEntry shape). */
 export interface ToolResultInfo {
-  tool_use_id: string
-  content: string
-  is_error?: boolean
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
 }
 
 /** Payload for `on_error`. */
 export interface ErrorInfo {
-  message: string
-  errorCode?: string
+  message: string;
+  errorCode?: string;
   category?:
-    | 'tool_error'
-    | 'provider_error'
-    | 'permission_error'
-    | 'mcp_error'
-    | 'compaction_error'
-  retryable?: boolean
-  retryAfterMs?: number
-  httpStatus?: number
+    | "tool_error"
+    | "provider_error"
+    | "permission_error"
+    | "mcp_error"
+    | "compaction_error";
+  retryable?: boolean;
+  retryAfterMs?: number;
+  httpStatus?: number;
   /** The Policy Failure identifier when the error results from enterprise policy. */
-  policyFailure?: string
+  policyFailure?: string;
 }
 
 /** Payload for `turn_start` and `turn_end`. */
 export interface TurnInfo {
-  turnNumber: number
+  turnNumber: number;
 }
 
 /** Payload for `agent_start`, `agent_end`, and `before_agent_start`. */
 export interface AgentInfo {
-  name: string
-  task?: string
+  name: string;
+  task?: string;
   /**
    * True only on the `before_agent_start` root-loop firing (primary
    * system-prompt injection), where `name`/`task` are empty. Always
@@ -2424,9 +2515,9 @@ export interface AgentInfo {
    * Branch on `!isRoot` to inject a sub-agent-only preamble rather than the
    * legacy `name !== ""` sentinel.
    */
-  isRoot?: boolean
+  isRoot?: boolean;
   /** Child dispatch levels available under effective depth cap. Present only on `before_agent_start`. */
-  remainingDepthBudget?: number
+  remainingDepthBudget?: number;
 }
 
 /**
@@ -2441,40 +2532,40 @@ export interface AgentInfo {
  */
 export interface BeforeProviderRequestInfo {
   /** Provider ID resolved for this request (e.g. "anthropic", "openai"). */
-  provider: string
+  provider: string;
   /** Model name the request will be sent to (post-fallback). */
-  model: string
+  model: string;
   /** Agent-loop turn number that triggered this request (1-based, matches turn_start). */
-  turnNumber: number
+  turnNumber: number;
   /** Number of messages in the request payload. */
-  messageCount: number
+  messageCount: number;
   /** Number of tool definitions attached to the request. */
-  toolCount: number
+  toolCount: number;
   /** True when the request carries a non-empty system prompt. */
-  hasSystemPrompt: boolean
+  hasSystemPrompt: boolean;
   /** Configured response cap; absent or 0 means provider default. */
-  maxTokens?: number
+  maxTokens?: number;
 }
 
 /** Optional return from `before_agent_start`. */
 export interface BeforeAgentStartResult {
-  systemPrompt?: string
+  systemPrompt?: string;
   /** Override agent name; empty/absent means no change. */
-  agentName?: string
+  agentName?: string;
 }
 
 /** Optional return from `before_prompt`. */
 export interface BeforePromptResult {
-  prompt?: string
-  systemPrompt?: string
+  prompt?: string;
+  systemPrompt?: string;
 }
 
 /** Optional return from `plan_mode_prompt`. */
 export interface PlanModePromptResult {
-  prompt?: string
-  tools?: string[]
+  prompt?: string;
+  tools?: string[];
   /** Custom text for the per-turn sparse reminder; empty/omitted = use engine default. */
-  sparseReminder?: string
+  sparseReminder?: string;
 }
 
 /**
@@ -2487,8 +2578,8 @@ export interface PlanModePromptResult {
  * `content` is a short human-readable snippet (sentence or path).
  */
 export interface CompactionFact {
-  type: string
-  content: string
+  type: string;
+  content: string;
 }
 
 /**
@@ -2503,35 +2594,35 @@ export interface CompactionFact {
  *   exist after the hook fires.
  */
 export interface CompactionInfo {
-  strategy: 'auto' | 'reactive'
-  messagesBefore: number
-  messagesAfter: number
-  facts?: CompactionFact[]
-  tokensBefore?: number
-  tokenLimit?: number
-  targetTokens?: number
-  microCompactKeep?: number
-  tokensAfter?: number
-  sessionMemory?: string
+  strategy: "auto" | "reactive";
+  messagesBefore: number;
+  messagesAfter: number;
+  facts?: CompactionFact[];
+  tokensBefore?: number;
+  tokenLimit?: number;
+  targetTokens?: number;
+  microCompactKeep?: number;
+  tokensAfter?: number;
+  sessionMemory?: string;
 }
 
 /** Payload for `session_before_fork` and `session_fork`. */
 export interface ForkInfo {
-  sourceSessionKey: string
-  newSessionKey: string
-  forkMessageIndex: number
+  sourceSessionKey: string;
+  newSessionKey: string;
+  forkMessageIndex: number;
 }
 
 /** Payload for `message_update`. */
 export interface MessageUpdateInfo {
-  role: string
-  content: string
+  role: string;
+  content: string;
 }
 
 /** Payload for `model_select`. */
 export interface ModelSelectInfo {
-  requestedModel: string
-  availableModels?: string[]
+  requestedModel: string;
+  availableModels?: string[];
   /**
    * The RAW user prompt for this turn, captured BEFORE any `before_prompt`
    * rewrite. `model_select` routes on this raw text (content/length routing:
@@ -2539,77 +2630,77 @@ export interface ModelSelectInfo {
    * chosen model's prompt, readable via `ctx.model`. Absent when the firing
    * site has no prompt in hand.
    */
-  prompt?: string
+  prompt?: string;
 }
 
 /** Payload for `before_slash_model_boundary`. */
 export interface SlashModelBoundaryInfo {
-  command: string
-  requestedTier: string
-  servingModel: string
-  hasHistory: boolean
-  defaultApply: boolean
+  command: string;
+  requestedTier: string;
+  servingModel: string;
+  hasHistory: boolean;
+  defaultApply: boolean;
 }
 
 /** Optional decision from `before_slash_model_boundary`; omit to abstain. */
 export interface SlashModelBoundaryResult {
-  apply?: boolean | null
+  apply?: boolean | null;
 }
 
 /** Payload for `context_discover`. */
 export interface ContextDiscoverInfo {
-  path: string
-  source: string
+  path: string;
+  source: string;
 }
 
 /** Payload for `context_load` and `instruction_load`. */
 export interface ContextLoadInfo {
-  path: string
-  content: string
-  source: string
+  path: string;
+  content: string;
+  source: string;
 }
 
 /** Payload for `context_inject`. */
 export interface ContextInjectInfo {
-  workingDirectory: string
-  discoveredPaths: string[]
+  workingDirectory: string;
+  discoveredPaths: string[];
   /** Structured registry-backed workspace facts, when cwd is a registered worktree. */
-  workspace?: WorkspacePromptContext
+  workspace?: WorkspacePromptContext;
 }
 
 export interface WorkspacePromptContext {
-  kind: 'worktree' | 'bench' | string
-  cwd: string
-  worktree?: Record<string, unknown>
-  bench?: Record<string, unknown>
-  client?: Record<string, unknown>
+  kind: "worktree" | "bench" | string;
+  cwd: string;
+  worktree?: Record<string, unknown>;
+  bench?: Record<string, unknown>;
+  client?: Record<string, unknown>;
 }
 
 /** Return value from a `context_inject` handler. */
 export interface ContextEntry {
-  label: string
-  content: string
+  label: string;
+  content: string;
 }
 
 /** Payload for `permission_request`. */
 export interface PermissionRequestInfo {
-  tool_name: string
-  input: Record<string, unknown>
-  decision: 'allow' | 'deny' | 'ask' | string
-  rule_name?: string
+  tool_name: string;
+  input: Record<string, unknown>;
+  decision: "allow" | "deny" | "ask" | string;
+  rule_name?: string;
   /**
    * Tier label assigned by the classifier (built-in `SAFE` / `UNSAFE`, or any
    * label returned by a `permission_classify` handler). Empty when the
    * classifier did not run for this tool.
    */
-  tier?: string
+  tier?: string;
 }
 
 /** Payload for `permission_denied`. */
 export interface PermissionDeniedInfo {
-  tool_name: string
-  input: Record<string, unknown>
-  reason: string
+  tool_name: string;
+  input: Record<string, unknown>;
+  reason: string;
 }
 
 /**
@@ -2620,8 +2711,8 @@ export interface PermissionDeniedInfo {
  * runs and emits `SAFE` or `UNSAFE`.
  */
 export interface PermissionClassifyInfo {
-  tool_name: string
-  input: Record<string, unknown>
+  tool_name: string;
+  input: Record<string, unknown>;
 }
 
 /**
@@ -2633,8 +2724,8 @@ export interface PermissionClassifyInfo {
  * notifications subscribe to `workspace_file_changed` instead.
  */
 export interface FileChangedInfo {
-  path: string
-  action: string
+  path: string;
+  action: string;
 }
 
 /**
@@ -2648,26 +2739,119 @@ export interface FileChangedInfo {
  * - `path` is the absolute, OS-native path.
  * - `relPath` is forward-slash separated and relative to the working
  *   directory, so glob-matching is portable.
- * - `action` is one of `"create"`, `"modify"`, `"delete"`. Rename is
- *   reported as a paired delete + create -- cross-editor rename detection
- *   is unreliable.
+ * - `action` is one of `"create"`, `"modify"`, `"delete"`. A rename is
+ *   reported here as a delete of the old path and a create of the new one;
+ *   `workspace_file_renamed` carries the correlated pair.
  *
  * Out-of-tree paths are NOT covered. Extensions that need to watch paths
  * outside the working directory install their own watchers via
  * `node:fs.watch` inside their subprocess.
  */
 export interface WorkspaceFileChangedInfo {
-  path: string
-  relPath: string
-  action: string
+  path: string;
+  relPath: string;
+  action: string;
+}
+
+/**
+ * Payload for `workspace_file_renamed`.
+ *
+ * Fires when the workspace watcher matches a removal and a creation to the
+ * same file. It fires in addition to the `workspace_file_changed` delete and
+ * create for the two paths, never instead of them.
+ *
+ * Only files the engine tracks for renames produce it: the document
+ * extensions of the engine's `wikiLinks` config block, and only while that
+ * block is enabled.
+ *
+ * The absolute paths are OS-native. The relative paths are forward-slash
+ * separated and relative to the working directory.
+ */
+export interface WorkspaceFileRenamedInfo {
+  oldPath: string;
+  oldRelPath: string;
+  newPath: string;
+  newRelPath: string;
+}
+
+/** One detected document rename. Paths are workspace-relative. */
+export interface WikiLinkRename {
+  oldPath: string;
+  newPath: string;
+}
+
+/** One rewritten wiki link. */
+export interface WikiLinkRewrite {
+  /** 1-based line the link sits on. */
+  line: number;
+  /** Full link text before the rewrite, brackets included. */
+  oldLink: string;
+  /** Full link text after the rewrite. Alias and `#section` are kept. */
+  newLink: string;
+  /** Workspace-relative path the link resolved to before the rename. */
+  oldTarget: string;
+  /** Workspace-relative path the link resolves to now. */
+  newTarget: string;
+}
+
+/** The links rewritten in one file. `path` is workspace-relative. */
+export interface WikiLinkFileRewrites {
+  path: string;
+  rewrites: WikiLinkRewrite[];
+}
+
+/** A file whose links needed rewriting but could not be written. */
+export interface WikiLinkFileFailure {
+  path: string;
+  error: string;
+}
+
+/**
+ * Payload for `wiki_links_propagated`: the complete record of one
+ * propagation pass. Fires once per pass, even when no link needed rewriting
+ * (`files` is then empty). Observe-only: the files are already written.
+ */
+export interface WikiLinkPropagationReport {
+  /** Absolute workspace root the pass was confined to. */
+  root: string;
+  renames: WikiLinkRename[];
+  files: WikiLinkFileRewrites[];
+  /** Total links rewritten across `files`. */
+  rewriteCount: number;
+  failed?: WikiLinkFileFailure[];
+}
+
+/** One wiki link that resolves to no single file. */
+export interface WikiLinkBrokenLink {
+  /** Workspace-relative path of the file holding the link. */
+  path: string;
+  /** 1-based line the link sits on. */
+  line: number;
+  /** Full link text, brackets included. */
+  link: string;
+  /** The link target with any alias and `#section` removed. */
+  target: string;
+  /** `missing`: nothing matches. `ambiguous`: a bare name several files carry. */
+  reason: "missing" | "ambiguous";
+  /** The files an ambiguous target could name. */
+  candidates?: string[];
+}
+
+/** Result of {@link IonContext.scanWikiLinks}. */
+export interface WikiLinkIntegrityReport {
+  /** Absolute workspace root that was scanned. */
+  root: string;
+  documentsScanned: number;
+  linksChecked: number;
+  broken: WikiLinkBrokenLink[];
 }
 
 /** Payload for `task_created` and `task_completed`. */
 export interface TaskLifecycleInfo {
-  task_id: string
-  name?: string
-  status?: string
-  extra?: Record<string, unknown>
+  task_id: string;
+  name?: string;
+  status?: string;
+  extra?: Record<string, unknown>;
 }
 
 /**
@@ -2684,26 +2868,26 @@ export interface TaskLifecycleInfo {
  */
 export interface BackgroundTaskCompletedInfo {
   /** Tasks-registry id of the completed command ("bash-<n>-<millis>"). */
-  task_id: string
+  task_id: string;
   /** Session that started the command. */
-  session_key: string
+  session_key: string;
   /** The shell command that ran. */
-  command?: string
+  command?: string;
   /** Terminal status: "completed" (exit 0), "failed", or "stopped". */
-  status: string
+  status: string;
   /** Process exit code; 0 for a command stopped before reporting one. */
-  exit_code: number
+  exit_code: number;
   /** Wall-clock milliseconds from start to terminal transition. */
-  elapsed_ms: number
+  elapsed_ms: number;
   /** On-disk file holding the full interleaved stdout+stderr. */
-  output_path?: string
+  output_path?: string;
   /** Bounded in-memory tail of the command's output. */
-  tail?: string
+  tail?: string;
   /**
    * The session's still-outstanding background commands at the instant this
    * one completed. Empty means this was the last one.
    */
-  remaining_task_ids?: string[]
+  remaining_task_ids?: string[];
 }
 
 /**
@@ -2723,63 +2907,63 @@ export interface BackgroundTaskCompletedInfo {
  */
 export interface DispatchLostInfo {
   /** The lost dispatch's collision-safe unique ID. */
-  dispatch_id: string
+  dispatch_id: string;
   /** The dispatched agent's name. */
-  agent_name: string
+  agent_name: string;
   /** The task brief the dispatch was running. */
-  task?: string
+  task?: string;
   /** Dispatch ID of the parent that spawned it; empty for top-level. */
-  parent_dispatch_id?: string
+  parent_dispatch_id?: string;
   /** Persisted nesting-depth attribution. */
-  depth?: number
+  depth?: number;
   /**
    * The child session's conversation ID when known — the handle for
    * harvesting the partial transcript from disk.
    */
-  child_conversation_id?: string
+  child_conversation_id?: string;
 }
 
 /** Payload for `elicitation_request`. */
 export interface ElicitationRequestInfo {
-  request_id: string
-  schema?: Record<string, unknown>
-  url?: string
-  mode: string
+  request_id: string;
+  schema?: Record<string, unknown>;
+  url?: string;
+  mode: string;
   /** Origin: extension or MCP server. */
-  source?: string
+  source?: string;
   /** MCP server name when source is mcp. */
-  server?: string
+  server?: string;
   /** Human-readable MCP reason for the request. */
-  message?: string
+  message?: string;
   /** Action when this payload reflects a resolved request. */
-  action?: 'accept' | 'decline' | 'cancel'
+  action?: "accept" | "decline" | "cancel";
 }
 
 /** Payload for `elicitation_result`. */
 export interface ElicitationResultInfo {
-  request_id: string
-  response?: Record<string, unknown>
-  cancelled: boolean
+  request_id: string;
+  response?: Record<string, unknown>;
+  cancelled: boolean;
   /** User explicitly declined rather than dismissing. */
-  declined?: boolean
+  declined?: boolean;
 }
 
 /** Payload for `capability_match`. */
 export interface CapabilityMatchInfo {
-  input: string
-  capabilities: string[]
+  input: string;
+  capabilities: string[];
 }
 
 /** Optional return value from `capability_match`. */
 export interface CapabilityMatchResult {
-  matchedIds: string[]
-  args?: Record<string, unknown>
+  matchedIds: string[];
+  args?: Record<string, unknown>;
 }
 
 /** Payload for `capability_invoke`. */
 export interface CapabilityInvokeInfo {
-  capability_id: string
-  input: Record<string, unknown>
+  capability_id: string;
+  input: Record<string, unknown>;
 }
 
 /**
@@ -2788,9 +2972,9 @@ export interface CapabilityInvokeInfo {
  * caches or re-acquire resources lost when the prior instance died.
  */
 export interface ExtensionRespawnedInfo {
-  attemptNumber: number
-  prevExitCode?: number | null
-  prevSignal?: string
+  attemptNumber: number;
+  prevExitCode?: number | null;
+  prevSignal?: string;
 }
 
 /**
@@ -2799,7 +2983,7 @@ export interface ExtensionRespawnedInfo {
  * the turn's hook lifecycle was interrupted.
  */
 export interface TurnAbortedInfo {
-  reason: 'extension_died'
+  reason: "extension_died";
 }
 
 /**
@@ -2808,10 +2992,10 @@ export interface TurnAbortedInfo {
  * for multi-extension coordination.
  */
 export interface PeerExtensionInfo {
-  name: string
-  exitCode?: number | null
-  signal?: string
-  attemptNumber?: number
+  name: string;
+  exitCode?: number | null;
+  signal?: string;
+  attemptNumber?: number;
 }
 
 /**
@@ -2828,7 +3012,7 @@ export interface PlanModeEnterInfo {
    * Identifies what triggered the request. `"model_tool"` when the LLM
    * called the EnterPlanMode sentinel tool directly.
    */
-  source: string
+  source: string;
 }
 
 /**
@@ -2843,12 +3027,12 @@ export interface BeforePlanModeEnterResult {
    * defers to the engine default (allow). `true` explicitly allows.
    * `false` denies.
    */
-  allow?: boolean | null
+  allow?: boolean | null;
   /**
    * Optional human-readable explanation returned to the LLM in the tool
    * result when `allow` is `false`.
    */
-  reason?: string
+  reason?: string;
 }
 
 /**
@@ -2860,9 +3044,9 @@ export interface BeforePlanModeEnterResult {
  */
 export interface BeforePlanModeExitInfo {
   /** Path of the plan file being submitted for review. */
-  planFilePath: string
+  planFilePath: string;
   /** Always `"model_tool"` today; future kinds may include `"extension"`. */
-  source: string
+  source: string;
 }
 
 /**
@@ -2876,13 +3060,13 @@ export interface BeforePlanModeExitResult {
    * defers to the default (allow). `false` denies (keeps the model in
    * plan mode).
    */
-  allow?: boolean | null
+  allow?: boolean | null;
   /**
    * Returned to the LLM in the tool result when `allow` is `false`,
    * explaining why the exit was denied and what the model should do
    * next.
    */
-  reason?: string
+  reason?: string;
 }
 
 /**
@@ -2897,32 +3081,32 @@ export interface BeforePlanModeExitResult {
  */
 export interface BeforePlanModeAutoExitInfo {
   /** Engine session ID for this run. */
-  sessionId: string
+  sessionId: string;
   /** Engine-issued request ID for this run. */
-  runId: string
+  runId: string;
   /**
    * Provider stop reason (`"end_turn"` or `"stop"`) that triggered the
    * synthesis decision. Other stop reasons never reach this hook.
    */
-  stopReason: string
+  stopReason: string;
   /**
    * Resolved plan file path the synthesized exit would reference. Never
    * empty when this hook fires — the engine short-circuits synthesis
    * (without firing the hook) when no path is resolvable.
    */
-  planFilePath: string
+  planFilePath: string;
   /**
    * Concatenated text content of the final assistant turn that triggered
    * synthesis. Useful for distinguishing "the model presented a plan" from
    * "the model just answered / dispatched."
    */
-  assistantText: string
+  assistantText: string;
   /**
    * Tool names the assistant emitted on this turn (none of which were
    * ExitPlanMode / AskUserQuestion). Empty when the turn ended with
    * text-only content.
    */
-  emittedTools?: string[]
+  emittedTools?: string[];
 }
 
 /**
@@ -2940,17 +3124,17 @@ export interface BeforePlanModeAutoExitResult {
    * parked in plan mode. Use this for a turn that produced no plan to
    * review (e.g. an informational or dispatch-only turn).
    */
-  suppress?: boolean
+  suppress?: boolean;
   /**
    * When non-empty, overrides the resolved plan file path used in the
    * synthesized exit. Empty means "no change."
    */
-  planFilePath?: string
+  planFilePath?: string;
   /**
    * When non-empty, replaces the engine's default reason string recorded
    * on the synthesized exit. Empty means "use the engine default."
    */
-  reason?: string
+  reason?: string;
 }
 
 /**
@@ -2964,56 +3148,56 @@ export interface BeforePlanModeAutoExitResult {
  */
 export interface EarlyStopDecisionInfo {
   /** Engine-issued request ID for this run. */
-  runId: string
+  runId: string;
   /** Model identifier that just stopped. */
-  model: string
+  model: string;
   /** Turn that ended (1-based, matches `turn_start`). */
-  turnNumber: number
+  turnNumber: number;
   /**
    * Provider-reported stop reason that triggered this decision
    * (`"end_turn"` or `"stop"`). Always non-empty.
    */
-  stopReason: string
+  stopReason: string;
   /**
    * Running total of output tokens across every turn of this run
    * (including the turn that just ended).
    */
-  cumulativeOutputTokens: number
+  cumulativeOutputTokens: number;
   /**
    * Effective output-token budget for this run after engine-config +
    * RunOptions merging (before any handler override).
    */
-  budget: number
+  budget: number;
   /** Effective completion-threshold percent. */
-  thresholdPct: number
+  thresholdPct: number;
   /**
    * Number of times the engine has already nudged the model on this run
    * (0 before the first nudge).
    */
-  continuationCount: number
+  continuationCount: number;
   /** Configured cap. */
-  maxContinuations: number
+  maxContinuations: number;
   /**
    * Output-token delta from the previous continuation (0 on the first
    * decision). Used by the diminishing-returns guard.
    */
-  lastContinuationDelta: number
+  lastContinuationDelta: number;
   /**
    * Engine's tentative verdict after its configured enabled gate. Handlers may
    * flip it via {@link EarlyStopDecisionResult.forceContinue}.
    */
-  wouldContinue: boolean
+  wouldContinue: boolean;
   /**
    * True when the threshold, continuation cap, and diminishing-returns
    * safeguards permit another turn before the configured enabled gate.
    */
-  eligible: boolean
+  eligible: boolean;
   /**
    * True when this run is a child agent dispatched by the Agent tool.
    * The engine defaults the feature off for subagents; the hook still
    * fires so harness can force-on with `forceContinue: true`.
    */
-  isSubagent?: boolean
+  isSubagent?: boolean;
 }
 
 /**
@@ -3028,25 +3212,25 @@ export interface EarlyStopDecisionResult {
    * if `wouldContinue=false`); `false` forces a stop (even if
    * `wouldContinue=true`). `undefined` / `null` defers to engine logic.
    */
-  forceContinue?: boolean | null
+  forceContinue?: boolean | null;
   /**
    * Bumps (or shrinks) the effective output-token budget for the
    * remainder of the run. `0` / omitted means "no override." Useful when
    * scope expands mid-run.
    */
-  overrideBudget?: number
+  overrideBudget?: number;
   /**
    * Adjusts the completion threshold for the remainder of the run.
    * `0` / omitted means "no override."
    */
-  overrideThresholdPct?: number
+  overrideThresholdPct?: number;
   /**
    * Replaces the default continuation prompt text. Empty / omitted means
    * "use the engine's default phrasing." Per ADR-002 the engine ships
    * no default text — at least one handler in the chain (or the
    * wire-protocol responder) must supply one for any injection to fire.
    */
-  continueMessage?: string
+  continueMessage?: string;
 }
 
 /**
@@ -3057,28 +3241,28 @@ export interface EarlyStopDecisionResult {
  */
 export interface EarlyStopContinuedInfo {
   /** Engine-issued request ID for this run. */
-  runId: string
+  runId: string;
   /**
    * Turn that just ended (the new turn has not started yet).
    */
-  turnNumber: number
+  turnNumber: number;
   /** New continuation count after this nudge (1-based). */
-  continuationCount: number
+  continuationCount: number;
   /** Percent-of-budget the model reached before stopping. */
-  pct: number
+  pct: number;
   /** Running total across the run. */
-  cumulativeOutputTokens: number
+  cumulativeOutputTokens: number;
   /**
    * Effective budget at the moment of injection (after any
    * `overrideBudget` from a `before_early_stop_decision` handler).
    */
-  budget: number
+  budget: number;
   /**
    * Final continuation prompt text that landed in the conversation
    * (after `system_inject` rewrites). Empty when the downstream
    * `system_inject` hook suppressed the injection.
    */
-  injectedText: string
+  injectedText: string;
 }
 
 /**
@@ -3094,15 +3278,15 @@ export interface EarlyStopContinuedInfo {
  */
 export interface SystemInjectInfo {
   /** Discriminator for the injection reason. */
-  kind: string
+  kind: string;
   /** Engine's default injection text. May be empty (e.g. early-stop). */
-  defaultText: string
+  defaultText: string;
   /** Current turn number. */
-  turn: number
+  turn: number;
   /** Configured max turns (0 = unlimited). */
-  maxTurns: number
+  maxTurns: number;
   /** Structured workspace facts for `workspace_context`. */
-  workspace?: WorkspacePromptContext
+  workspace?: WorkspacePromptContext;
 }
 
 /**
@@ -3112,14 +3296,14 @@ export interface SystemInjectResult {
   /**
    * Replacement text. Empty / omitted means "use the default."
    */
-  text?: string
+  text?: string;
   /**
    * `true` cancels the injection entirely. The engine logs the
    * suppression and does not write the message to the conversation. For
    * `early_stop_continue` specifically, suppression also prevents the
    * re-run-turn loop.
    */
-  suppress?: boolean
+  suppress?: boolean;
 }
 
 /**
@@ -3128,171 +3312,173 @@ export interface SystemInjectResult {
  * a string literal. Hooks that fire with no payload map to `void`.
  */
 export interface IdentityChangedInfo {
-  identity?: ContextIdentity
-  reason: string
+  identity?: ContextIdentity;
+  reason: string;
   /**
    * Identifies the session whose principal was set or changed (manifest
    * C1/C2). Empty/absent for the process-level identity firing -- the
    * pre-existing behavior, unchanged -- and non-empty only when a specific
    * session's stamped principal is what changed.
    */
-  sessionKey?: string
+  sessionKey?: string;
 }
 
 export interface HookPayloadMap {
-  identity_changed: IdentityChangedInfo
-  application_config_changed: ApplicationConfigSnapshot
+  identity_changed: IdentityChangedInfo;
+  application_config_changed: ApplicationConfigSnapshot;
   // Lifecycle
-  session_start: void
-  session_end: void
-  before_prompt: string
-  turn_start: TurnInfo
-  turn_end: TurnInfo
-  message_start: void
-  message_end: void
-  tool_start: ToolStartInfo
-  tool_end: void
-  tool_call: ToolCallInfo
-  on_error: ErrorInfo
-  agent_start: AgentInfo
-  agent_end: AgentInfo
+  session_start: void;
+  session_end: void;
+  before_prompt: string;
+  turn_start: TurnInfo;
+  turn_end: TurnInfo;
+  message_start: void;
+  message_end: void;
+  tool_start: ToolStartInfo;
+  tool_end: void;
+  tool_call: ToolCallInfo;
+  on_error: ErrorInfo;
+  agent_start: AgentInfo;
+  agent_end: AgentInfo;
 
   // Session
-  session_before_compact: CompactionInfo
-  session_compact: CompactionInfo
-  session_before_fork: ForkInfo
-  session_fork: ForkInfo
-  session_before_switch: void
+  session_before_compact: CompactionInfo;
+  session_compact: CompactionInfo;
+  session_before_fork: ForkInfo;
+  session_fork: ForkInfo;
+  session_before_switch: void;
 
   // Pre-action
-  before_agent_start: AgentInfo
-  before_provider_request: BeforeProviderRequestInfo
+  before_agent_start: AgentInfo;
+  before_provider_request: BeforeProviderRequestInfo;
 
   // Content
-  context: unknown
-  message_update: MessageUpdateInfo
-  tool_result: ToolResultInfo
-  input: string
-  model_select: ModelSelectInfo
-  before_slash_model_boundary: SlashModelBoundaryInfo
-  user_bash: string
-  plan_mode_prompt: string
+  context: unknown;
+  message_update: MessageUpdateInfo;
+  tool_result: ToolResultInfo;
+  input: string;
+  model_select: ModelSelectInfo;
+  before_slash_model_boundary: SlashModelBoundaryInfo;
+  user_bash: string;
+  plan_mode_prompt: string;
 
   // Per-tool call -- payload is the tool's raw input map
-  bash_tool_call: Record<string, unknown>
-  read_tool_call: Record<string, unknown>
-  write_tool_call: Record<string, unknown>
-  edit_tool_call: Record<string, unknown>
-  grep_tool_call: Record<string, unknown>
-  glob_tool_call: Record<string, unknown>
-  agent_tool_call: Record<string, unknown>
+  bash_tool_call: Record<string, unknown>;
+  read_tool_call: Record<string, unknown>;
+  write_tool_call: Record<string, unknown>;
+  edit_tool_call: Record<string, unknown>;
+  grep_tool_call: Record<string, unknown>;
+  glob_tool_call: Record<string, unknown>;
+  agent_tool_call: Record<string, unknown>;
 
   // Per-tool result -- payload is the engine ToolResultEntry shape
-  bash_tool_result: ToolResultInfo
-  read_tool_result: ToolResultInfo
-  write_tool_result: ToolResultInfo
-  edit_tool_result: ToolResultInfo
-  grep_tool_result: ToolResultInfo
-  glob_tool_result: ToolResultInfo
-  agent_tool_result: ToolResultInfo
+  bash_tool_result: ToolResultInfo;
+  read_tool_result: ToolResultInfo;
+  write_tool_result: ToolResultInfo;
+  edit_tool_result: ToolResultInfo;
+  grep_tool_result: ToolResultInfo;
+  glob_tool_result: ToolResultInfo;
+  agent_tool_result: ToolResultInfo;
 
   // Context
-  context_discover: ContextDiscoverInfo
-  context_load: ContextLoadInfo
-  instruction_load: ContextLoadInfo
+  context_discover: ContextDiscoverInfo;
+  context_load: ContextLoadInfo;
+  instruction_load: ContextLoadInfo;
 
   // Permission -- including the pluggable classifier
-  permission_request: PermissionRequestInfo
-  permission_denied: PermissionDeniedInfo
-  permission_classify: PermissionClassifyInfo
+  permission_request: PermissionRequestInfo;
+  permission_denied: PermissionDeniedInfo;
+  permission_classify: PermissionClassifyInfo;
 
   // File
-  file_changed: FileChangedInfo
-  workspace_file_changed: WorkspaceFileChangedInfo
+  file_changed: FileChangedInfo;
+  workspace_file_changed: WorkspaceFileChangedInfo;
+  workspace_file_renamed: WorkspaceFileRenamedInfo;
+  wiki_links_propagated: WikiLinkPropagationReport;
 
   // Task
-  task_created: TaskLifecycleInfo
-  task_completed: TaskLifecycleInfo
+  task_created: TaskLifecycleInfo;
+  task_completed: TaskLifecycleInfo;
 
   // Background shell commands
-  background_task_completed: BackgroundTaskCompletedInfo
+  background_task_completed: BackgroundTaskCompletedInfo;
 
   // Dispatch loss (engine restart while dispatches were in flight)
-  dispatch_lost: DispatchLostInfo
+  dispatch_lost: DispatchLostInfo;
 
   // Elicitation
-  elicitation_request: ElicitationRequestInfo
-  elicitation_result: ElicitationResultInfo
+  elicitation_request: ElicitationRequestInfo;
+  elicitation_result: ElicitationResultInfo;
 
   // Context inject
-  context_inject: ContextInjectInfo
+  context_inject: ContextInjectInfo;
 
   // Capability
-  capability_discover: void
-  capability_match: CapabilityMatchInfo
-  capability_invoke: CapabilityInvokeInfo
+  capability_discover: void;
+  capability_match: CapabilityMatchInfo;
+  capability_invoke: CapabilityInvokeInfo;
 
   // Extension lifecycle
-  extension_respawned: ExtensionRespawnedInfo
-  turn_aborted: TurnAbortedInfo
-  peer_extension_died: PeerExtensionInfo
-  peer_extension_respawned: PeerExtensionInfo
+  extension_respawned: ExtensionRespawnedInfo;
+  turn_aborted: TurnAbortedInfo;
+  peer_extension_died: PeerExtensionInfo;
+  peer_extension_respawned: PeerExtensionInfo;
 
   // Plan mode -- workflow + state transitions on the plan-mode lifecycle.
   // See docs/architecture/adr/003-state-events-vs-workflow-events.md for the
   // state-vs-workflow distinction these hooks live alongside.
-  before_plan_mode_enter: PlanModeEnterInfo
-  before_plan_mode_exit: BeforePlanModeExitInfo
-  before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo
+  before_plan_mode_enter: PlanModeEnterInfo;
+  before_plan_mode_exit: BeforePlanModeExitInfo;
+  before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo;
 
   // System inject -- fired before the engine injects any system message.
   // The `kind` discriminator carries the reason (plan_mode_reminder,
   // turn_limit_warning, max_token_continue, early_stop_continue).
-  system_inject: SystemInjectInfo
+  system_inject: SystemInjectInfo;
 
   // Early-stop continuation -- engine provides the mechanism, harness
   // owns the policy and the prompt text. See
   // docs/architecture/adr/002-engine-vs-harness-early-stop.md.
-  before_early_stop_decision: EarlyStopDecisionInfo
-  early_stop_continued: EarlyStopContinuedInfo
+  before_early_stop_decision: EarlyStopDecisionInfo;
+  early_stop_continued: EarlyStopContinuedInfo;
 
   // Cross-session messaging -- fires when another session of the same
   // extension type sends a message via ctx.sessions.send().
-  session_message: SessionMessageInfo
+  session_message: SessionMessageInfo;
 
   // Schedule missed -- fires when the scheduler detects a daily/weekly
   // slot was missed while the engine was down. Observation-only: no veto.
-  schedule_missed: ScheduleMissedInfo
+  schedule_missed: ScheduleMissedInfo;
 
   // Compaction summary -- the harness's chance to supply a summary in
   // place of the engine's regex fact extractor. Return a non-empty string
   // (or `{ summary }`) to override; return nothing to abstain.
-  compact_summary_request: CompactSummaryRequestInfo
+  compact_summary_request: CompactSummaryRequestInfo;
 
   // Slash commands -- fires after the engine expands an invocation,
   // before the body is committed as the LLM-visible prompt. Return a string
   // to override the expansion.
-  slash_command_resolved: SlashCommandResolvedInfo
+  slash_command_resolved: SlashCommandResolvedInfo;
 
   // Async-trigger registration lifecycle. The `*_registered` pair is
   // veto-capable: return `{ block: true, reason }` to refuse. The
   // `*_deregistered` pair is observation-only, because letting one extension
   // trap another's resources would be a footgun.
-  webhook_registered: AsyncRegistrationInfo
-  webhook_deregistered: AsyncRegistrationInfo
-  schedule_registered: AsyncRegistrationInfo
-  schedule_deregistered: AsyncRegistrationInfo
+  webhook_registered: AsyncRegistrationInfo;
+  webhook_deregistered: AsyncRegistrationInfo;
+  schedule_registered: AsyncRegistrationInfo;
+  schedule_deregistered: AsyncRegistrationInfo;
 
   // Run recovery -- fires before the engine re-executes a recovered run
   // after a crash or daemon restart.
-  before_run_recovery: BeforeRunRecoveryInfo
+  before_run_recovery: BeforeRunRecoveryInfo;
 
   // Conversation telemetry metadata -- fires immediately before the engine
   // emits each conversation.* telemetry event. Read-only payload; return a
   // plain object to attach it under the emitted payload's
   // `extension_metadata` key. Multiple handlers merge key-by-key,
   // last-writer-wins on a colliding key.
-  before_conversation_event: BeforeConversationEventInfo
+  before_conversation_event: BeforeConversationEventInfo;
 }
 
 /**
@@ -3308,15 +3494,15 @@ export interface HookPayloadMap {
  */
 export interface BeforeConversationEventInfo {
   /** One of the `conversation.*` event name constants. */
-  eventName: string
+  eventName: string;
   /** Empty when the underlying run has no durable conversation identity yet. */
-  conversationId?: string
+  conversationId?: string;
   /** Empty outside an active run (e.g. a stored-conversation delete). */
-  runId?: string
+  runId?: string;
   /** Empty for a root conversation; set to the dispatch ID for a child. */
-  dispatchId?: string
+  dispatchId?: string;
   /** Empty when no run is in flight. */
-  traceId?: string
+  traceId?: string;
 }
 
 /**
@@ -3326,15 +3512,15 @@ export interface BeforeConversationEventInfo {
  */
 export interface CompactSummaryRequestInfo {
   /** Which compaction path fired: proactive or reactive. */
-  strategy: string
+  strategy: string;
   /** Number of messages in `messages`. */
-  messageCount: number
+  messageCount: number;
   /**
    * The messages under consideration, in engine `LlmMessage` wire shape.
    * Typed loosely because the message wire shape is owned by the engine's
    * conversation layer, not by the extension contract.
    */
-  messages: Array<Record<string, unknown>>
+  messages: Array<Record<string, unknown>>;
 }
 
 /**
@@ -3344,7 +3530,7 @@ export interface CompactSummaryRequestInfo {
  */
 export interface CompactSummaryRequestResult {
   /** Replacement summary text. Empty means "no opinion". */
-  summary?: string
+  summary?: string;
 }
 
 /**
@@ -3354,15 +3540,15 @@ export interface CompactSummaryRequestResult {
  */
 export interface SlashCommandResolvedInfo {
   /** The invoked command, e.g. `/diagram`. */
-  command: string
+  command: string;
   /** Raw argument string following the command name. */
-  args: string
+  args: string;
   /** Where the command was resolved from: extension|ion|claude|skill|project. */
-  source: string
+  source: string;
   /** The command file's full frontmatter map. */
-  frontmatter: Record<string, unknown>
+  frontmatter: Record<string, unknown>;
   /** The engine's expansion. A handler returning a string overrides this. */
-  expandedBody: string
+  expandedBody: string;
 }
 
 /**
@@ -3372,16 +3558,16 @@ export interface SlashCommandResolvedInfo {
  */
 export interface AsyncRegistrationInfo {
   /** "webhook" or "schedule". */
-  kind: string
+  kind: string;
   /** The declaration's stable id within its kind (webhook path, job id). */
-  id: string
+  id: string;
   /**
    * "init" or "runtime" — distinguishes the bulk init handshake from a
    * dynamic add/remove RPC, so a policy handler can treat them differently.
    */
-  origin: string
+  origin: string;
   /** The typed declaration: a {@link WebhookRoute} or a {@link ScheduleJob}. */
-  decl?: WebhookRoute | ScheduleJob | Record<string, unknown>
+  decl?: WebhookRoute | ScheduleJob | Record<string, unknown>;
 }
 
 /**
@@ -3390,22 +3576,22 @@ export interface AsyncRegistrationInfo {
  * and to the observability event. Returning nothing means "no opinion".
  */
 export interface AsyncRegistrationVeto {
-  block: boolean
-  reason?: string
+  block: boolean;
+  reason?: string;
 }
 
 /** Payload for the `session_message` hook. */
 export interface SessionMessageInfo {
   /** Session key of the sender. */
-  senderSessionKey: string
+  senderSessionKey: string;
   /** Application-defined message kind. */
-  kind: string
+  kind: string;
   /** Application-defined payload. */
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>;
 }
 
 /** Convenience type: union of all hook names. */
-export type HookName = keyof HookPayloadMap
+export type HookName = keyof HookPayloadMap;
 
 /**
  * Handler signature for a hook with payload type `P`. Return value is
@@ -3416,7 +3602,7 @@ export type HookName = keyof HookPayloadMap
 export type HookHandler<P> = (
   ctx: IonContext,
   payload: P,
-) => unknown | Promise<unknown>
+) => unknown | Promise<unknown>;
 
 export interface IonSDK {
   /**
@@ -3452,12 +3638,15 @@ export interface IonSDK {
    *
    * See `docs/hooks/reference.md` for the complete hook list.
    */
-  on<K extends HookName>(hook: K, handler: HookHandler<HookPayloadMap[K]>): void
-  on(hook: string, handler: HookHandler<any>): void
-  registerTool(def: ToolDef): void
-  deregisterTool(name: string): boolean
-  syncTools(): Promise<number>
-  registerCommand(name: string, def: CommandDef): void
+  on<K extends HookName>(
+    hook: K,
+    handler: HookHandler<HookPayloadMap[K]>,
+  ): void;
+  on(hook: string, handler: HookHandler<any>): void;
+  registerTool(def: ToolDef): void;
+  deregisterTool(name: string): boolean;
+  syncTools(): Promise<number>;
+  registerCommand(name: string, def: CommandDef): void;
   /**
    * Auto-discover agents from the extension's `agents/*.md` directory and
    * register a dispatch tool per agent. Each tool calls `ctx.dispatchAgent`
@@ -3479,7 +3668,7 @@ export interface IonSDK {
    * ion.on('session_start', (ctx) => { ctx.suppressTool('Agent') })
    * ```
    */
-  registerAgentTools(opts?: RegisterAgentToolsOpts): void
+  registerAgentTools(opts?: RegisterAgentToolsOpts): void;
 
   /**
    * Webhook route registration. Call `.register(route)` to bind an
@@ -3502,8 +3691,8 @@ export interface IonSDK {
    * ```
    */
   webhooks: {
-    register(route: WebhookRoute): Promise<WebhookHandle>
-  }
+    register(route: WebhookRoute): Promise<WebhookHandle>;
+  };
 
   /**
    * Scheduled job registration. Four kinds: daily, weekly, interval, once.
@@ -3540,14 +3729,14 @@ export interface IonSDK {
    * ```
    */
   schedule: {
-    daily(opts: ScheduleDaily): Promise<ScheduleHandle>
-    weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
-    interval(opts: ScheduleInterval): Promise<ScheduleHandle>
+    daily(opts: ScheduleDaily): Promise<ScheduleHandle>;
+    weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>;
+    interval(opts: ScheduleInterval): Promise<ScheduleHandle>;
     /** Register a one-shot schedule that fires once after delayMs and self-deregisters. */
-    once(opts: ScheduleOnce): Promise<ScheduleHandle>
+    once(opts: ScheduleOnce): Promise<ScheduleHandle>;
     /** Imperatively cancel a registered schedule by its id. */
-    cancel(id: string): Promise<void>
-  }
+    cancel(id: string): Promise<void>;
+  };
 
   /**
    * Resource producer API. Declare resource kinds at module scope
@@ -3565,28 +3754,33 @@ export interface IonSDK {
    */
   resources: {
     /** Declare this extension as the producer for a resource kind. */
-    declare(decl: ResourceDeclaration): Promise<ResourceHandle>
+    declare(decl: ResourceDeclaration): Promise<ResourceHandle>;
     /** Register a query handler for the given kind. Called when clients subscribe. */
-    onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+    onQuery(
+      kind: string,
+      handler: (
+        filter: ResourceFilter,
+      ) => Promise<ResourceItem[]> | ResourceItem[],
+    ): void;
     /**
      * Register the handler that returns every item of this kind held for the
      * given conversations, with full content. Called when a conversation moves
      * to another machine. Without it, the engine reads the items through the
      * query handler instead.
      */
-    onExport(kind: string, handler: ResourceExportHandler): void
+    onExport(kind: string, handler: ResourceExportHandler): void;
     /**
      * Register the handler that persists items the same-named producer
      * exported on another machine. Without it, a conversation holding items of
      * this kind cannot move here.
      */
-    onImport(kind: string, handler: ResourceImportHandler): void
+    onImport(kind: string, handler: ResourceImportHandler): void;
     /**
      * Register the handler that drops every item of this kind held for the
      * given conversations, once they have moved to another machine.
      */
-    onForget(kind: string, handler: ResourceForgetHandler): void
-  }
+    onForget(kind: string, handler: ResourceForgetHandler): void;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3601,10 +3795,19 @@ export interface IonSDK {
 
 /** Authentication strategies a webhook route can declare. */
 export type WebhookAuth =
-  | { kind: 'none' }
-  | { kind: 'bearer'; token: () => string | Promise<string> | string }
-  | { kind: 'shared-secret'; headerName: string; token: () => string | Promise<string> | string }
-  | { kind: 'hmac-signature'; headerName: string; algorithm: 'sha256'; token: () => string | Promise<string> | string }
+  | { kind: "none" }
+  | { kind: "bearer"; token: () => string | Promise<string> | string }
+  | {
+      kind: "shared-secret";
+      headerName: string;
+      token: () => string | Promise<string> | string;
+    }
+  | {
+      kind: "hmac-signature";
+      headerName: string;
+      algorithm: "sha256";
+      token: () => string | Promise<string> | string;
+    };
 
 /**
  * Single inbound webhook request as the engine hands it to the
@@ -3613,17 +3816,17 @@ export type WebhookAuth =
  * first value wins for multi-valued headers).
  */
 export interface WebhookRequest {
-  method: string
-  path: string
-  url: string
-  query: string
-  headers: Record<string, string>
-  body: string
-  remote: string
+  method: string;
+  path: string;
+  url: string;
+  query: string;
+  headers: Record<string, string>;
+  body: string;
+  remote: string;
   /** Parse the body as JSON. Returns {} on malformed or empty body. */
-  json<T = unknown>(): T
+  json<T = unknown>(): T;
   /** Return the raw body as text. */
-  text(): string
+  text(): string;
 }
 
 /**
@@ -3632,9 +3835,9 @@ export interface WebhookRequest {
  * status=200, body="" (no-content response).
  */
 export interface WebhookResponse {
-  status?: number
-  body?: string
-  headers?: Record<string, string>
+  status?: number;
+  body?: string;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -3644,15 +3847,15 @@ export interface WebhookResponse {
  * a GET endpoint.
  */
 export interface WebhookRoute {
-  path: string
-  method?: string
-  auth: WebhookAuth
+  path: string;
+  method?: string;
+  auth: WebhookAuth;
   /** Body size cap in bytes. Zero/omitted inherits the engine config default (1 MiB). */
-  maxBodyBytes?: number
+  maxBodyBytes?: number;
   /** Override bind interface (advanced — usually inherited from engine config). */
-  interface?: string
+  interface?: string;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
+  concurrency?: "single" | "all";
   /**
    * Handler invoked for each matching request. The ctx is freshly
    * built per fire; ctx.dispatchAgent / sendPrompt / emit /
@@ -3660,63 +3863,81 @@ export interface WebhookRoute {
    *
    * Return the response shape or void (treated as `{status: 200}`).
    */
-  handler: (ctx: IonContext, req: WebhookRequest) => Promise<WebhookResponse> | WebhookResponse
+  handler: (
+    ctx: IonContext,
+    req: WebhookRequest,
+  ) => Promise<WebhookResponse> | WebhookResponse;
 }
 
 /** Handle returned by ion.webhooks.register. */
 export interface WebhookHandle {
-  id: string
-  unregister(): Promise<void>
+  id: string;
+  unregister(): Promise<void>;
 }
 
 /** Daily schedule: fires once per day at the configured wall-clock time. */
 export interface ScheduleDaily {
-  id: string
-  time: string // "HH:MM" 24-hour
-  tz?: string  // IANA timezone; empty inherits engine default
-  timeoutMs?: number
+  id: string;
+  time: string; // "HH:MM" 24-hour
+  tz?: string; // IANA timezone; empty inherits engine default
+  timeoutMs?: number;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
+  concurrency?: "single" | "all";
   /** Missed-slot policy. `latest` selects the newest missed job in catchUpGroup. */
-  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  catchUp?: "auto" | "manual" | "none" | "latest";
   /** Group used by `catchUp: 'latest'`. Empty makes this job its own group. */
-  catchUpGroup?: string
+  catchUpGroup?: string;
   /** Limit `latest` recovery to the current local date. */
-  catchUpScope?: 'same_day'
+  catchUpScope?: "same_day";
   /** Optional lowercased weekday filter. Empty retains the every-day cadence. */
-  daysOfWeek?: Array<'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'>
-  enabled?: () => boolean | Promise<boolean>
-  handler: ScheduleHandler
+  daysOfWeek?: Array<
+    | "monday"
+    | "tuesday"
+    | "wednesday"
+    | "thursday"
+    | "friday"
+    | "saturday"
+    | "sunday"
+  >;
+  enabled?: () => boolean | Promise<boolean>;
+  handler: ScheduleHandler;
 }
 
 /** Weekly schedule: fires once per week on dayOfWeek at time. */
 export interface ScheduleWeekly {
-  id: string
-  time: string                       // "HH:MM" 24-hour
-  dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
-  tz?: string
-  timeoutMs?: number
+  id: string;
+  time: string; // "HH:MM" 24-hour
+  dayOfWeek:
+    | "monday"
+    | "tuesday"
+    | "wednesday"
+    | "thursday"
+    | "friday"
+    | "saturday"
+    | "sunday";
+  tz?: string;
+  timeoutMs?: number;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
+  concurrency?: "single" | "all";
   /** Missed-slot policy. `latest` selects the newest missed job in catchUpGroup. */
-  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  catchUp?: "auto" | "manual" | "none" | "latest";
   /** Group used by `catchUp: 'latest'`. Empty makes this job its own group. */
-  catchUpGroup?: string
+  catchUpGroup?: string;
   /** Limit `latest` recovery to the current local date. */
-  catchUpScope?: 'same_day'
-  enabled?: () => boolean | Promise<boolean>
-  handler: ScheduleHandler
+  catchUpScope?: "same_day";
+  enabled?: () => boolean | Promise<boolean>;
+  handler: ScheduleHandler;
 }
 
 /** Interval schedule: fires every intervalMs (>=1000ms required). */
 export interface ScheduleInterval {
-  id: string
-  intervalMs: number
-  timeoutMs?: number
+  id: string;
+  intervalMs: number;
+  timeoutMs?: number;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
-  enabled?: () => boolean | Promise<boolean>
-  handler: ScheduleHandler
+  concurrency?: "single" | "all";
+  enabled?: () => boolean | Promise<boolean>;
+  handler: ScheduleHandler;
 }
 
 /**
@@ -3728,15 +3949,15 @@ export interface ScheduleInterval {
  * but remains armed; the predicate skip does NOT consume the shot.
  */
 export interface ScheduleOnce {
-  id: string
+  id: string;
   /** Milliseconds after registration to fire. Minimum 1000ms. */
-  delayMs: number
-  tz?: string
-  timeoutMs?: number
+  delayMs: number;
+  tz?: string;
+  timeoutMs?: number;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
-  enabled?: () => boolean | Promise<boolean>
-  handler: ScheduleHandler
+  concurrency?: "single" | "all";
+  enabled?: () => boolean | Promise<boolean>;
+  handler: ScheduleHandler;
 }
 
 /**
@@ -3749,7 +3970,11 @@ export interface ScheduleOnce {
  * backward-compatible — existing handlers that only accept
  * `(ctx: IonContext)` continue to work unchanged.
  */
-export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl, meta?: ScheduleFireMeta) => Promise<void> | void
+export type ScheduleHandler = (
+  ctx: IonContext,
+  control?: ScheduleControl,
+  meta?: ScheduleFireMeta,
+) => Promise<void> | void;
 
 /**
  * Control object passed to every schedule handler at invocation time.
@@ -3758,7 +3983,7 @@ export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl, meta?
  */
 export interface ScheduleControl {
   /** The stable job ID this handler was registered under. */
-  jobId: string
+  jobId: string;
   /**
    * Unregisters this job so no further fires occur. For once jobs the engine
    * auto-deregisters after the handler returns; calling this inside the
@@ -3766,7 +3991,7 @@ export interface ScheduleControl {
    * daily / weekly jobs it lets the handler decide mid-execution that the
    * job should stop.
    */
-  unregister(): Promise<void>
+  unregister(): Promise<void>;
 }
 
 /**
@@ -3776,11 +4001,11 @@ export interface ScheduleControl {
  */
 export interface ScheduleFireMeta {
   /** RFC3339 UTC timestamp when the engine fired the job. */
-  firedAt: string
+  firedAt: string;
   /** True when the fire was triggered by ctx.fireSchedule (a backfill). */
-  backfill: boolean
+  backfill: boolean;
   /** RFC3339 UTC of the missed slot that triggered the backfill (when backfill=true). */
-  missedSlotUtc?: string
+  missedSlotUtc?: string;
 }
 
 /**
@@ -3789,15 +4014,15 @@ export interface ScheduleFireMeta {
  */
 export interface ScheduleMissedInfo {
   /** The schedule job's stable identifier. */
-  id: string
+  id: string;
   /** "daily" or "weekly". */
-  kind: 'daily' | 'weekly' | 'interval' | 'once'
+  kind: "daily" | "weekly" | "interval" | "once";
   /** RFC3339 UTC of the missed slot. */
-  missedSlotUtc: string
+  missedSlotUtc: string;
   /** True when a last-run marker existed on disk at detection time. */
-  hadMarker: boolean
+  hadMarker: boolean;
   /** True when the job ran inside its current interval-scope window. */
-  ranWithinScope: boolean
+  ranWithinScope: boolean;
 }
 
 /**
@@ -3806,15 +4031,15 @@ export interface ScheduleMissedInfo {
  */
 export interface ScheduleStatus {
   /** The job's stable identifier. */
-  id: string
+  id: string;
   /** "daily", "weekly", "interval", or "once". */
-  kind: string
+  kind: string;
   /** RFC3339 UTC of the last successful fire. Empty when never run. */
-  lastRunUtc?: string
+  lastRunUtc?: string;
   /** True when the job ran inside its current interval-scope window. */
-  ranWithinScope: boolean
+  ranWithinScope: boolean;
   /** RFC3339 UTC of the next scheduled fire. */
-  nextRunUtc?: string
+  nextRunUtc?: string;
 }
 
 /** Wire-format job (handler stripped — kept locally). Used internally
@@ -3823,32 +4048,32 @@ export interface ScheduleStatus {
  *  directly; use the ScheduleDaily/Weekly/Interval/Once inputs above.
  */
 export interface ScheduleJob {
-  id: string
-  kind: 'daily' | 'weekly' | 'interval' | 'once'
-  time?: string
-  dayOfWeek?: string
+  id: string;
+  kind: "daily" | "weekly" | "interval" | "once";
+  time?: string;
+  dayOfWeek?: string;
   /** Optional weekday filter for daily schedules. */
-  daysOfWeek?: string[]
-  intervalMs?: number
+  daysOfWeek?: string[];
+  intervalMs?: number;
   /** Milliseconds-to-first-fire for once jobs. Ignored for other kinds. */
-  delayMs?: number
-  tz?: string
-  timeoutMs?: number
-  enabledRefName?: string
+  delayMs?: number;
+  tz?: string;
+  timeoutMs?: number;
+  enabledRefName?: string;
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
-  concurrency?: 'single' | 'all'
+  concurrency?: "single" | "all";
   /** Missed daily/weekly slot policy. Omit for historic engine default behavior. */
-  catchUp?: 'auto' | 'manual' | 'none' | 'latest'
+  catchUp?: "auto" | "manual" | "none" | "latest";
   /** Group used by `catchUp: 'latest'`. */
-  catchUpGroup?: string
+  catchUpGroup?: string;
   /** Limit `latest` recovery to the current local date. */
-  catchUpScope?: 'same_day'
+  catchUpScope?: "same_day";
 }
 
 /** Handle returned by ion.schedule.daily/weekly/interval/once. */
 export interface ScheduleHandle {
-  id: string
-  unregister(): Promise<void>
+  id: string;
+  unregister(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -3863,61 +4088,67 @@ export interface ScheduleHandle {
 /** A single resource instance. Content is an opaque string the engine
  *  never interprets — encoding is the producer's concern. */
 export interface ResourceItem {
-  id: string
-  kind: string
+  id: string;
+  kind: string;
   /** Engine-assigned extension identity. Extension publishes cannot set it. */
-  readonly producer?: string
-  title?: string
-  content: string
-  createdAt: string
-  conversationId?: string
-  metadata?: Record<string, unknown>
-  updatedAt?: string
-  read?: boolean
+  readonly producer?: string;
+  title?: string;
+  content: string;
+  createdAt: string;
+  conversationId?: string;
+  metadata?: Record<string, unknown>;
+  updatedAt?: string;
+  read?: boolean;
 }
 
 /** A single change to a resource collection. */
 export interface ResourceDelta {
-  op: 'create' | 'update' | 'delete' | 'mark_read'
-  item: ResourceItem
+  op: "create" | "update" | "delete" | "mark_read";
+  item: ResourceItem;
 }
 
 /** Scopes a subscription or query. */
 export interface ResourceFilter {
-  kind: string
+  kind: string;
   /** Restrict a query or subscription to one extension producer. */
-  producer?: string
-  conversationId?: string
-  since?: string
-  limit?: number
+  producer?: string;
+  conversationId?: string;
+  since?: string;
+  limit?: number;
   /** Restrict a producer query to one item. */
-  id?: string
+  id?: string;
 }
 
 /** Passed to ion.resources.declare(). Multiple extensions can produce one kind. */
 export interface ResourceDeclaration {
-  kind: string
+  kind: string;
 }
 
 /** Returns every item held for the given conversations, with full content. */
-export type ResourceExportHandler = (conversationIds: string[]) => Promise<ResourceItem[]> | ResourceItem[]
+export type ResourceExportHandler = (
+  conversationIds: string[],
+) => Promise<ResourceItem[]> | ResourceItem[];
 
 /** A producer's answer to an import: the item ids it persisted, and the ones it would not take. */
 export interface ResourceImportResult {
-  accepted: string[]
-  refused?: Array<{ id: string; reason: string }>
+  accepted: string[];
+  refused?: Array<{ id: string; reason: string }>;
 }
 
 /** Persists items exported by the same-named producer on another machine. */
-export type ResourceImportHandler = (items: ResourceItem[]) => Promise<ResourceImportResult> | ResourceImportResult
+export type ResourceImportHandler = (
+  items: ResourceItem[],
+) => Promise<ResourceImportResult> | ResourceImportResult;
 
 /** Drops every item held for the given conversations; returns how many were removed. */
-export type ResourceForgetHandler = (conversationIds: string[]) => Promise<number> | number
+export type ResourceForgetHandler = (
+  conversationIds: string[],
+) => Promise<number> | number;
 
 /** Handle returned by ion.resources.declare(). */
 export interface ResourceHandle {
   /** Publish a delta (create/update/delete/mark_read) for this resource kind. */
-  publish(op: ResourceDelta['op'], item: ResourceItem): Promise<void>
+  publish(op: ResourceDelta["op"], item: ResourceItem): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -3928,24 +4159,24 @@ export interface ResourceHandle {
  *  identify a resource and surface to the user — not full content payloads. */
 export interface NotifyOpts {
   /** Resource kind this notification relates to (e.g. "briefing"). */
-  kind: string
+  kind: string;
   /** ID of the specific resource item, if applicable. */
-  resourceId?: string
+  resourceId?: string;
   /** Short notification title shown in the notification banner. */
-  title: string
+  title: string;
   /** Notification body text. */
-  body: string
+  body: string;
   /** Notification sound name. Omit for the default sound. */
-  sound?: string
+  sound?: string;
   /** Delivery scope: "user" (default), "device", "all". */
-  scope?: 'user' | 'device' | 'all'
+  scope?: "user" | "device" | "all";
   /** Conversation/session ID this notification relates to. Clients use this
    *  to navigate to the correct tab when the user acts on the notification.
    *  Omit for workspace-level notifications. */
-  conversationId?: string
+  conversationId?: string;
   /** When set, the engine emits the notification on the target session's
    *  event stream instead of the caller's. The target must exist. */
-  targetSessionKey?: string
+  targetSessionKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -3955,25 +4186,25 @@ export interface NotifyOpts {
 /** Payload for the `before_run_recovery` hook. */
 export interface BeforeRunRecoveryInfo {
   /** Engine-issued identifier for this recovery attempt. */
-  recoveryId: string
+  recoveryId: string;
   /** Conversation whose run is being recovered. */
-  conversationId: string
+  conversationId: string;
   /** 1-based recovery attempt number for this run. */
-  attempt: number
+  attempt: number;
   /** Configured ceiling on recovery retries. */
-  maxAttempts: number
+  maxAttempts: number;
   /** Original user prompt that initiated the recovered run. */
-  prompt?: string
+  prompt?: string;
   /** Model that was in use when the run was interrupted. */
-  model?: string
+  model?: string;
   /** Session key within the conversation. */
-  sessionKey?: string
+  sessionKey?: string;
 }
 
 /** Result from a `before_run_recovery` handler. */
 export interface BeforeRunRecoveryResult {
   /** "recover" (proceed) or "skip" (abandon). Empty means no opinion. */
-  action?: 'recover' | 'skip'
+  action?: "recover" | "skip";
   /** Optional replacement instruction for the recovered run's context. */
-  instruction?: string
+  instruction?: string;
 }

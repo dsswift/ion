@@ -60,14 +60,56 @@ func resolveWatchIgnores(cfg types.EngineConfig) []string {
 	return defaultWatchIgnores
 }
 
+// ensureWorkspaceWatcher starts the session's workspace watcher unless it
+// already has one. Safe to call more than once for a session: a session that
+// starts without extensions and gains them later keeps the watcher it has.
+func (m *Manager) ensureWorkspaceWatcher(s *engineSession, key string) {
+	m.mu.RLock()
+	running := s.fsWatcherRelease != nil
+	m.mu.RUnlock()
+	if running {
+		return
+	}
+	release := m.startWorkspaceWatcher(s, key)
+	if release == nil {
+		return
+	}
+	m.mu.Lock()
+	if s.fsWatcherRelease != nil {
+		// Another caller started one in the meantime; keep theirs.
+		m.mu.Unlock()
+		release()
+		return
+	}
+	s.fsWatcherRelease = release
+	m.mu.Unlock()
+}
+
+// sessionExtGroup returns the session's extension group, or nil when it has
+// none loaded.
+func (m *Manager) sessionExtGroup(s *engineSession) *extension.ExtensionGroup {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s.extGroup == nil || s.extGroup.IsEmpty() {
+		return nil
+	}
+	return s.extGroup
+}
+
 // startWorkspaceWatcher acquires a shared watcher from the Manager's pool
 // for this session's working directory. Returns a release function (or nil
 // when no watcher should run). Multiple sessions on the same directory
 // share one underlying filesystem watcher, avoiding file-descriptor
 // exhaustion on macOS where kqueue requires one FD per watched directory.
-func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *extension.ExtensionGroup) func() {
-	if group == nil || group.IsEmpty() {
-		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=no_extensions", map[string]any{"key": key})
+//
+// A watcher has two consumers: extensions, which receive the workspace hooks,
+// and wiki-link maintenance, which is an engine feature and needs renames
+// observed whether or not any extension is loaded. With neither, no watcher
+// runs.
+func (m *Manager) startWorkspaceWatcher(s *engineSession, key string) func() {
+	links := m.resolveWikiLinkSettings()
+	if !links.enabled && m.sessionExtGroup(s) == nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=no_extensions_and_wiki_links_disabled", map[string]any{"key": key})
 		return nil
 	}
 	if s.config.WorkingDirectory == "" {
@@ -100,13 +142,40 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: harness override patterns", map[string]any{"key": key, "ignores": ignores})
 	}
 
+	// The extension group is looked up per event rather than captured: a
+	// session can gain extensions after its watcher started.
 	onEvent := func(info watcher.Info) {
+		group := m.sessionExtGroup(s)
+		if group == nil {
+			return
+		}
 		ctx := m.newExtContext(s, key)
+		if info.Action == watcher.ActionRename {
+			group.FireWorkspaceFileRenamed(ctx, extension.WorkspaceFileRenamedInfo{
+				OldPath:    info.OldPath,
+				OldRelPath: info.OldRelPath,
+				NewPath:    info.Path,
+				NewRelPath: info.RelPath,
+			})
+			return
+		}
 		group.FireWorkspaceFileChanged(ctx, extension.WorkspaceFileChangedInfo{
 			Path:    info.Path,
 			RelPath: info.RelPath,
 			Action:  info.Action,
 		})
+	}
+
+	// One typed event per session, then the observe-only hook. The report is
+	// the complete record of the pass; nothing else carries it.
+	onPropagated := func(report types.WikiLinkPropagationReport) {
+		utils.LogWithFields(utils.LevelInfo, "session.wikilinks", "propagation report delivered", map[string]any{
+			"key": key, "root": report.Root, "renames": len(report.Renames), "files": len(report.Files), "rewrites": report.RewriteCount, "failed": len(report.Failed),
+		})
+		m.emit(key, types.EngineEvent{Type: "engine_wiki_links_propagated", WikiLinksPropagated: &report})
+		if group := m.sessionExtGroup(s); group != nil {
+			group.FireWikiLinksPropagated(m.newExtContext(s, key), report)
+		}
 	}
 
 	// Resolve the configurable per-watcher directory cap from engine config.
@@ -118,7 +187,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		maxDirs = m.config.GetWorkspace().MaxWatchedDirsOr()
 	}
 
-	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, onEvent)
+	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, links, watchSubscriber{onEvent: onEvent, onPropagated: onPropagated})
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "session", "startworkspacewatcher: acquire failed", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "error": err})
 		return nil

@@ -9,6 +9,8 @@
  * Fixed width at GIT_PANEL_WIDTH (440px) — every view shares the same
  * width with no horizontal resize.
  */
+import { useActiveDeveloperSurfaces } from "./connection/developer-surfaces";
+import { gitPanelOffered } from "./surface/surface-tab-offer";
 import React from "react";
 import { useSessionStore } from "@ion/server/store/sessionStore";
 import { FileExplorer } from "../components/FileExplorer";
@@ -57,7 +59,14 @@ export function StudioLeftSidebar(
   // Git is offered only where there is a repository to show. Against a plain
   // directory the panel has nothing to display and reaching it starts a
   // 5s `git worktree list` poll that fails every time.
-  const { isRepo } = useActiveGitRepo();
+  //
+  // It is also withheld where the conversation's server, or this desktop's
+  // device policy, offers neither source control nor the commit graph. The
+  // fallback below then moves a restored or shortcut-selected Git view to
+  // Explorer, the same as it does for a plain directory.
+  const { isRepo: activeIsRepo } = useActiveGitRepo();
+  const developerSurfaces = useActiveDeveloperSurfaces();
+  const isRepo = activeIsRepo && gitPanelOffered(developerSurfaces);
   const views = React.useMemo(
     () => (isRepo ? VIEWS : VIEWS.filter((v) => v.id !== "git")),
     [isRepo],

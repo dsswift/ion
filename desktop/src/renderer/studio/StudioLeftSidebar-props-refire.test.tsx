@@ -26,8 +26,8 @@ import type { StudioLayout } from '@ion/shared/types-studio'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 vi.mock('@ion/server/store/sessionStore', () => ({
-  useSessionStore: (selector: (s: { activeTabId: string | null }) => unknown) =>
-    selector({ activeTabId: 'tab-1' }),
+  useSessionStore: (selector: (s: { activeTabId: string | null; tabs: Array<{ id: string }> }) => unknown) =>
+    selector({ activeTabId: 'tab-1', tabs: [{ id: 'tab-1' }] }),
 }))
 
 vi.mock('../theme', () => ({

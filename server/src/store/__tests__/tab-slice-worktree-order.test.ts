@@ -97,6 +97,7 @@ vi.mock('@ion/shared/clear-divider', () => ({
 }))
 
 const mockIon = {
+  worktreesOffered: vi.fn(async () => true),
   gitIsRepo: vi.fn(async (dir: string) => {
     calls.push(`gitIsRepo:${dir}`)
     return { isRepo: true }
@@ -126,6 +127,7 @@ vi.mock('../host-api', () => ({
   // answers yes and the ordering under test is what is exercised.
   fsExists: vi.fn(async () => ({ exists: true })),
   gitIsRepo: (...args: [string]) => mockIon.gitIsRepo(...args),
+  worktreesOffered: () => mockIon.worktreesOffered(),
   gitWorktreeAdd: (...args: [string, string]) => mockIon.gitWorktreeAdd(...args),
   createTab: (...args: any[]) => mockIon.createTab(...(args as [])),
   adoptTab: (...args: any[]) => mockIon.adoptTab(...(args as [])),
@@ -222,6 +224,20 @@ describe('worktree resolution ordering', () => {
     expect(mockIon.gitWorktreeAdd).not.toHaveBeenCalled()
     expect(tab.pendingWorktreeSetup).toBe(true)
     // Without a branch there is no worktree, so the tab stays in the repo.
+    expect(tab.workingDirectory).toBe(REPO)
+  })
+
+  it('opens in the directory itself, with no branch picker, where worktrees are not offered', async () => {
+    mockIon.worktreesOffered.mockResolvedValueOnce(false)
+    mockPrefs.worktreeBranchDefaults = {}
+    const { state, slice } = buildHarness()
+
+    const tabId = await slice.createTabInDirectory(REPO, true, true)
+    const tab = state.tabs.find((t: any) => t.id === tabId)
+
+    expect(mockIon.gitIsRepo).not.toHaveBeenCalled()
+    expect(mockIon.gitWorktreeAdd).not.toHaveBeenCalled()
+    expect(tab.pendingWorktreeSetup).toBeFalsy()
     expect(tab.workingDirectory).toBe(REPO)
   })
 

@@ -9,6 +9,7 @@
  * this connection's principal so tenancy filtering applies exactly as it
  * did at hello time.
  */
+import { projectSnapshotForSurfaces } from './developer-surfaces'
 import type { StudioSnapshot, StudioPrincipalSummary, StudioView } from '@ion/shared/studio-wire/types'
 import type { Connection } from './connection'
 import { log as _log, warn as _warn } from '../logger'
@@ -30,7 +31,7 @@ export function handleSnapshotRequest(conn: Connection, buildSnapshot: SnapshotB
   }
   let snapshot: StudioSnapshot
   try {
-    snapshot = buildSnapshot(conn.principal, conn.view)
+    snapshot = projectSnapshotForSurfaces(buildSnapshot(conn.principal, conn.view), conn.developerSurfaces)
   } catch (err) {
     warn('snapshot build failed; request unanswered', { connection_id: conn.id, subject: conn.principal.subject, error: String(err) })
     return false

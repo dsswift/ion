@@ -85,6 +85,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Cost](#term-cost)
 - [Desktop](#term-desktop-client)
 - [Desktop Automation](#term-desktop-automation)
+- [Developer Surface](#term-developer-surface)
 - [Device Metrics](#term-device-metrics)
 - [Device Policy](#term-device-policy)
 - [Device Setting](#term-device-setting)
@@ -133,6 +134,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Ion Studio Server](#term-ion-studio-server)
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
+- [Link Integrity Scan](#term-link-integrity-scan)
 - [Local Principal](#term-local-principal)
 - [Managed Config Projection](#term-managed-config-projection)
 - [Managed Default](#term-managed-default)
@@ -238,7 +240,9 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Web Application](#term-web-application)
 - [Web Client](#term-web-client)
 - [Webhook](#term-webhook)
+- [Wiki-Link Propagation](#term-wiki-link-propagation)
 - [Workspace](#term-workspace)
+- [Workspace Rename](#term-workspace-rename)
 - [Workspace Search](#term-workspace-search)
 - [Worktree](#term-worktree)
 - [iOS](#term-ios-client)
@@ -570,6 +574,20 @@ One of the parts a conversation event is delivered as when its size exceeds the 
   - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
   - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
 
+#### Link Integrity Scan {#term-link-integrity-scan}
+
+A read-only pass over a session's working directory that resolves every wiki link in every document and reports the ones that name no single file: a missing target, or a bare name more than one file carries. It writes nothing and runs only when asked (scan_wiki_links, ctx.scanWikiLinks). It finds the links broken by renames the engine never observed, which Wiki-Link Propagation cannot repair.
+
+- **ID:** `link-integrity-scan`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func Scan` in `engine/internal/wikilinks/scan.go`
+  - `engine` / `code` / `go`: `type WikiLinkIntegrityReport` in `engine/internal/types/wiki_links.go`
+
 #### Managed Config Projection {#term-managed-config-projection}
 
 Enterprise policy naming a managed engine file, a managed models file, or both, each of which becomes the whole configuration for its surface. The user and project files contribute nothing to an owned surface, a key the managed file leaves out resolves to the built-in default, and every write to the surface is refused, except that a user may keep MCP servers of their own in a separate file unless policy turns that off. Typed sealing still applies on top.
@@ -895,6 +913,34 @@ An inbound HTTP route that the engine hosts. The engine owns the listening and t
   - `engine` / `code` / `go`: `type Server struct` in `engine/internal/webhooks/server.go`
   - `sdk` / `code` / `typescript`: `export const webhooksApi` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
 
+#### Wiki-Link Propagation {#term-wiki-link-propagation}
+
+Rewriting wiki links ([[target]], [[target|alias]]) after a Workspace Rename so every link keeps naming the file it named before. One pass handles a batch of renames, changes only link targets (alias, section, and link style are kept), is confined to the watched working directory, and produces one report of every file and link it changed (engine_wiki_links_propagated, the wiki_links_propagated hook).
+
+- **ID:** `wiki-link-propagation`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func Propagate` in `engine/internal/wikilinks/propagate.go`
+  - `engine` / `code` / `go`: `type WikiLinkPropagationReport` in `engine/internal/types/wiki_links.go`
+
+#### Workspace Rename {#term-workspace-rename}
+
+One file moving from one path to another inside a watched working directory, detected by the engine from what changed on disk: a removal and a creation that describe the same file (same file, size, and modification time). Whatever performed the move is irrelevant. Reported as a single event carrying both paths (the workspace_file_renamed hook), in addition to the delete and create the watcher always reports. Detected only for documents, the extensions named by the wikiLinks config.
+
+- **ID:** `workspace-rename`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type renameTracker` in `engine/internal/watcher/rename.go`
+  - `engine` / `code` / `go`: `type WorkspaceFileRenamedInfo` in `engine/internal/extension/sdk_hook_types_workspace.go`
+
 ### internal-type
 
 #### Transport {#term-transport}
@@ -1010,7 +1056,7 @@ A named point in the engine lifecycle where an extension can observe, change, or
 - **Contract:** `public-sdk`
 - **Implementations:**
   - `engine` / `code` / `go`: `type HookHandler` in `engine/internal/extension/sdk_types.go`
-  - `sdk` / `code` / `typescript`: `on(hook: string` in `engine/extensions/sdk/ion-sdk/runtime.ts`
+  - `sdk` / `code` / `typescript`: `on(hook: string, handler: HookHandler<any>): void;` in `engine/extensions/sdk/ion-sdk/types.ts`
   - `engine` / `doc` / `markdown`: `before_prompt` in `docs/hooks/reference.md`
 - **Notes:** The engine owns the mechanism. The by-name reference is the authority; never pin a hook count in prose.
 
@@ -1206,7 +1252,7 @@ An outbound HTTP call the operator declares by name in the global engine.json or
 - **Contract:** `public-sdk`
 - **Implementations:**
   - `engine` / `code` / `go`: `func DoProtectedOperation` in `engine/internal/extension/protected_operation.go`
-  - `sdk` / `code` / `typescript`: `protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `typescript`: `protectedOperation(` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 ### public-contract
 
@@ -2805,6 +2851,20 @@ The proof that lets Transfer delete the source. The export records the sha256 of
 
 ### internal-type
 
+#### Developer Surface {#term-developer-surface}
+
+One of the source-control features an organization can switch off: source control, the commit graph, repository status, or worktrees. A server's policy says which it offers, binding every connection; a desktop's device policy narrows that desktop alone. A disabled surface is refused by the server and has no controls on any client.
+
+- **ID:** `developer-surface`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `function computeDeveloperSurfaces` in `server/src/protocol/developer-surfaces.ts`
+  - `desktop` / `code` / `typescript`: `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` in `desktop/src/renderer/studio/connection/policy-store.ts`
+
 #### Device Policy {#term-device-policy}
 
 Enterprise constraints on a person's own desktop UI (theme lock, auto-update, the environment catalog it offers), read only from the LOCAL environment. A remote Environment can never narrow it.
@@ -3137,6 +3197,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
 | Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
+| Developer Surface | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | None | iOS |
 | Device Metrics | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | None | iOS |
 | Device Policy | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | None | iOS |
 | Dialog | `SettingsDialog` | `SettingsDialog` | `SettingsDialog` | `struct EngineDialogSheet` | None |

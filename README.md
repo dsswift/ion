@@ -896,7 +896,7 @@ Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updat
 | **Per-Tool Result** | `bash_tool_result`, `read_tool_result`, `write_tool_result`, `edit_tool_result`, `grep_tool_result`, `glob_tool_result`, `agent_tool_result` |
 | **Context Discovery** | `context_discover`, `context_load`, `instruction_load` |
 | **Permission** | `permission_request`, `permission_denied`, `permission_classify` |
-| **File Changes** | `file_changed`, `workspace_file_changed` |
+| **File Changes** | `file_changed`, `workspace_file_changed`, `workspace_file_renamed`, `wiki_links_propagated` |
 | **Task Lifecycle** | `task_created`, `task_completed` |
 | **Elicitation** | `elicitation_request`, `elicitation_result` |
 | **Context Injection** | `context_inject` |

@@ -192,9 +192,12 @@ struct TabRowView: View {
 
     private var conditionRailSymbols: [String] {
         var symbols: [String] = []
-        if viewModel.isWorktreeBaseStale(tab.workingDirectory) { symbols.append("arrow.triangle.pull") }
-        if worktree?.unlandedCommitCount ?? 0 > 0 { symbols.append("arrow.up.circle") }
-        if worktree?.isDirty == true { symbols.append("circle.fill") }
+        // Repository state marks are a developer surface the server may not offer.
+        if viewModel.developerSurfaces.repositoryStatus {
+            if viewModel.isWorktreeBaseStale(tab.workingDirectory) { symbols.append("arrow.triangle.pull") }
+            if worktree?.unlandedCommitCount ?? 0 > 0 { symbols.append("arrow.up.circle") }
+            if worktree?.isDirty == true { symbols.append("circle.fill") }
+        }
         if isSpeaking { symbols.append("speaker.wave.2.fill") }
         return symbols
     }

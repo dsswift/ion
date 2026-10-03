@@ -18,6 +18,12 @@
  * call `devicePolicy()`.
  */
 import type { EnterprisePolicy } from '@ion/shared/types-engine'
+import {
+  ALL_DEVELOPER_SURFACES_ENABLED,
+  deriveDeviceDeveloperSurfaces,
+  intersectDeveloperSurfaces,
+  type DeveloperSurfaceState,
+} from '@ion/shared/developer-surfaces'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import type { EnvironmentPhase } from '@ion/shared/types-environments'
 import { rWarn } from '../../rendererLogger'
@@ -39,9 +45,21 @@ class PolicyStore {
   // server-side from conn.transport + that environment's own sealed config),
   // never a remote environment's opinion about this device.
   private hiddenGroups = new Map<string, string[]>()
+  // What each server offers this connection. Like `hiddenGroups`, this is
+  // the server describing itself, never its opinion about this device.
+  private developerSurfaces = new Map<string, DeveloperSurfaceState>()
+  private effectiveSurfaces = new Map<string, DeveloperSurfaceState>()
   private listeners = new Set<Listener>()
 
+  private revisionCount = 0
+
+  /** Bumped on every change. A snapshot for callers that derive from several environments at once. */
+  revision(): number {
+    return this.revisionCount
+  }
+
   private notify(): void {
+    this.revisionCount += 1
     for (const listener of this.listeners) listener()
   }
 
@@ -58,7 +76,30 @@ class PolicyStore {
       stored = stripIonDesktop(policy)
     }
     this.policies.set(environmentId, stored)
+    this.effectiveSurfaces.clear()
     this.notify()
+  }
+
+  /** Stores the developer surfaces one environment's server offers (from studio_welcome / studio_environment_policy). */
+  setDeveloperSurfaces(environmentId: string, surfaces: DeveloperSurfaceState): void {
+    this.developerSurfaces.set(environmentId, surfaces)
+    this.effectiveSurfaces.clear()
+    this.notify()
+  }
+
+  /**
+   * The developer surfaces available for conversations on `environmentId`:
+   * what that server offers, narrowed by this desktop's own device policy.
+   * Every surface is on for an environment that has not sent a welcome. The
+   * result is cached, so it is a stable snapshot for `useSyncExternalStore`.
+   */
+  developerSurfacesFor(environmentId: string): DeveloperSurfaceState {
+    const cached = this.effectiveSurfaces.get(environmentId)
+    if (cached) return cached
+    const offered = this.developerSurfaces.get(environmentId) ?? ALL_DEVELOPER_SURFACES_ENABLED
+    const effective = intersectDeveloperSurfaces(offered, deriveDeviceDeveloperSurfaces(this.devicePolicy()))
+    this.effectiveSurfaces.set(environmentId, effective)
+    return effective
   }
 
   /** Stores one environment's settingsHiddenGroups (from studio_welcome / studio_environment_policy). */
@@ -71,7 +112,9 @@ class PolicyStore {
   clear(environmentId: string): void {
     const hadPolicy = this.policies.delete(environmentId)
     const hadHiddenGroups = this.hiddenGroups.delete(environmentId)
-    if (hadPolicy || hadHiddenGroups) this.notify()
+    const hadSurfaces = this.developerSurfaces.delete(environmentId)
+    this.effectiveSurfaces.clear()
+    if (hadPolicy || hadHiddenGroups || hadSurfaces) this.notify()
   }
 
   /** Called by the registry on every phase transition: clears on offline/blocked, no-op otherwise. */
@@ -108,6 +151,8 @@ class PolicyStore {
   _resetForTest(): void {
     this.policies.clear()
     this.hiddenGroups.clear()
+    this.developerSurfaces.clear()
+    this.effectiveSurfaces.clear()
     this.listeners.clear()
   }
 }

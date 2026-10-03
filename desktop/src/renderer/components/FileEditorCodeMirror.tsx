@@ -1,3 +1,4 @@
+import { useActiveDeveloperSurfaces } from '../studio/connection/developer-surfaces'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightSpecialChars,
@@ -64,6 +65,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onContentChange,
   contentChangeRef.current = onContentChange
 
   const [blameActive, setBlameActive] = useState(false)
+  const sourceControlOffered = useActiveDeveloperSurfaces().sourceControl
 
   // Toggle blame
   const handleToggleBlame = useCallback(async () => {
@@ -302,7 +304,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onContentChange,
           READ-ONLY
         </div>
       )}
-      {showBlame && (
+      {showBlame && sourceControlOffered && (
         <button
           onClick={() => { void handleToggleBlame().catch((err) => rError('file-editor.codemirror', 'toggle blame failed', { error: String(err) })) }}
           style={{

@@ -877,6 +877,13 @@ type EngineEvent struct {
 	// childConversationId, or ignore the event.
 	DispatchLost *DispatchLostPayload `json:"dispatchLost,omitempty"`
 
+	// engine_wiki_links_propagated — the engine rewrote wiki links after one
+	// or more documents in the session's working directory were renamed. The
+	// payload is the complete record of that propagation pass, emitted once
+	// per pass even when no link needed rewriting. Incremental: each event
+	// describes its own pass and replaces nothing.
+	WikiLinksPropagated *WikiLinkPropagationReport `json:"wikiLinksPropagated,omitempty"`
+
 	// --- Notification events (D-009) ---
 	//
 	// engine_notification: emitted when an extension calls ctx.Notify.

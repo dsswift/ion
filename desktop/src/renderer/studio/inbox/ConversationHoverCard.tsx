@@ -1,3 +1,4 @@
+import { useEnvironmentDeveloperSurfaces } from '../connection/developer-surfaces'
 import { tabEnvironmentId } from '../connection/tab-environment'
 import { useEnvironmentInfo } from '../transfer/environment-label-cache'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
@@ -31,6 +32,7 @@ export function ConversationHoverCard({
   const location = inboxWorktreeFor(tab, benches, inventory)
   const result = tab.lastResult
   const rowEnvironmentId = tabEnvironmentId(tab)
+  const developerSurfaces = useEnvironmentDeveloperSurfaces(rowEnvironmentId)
   const environmentInfo = useEnvironmentInfo(rowEnvironmentId === LOCAL_ENVIRONMENT_ID ? null : rowEnvironmentId)
   // Host is where the conversation runs. A conversation on another
   // environment names that environment, with the same remote mark the row's
@@ -41,8 +43,8 @@ export function ConversationHoverCard({
     : tab.executionHost || 'Local desktop'
   const rows: Array<[string, React.ReactNode]> = [
     ['Project', project.name],
-    ['Location', location.label],
-    ...(tab.worktree?.branchName ? [['Branch', tab.worktree.branchName] as [string, React.ReactNode]] : []),
+    ...(developerSurfaces.worktrees ? [['Location', location.label] as [string, React.ReactNode]] : []),
+    ...(developerSurfaces.repositoryStatus && tab.worktree?.branchName ? [['Branch', tab.worktree.branchName] as [string, React.ReactNode]] : []),
     ...(tab.settledOverride === 'auto' ? [['Settlement', 'Auto'] as [string, React.ReactNode]] : []),
     ['Host', host],
     ...(tab.executionMachineId ? [['Machine', tab.executionMachineId] as [string, React.ReactNode]] : []),

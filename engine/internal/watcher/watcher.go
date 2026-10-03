@@ -10,6 +10,11 @@
 // the LLM-only `file_changed` hook: this fires on external edits, that one
 // fires on LLM Write / Edit tool calls.
 //
+// A watcher constructed with Options.TrackRenames also reports renames: it
+// remembers the identity of the files that predicate selects and delivers an
+// ActionRename event when a removal and a creation describe the same file.
+// See rename.go.
+//
 // Recursive watching is implemented manually by walking the tree at startup
 // and dynamically attaching / detaching on directory create / remove events.
 // fsnotify is non-recursive on Linux and Windows; doing it ourselves yields
@@ -68,23 +73,41 @@ var maxWatchedDirs = 50_000
 var capWarnLogger = utils.Warn
 
 // Action enumerates the normalized event kinds delivered to the callback.
-// Rename is deliberately absent: cross-editor rename detection is unreliable
-// (vim writes via .swp + rename, JetBrains writes via temp + rename, atomic
-// replaces look like delete+create from inotify's perspective). We emit the
-// raw delete + create pair and let consumers decide whether they care.
+//
+// A rename always produces a delete for the old path and a create for the new
+// one. ActionRename is delivered in addition to that pair, never instead of
+// it, and only by a watcher tracking renames for the file in question. It
+// arrives as soon as both sides are known, so it precedes the debounced pair.
 const (
 	ActionCreate = "create"
 	ActionModify = "modify"
 	ActionDelete = "delete"
+	ActionRename = "rename"
 )
 
 // Info is the payload delivered to the OnEvent callback. RelPath is always
 // forward-slash separated (even on Windows) so glob patterns and string
 // comparisons work portably; Path is the absolute OS-native path.
+//
+// OldPath and OldRelPath are set only for ActionRename, where Path and
+// RelPath name the file's new location.
 type Info struct {
-	Path    string
-	RelPath string
-	Action  string
+	Path       string
+	RelPath    string
+	Action     string
+	OldPath    string
+	OldRelPath string
+}
+
+// Options configures a Watcher beyond its root and ignore list.
+type Options struct {
+	// MaxDirs caps the number of directories the watcher attaches a
+	// descriptor to. Zero means the package default.
+	MaxDirs int
+	// TrackRenames selects, by root-relative forward-slash path, the files
+	// whose renames the watcher reports. Nil turns rename tracking off: the
+	// watcher then keeps no per-file state and delivers no ActionRename.
+	TrackRenames func(rel string) bool
 }
 
 // Watcher recursively watches a root directory and invokes OnEvent for every
@@ -129,6 +152,10 @@ type Watcher struct {
 	// even though the cap can be reached in both the Start() walk and any
 	// later attachSubtree() walk.
 	capWarnOnce sync.Once
+
+	// renames correlates removals and creations into renames. Nil when the
+	// watcher was constructed without Options.TrackRenames.
+	renames *renameTracker
 }
 
 // pendingEvent tracks an in-flight debounced event. action is the latest
@@ -160,6 +187,12 @@ func New(root string, ignores []string) (*Watcher, error) {
 // rooted at a pathologically large tree. Plumbed from
 // EngineRuntimeConfig.Workspace.MaxWatchedDirs via the session watcher pool.
 func NewWithMaxDirs(root string, ignores []string, maxDirs int) (*Watcher, error) {
+	return NewWithOptions(root, ignores, Options{MaxDirs: maxDirs})
+}
+
+// NewWithOptions is New with the full option set. See Options.
+func NewWithOptions(root string, ignores []string, opts Options) (*Watcher, error) {
+	maxDirs := opts.MaxDirs
 	if root == "" {
 		return nil, errors.New("watcher: root is empty")
 	}
@@ -190,12 +223,17 @@ func NewWithMaxDirs(root string, ignores []string, maxDirs int) (*Watcher, error
 	if cap <= 0 {
 		cap = maxWatchedDirs
 	}
-	utils.LogWithFields(utils.LevelDebug, "watcher", "new constructed", map[string]any{"path": abs, "count": len(ignores), "max": cap})
+	var renames *renameTracker
+	if opts.TrackRenames != nil {
+		renames = newRenameTracker(opts.TrackRenames)
+	}
+	utils.LogWithFields(utils.LevelDebug, "watcher", "new constructed", map[string]any{"path": abs, "count": len(ignores), "max": cap, "track_renames": renames != nil})
 	utils.LogWithFields(utils.LevelDebug, "watcher", "new ignore patterns", map[string]any{"path": abs, "reason": strings.Join(ignores, ", ")})
 	return &Watcher{
 		root:    abs,
 		ignores: ignores,
 		maxDirs: cap,
+		renames: renames,
 		pending: make(map[string]*pendingEvent),
 		doneCh:  make(chan struct{}),
 	}, nil
@@ -245,6 +283,14 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 			return nil
 		}
 		if !info.IsDir() {
+			// Remember the identity of tracked files that already exist, so
+			// a later removal can be matched to a creation. The walk has the
+			// file's metadata in hand, so this reads nothing extra.
+			if w.renames != nil {
+				if rel := w.rel(path); w.renames.tracks(rel) && !w.shouldIgnore(rel, false) {
+					w.renames.seed(path, info)
+				}
+			}
 			return nil
 		}
 		rel := w.rel(path)
@@ -418,6 +464,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	utils.LogWithFields(utils.LevelDebug, "watcher", "handle event queue", map[string]any{
 		"path": path, "reason": rel, "status": action, "count": ev.Op.String(),
 	})
+	w.observe(path, rel, action)
 	w.schedule(path, rel, action)
 }
 
@@ -477,6 +524,7 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 		if w.shouldIgnore(rel, false) {
 			return nil
 		}
+		w.observe(path, rel, ActionCreate)
 		w.schedule(path, rel, ActionCreate)
 		synthesized++
 		return nil
@@ -590,15 +638,22 @@ func (w *Watcher) rel(path string) string {
 }
 
 // shouldIgnore reports whether a path matches any of the configured ignore
-// globs. For directories we also check the "{pattern}/**" form so a pattern
-// like "node_modules/**" matches the bare directory entry as well, letting
-// the Walk SkipDir prune the subtree without emitting events for the dir
-// itself.
+// globs.
 func (w *Watcher) shouldIgnore(rel string, isDir bool) bool {
+	return MatchIgnore(w.ignores, rel, isDir)
+}
+
+// MatchIgnore reports whether a root-relative, forward-slash path matches any
+// of the given ignore globs. For directories it also checks the
+// "{pattern}/**" form, so a pattern like "node_modules/**" matches the bare
+// directory entry as well and a walk can prune the subtree without visiting
+// it. Exported so callers that walk a watched tree themselves honor the same
+// exclusions.
+func MatchIgnore(ignores []string, rel string, isDir bool) bool {
 	if rel == "." || rel == "" {
 		return false
 	}
-	for _, pat := range w.ignores {
+	for _, pat := range ignores {
 		if match, _ := doublestar.Match(pat, rel); match { //nolint:errcheck // bad pattern means no match
 			return true
 		}

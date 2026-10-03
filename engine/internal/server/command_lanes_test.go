@@ -23,7 +23,7 @@ func startSessionScan(t *testing.T, conn net.Conn, key, requestID string) {
 		"config": map[string]interface{}{
 			"profileId":        "default",
 			"extensionDir":     "/tmp",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 		},
 		"requestId": requestID,

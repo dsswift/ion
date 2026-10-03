@@ -904,6 +904,34 @@ Same merge semantics as other config fields: higher-priority layers override low
 }
 ```
 
+## wikiLinks
+
+Controls [wiki-link maintenance](../architecture/wiki-links.md): rename detection in a watched workspace, rewriting `[[target]]` links when a document is renamed, and the read-only link integrity scan. Omit the block to use the defaults, which turn everything on.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Master switch. When `false` the engine records no file identity, detects no renames, rewrites nothing, and refuses the integrity scan without reading the workspace. A session with no extension loaded then runs no workspace watcher. |
+| `propagateOnRename` | bool | `true` | Rewrite inbound links when a document is renamed. When `false`, renames are still detected and reported through the `workspace_file_renamed` hook, and no file is rewritten. |
+| `integrityScan` | bool | `true` | Allow the on-demand link integrity scan. When `false` the scan is refused before the workspace is read. The scan never runs on its own. |
+| `extensions` | string[] | `[".md"]` | File extensions treated as documents: the files scanned for links and the files whose renames are detected. Matched without regard to case. A missing leading dot is added. |
+
+`propagateOnRename` and `integrityScan` are independent. Either can be turned off without the other. Both are off whenever `enabled` is `false`.
+
+A later config layer overrides only the fields it sets. A non-empty `extensions` array replaces the earlier one.
+
+```json
+{
+  "wikiLinks": {
+    "enabled": true,
+    "propagateOnRename": true,
+    "integrityScan": false,
+    "extensions": [".md", ".mdx"]
+  }
+}
+```
+
+Turning the block off does not change existing links. Turning it back on does not repair renames that happened while it was off. Run the integrity scan to find those.
+
 ## shell
 
 Controls how the `Bash` tool selects the shell used to execute commands. Omit the block to inherit the default: a non-login, non-interactive shell that sources no rc files (`bash -c` on POSIX, PowerShell `-NoProfile -Command` on Windows). This is the historical behavior.

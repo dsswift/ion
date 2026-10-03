@@ -140,6 +140,9 @@ struct StudioWelcome: Equatable, Sendable {
     /// An object, or `.null` when the environment has no enterprise policy.
     var enterprisePolicy: JSONValue
     var settingsHiddenGroups: [String]
+    /// The developer surfaces this server offers this connection. Absent from
+    /// a server that predates the field, which offers them all.
+    var developerSurfaces: DeveloperSurfaces?
     /// The first-paint snapshot, uninterpreted. A thin view's snapshot carries no tabs.
     var snapshot: JSONValue
 }
@@ -148,7 +151,7 @@ extension StudioWelcome: Codable {
     private enum CodingKeys: String, CodingKey {
         case protocolVersion, environmentId, label, platform, serverVersion, engineVersion
         case capabilities, principal, scopes, pairedClientId, relays, directAddresses
-        case enterprisePolicy, settingsHiddenGroups, snapshot
+        case enterprisePolicy, settingsHiddenGroups, developerSurfaces, snapshot
     }
 
     init(from decoder: Decoder) throws {
@@ -172,6 +175,7 @@ extension StudioWelcome: Codable {
         directAddresses = try container.decodeIfPresent([String].self, forKey: .directAddresses)
         enterprisePolicy = try container.decodeJSON(forKey: .enterprisePolicy)
         settingsHiddenGroups = try container.decode([String].self, forKey: .settingsHiddenGroups)
+        developerSurfaces = try container.decodeIfPresent(DeveloperSurfaces.self, forKey: .developerSurfaces)
         snapshot = try container.decodeJSON(forKey: .snapshot)
     }
 
@@ -191,6 +195,7 @@ extension StudioWelcome: Codable {
         try container.encodeIfPresent(directAddresses, forKey: .directAddresses)
         try container.encode(enterprisePolicy, forKey: .enterprisePolicy)
         try container.encode(settingsHiddenGroups, forKey: .settingsHiddenGroups)
+        try container.encodeIfPresent(developerSurfaces, forKey: .developerSurfaces)
         try container.encode(snapshot, forKey: .snapshot)
     }
 }

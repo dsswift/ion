@@ -295,11 +295,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	// observe the very first batch of events without a startup-race; the
 	// watcher's own startup walk does not synthesize events for pre-existing
 	// files, so consumers see only post-start activity.
-	if release := m.startWorkspaceWatcher(s, key, group); release != nil {
-		m.mu.Lock()
-		s.fsWatcherRelease = release
-		m.mu.Unlock()
-	}
+	m.ensureWorkspaceWatcher(s, key)
 
 	// Discover capabilities from extensions
 	caps := group.FireCapabilityDiscover(ctx)

@@ -283,7 +283,7 @@ func TestServer_PinnedSessionNotReaped(t *testing.T) {
 		"key": "pinned-daemon",
 		"config": map[string]interface{}{
 			"profileId":        "default",
-			"workingDirectory": "/tmp",
+			"workingDirectory": testWorkDir(),
 			"model":            "claude-sonnet-4-6",
 			"pinned":           true,
 		},

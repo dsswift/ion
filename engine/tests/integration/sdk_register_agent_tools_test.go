@@ -103,7 +103,7 @@ func TestSDKRegisterAgentTools_WiresDispatchTools(t *testing.T) {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load fixture extension: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
 		ExtensionDir:     extDir,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: testWorkDir(),
 	}); err != nil {
 		t.Fatalf("Load fixture extension: %v", err)
 	}

@@ -227,7 +227,6 @@ export interface EnterprisePolicy {
    */
   customFields?: Record<string, unknown>;
   /**
-  /**
    * Replacement text per Policy Failure identifier (see policy-failure.ts).
    * The engine applies it to the failures it reports; a client applies it to
    * the failures it words itself.
@@ -263,6 +262,13 @@ export interface IonServerPolicyFields {
    * per key (`enterprise-settings-policy`). Enforced for every connection.
    */
   settingsPolicy?: import("./enterprise-settings-policy").SettingsPolicyFields;
+  /**
+   * The developer surfaces this server offers. A surface set to
+   * `"disabled"` is refused for every connection, and no client connected
+   * to this Environment shows a control for it. Absent means every surface
+   * is offered.
+   */
+  developerSurfaces?: import("./developer-surfaces").DeveloperSurfacesConfig;
 }
 
 /**
@@ -336,4 +342,11 @@ export interface IonDesktopPolicyFields {
    * it is installed on, never a client visiting from elsewhere.
    */
   settingsPolicy?: import("./enterprise-settings-policy").SettingsPolicyFields;
+  /**
+   * The developer surfaces this desktop shows, whichever server a
+   * conversation is on. Device policy: it never travels to another client.
+   * To switch a surface off for everyone who connects to a server, set
+   * `customFields['ion-server'].developerSurfaces` on that server instead.
+   */
+  developerSurfaces?: import("./developer-surfaces").DeveloperSurfacesConfig;
 }

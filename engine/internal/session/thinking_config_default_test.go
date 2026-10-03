@@ -31,7 +31,7 @@ func managerWithThinkingDefault(cfg *types.ThinkingConfig) *Manager {
 }
 
 func newThinkingSession() *engineSession {
-	return &engineSession{config: types.EngineConfig{WorkingDirectory: "/tmp"}}
+	return &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 }
 
 // Nobody expressed an opinion → the engine.json default applies.

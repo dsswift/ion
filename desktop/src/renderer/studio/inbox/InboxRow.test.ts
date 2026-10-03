@@ -52,6 +52,6 @@ describe('InboxRow status restraint', () => {
   it('shows automatic settlement and friendly worktree titles', () => {
     expect(source).toContain("tab.settledOverride === 'auto'")
     expect(source).toContain('>Auto</span>')
-    expect(source).toContain('const worktreeTitle = tab.worktree ? inboxWorktreeFor(tab, benches, inventory).label : null')
+    expect(source).toContain('const worktreeTitle = tab.worktree && developerSurfaces.worktrees ? inboxWorktreeFor(tab, benches, inventory).label : null')
   })
 })

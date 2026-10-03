@@ -12,20 +12,21 @@ Enterprise config is designed for IT admins who need to enforce organizational p
 
 ## What enterprise config controls
 
-| Area | Controls | Reference |
-|------|----------|-----------|
-| Models | Allowlists, blocklists for LLM models | [Compliance](compliance.md) |
-| Providers | Restrict which LLM providers can be used | [Compliance](compliance.md) |
-| Tools | Allow or deny specific tools | [Compliance](compliance.md) |
-| MCP servers | Allowlist/denylist for MCP server connections | [Compliance](compliance.md) |
-| Hooks | Require specific hooks to be active in all sessions | [Compliance](compliance.md) |
-| Permissions | Set permission mode and rules that cannot be weakened | [Sealed config](sealed-config.md) |
-| Sandbox | Require sandbox, prevent disable | [Sealed config](sealed-config.md) |
-| Network | Proxy settings, custom CA certificates, TLS config | [Network](network.md) |
-| Telemetry | Enforce telemetry collection and export destinations | [Telemetry](telemetry.md) |
-| Failure messages | Replace the text shown when policy refuses something, per failure | [Policy messages](policy-messages.md) |
-| Managed files | Replace the whole engine and model configuration with managed files the user cannot change | [Managed configuration files](managed-config.md) |
-| New-conversation defaults | Mandate working directory and engine profile for new conversations; optionally lock to prevent user override | [New-conversation policy](new-conversation-policy.md) |
+| Area                      | Controls                                                                                                       | Reference                                             |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Models                    | Allowlists, blocklists for LLM models                                                                          | [Compliance](compliance.md)                           |
+| Providers                 | Restrict which LLM providers can be used                                                                       | [Compliance](compliance.md)                           |
+| Tools                     | Allow or deny specific tools                                                                                   | [Compliance](compliance.md)                           |
+| MCP servers               | Allowlist/denylist for MCP server connections                                                                  | [Compliance](compliance.md)                           |
+| Hooks                     | Require specific hooks to be active in all sessions                                                            | [Compliance](compliance.md)                           |
+| Permissions               | Set permission mode and rules that cannot be weakened                                                          | [Sealed config](sealed-config.md)                     |
+| Sandbox                   | Require sandbox, prevent disable                                                                               | [Sealed config](sealed-config.md)                     |
+| Network                   | Proxy settings, custom CA certificates, TLS config                                                             | [Network](network.md)                                 |
+| Telemetry                 | Enforce telemetry collection and export destinations                                                           | [Telemetry](telemetry.md)                             |
+| Failure messages          | Replace the text shown when policy refuses something, per failure                                              | [Policy messages](policy-messages.md)                 |
+| Managed files             | Replace the whole engine and model configuration with managed files the user cannot change                     | [Managed configuration files](managed-config.md)      |
+| Developer surfaces        | Switch off source control, the commit graph, repository status, or worktrees for a server or a managed desktop | [Developer surfaces](developer-surfaces.md)           |
+| New-conversation defaults | Mandate working directory and engine profile for new conversations; optionally lock to prevent user override   | [New-conversation policy](new-conversation-policy.md) |
 
 A complete, working file to copy — with what each block enforces and which keys silently do nothing — is in [Reference config](reference-config.md).
 
@@ -78,12 +79,12 @@ A complete, working file to copy — with what each block enforces and which key
 
 Enterprise config can be delivered through platform-native management tools or environment variables. The engine checks sources in a defined order and uses the first one it finds.
 
-| Platform | Primary method | Fallback |
-|----------|---------------|----------|
-| macOS | Managed Preferences (MDM profile) | `ION_ENTERPRISE_CONFIG` env var |
-| Windows | Group Policy (registry) | `ION_ENTERPRISE_CONFIG` env var |
-| Linux | System config files | `ION_ENTERPRISE_CONFIG` env var |
-| All | `ION_ENTERPRISE_CONFIG` env var | -- |
+| Platform | Primary method                    | Fallback                        |
+| -------- | --------------------------------- | ------------------------------- |
+| macOS    | Managed Preferences (MDM profile) | `ION_ENTERPRISE_CONFIG` env var |
+| Windows  | Group Policy (registry)           | `ION_ENTERPRISE_CONFIG` env var |
+| Linux    | System config files               | `ION_ENTERPRISE_CONFIG` env var |
+| All      | `ION_ENTERPRISE_CONFIG` env var   | --                              |
 
 An administrator can mark an installation as managed. A managed installation ignores `ION_ENTERPRISE_CONFIG` and locks instead of running unrestricted when its policy is missing. See [Managed mode](mdm.md#managed-mode).
 
@@ -107,6 +108,7 @@ See [Sealed config](sealed-config.md) for the full sealing semantics.
 - [Network](network.md) -- proxy, CA certificates, and TLS
 - [Telemetry](telemetry.md) -- telemetry targets, OTEL, and privacy
 - [Compliance](compliance.md) -- model, provider, tool, and MCP controls
+- [Developer surfaces](developer-surfaces.md) -- switch off source-control surfaces for a server or a managed desktop
 - [New-conversation policy](new-conversation-policy.md) -- mandate working directory and engine profile for new conversations
 - [Settings policy](settings-policy.md) -- classify any setting as user-adjustable, managed-default, or sealed
 - [Git identity setup](../deployment/git-identity-setup.md) -- Entra, Azure DevOps, GitLab, and GitHub app registration for per-principal git credentials (ADR-034)

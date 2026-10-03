@@ -678,6 +678,40 @@ While any connection watches, the engine samples at the smallest interval any wa
 
 ---
 
+### scan_wiki_links
+
+Run the read-only [link integrity scan](../architecture/wiki-links.md#link-integrity-scan) over a session's working directory. The engine reads every document, resolves each wiki link, and reports the ones that name no single file. Nothing is written. The scan honors the session's workspace ignore patterns.
+
+| Field       | Type                | Required | Description                  |
+|-------------|---------------------|----------|------------------------------|
+| `cmd`       | `"scan_wiki_links"` | yes      | Command discriminator        |
+| `key`       | string              | yes      | Session whose working directory is scanned |
+| `requestId` | string              | no       | Correlates with ServerResult |
+
+**Response:** `ServerResult` whose `data` is a `WikiLinkIntegrityReport`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `root` | string | Absolute workspace root that was scanned |
+| `documentsScanned` | number | Documents read |
+| `linksChecked` | number | Wiki links resolved |
+| `broken` | object[] | Links that name no single file. Empty array when every link resolves |
+| `broken[].path` | string | Workspace-relative path of the file holding the link |
+| `broken[].line` | number | 1-based line of the link |
+| `broken[].link` | string | Full link text, brackets included |
+| `broken[].target` | string | The link target with any alias and `#section` removed |
+| `broken[].reason` | string | `missing` or `ambiguous` |
+| `broken[].candidates` | string[] | For `ambiguous`: the files the target could name |
+
+The result is an error, and the workspace is not read, when the session is unknown or when `wikiLinks.integrityScan` or `wikiLinks.enabled` is `false` (`wiki link integrity scan is disabled`).
+
+```json
+{"cmd":"scan_wiki_links","key":"s1","requestId":"r43"}
+{"cmd":"result","requestId":"r43","ok":true,"data":{"root":"/work/docs","documentsScanned":212,"linksChecked":640,"broken":[{"path":"guides/setup.md","line":14,"link":"[[install-notes|notes]]","target":"install-notes","reason":"missing"}]}}
+```
+
+---
+
 ### health
 
 Daemon liveness, answered on a lane that never queues behind a busy session. Stateless.
@@ -1376,6 +1410,39 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 ```
 
 **Response:** `ServerResult` with `data: { ok: true }`. The logout itself runs in the background and is bounded, so the result acknowledges dispatch rather than completion. A completed logout emits no login-stage event — `engine_providers_updated` is the only signal, so consumers must handle it to notice.
+
+---
+
+### refresh_models
+
+Re-fetch the model list of one provider, or of every provider, from its models endpoint. The command answers after discovery has finished. It also re-probes the delegated CLIs, which broadcasts `engine_providers_updated`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"refresh_models"` | yes | Command discriminator |
+| `provider` | string | no | Provider to refresh. Empty or absent refreshes every provider |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"refresh_models","provider":"openai","requestId":"r51"}
+```
+
+**Response:** `ServerResult` with `data: { results }`, one entry per provider considered, sorted by provider id.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | Provider id |
+| `status` | `"ok"` \| `"failed"` \| `"skipped"` | Outcome for this provider |
+| `reason` | string | Why the provider failed or was skipped. Absent when `status` is `ok` |
+| `modelCount` | number | Models the endpoint returned. `0` unless `status` is `ok` |
+
+A provider is `skipped` when it was not a discovery target: its models come from a delegated CLI, it has no models endpoint, or, in a refresh of every provider, it has no credential. A provider named in `provider` is always a target, so a missing credential there is `failed`.
+
+`ok` is `false` only when discovery failed for every targeted provider; `error` then names each failed provider with its reason. A partial failure answers `ok: true`, and the failed providers are found in `results`. `data` is present on both outcomes.
+
+```json
+{"requestId":"r51","ok":false,"error":"discovery failed for 1 of 1 provider(s): openai: http error: ...","data":{"results":[{"provider":"openai","status":"failed","reason":"http error: ...","modelCount":0}]}}
+```
 
 ---
 
