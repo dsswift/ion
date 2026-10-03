@@ -62,6 +62,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/set_session_memory": "Context.SetSessionMemory",
 		"ext/set_run_recovery":   "Context.SetRunRecovery",
 		"ext/walk_context_files": "Context.WalkContextFiles",
+		"ext/scan_wiki_links":    "Context.ScanWikiLinks",
 		"ext/list_sessions":      "SessionsAPI.List",
 		"ext/send_to_session":    "SessionsAPI.Send",
 		"ext/intercept":          "Context.Intercept",

@@ -222,6 +222,15 @@ var HookFileChanged = Hook[FileChangedInfo, NoResult]{Name: HookNameFileChanged}
 // working directory, whatever made it.
 var HookWorkspaceFileChanged = Hook[WorkspaceFileChangedInfo, NoResult]{Name: HookNameWorkspaceFileChanged}
 
+// HookWorkspaceFileRenamed fires when the engine matches a removal and a
+// creation under the working directory to the same file. It fires in addition
+// to the workspace_file_changed delete and create for the two paths.
+var HookWorkspaceFileRenamed = Hook[WorkspaceFileRenamedInfo, NoResult]{Name: HookNameWorkspaceFileRenamed}
+
+// HookWikiLinksPropagated fires after the engine rewrote wiki links in
+// response to renames. The files are already written when it fires.
+var HookWikiLinksPropagated = Hook[WikiLinkPropagationReport, NoResult]{Name: HookNameWikiLinksPropagated}
+
 // --- Tasks ---
 
 // HookTaskCreated fires when a turn task is created.
@@ -385,6 +394,7 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookPermissionClassify),
 
 		descriptorOf(HookFileChanged), descriptorOf(HookWorkspaceFileChanged),
+		descriptorOf(HookWorkspaceFileRenamed), descriptorOf(HookWikiLinksPropagated),
 
 		descriptorOf(HookTaskCreated), descriptorOf(HookTaskCompleted),
 		descriptorOf(HookBackgroundTaskCompleted),

@@ -102,6 +102,8 @@ const (
 	// Files.
 	HookNameFileChanged          = "file_changed"
 	HookNameWorkspaceFileChanged = "workspace_file_changed"
+	HookNameWorkspaceFileRenamed = "workspace_file_renamed"
+	HookNameWikiLinksPropagated  = "wiki_links_propagated"
 
 	// Tasks.
 	HookNameTaskCreated             = "task_created"

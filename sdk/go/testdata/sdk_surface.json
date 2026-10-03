@@ -38,6 +38,7 @@
     "RegisterProcess",
     "RunOnce",
     "SandboxWrap",
+    "ScanWikiLinks",
     "SearchHistory",
     "SendMessage",
     "SendPrompt",
@@ -221,7 +222,9 @@
     "user_bash",
     "webhook_deregistered",
     "webhook_registered",
+    "wiki_links_propagated",
     "workspace_file_changed",
+    "workspace_file_renamed",
     "write_tool_call",
     "write_tool_result"
   ],
