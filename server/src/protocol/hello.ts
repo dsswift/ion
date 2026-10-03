@@ -21,6 +21,8 @@ import { localPrincipal } from '../identity/local-principal'
 import { registerPrincipal } from '../identity/principal-registry'
 import { registerPresence } from './presence'
 import { computeSettingsHiddenGroups } from './settings-visibility'
+import { computeDeveloperSurfaces, projectSnapshotForSurfaces } from './developer-surfaces'
+import { enterprisePolicyHash } from '../enterprise-policy-publish'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection, ConnectionRegistry, ConnectionTransport } from './connection'
 import type { CredentialsStore } from '../auth/credentials-store'
@@ -273,7 +275,9 @@ export async function handleHello(conn: Connection, hello: Extract<StudioFrame, 
   registerPrincipal(auth.principal, auth.claims)
 
   const enterprisePolicy = await deps.getEnterprisePolicy(auth.principal, auth.claims)
-  const snapshot = deps.buildSnapshot(auth.principal, conn.view)
+  conn.developerSurfaces = computeDeveloperSurfaces(conn, enterprisePolicy)
+  conn.policyHash = enterprisePolicyHash(enterprisePolicy)
+  const snapshot = projectSnapshotForSurfaces(deps.buildSnapshot(auth.principal, conn.view), conn.developerSurfaces)
 
   conn.send({
     type: 'studio_welcome',
@@ -295,6 +299,8 @@ export async function handleHello(conn: Connection, hello: Extract<StudioFrame, 
       : {}),
     enterprisePolicy,
     settingsHiddenGroups: computeSettingsHiddenGroups(conn, enterprisePolicy),
+    developerSurfaces: conn.developerSurfaces,
+    policyHash: conn.policyHash,
     onHost: connectionOnHost(conn),
     snapshot,
   })

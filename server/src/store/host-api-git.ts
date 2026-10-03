@@ -49,6 +49,13 @@ import { randomBytes } from 'crypto'
 import { basename, join } from 'path'
 import { dataDir } from '../paths'
 import { mkdirSync } from 'fs'
+import { deriveEnvironmentDeveloperSurfaces } from '@ion/shared/developer-surfaces'
+import { enterprisePolicyCache } from '../enterprise-policy-state'
+import { warn as _warn } from '../logger'
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('host-api-git', msg, fields)
+}
 
 export async function gitIsRepo(directory: string): Promise<{ isRepo: boolean }> {
   try {
@@ -116,7 +123,16 @@ export function fsExists(path: string): Promise<{ exists: boolean }> {
   return Promise.resolve({ exists: existsSync(path) })
 }
 
+/** Whether this Environment's policy offers the worktrees developer surface. */
+export async function worktreesOffered(): Promise<boolean> {
+  return deriveEnvironmentDeveloperSurfaces(enterprisePolicyCache.policy).worktrees
+}
+
 export async function gitWorktreeAdd(repoPath: string, sourceBranch: string) {
+  if (!(await worktreesOffered())) {
+    warn('worktree add refused: worktrees are not offered on this server', { repo_path: repoPath, source_branch: sourceBranch })
+    return { ok: false as const, error: 'worktrees are not available on this server' }
+  }
   try {
     const slug = `${basename(repoPath)}-${randomBytes(4).toString('hex')}`
     const branchName = `wt/${slug}`

@@ -41,6 +41,8 @@ export type ImportRefusalCode =
   | 'conversation_exists'
   | 'unknown_repo'
   | 'source_branch_missing'
+  /** The conversation would arrive in a worktree, and this server's policy does not offer worktrees. */
+  | 'worktrees_not_offered'
   /** This machine already holds a copy of the worktree and it has uncommitted changes, so it cannot be set to the incoming tip. */
   | 'worktree_dirty'
   /** What arrived, or what was written, does not match the digests the source recorded. The source is never deleted after this. */
@@ -75,6 +77,12 @@ function isCheckoutRefusal(value: CheckoutWorktreeResult | CheckoutWorktreeRefus
 export interface RunTransferImportArgs {
   archivePath: string
   paths: TransferPaths
+  /**
+   * Whether this server's policy offers the worktrees developer surface.
+   * False refuses an import that brings a worktree or asks for a new one.
+   * Absent means offered.
+   */
+  worktreesOffered?: boolean
   /** The importing caller's subject — stamped onto the new tab's `principalSubject`, never the exporter's. */
   callerSubject: string
   /**
@@ -240,6 +248,11 @@ export async function runTransferImport(args: RunTransferImportArgs): Promise<Ru
         log('refused: conversation_exists', { ...logFields, root_conversation_id: manifest.rootConversationId, step: 'validate', outcome: 'conversation_exists', conversation_id: id })
         return { ok: false, refusal: { code: 'conversation_exists', message: `conversation ${id} already exists locally` } }
       }
+    }
+
+    if (args.worktreesOffered === false && (manifest.worktree || args.landing?.kind === 'new-worktree')) {
+      log('refused: worktrees are not offered on this server', { ...logFields, root_conversation_id: manifest.rootConversationId, step: 'validate', outcome: 'worktrees_not_offered', brings_worktree: !!manifest.worktree })
+      return { ok: false, refusal: { code: 'worktrees_not_offered', message: 'this server does not offer worktrees, so a conversation cannot arrive in one' } }
     }
 
     const worktreeResolution = await resolveWorktree(manifest, extracted.bundlePath, args.paths, args.checkoutWorktreeFromBundle)

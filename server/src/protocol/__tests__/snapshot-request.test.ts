@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { handleSnapshotRequest } from '../snapshot-request'
 import type { Connection } from '../connection'
+import { ALL_DEVELOPER_SURFACES_ENABLED } from '@ion/shared/developer-surfaces'
 import type { StudioFrame, StudioSnapshot } from '@ion/shared/studio-wire/types'
 
 function fakeConn(principal: { subject: string; displayName: string } | null): { conn: Connection; sent: StudioFrame[] } {
@@ -9,6 +10,7 @@ function fakeConn(principal: { subject: string; displayName: string } | null): {
     id: 'conn-test',
     principal,
     scopes: ['conversations:read'],
+    developerSurfaces: ALL_DEVELOPER_SURFACES_ENABLED,
     send: (frame: StudioFrame) => { sent.push(frame); return true },
   } as unknown as Connection
   return { conn, sent }

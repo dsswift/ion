@@ -118,6 +118,13 @@ export const SESSION_ACTIONS: Record<string, SessionActionSpec> = {
   // remote client needs before it can offer a directory picker. Each is read
   // for the calling principal, so an account-scoped policy reaches only the
   // account it is for.
+  // The developer surfaces the caller may reach, with the policy hash a
+  // client compares to learn the policy changed. Applied state only: it
+  // names no repository, path, or conversation.
+  'policy.getDeveloperSurfaces': {
+    requiredScope: 'conversations:read',
+    handler: async (conn) => ({ ok: true, value: { developerSurfaces: conn.developerSurfaces, policyHash: conn.policyHash } }),
+  },
   'policy.getFull': wrap('policy.getFull', 'conversations:read', () => getEnterprisePolicy(ambientSessionPrincipal())),
   // The NewConversationDefaults section alone, which the preferences store
   // loads at boot; `policy.getFull` carries it too, but the renderer applies

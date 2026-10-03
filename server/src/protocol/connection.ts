@@ -11,6 +11,7 @@
  * `events.ts` uses it to fan a `studio_event` out to every connection,
  * `commands.ts` uses it to find a connection with a given capability.
  */
+import { ALL_DEVELOPER_SURFACES_ENABLED, type DeveloperSurfaceState } from '@ion/shared/developer-surfaces'
 import type { ConnectionSocket } from './connection-socket'
 import { encodeFrame, encodeBinary } from '@ion/shared/studio-wire/codec'
 import type { StudioFrame, StudioCloseReason, StudioPrincipalSummary, Scope, StudioClientKind, StudioView } from '@ion/shared/studio-wire/types'
@@ -63,6 +64,14 @@ export class Connection {
    * state) only to a connection whose own tabs live there.
    */
   thinDirectories: ReadonlySet<string> = new Set()
+  /**
+   * The developer surfaces this connection may reach, as last told to it in
+   * `studio_welcome` or `studio_environment_policy`. Enforcement reads this,
+   * so what a client was told and what the server refuses cannot differ.
+   */
+  developerSurfaces: DeveloperSurfaceState = ALL_DEVELOPER_SURFACES_ENABLED
+  /** The hash of the enterprise policy `developerSurfaces` was derived from. */
+  policyHash = ''
   capabilities: string[] = []
   protocolVersion: number | null = null
 

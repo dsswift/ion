@@ -36,6 +36,7 @@ import { tabOwnedBySubject, principalSubjectForConversation } from './tabs-index
 import { unownedTabsVisible, isSharedTenancy } from '../config/current'
 import { setDriving } from './presence'
 import { lockableActionGroup, computeSettingsHiddenGroups } from './settings-visibility'
+import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
 import { enterprisePolicyCache } from '../state'
 import type { SessionActionSpec } from './session-actions'
 
@@ -134,6 +135,17 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
       id: frame.id,
       ok: false,
       refusal: { code: 'ownership', message: `${frame.action} targets a tab this connection does not own` },
+    })
+    return
+  }
+  const blockedSurfaces = developerSurfaceBlock(frame.action, conn.developerSurfaces)
+  if (blockedSurfaces) {
+    warn('action refused: developer surface disabled', { connection_id: conn.id, action: frame.action, surfaces: blockedSurfaces, transport: conn.transport })
+    conn.send({
+      type: 'studio_action_result',
+      id: frame.id,
+      ok: false,
+      refusal: { code: 'surface_disabled', message: `${frame.action} is not available on this server` },
     })
     return
   }

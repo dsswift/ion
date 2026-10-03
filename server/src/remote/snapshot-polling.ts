@@ -1,3 +1,4 @@
+import { deriveEnvironmentDeveloperSurfaces } from '@ion/shared/developer-surfaces'
 import { createHash } from 'crypto'
 import { state, modelCache, engineBridge, enterprisePolicyCache } from '../state'
 import { readEffectiveSettings } from '../persistence/effective-settings'
@@ -163,11 +164,14 @@ export async function buildSnapshotEvent(forSubject?: string): Promise<{ event: 
     ...(project.profileSource ? { profileSource: project.profileSource } : {}),
     hasOverride: project.entry.profileOverride !== undefined,
   }))
+  const worktreesOffered = deriveEnvironmentDeveloperSurfaces(enterprisePolicyCache.policy).worktrees
   const event: Record<string, unknown> = {
     type: 'desktop_snapshot',
     tabs,
     projects,
-    worktreeStates: state.remoteWorktreeStates?.size ? [...state.remoteWorktreeStates.values()] : undefined,
+    // Withheld where this server's policy does not offer worktrees, the same
+    // as the `desktop_worktree_*` events that keep it current.
+    worktreeStates: worktreesOffered && state.remoteWorktreeStates?.size ? [...state.remoteWorktreeStates.values()] : undefined,
     settledTabs: settledTabsSnapshot(),
     recentDirectories,
     availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,

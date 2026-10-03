@@ -37,6 +37,8 @@ import type { Connection, ConnectionRegistry } from './connection'
 import { tabIdVisibleToSubject } from './tabs-index'
 import { unownedTabsVisible, isSharedTenancy } from '../config/current'
 import { projectForConnection } from './mirror-projection'
+import { developerSurfaceChannelAllowed, developerSurfaceThinEventAllowed, projectWorktreeSnapshotForSurfaces } from '@ion/shared/developer-surfaces'
+import type { StudioWorktreeSnapshot } from '@ion/shared/types-studio'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('studio-events', msg, fields)
@@ -134,7 +136,19 @@ function thinEventNeedsGitWrite(args: unknown[]): boolean {
   return typeof type === 'string' && (type.startsWith('desktop_worktree_') || type.startsWith('desktop_bench_'))
 }
 
+const WORKTREE_SYNC_CHANNEL = 'studio:worktree-sync'
+
+/** False when the event belongs to a developer surface this connection may not reach. */
+function developerSurfaceAllows(conn: Connection, channel: string, args: unknown[]): boolean {
+  const surfaces = conn.developerSurfaces
+  if (!developerSurfaceChannelAllowed(channel, surfaces)) return false
+  if (channel !== THIN_EVENT_CHANNEL) return true
+  const type = (args[0] as { type?: unknown } | undefined)?.type
+  return typeof type !== 'string' || developerSurfaceThinEventAllowed(type, surfaces)
+}
+
 function visibleTo(conn: Connection, channel: string, args: unknown[]): boolean {
+  if (!developerSurfaceAllows(conn, channel, args)) return false
   if (channel === THIN_EVENT_CHANNEL && thinEventNeedsGitWrite(args) && !scopeSatisfies(conn.scopes, 'git:write')) return false
   // A setting that lives in one person's overlay changed: only that person's
   // connections hear it. Broadcasting it to everyone patched another
@@ -185,9 +199,12 @@ export function attachConnectionToEvents(conn: Connection): () => void {
     if (conn.isClosed) return
     if (!channelDeliveredToView(channel, conn.view)) return
     if (!visibleTo(conn, channel, args)) return
-    const payload = eventChannelScope(channel) === 'per-principal'
+    const projected = eventChannelScope(channel) === 'per-principal'
       ? projectForConnection(channel, formatEventPayload(channel, args), conn)
       : formatEventPayload(channel, args)
+    const payload = channel === WORKTREE_SYNC_CHANNEL
+      ? projectWorktreeSnapshotForSurfaces(projected as StudioWorktreeSnapshot, conn.developerSurfaces)
+      : projected
     if (channelKeepsLatestOnly(channel)) conn.sendLatest(channel, { type: 'studio_event', channel, payload })
     else conn.send({ type: 'studio_event', channel, payload })
   })
