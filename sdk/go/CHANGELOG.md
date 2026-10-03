@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.20](https://github.com/dsswift/ion/compare/sdk/go-v0.1.19...sdk/go-v0.1.20) (2026-10-03)
+
+### Features
+
+* **sdk:** add session_before_release hook (#420) ([d74e7e0](https://github.com/dsswift/ion/commit/d74e7e0b8ea48eecf0bd6a050436bcdc956b06dd))
+
 ## [0.1.19](https://github.com/dsswift/ion/compare/sdk/go-v0.1.18...sdk/go-v0.1.19) (2026-10-03)
 
 ### Features

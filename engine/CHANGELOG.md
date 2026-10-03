@@ -18,6 +18,16 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.0](https://github.com/dsswift/ion/compare/engine-v1.96.1...engine-v1.97.0) (2026-10-03)
+
+### Features
+
+* **engine:** release idle sessions (#420) ([ebcb356](https://github.com/dsswift/ion/commit/ebcb3564763c0d8254a474d9a615a9a25c4d3ca8))
+
+### Bug Fixes
+
+* **engine:** keep agent-state limits across config layers ([a325c62](https://github.com/dsswift/ion/commit/a325c62e68481291136cf47f878bc87eaf24bc97))
+
 ## [1.96.1](https://github.com/dsswift/ion/compare/engine-v1.96.0...engine-v1.96.1) (2026-10-03)
 
 ### Bug Fixes
