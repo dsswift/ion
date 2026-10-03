@@ -12,17 +12,12 @@ import UIKit
 // ────────────────────────────────────────────────
 // The keyboard utility bar in ConversationView reads three pieces of host
 // view state: the local `@State keyboardVisible`, the host's
-// `SessionViewModel.showKeyboardUtilityBarInEngine` toggle, and the
+// `SessionViewModel.showKeyboardUtilityBar` toggle, and the
 // host's input focus / draft binding. A standalone View would need all
 // three threaded in as bindings, which doesn't actually shrink the
 // host. A ViewModifier carries the @State internally, hooks the
 // keyboard-show/hide notifications, and lets the host pass only the
 // two bindings it actually needs (focus dismiss, prompt text).
-//
-// InputBar (the CLI/conversation tab's input strip) carries the same
-// pattern inline today; this extraction does not touch InputBar so the
-// two surfaces are intentionally asymmetric until a future decomposition
-// of InputBar gives it the same modifier treatment.
 
 /// Adds the keyboard utility bar above the modified view when:
 ///   1. the hardware keyboard is up (tracked via UIResponder
@@ -52,8 +47,8 @@ struct EngineKeyboardUtilityBarOverlay: ViewModifier {
         VStack(spacing: 0) {
             // Keyboard accessory toolbar — paste / select all / tab / new line /
             // undo / redo / collapse-keyboard. Shown only while the keyboard is
-            // up so it sits flush against the top of the keyboard, mirroring
-            // the InputBar (conversation view) placement exactly.
+            // up so it sits flush against the top of the keyboard, directly
+            // beneath the composer.
             if keyboardVisible && isEnabled {
                 KeyboardUtilityBar(
                     onDismiss: onDismiss,

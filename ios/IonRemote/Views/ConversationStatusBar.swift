@@ -1,8 +1,16 @@
 import SwiftUI
 
-/// Single-line status bar for conversation tabs showing model picker,
-/// permission mode toggle, and context usage.
-/// Also used for engine tabs when `hasEngineExtension` is true.
+/// The conversation's inline controls, rendered inside the composer's controls
+/// row: the model picker, the permission mode, the thinking effort, and the
+/// context ring. The composer places its own attach and send controls around
+/// this row; the running/waiting indicator lives in `ConversationActivityStrip`
+/// above the composer, and the attachments panel opens from the toolbar.
+///
+/// This is the iOS counterpart of the desktop's `ComposerControls`: the same
+/// controls in the same place, under the composer text. The static resolvers
+/// below (`resolveEngineInputs`, `resolveRunActivity`, and the context
+/// arithmetic in `ConversationStatusBar+Context.swift`) are shared with the
+/// activity strip and pinned by their own tests.
 struct ConversationStatusBar: View {
     @Environment(\.appTheme) private var theme
     let modelOverride: String?
@@ -28,34 +36,20 @@ struct ConversationStatusBar: View {
     let isRunning: Bool
     let permissionMode: PermissionMode?
     let availableModels: [RemoteModelEntry]
-    let attachmentCount: Int
     let onSelectModel: (String, String) -> Void
     let onToggleMode: () -> Void
-    let onTapAttachments: () -> Void
     var onTapContextIndicator: () -> Void = {}
 
-    // Engine-specific optional parameters
+    /// Engine tabs confirm a manual mode change, because the extension that
+    /// drives the conversation may be steering the mode itself.
     var hasEngineExtension: Bool = false
-    var extensionName: String? = nil
-    /// Number of dispatched agents currently running. When
-    /// `isRunning` is false and this is > 0 the bar renders the yellow
-    /// "waiting for N agent(s)" pulse + label (see
-    /// `resolveRunActivity`). Mirrors the desktop's `agentRunningCount`.
-    /// Defaults to 0 for older snapshots that don't carry the field.
-    var runningAgentCount: Int = 0
-    /// Background bash commands (Bash run_in_background +
-    /// notify_on_complete) this instance is waiting on. The shell
-    /// counterpart to `runningAgentCount`, ranked below it — matches
-    /// `EngineInstanceBar`'s cascade and the desktop's
-    /// `useActiveEngineBackgroundShellCount`. Defaults to 0 for older
-    /// snapshots that don't carry the field.
-    var runningShellCount: Int = 0
 
-    // Extended-thinking (per-conversation). Think menu always renders beside
-    // permission toggle. It disables when active model has no selectable effort
-    // levels, preserving layout and explaining unavailable capability. The
-    // neutral entry is Adaptive for self-regulating models, Off otherwise.
-    // Level is isolated per conversation/subtab and applied on next prompt.
+    // Extended-thinking (per-conversation). The Think control always renders
+    // beside the mode control. It disables when the active model has no
+    // selectable effort levels, preserving layout and explaining unavailable
+    // capability. The neutral entry is Adaptive for self-regulating models,
+    // Off otherwise. Level is isolated per conversation and applied on the
+    // next prompt.
     var thinkingEffort: String = "off"
     var onSelectThinkingEffort: (String) -> Void = { _ in }
 
@@ -65,13 +59,11 @@ struct ConversationStatusBar: View {
     /// they accept the prompt-cache re-write cost; nil when nothing is pending.
     @State private var pendingModelSwitch: (model: String, providerId: String, estimate: ModelSwitchCost.Estimate)?
 
-    /// Engine-derived inputs for the status bar, resolved nil-safely from an
-    /// optional `StatusFields`. The bar must ALWAYS render for engine tabs (like
-    /// it does for plain conversations); when an engine instance has no status
-    /// yet, these fall back to safe values so the core controls (model picker,
-    /// permission toggle, attachments) stay visible and the status-dependent
-    /// chrome (status dot, extension name) self-hides; context radial remains
-    /// mounted at neutral 0% until occupancy becomes available.
+    /// Engine-derived inputs for the controls and the activity strip, resolved
+    /// nil-safely from an optional `StatusFields`. The controls must ALWAYS
+    /// render; when an engine instance has no status yet, these fall back to
+    /// safe values so the model picker and mode control stay usable, and the
+    /// context ring stays mounted at a neutral 0% until occupancy arrives.
     struct EngineInputs: Equatable {
         let preferredModel: String
         let contextPercent: Double?
@@ -97,21 +89,21 @@ struct ConversationStatusBar: View {
         )
     }
 
-    /// Run-activity indicator decision for the status-bar dot + label.
+    /// Run-activity decision for the activity strip above the composer.
     ///
     /// Derived from the signals reliably present in the iOS view layer —
     /// `isRunning` (orchestrator run-state, which `ConversationView` derives
     /// from `tab.status`), `runningAgentCount` (dispatched agents), and
     /// `runningShellCount` (outstanding background bash commands). It does
     /// NOT read `StatusFields.state`: that field is non-Codable and
-    /// snapshot-excluded on iOS, so gating the dot on it hid the yellow
-    /// "waiting for N agent(s)" label whenever the orchestrator went idle
-    /// with a child still running.
+    /// snapshot-excluded on iOS, so gating on it hid the "waiting for N
+    /// agent(s)" label whenever the orchestrator went idle with a child still
+    /// running.
     ///
-    /// Priority cascade keeps the foreground color when the orchestrator runs,
+    /// Priority cascade keeps the foreground colour when the orchestrator runs,
     /// but its label also includes any concurrent background-shell count. An
     /// idle orchestrator shows agents before shells. When no work applies,
-    /// `show` is false and the bar renders no dot or label.
+    /// `show` is false and the strip renders nothing.
     struct RunActivity: Equatable {
         let show: Bool
         let isRunning: Bool
@@ -159,13 +151,13 @@ struct ConversationStatusBar: View {
     }
 
     private var displayLabel: String {
-        availableModels.first(where: { $0.id == effectiveModel })?.label ?? effectiveModel
+        ModelCatalog.displayLabel(for: effectiveModel, in: availableModels)
     }
 
     /// Rendering state for per-conversation thinking control. Model absent from
     /// registry resolves disabled, never hidden.
     var thinkingState: ThinkingControlState {
-        let model = availableModels.first(where: { $0.id == effectiveModel })
+        let model = ModelCatalog.entry(for: effectiveModel, in: availableModels)
         return ThinkingControlState.resolve(
             thinkingMode: model?.thinkingMode,
             thinkingEfforts: model?.thinkingEfforts
@@ -180,7 +172,7 @@ struct ConversationStatusBar: View {
     }
 
     private var resolvedThinkingEffort: String {
-        let allowed = availableModels.first(where: { $0.id == effectiveModel })?.thinkingEfforts ?? []
+        let allowed = ModelCatalog.entry(for: effectiveModel, in: availableModels)?.thinkingEfforts ?? []
         guard !allowed.isEmpty else { return thinkingEffort }
         return thinkingOptions.contains(where: { $0.value == thinkingEffort })
             ? thinkingEffort
@@ -191,7 +183,6 @@ struct ConversationStatusBar: View {
         thinkingOptions.first(where: { $0.value == resolvedThinkingEffort })?.label ?? thinkingState.offLabel
     }
 
-
     /// Display label mirrors desktop `thinkingEffortLabel`. Kept as the
     /// public iOS parity seam used by codec tests; menu construction itself
     /// comes from ThinkingControlState to avoid a second capability list.
@@ -199,182 +190,31 @@ struct ConversationStatusBar: View {
         ThinkingControlState.label(for: effort)
     }
 
-    private var thinkingLabelColor: Color {
-        if !thinkingState.enabled { return Color(.tertiaryLabel) }
-        return resolvedThinkingEffort == "off" ? Color.secondary : theme.accent
+    /// Whether the Think control carries a non-neutral level, which is when
+    /// it shows its level beside the glyph and takes the accent.
+    private var thinkingIsRaised: Bool {
+        thinkingState.enabled && resolvedThinkingEffort != thinkingOptions.first?.value
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Leading area: extension name (engine tabs only)
-            if let name = extensionName, !name.isEmpty {
-                Text(name)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-
-                Divider()
-                    .frame(height: 12)
+        HStack(spacing: IonSpace.compactGap) {
+            modelControl
+            if permissionMode != nil {
+                modeControl
             }
-
-            // Running/waiting dot indicator.
-            //
-            // Three visual states, priority cascade matches the desktop's
-            // StatusBarEngineState and the getTabStatusColor / TabRowView
-            // .statusInfo / EngineInstanceBar.statusIndicator cascade:
-            //   - isRunning (orchestrator running/connecting, derived from
-            //     tab.status) → orange `theme.statusRunning` dot + "running",
-            //     with the background-shell count appended when present
-            //   - NOT running AND runningAgentCount > 0 → yellow
-            //     `theme.statusWaitingChildren` dot + "waiting for N
-            //     agent(s)"
-            //   - NOT running, 0 agents, AND runningShellCount > 0 → pink
-            //     `theme.statusBash` dot + "waiting for N background
-            //     shell(s)"
-            //   - otherwise → no dot/label (run-activity indicator only)
-            //
-            // Reads `isRunning` + `runningAgentCount` + `runningShellCount` —
-            // the signals reliably present in the iOS view layer — NOT
-            // `statusState`, which comes from `StatusFields.state` and is nil
-            // whenever the orchestrator is idle with a child still running
-            // (the bug this fixes). The pulse is implicit on iOS — the dot is
-            // kept static here like the prior footer to avoid animating two
-            // status surfaces at once; the label color carries the signal.
-            // Decision pinned by ConversationStatusBarWaitingTests via
-            // resolveRunActivity.
-            let runActivity = Self.resolveRunActivity(
-                isRunning: isRunning,
-                runningAgentCount: runningAgentCount,
-                runningShellCount: runningShellCount,
-            )
-            if runActivity.show {
-                let activeColor = runActivity.isRunning
-                    ? theme.statusRunning
-                    : runActivity.isWaitingShells
-                        ? theme.statusBash
-                        : theme.statusWaitingChildren
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(activeColor)
-                        .frame(width: 6, height: 6)
-                    Text(runActivity.label)
-                        .foregroundStyle(activeColor)
-                }
-
-                Divider()
-                    .frame(height: 12)
-            }
-
-            // Model picker trigger. Opens the provider-grouped sheet
-            // (ModelPickerSheet) — at parity with the desktop popover, which a
-            // flat Menu could not reach: no search, no collapsible provider
-            // sections, no visible-but-disabled rows for unconfigured
-            // providers. Disabled while the conversation is running, matching
-            // the desktop's busy gate (a mid-run switch would not apply to the
-            // turn in flight).
-            Button {
-                showModelPicker = true
-            } label: {
-                HStack(spacing: 2) {
-                    Text(displayLabel)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .opacity(0.6)
-                }
-                .foregroundStyle(.secondary)
-                .opacity(isRunning ? 0.5 : 1.0)
-            }
-            .buttonStyle(.plain)
-            .disabled(isRunning)
-
-            Spacer()
-
-            // Permission mode toggle
-            if let mode = permissionMode {
-                if hasEngineExtension {
-                    // Engine tabs: tapping shows a confirmation dialog before overriding
-                    Button {
-                        showModeConfirm = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: mode == .plan ? "doc.text" : "bolt.fill")
-                            Text(mode == .plan ? "Plan" : "Auto")
-                                .fontWeight(.medium)
-                        }
-                        .foregroundStyle(mode == .plan ? theme.accent : .secondary)
-                        .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
-                        .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: onToggleMode) {
-                        HStack(spacing: 3) {
-                            Image(systemName: mode == .plan ? "doc.text" : "bolt.fill")
-                            Text(mode == .plan ? "Plan" : "Auto")
-                                .fontWeight(.medium)
-                        }
-                        .foregroundStyle(mode == .plan ? theme.accent : .secondary)
-                        .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
-                        .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Per-conversation extended-thinking menu. Always renders; disabled
-            // when active model has no selectable override level.
-            Menu {
-                ForEach(thinkingOptions, id: \.value) { level in
-                    Button {
-                        onSelectThinkingEffort(level.value)
-                    } label: {
-                        HStack {
-                            Text(level.label)
-                            if level.value == resolvedThinkingEffort {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "brain")
-                    Text(thinkingLabel)
-                        .fontWeight(.medium)
-                }
-                .foregroundStyle(thinkingLabelColor)
-                .padding(.horizontal, 7) // design-geometry: 7pt nudge; off the 4pt ratio scale
-                .padding(.vertical, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
-                .background(Capsule().fill(Color(.tertiarySystemFill)))
-            }
-            .disabled(!thinkingState.enabled)
-
-            // Attachments button
-            Button(action: onTapAttachments) {
-                HStack(spacing: 3) {
-                    Image(systemName: "paperclip")
-                    if attachmentCount > 0 {
-                        Text("\(attachmentCount)")
-                            .fontWeight(.medium)
-                    }
-                }
-                .foregroundStyle(attachmentCount > 0 ? theme.accent : .secondary)
-            }
-            .buttonStyle(.plain)
-
+            thinkingControl
+            Spacer(minLength: 0)
             // Context usage stays mounted through every conversation lifecycle
             // state. When occupancy has not arrived, its neutral ring shows 0%.
             Button(action: onTapContextIndicator) {
                 ContextUsageRing(percent: radialContextPercent, color: contextColor)
+                    .frame(minWidth: IonSpace.screenInset, minHeight: IonSpace.screenInset)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(contextAccessibilityLabel(pct: radialContextPercent))
         }
-        .font(.caption2)
-        .padding(.horizontal, IonSpace.contentGap)
-        .padding(.vertical, IonSpace.compactInset)
-        .background(.ultraThinMaterial)
+        .font(IonType.metadata)
         .confirmationDialog(
             "Change Mode",
             isPresented: $showModeConfirm,
@@ -391,7 +231,10 @@ struct ConversationStatusBar: View {
         .sheet(isPresented: $showModelPicker) {
             ModelPickerSheet(
                 models: availableModels,
-                selectedModelId: effectiveModel,
+                // The catalog's own id for the running model, so the picker's
+                // checkmark lands on its row even when the conversation
+                // carries the provider-qualified form.
+                selectedModelId: ModelCatalog.entry(for: effectiveModel, in: availableModels)?.id ?? effectiveModel,
                 // The star marks the default this conversation falls back to,
                 // which is what `preferredModel` carries; `effectiveModel` above
                 // folds in the per-conversation pick and gets the checkmark.
@@ -437,6 +280,90 @@ struct ConversationStatusBar: View {
         }
     }
 
+    // MARK: - Controls
+
+    /// Model picker trigger. Opens the provider-grouped sheet
+    /// (ModelPickerSheet) — at parity with the desktop popover, which a
+    /// flat Menu could not reach: no search, no collapsible provider
+    /// sections, no visible-but-disabled rows for unconfigured providers.
+    /// Disabled while the conversation is running, matching the desktop's
+    /// busy gate (a mid-run switch would not apply to the turn in flight).
+    private var modelControl: some View {
+        Button {
+            showModelPicker = true
+        } label: {
+            HStack(spacing: IonSpace.hairlineGap) {
+                Text(displayLabel)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(IonType.microLabel)
+            }
+            .foregroundStyle(theme.textSecondary)
+            .opacity(isRunning ? 0.5 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .disabled(isRunning)
+        // The model name is the one label here that can be long; it yields
+        // width to the fixed controls before they are forced to wrap.
+        .layoutPriority(-1)
+        .accessibilityLabel("Model, \(displayLabel)")
+    }
+
+    /// Permission mode. A plain conversation toggles on tap; an engine
+    /// conversation confirms first, because the extension may own the mode.
+    private var modeControl: some View {
+        let isPlan = permissionMode == .plan
+        return Button {
+            if hasEngineExtension {
+                showModeConfirm = true
+            } else {
+                onToggleMode()
+            }
+        } label: {
+            HStack(spacing: IonSpace.hairlineGap) {
+                Image(systemName: isPlan ? "doc.text" : "bolt.fill")
+                Text(isPlan ? "Plan" : "Auto")
+            }
+            .foregroundStyle(isPlan ? theme.accent : theme.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isPlan ? "Plan mode" : "Auto mode")
+    }
+
+    /// Per-conversation extended-thinking menu. Always renders; disabled
+    /// when the active model has no selectable override level. Shows its
+    /// level only when raised above the model's neutral setting, so the
+    /// common case costs the row one glyph.
+    private var thinkingControl: some View {
+        Menu {
+            ForEach(thinkingOptions, id: \.value) { level in
+                Button {
+                    onSelectThinkingEffort(level.value)
+                } label: {
+                    HStack {
+                        Text(level.label)
+                        if level.value == resolvedThinkingEffort {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: IonSpace.hairlineGap) {
+                Image(systemName: "brain")
+                if thinkingIsRaised {
+                    Text(thinkingLabel)
+                }
+            }
+            .foregroundStyle(thinkingState.enabled
+                ? (thinkingIsRaised ? theme.accent : theme.textSecondary)
+                : theme.textTertiary)
+        }
+        .disabled(!thinkingState.enabled)
+        .accessibilityLabel("Thinking, \(thinkingLabel)")
+    }
+
     /// Confirm a model switch before applying it when the conversation already
     /// holds history.
     ///
@@ -449,11 +376,11 @@ struct ConversationStatusBar: View {
     private func handleSelectModel(_ model: String, _ providerId: String) {
         let estimate = ModelSwitchCost.estimate(
             contextTokens: contextTokens,
-            targetModel: availableModels.first(where: { $0.id == model }),
-            currentModel: availableModels.first(where: { $0.id == effectiveModel }),
+            targetModel: ModelCatalog.entry(for: model, in: availableModels),
+            currentModel: ModelCatalog.entry(for: effectiveModel, in: availableModels),
             lastActivityAt: lastTurnAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
         )
-        guard let estimate, model != effectiveModel else {
+        guard let estimate, model != (ModelCatalog.entry(for: effectiveModel, in: availableModels)?.id ?? effectiveModel) else {
             onSelectModel(model, providerId)
             return
         }

@@ -117,14 +117,14 @@ struct EngineMessageRow: View {
 
     // MARK: - User
 
+    /// One user bubble for every state. There used to be a second, compact
+    /// bubble for rows drawn while a turn was running (and in the dispatch
+    /// preview), and it rendered only images named by a path marker in the
+    /// text. A prompt sent with an image stores the image as a structured
+    /// attachment, so the picture vanished from the operator's own message
+    /// for exactly as long as the turn it started was running.
     private var userMessage: some View {
-        Group {
-            if isConversationMode {
-                conversationUserBubble
-            } else {
-                engineUserBubble
-            }
-        }
+        conversationUserBubble
     }
 
     /// Label for the mid-turn steer affordance, or nil for an ordinary turn.
@@ -138,33 +138,12 @@ struct EngineMessageRow: View {
         return nil
     }
 
-    /// Full conversation-view user bubble: source badge, attachments, bash
-    /// highlight, timestamp, context menu with rewind/fork.
+    /// The user bubble: attachments, bash highlight, one metadata line, and a
+    /// context menu that offers rewind and fork where the host wires them.
     private var conversationUserBubble: some View {
         HStack {
             Spacer(minLength: 24)
             VStack(alignment: .trailing, spacing: 4) {
-                // Mid-turn steer affordance. Distinguishes a steer from a
-                // turn-opening prompt, which matters most once the bubble has
-                // been relocated to sit under its "Steer applied" divider — it
-                // no longer sits where the user typed it. Desktop parity: the
-                // steer tag in MessageBubble.tsx.
-                if let steerLabel {
-                    Text(steerLabel)
-                        .font(.caption2)
-                        .foregroundStyle(message.steerFailed ? AnyShapeStyle(.red) : message.steerPending ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
-                }
-
-                if let source = message.source, source == .remote {
-                    HStack(spacing: 4) {
-                        Image(systemName: "iphone")
-                            .font(.caption2)
-                        Text("from iOS")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                }
-
                 if let attachments = message.attachments, !attachments.isEmpty {
                     MessageAttachmentImages(attachments: attachments, alignment: .trailing, onPreview: previewAttachment, onOpenFile: onOpenFile)
                 }
@@ -211,13 +190,7 @@ struct EngineMessageRow: View {
                     .frame(maxWidth: cap, alignment: .trailing)
                 }
 
-                if let deliveryState = message.deliveryState {
-                    deliveryStateLabel(deliveryState)
-                }
-
-                Text(relativeTimestamp)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                userMetadataLine
             }
             .padding(.trailing, IonSpace.contentGap)
             .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
@@ -260,50 +233,41 @@ struct EngineMessageRow: View {
         }
     }
 
-    /// Engine-view compact user bubble: marker-derived inline images + text.
-    private var engineUserBubble: some View {
-        HStack {
-            Spacer(minLength: 24)
-            VStack(alignment: .trailing, spacing: 4) {
-                let rawDisplayText = message.injectionKind == "structured_answer"
-                    ? structuredAnswerDisplayText(message.content)
-                    : message.content
-                let segments = parseAttachmentSegments(rawDisplayText)
-                ForEach(Array(segments.images.enumerated()), id: \.offset) { _, path in
-                    InlineAttachmentImage(path: path) { img in
-                        previewName = (path as NSString).lastPathComponent
-                        previewImage = img
-                    }
-                }
-                markerDocumentChips(segments.files)
-
-                if !segments.text.isEmpty {
-                    let cap = UIScreen.main.bounds.width * 0.8
-                    let slash = message.slashSegments(fallbackText: segments.text)
-                    ViewThatFits(in: .horizontal) {
-                        Group {
-                            if let slash {
-                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: false)
-                            } else {
-                                userBubbleContent(text: segments.text, isBash: false)
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: true)
-                        Group {
-                            if let slash {
-                                userBubbleContentWithSlash(command: slash.command, args: slash.args, isBash: false)
-                            } else {
-                                userBubbleContent(text: segments.text, isBash: false)
-                            }
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: cap, alignment: .trailing)
-                }
+    /// One metadata line under the bubble, trailing-aligned, built from the
+    /// facts that apply: the steer state, the device it was sent from, the
+    /// delivery state, and when. These used to stack as up to four separate
+    /// caption rows of three different treatments under every prompt; a
+    /// sent message earns one quiet line.
+    ///
+    /// The steer affordance distinguishes a steer from a turn-opening prompt,
+    /// which matters most once the bubble has been relocated to sit under its
+    /// "Steer applied" divider — it no longer sits where the user typed it.
+    /// Desktop parity: the steer tag in MessageBubble.tsx.
+    private var userMetadataLine: some View {
+        HStack(spacing: IonSpace.hairlineGap) {
+            if let steerLabel {
+                Text(steerLabel)
+                    .foregroundStyle(message.steerFailed ? theme.statusError : theme.textSecondary)
+                metadataSeparator
             }
-            .padding(.trailing, IonSpace.contentGap)
-            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
+            if message.source == .remote {
+                Image(systemName: "iphone")
+                    .accessibilityLabel("Sent from this phone")
+                metadataSeparator
+            }
+            if let deliveryState = message.deliveryState {
+                deliveryStateLabel(deliveryState)
+                metadataSeparator
+            }
+            Text(relativeTimestamp)
         }
+        .font(IonType.microLabel)
+        .foregroundStyle(theme.textTertiary)
+    }
+
+    private var metadataSeparator: some View {
+        Text("·")
+            .foregroundStyle(theme.textTertiary)
     }
 
     /// User-bubble content builders (collapsible wrapper + bubble core)
@@ -313,9 +277,8 @@ struct EngineMessageRow: View {
     /// Slash-command bubble: see EngineMessageRow+SlashBubble.swift for
     /// the `userBubbleContentWithSlash` implementation and the
     /// `parseSlashCommand` / `SlashCommandSegments` parser. The split
-    /// keeps this file under the size cap; the call sites above
-    /// (`conversationUserBubble`, `engineUserBubble`) invoke the
-    /// extension method by name.
+    /// keeps this file under the size cap; `conversationUserBubble` above
+    /// invokes the extension method by name.
 
     // MARK: - Assistant
     // Assistant-role rendering (assistantMessage, conversationAssistantBubble,

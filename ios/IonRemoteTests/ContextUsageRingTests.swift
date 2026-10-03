@@ -43,16 +43,30 @@ final class ContextUsageRingTests: XCTestCase {
     }
 
     /// Every occupancy-coloring surface resolves through ContextUsageRing, so
-    /// the strip and the status bar cannot disagree at the same percentage.
-    /// They each carried a private copy of the ladder before this, and had
-    /// already drifted: the strip returned .green at the normal level where the
-    /// ring directly above it returned .secondary.
+    /// the composer's ring and any other reader cannot disagree at the same
+    /// percentage. The retired header fill strip once carried a private copy of
+    /// the ladder and had drifted (.green where the ring said .secondary); the
+    /// status bar's `contextColor` is now the one other consumer, and it must
+    /// resolve the identical color.
+    @MainActor
     func testConsumersResolveTheSameColor() {
         for pct in [0.0, 59.0, 60.0, 79.0, 80.0, 220.0] {
+            let bar = ConversationStatusBar(
+                modelOverride: nil,
+                preferredModel: "claude-sonnet-4-6",
+                contextPercent: pct,
+                contextTokens: nil,
+                engineContextWindow: nil,
+                isRunning: false,
+                permissionMode: .auto,
+                availableModels: [],
+                onSelectModel: { _, _ in },
+                onToggleMode: {},
+            )
             XCTAssertEqual(
-                ConversationContextStrip.color(pct),
+                bar.contextColor,
                 ContextUsageRing.color(for: pct),
-                "the context strip must resolve the same color as the ring at \(pct)%",
+                "the status bar must resolve the same color as the ring at \(pct)%",
             )
         }
     }
@@ -75,10 +89,8 @@ final class ContextUsageRingTests: XCTestCase {
             isRunning: false,
             permissionMode: .auto,
             availableModels: [],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {},
         )
 
         XCTAssertNil(bar.resolvedContextPercent)
@@ -101,10 +113,8 @@ final class ContextUsageRingTests: XCTestCase {
                 RemoteModelEntry(id: "claude-sonnet-4-6", providerId: "anthropic",
                                  label: "Sonnet 4.6", contextWindow: 200_000, hasAuth: true),
             ],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {},
         )
         let pct = bar.resolvedContextPercent
         XCTAssertNotNil(pct)

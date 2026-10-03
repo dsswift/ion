@@ -176,19 +176,25 @@ struct Transcript: View {
     var body: some View {
         VStack(spacing: 0) {
             if let prompt = pinnedPrompt, !prompt.isEmpty {
-                HStack {
-                    Text("> ")
+                HStack(spacing: IonSpace.compactInset) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(IonType.microLabel)
                         .foregroundStyle(theme.accent)
-                        .fontWeight(.semibold)
                     Text(prompt)
+                        .font(IonType.metadata)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                .font(IonTheme.codeFont(size: 12))
-                .padding(.horizontal, IonSpace.contentGap)
-                .padding(.vertical, IonSpace.compactGap)
+                .padding(.horizontal, IonSpace.rowInset)
+                .padding(.vertical, IonSpace.compactInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemFill).opacity(0.7))
+                .background(theme.surfaceElevated)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(theme.borderSubtle)
+                        .frame(height: 1)
+                }
             }
 
             ZStack(alignment: .bottom) {

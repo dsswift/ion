@@ -308,15 +308,31 @@ extension SessionViewModel {
     // MARK: - Voice Config
 
     /// Send the current voice configuration to the desktop.
-    /// Called on initial connection (snapshot) and when voice settings change.
-    /// Fire-and-forget: rides the next snapshot if not connected at call time.
+    ///
+    /// Called from every snapshot apply and from the Voice settings page, and
+    /// sends only when the configuration differs from the last one this
+    /// connection delivered. The snapshot call used to send unconditionally,
+    /// which put an identical voice-config frame on the wire every poll
+    /// interval for the life of the connection. `tearDownTransport` forgets
+    /// the last-sent value, so a new connection hears the configuration once.
     @MainActor
     func sendVoiceConfig() {
         let prompt = voiceService.voiceMode == .desktopAssisted ? voiceService.voiceSystemPrompt : nil
-        send(.voiceConfig(
+        let config = VoiceService.WireConfig(
             enabled: voiceService.isEnabled,
             mode: voiceService.voiceMode.rawValue,
             systemPrompt: prompt
+        )
+        guard lastSentVoiceConfig != config else { return }
+        lastSentVoiceConfig = config
+        DiagnosticLog.log("voice config sent", tag: "session.voice", fields: [
+            "enabled": String(config.enabled),
+            "mode": config.mode
+        ])
+        send(.voiceConfig(
+            enabled: config.enabled,
+            mode: config.mode,
+            systemPrompt: config.systemPrompt
         ), intent: .automaticFireAndForget) // rides next snapshot if disconnected
     }
 

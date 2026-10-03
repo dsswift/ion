@@ -421,7 +421,13 @@ final class SessionViewModel {
     // MARK: - Voice
 
     let voiceService = VoiceService()
-    let speechService = SpeechRecognitionService()
+    /// The last voice configuration delivered on the current connection; nil
+    /// until one is sent. `tearDownTransport` clears it so the next
+    /// connection hears the configuration once.
+    var lastSentVoiceConfig: VoiceService.WireConfig?
+    /// Dictation. A `var` so a test can drive the composer's dictation flow
+    /// against a fake speech engine; the app never reassigns it.
+    var speechService = SpeechRecognitionService()
 
     // MARK: - Toast
 

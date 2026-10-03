@@ -33,6 +33,16 @@ final class ModernSpeechEngine: SpeechEngine {
     // Throttle level updates to ~20fps to avoid flooding the main queue
     private var lastLevelUpdate: CFAbsoluteTime = 0
 
+    /// Identity of the current recording session. Every result the results
+    /// loop delivers carries the generation it was started under, and
+    /// `applyResult` drops a result whose generation is no longer current.
+    ///
+    /// Without this, a session's last results could land after the session was
+    /// cancelled or stopped — the analyzer finalizes asynchronously once its
+    /// input ends — and be appended to the NEXT session's transcript, so the
+    /// first words of a new dictation were the last words of the previous one.
+    private var sessionGeneration: UInt64 = 0
+
     // Transcript accumulation — see applyResult() for the full explanation.
     // SpeechTranscriber.results emits a mix of:
     //   - finalized chunks (result.isFinal == true): must be APPENDED to finalizedTranscript
@@ -42,15 +52,15 @@ final class ModernSpeechEngine: SpeechEngine {
     private var volatileTranscript = ""
 
     init() {
-        DiagnosticLog.log("SPEECH-MODERN: init (iOS 26+ SpeechAnalyzer)")
+        DiagnosticLog.log("speech modern engine init", tag: "speech.modern")
     }
 
     // MARK: - SpeechEngine
 
     func startRecording() async throws {
-        DiagnosticLog.log("SPEECH-MODERN: startRecording called")
+        DiagnosticLog.log("start recording", tag: "speech.modern")
         guard !isRecording else {
-            DiagnosticLog.log("SPEECH-MODERN: already recording, ignoring start")
+            DiagnosticLog.log("start recording ignored; already recording", tag: "speech.modern", level: .warn)
             return
         }
 
@@ -114,20 +124,25 @@ final class ModernSpeechEngine: SpeechEngine {
             }
             converter = conv
             converterOutputFormat = transcriberFormat
-            DiagnosticLog.log("SPEECH-MODERN: AVAudioConverter created")
+            DiagnosticLog.log("audio converter created", tag: "speech.modern")
         } else {
             converter = nil
             converterOutputFormat = nil
-            DiagnosticLog.log("SPEECH-MODERN: no conversion needed (formats match)")
+            DiagnosticLog.log("audio converter not needed; formats match", tag: "speech.modern")
         }
 
-        // Reset accumulation state for this session
+        // Reset accumulation state for this session, and open a new generation
+        // so anything the previous session still emits is recognised as stale.
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
         finalizedTranscript = ""
         volatileTranscript = ""
         transcript = ""
         errorMessage = nil
         isRecording = true
-        DiagnosticLog.log("SPEECH-MODERN: transcript state reset on startRecording")
+        DiagnosticLog.log("transcript state reset", tag: "speech.modern", fields: [
+            "generation": String(generation)
+        ])
 
         // Build async stream to feed audio buffers into the analyzer
         let (inputStream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -145,7 +160,7 @@ final class ModernSpeechEngine: SpeechEngine {
         let capturedTranscriber = t
         transcriptionTask = Task { [weak self] in
             guard let self else { return }
-            await self.runTranscription(transcriber: capturedTranscriber, inputStream: inputStream)
+            await self.runTranscription(transcriber: capturedTranscriber, inputStream: inputStream, generation: generation)
         }
 
         // Install audio tap at hardware format (Float32 — the only format installTap accepts).
@@ -184,28 +199,54 @@ final class ModernSpeechEngine: SpeechEngine {
             DiagnosticLog.log("audio engine start failed", tag: "speech.modern", level: .error, fields: [
                 "error": error.localizedDescription
             ])
-            finishInputAndTeardown()
+            stopCapture()
+            teardownSession()
             throw error
         }
     }
 
-    func stopRecording() -> String {
+    func stopRecording() async -> String {
+        guard isRecording else {
+            let final = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            DiagnosticLog.log("stop recording while idle", tag: "speech.modern", fields: [
+                "transcript_count": String(final.count)
+            ])
+            return final
+        }
+        DiagnosticLog.log("stop recording; finalizing", tag: "speech.modern", fields: [
+            "finalized_count": String(finalizedTranscript.count),
+            "volatile_count": String(volatileTranscript.count)
+        ])
+        // Stop feeding audio. Ending the input stream is what tells the analyzer
+        // to commit the tail it is holding; the results loop then sees the last
+        // finalized segment and the stream closes on its own.
+        stopCapture()
+        if let task = transcriptionTask {
+            let completed = await SpeechEngineFinalize.run { await task.value }
+            DiagnosticLog.log(
+                completed ? "finalize complete" : "finalize timed out",
+                tag: "speech.modern",
+                level: completed ? .info : .warn,
+                fields: ["finalized_count": String(finalizedTranscript.count)]
+            )
+        }
+        teardownSession()
         // Trim only on extraction — the running transcript may carry leading whitespace
         // from the finalized chunks, which is fine internally but ugly when surfaced.
         let final = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        DiagnosticLog.log("stop recording", tag: "speech.modern", fields: [
-            "transcript": String(final.prefix(80))
+        DiagnosticLog.log("stop recording returned", tag: "speech.modern", fields: [
+            "transcript_count": String(final.count)
         ])
-        finishInputAndTeardown()
         return final
     }
 
     func cancelRecording() {
         DiagnosticLog.log("cancel recording", tag: "speech.modern", fields: [
-            "finalized": String(finalizedTranscript.prefix(40)),
-            "volatile": String(volatileTranscript.prefix(40))
+            "finalized_count": String(finalizedTranscript.count),
+            "volatile_count": String(volatileTranscript.count)
         ])
-        finishInputAndTeardown()
+        stopCapture()
+        teardownSession()
         finalizedTranscript = ""
         volatileTranscript = ""
         transcript = ""
@@ -213,10 +254,15 @@ final class ModernSpeechEngine: SpeechEngine {
 
     // MARK: - Transcription loop
 
-    private func runTranscription(transcriber: SpeechTranscriber, inputStream: AsyncStream<AnalyzerInput>) async {
-        DiagnosticLog.log("SPEECH-MODERN: runTranscription starting")
+    private func runTranscription(
+        transcriber: SpeechTranscriber,
+        inputStream: AsyncStream<AnalyzerInput>,
+        generation: UInt64
+    ) async {
+        DiagnosticLog.log("transcription loop starting", tag: "speech.modern", fields: [
+            "generation": String(generation)
+        ])
         let analyzer = SpeechAnalyzer(modules: [transcriber])
-        DiagnosticLog.log("SPEECH-MODERN: SpeechAnalyzer created")
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
@@ -240,7 +286,7 @@ final class ModernSpeechEngine: SpeechEngine {
                             "is_final": String(isFinal),
                             "segment": String(segmentText.prefix(60))
                         ])
-                        await MainActor.run { self.applyResult(segmentText, isFinal: isFinal) }
+                        await MainActor.run { self.applyResult(segmentText, isFinal: isFinal, generation: generation) }
                     }
                 } catch {
                     DiagnosticLog.log("transcriber results error", tag: "speech.modern", level: .error, fields: [
@@ -252,8 +298,13 @@ final class ModernSpeechEngine: SpeechEngine {
             }
         }
 
-        DiagnosticLog.log("SPEECH-MODERN: runTranscription complete")
+        DiagnosticLog.log("transcription loop complete", tag: "speech.modern", fields: [
+            "generation": String(generation)
+        ])
         await MainActor.run {
+            // A later session may already be running; only the session that
+            // owns this loop may report itself finished.
+            guard self.sessionGeneration == generation else { return }
             self.isRecording = false
             self.audioLevel = 0
         }
@@ -277,7 +328,15 @@ final class ModernSpeechEngine: SpeechEngine {
     /// space heuristic on the raw string. That heuristic misfires on virtually every
     /// progressive chunk and was the cause of the "I I' I'm I'm not …" duplication bug.
     /// The fix is to trust the explicit isFinal flag the API already provides.
-    private func applyResult(_ segmentText: String, isFinal: Bool) {
+    private func applyResult(_ segmentText: String, isFinal: Bool, generation: UInt64) {
+        guard generation == sessionGeneration else {
+            DiagnosticLog.log("stale transcriber result dropped", tag: "speech.modern", fields: [
+                "result_generation": String(generation),
+                "generation": String(sessionGeneration),
+                "is_final": String(isFinal)
+            ])
+            return
+        }
         if isFinal {
             // Commit this chunk to the finalized portion and drop the volatile guess.
             // The chunk already carries its leading whitespace (Apple's API contract),
@@ -299,21 +358,28 @@ final class ModernSpeechEngine: SpeechEngine {
 
     // MARK: - Teardown
 
-    private func finishInputAndTeardown() {
-        DiagnosticLog.log("SPEECH-MODERN: finishInputAndTeardown")
+    /// Stop the microphone and close the analyzer's input. The transcription
+    /// task is left alone so it can drain its final results; `teardownSession`
+    /// is what ends it.
+    private func stopCapture() {
+        if audioEngine.isRunning {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            audioEngine.stop()
+        }
         inputContinuation?.finish()
         inputContinuation = nil
+        audioLevel = 0
+    }
 
+    /// Release the session: cancel whatever the transcription task has left to
+    /// do, drop the analyzer objects, give the audio session back, and mark the
+    /// engine idle.
+    private func teardownSession() {
         transcriptionTask?.cancel()
         transcriptionTask = nil
         transcriber = nil
         converter = nil
         converterOutputFormat = nil
-
-        if audioEngine.isRunning {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            audioEngine.stop()
-        }
 
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -326,7 +392,7 @@ final class ModernSpeechEngine: SpeechEngine {
 
         isRecording = false
         audioLevel = 0
-        DiagnosticLog.log("SPEECH-MODERN: teardown complete")
+        DiagnosticLog.log("teardown complete", tag: "speech.modern")
     }
 
     @objc nonisolated private func handleAudioInterruptionOnMainThread(_ notification: Notification) {
@@ -339,7 +405,11 @@ final class ModernSpeechEngine: SpeechEngine {
         guard type == .began else { return }
         Task { @MainActor [weak self] in
             guard let self, self.isRecording else { return }
-            self.finishInputAndTeardown()
+            // The words heard so far stay in `transcript`: the caller reads them
+            // when it notices `isRecording` fell, so an interruption never
+            // discards a dictation the way a cancel does.
+            self.stopCapture()
+            self.teardownSession()
         }
     }
 
@@ -359,7 +429,7 @@ final class ModernSpeechEngine: SpeechEngine {
         let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 1)
 
         guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrameCapacity) else {
-            DiagnosticLog.log("SPEECH-MODERN: convert — failed to alloc output buffer")
+            DiagnosticLog.log("audio convert failed to allocate output buffer", tag: "speech.modern", level: .warn)
             return nil
         }
 
@@ -375,7 +445,7 @@ final class ModernSpeechEngine: SpeechEngine {
         }
 
         guard status != .error else {
-            DiagnosticLog.log("SPEECH-MODERN: convert — AVAudioConverter status=error")
+            DiagnosticLog.log("audio convert returned error status", tag: "speech.modern", level: .warn)
             return nil
         }
         return outputBuffer

@@ -154,10 +154,8 @@ final class ThinkingControlStateTests: XCTestCase {
                     hasAuth: true
                 ),
             ],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {}
         )
         XCTAssertFalse(bar.thinkingState.enabled, "no declared efforts ⇒ disabled")
         XCTAssertFalse(bar.thinkingState.levels.isEmpty, "the control must still render")
@@ -187,10 +185,8 @@ final class ThinkingControlStateTests: XCTestCase {
                     thinkingEfforts: ["low", "medium", "high"]
                 ),
             ],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {}
         )
         XCTAssertTrue(bar.thinkingState.enabled)
         XCTAssertEqual(bar.thinkingState.triggerLabel(for: "adaptive"), "Adaptive")

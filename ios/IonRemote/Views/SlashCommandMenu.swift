@@ -53,18 +53,17 @@ struct SlashCommandMenu: View {
             }
             .frame(maxHeight: 260)
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
+            .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
             .shadow(color: .black.opacity(0.15), radius: 8, y: -2)
-            .padding(.horizontal)
+            .padding(.horizontal, IonSpace.contentGap)
+            .padding(.bottom, IonSpace.compactGap)
         }
     }
 
     @ViewBuilder
     private func sectionHeader(_ scope: String) -> some View {
         Text(Self.scopeLabels[scope] ?? scope.capitalized)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .textCase(.uppercase)
+            .font(IonType.sectionLabel)
             .foregroundStyle(.secondary)
             .padding(.horizontal, IonSpace.contentGap)
             .padding(.top, IonSpace.compactGap)
@@ -89,7 +88,7 @@ struct SlashCommandMenu: View {
 
                     if !cmd.description.isEmpty {
                         Text(cmd.description)
-                            .font(.caption)
+                            .font(IonType.metadata)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }

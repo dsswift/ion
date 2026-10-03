@@ -57,10 +57,10 @@ struct ConversationView: View {
     /// Set to true when a reconnect-triggered reload is in flight so the next
     /// engine-message count change force-scrolls to the bottom.
     @State var pendingScrollAfterReload = false
-    @State var isRecordingVoice = false
+    /// Microphone or speech permission was refused; the composer offers the
+    /// Settings shortcut. Dictation state itself lives on the speech service
+    /// (`viewModel.speechService.phase`), never here.
     @State var showPermissionDeniedAlert = false
-    /// Draft text snapshot taken when recording starts, used to restore on cancel.
-    @State var draftBeforeRecording = ""
     /// Slash command autocomplete: nil = menu hidden; non-nil = the current "/" prefix text.
     @State var slashFilter: String?
 

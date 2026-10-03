@@ -45,7 +45,7 @@ struct ToastOverlay: View {
     var body: some View {
         // Center-aligned VStack so each toast hugs its content horizontally
         // rather than stretching to the full width of the overlay container.
-        VStack(alignment: .center, spacing: IonTheme.sm) {
+        VStack(alignment: .center, spacing: IonSpace.compactGap) {
             ForEach(messages.prefix(2)) { toast in
                 toastBanner(toast)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -53,36 +53,35 @@ struct ToastOverlay: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, IonTheme.md)
-        .padding(.top, IonTheme.sm)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.top, IonSpace.compactGap)
         .animation(IonTheme.snappySpring, value: messages.map(\.id))
     }
 
     private func toastBanner(_ toast: ToastMessage) -> some View {
-        // Fixed-height accent capsule + content-hugging HStack + .fixedSize on
-        // the vertical axis keeps the pill compact. Without these, the flexible
-        // RoundedRectangle bar and Spacer() let the overlay container inflate
-        // the banner to fill the entire screen.
-        HStack(spacing: IonTheme.sm) {
-            Capsule()
-                .fill(toast.style.color)
-                .frame(width: 3, height: 28)
+        // Content-hugging HStack + .fixedSize on the vertical axis keeps the
+        // pill compact. Without these, a Spacer() would let the overlay
+        // container inflate the banner to fill the entire screen.
+        HStack(spacing: IonSpace.compactGap) {
             Image(systemName: toast.style.icon)
-                .foregroundStyle(toast.style.color).font(.body)
-            VStack(alignment: .leading, spacing: 2) {
+                .foregroundStyle(toast.style.color)
+                .font(IonType.rowTitle)
+            VStack(alignment: .leading, spacing: 2) { // design-geometry: 2pt title-to-detail gap inside a two-line toast; below the 4pt rhythm floor
                 Text(toast.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(IonType.sectionLabel)
                     .foregroundStyle(.primary)
                 if let detail = toast.detail {
-                    Text(detail).font(.caption)
-                        .foregroundStyle(.secondary).lineLimit(2)
+                    Text(detail)
+                        .font(IonType.metadata)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
             }
         }
-        .padding(.horizontal, IonTheme.md)
-        .padding(.vertical, IonTheme.xs + 2)
+        .padding(.horizontal, IonSpace.contentGap)
+        .padding(.vertical, IonSpace.compactInset)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.container))
         .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
         // Cap width so long detail strings wrap inside the pill instead of
         // spanning the whole screen.
