@@ -387,6 +387,10 @@ func (w *Watcher) Close() error {
 		}
 	}
 
+	if w.renames != nil {
+		w.renames.stopResync()
+	}
+
 	// Drain any pending debounce timers so we don't leak goroutines.
 	w.pendMu.Lock()
 	for path, p := range w.pending {
@@ -423,6 +427,9 @@ func (w *Watcher) pump(ctx context.Context, src eventSource) {
 				return
 			}
 			utils.LogWithFields(utils.LevelError, "watcher", "pump source error", map[string]any{"path": w.root, "error": err.Error()})
+			if eventsDropped(err) {
+				w.scheduleRenameResync()
+			}
 		}
 	}
 }

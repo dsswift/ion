@@ -1,6 +1,20 @@
 package watcher
 
-import "github.com/fsnotify/fsnotify"
+import (
+	"errors"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// errEventsDropped marks a source error meaning the OS discarded changes
+// before the source could read them, so some changes under the root were
+// never reported. Sources wrap it; eventsDropped recognizes it.
+var errEventsDropped = errors.New("watcher: change events were dropped")
+
+// eventsDropped reports whether a source error means changes went unreported.
+func eventsDropped(err error) bool {
+	return errors.Is(err, errEventsDropped) || errors.Is(err, fsnotify.ErrEventOverflow)
+}
 
 // eventSource is the platform mechanism that reports filesystem changes under
 // a watcher's root. Every source reports in fsnotify's event shape so the

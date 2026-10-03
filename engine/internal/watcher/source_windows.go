@@ -35,7 +35,7 @@ const recursiveNotifyFilter = windows.FILE_NOTIFY_CHANGE_FILE_NAME |
 
 // errChangeOverflow reports that more changes happened than the buffer could
 // hold, so some were not reported.
-var errChangeOverflow = errors.New("watcher: change buffer overflowed, events were lost")
+var errChangeOverflow = fmt.Errorf("%w: change buffer overflowed", errEventsDropped)
 
 type recursiveSource struct {
 	root   string

@@ -209,7 +209,12 @@ func (s *fseventsSource) deliver(raw rawFSEvent) bool {
 		return true
 	}
 	if raw.flags&fsMustScan != 0 {
-		s.report(fmt.Errorf("FSEvents dropped events under %s (flags 0x%x); changes in that subtree were not reported", raw.path, raw.flags))
+		// The record names the subtree whose changes were lost, often the
+		// root itself, and may carry no item change of its own.
+		s.report(fmt.Errorf("%w under %s (FSEvents flags 0x%x)", errEventsDropped, raw.path, raw.flags))
+		if fseventOps(raw.flags, true) == nil {
+			return true
+		}
 	}
 	if raw.flags&fsRootChanged != 0 {
 		s.report(fmt.Errorf("FSEvents watch root %s was moved or deleted; no further changes will be reported", s.root))

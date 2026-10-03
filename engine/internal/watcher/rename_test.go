@@ -2,11 +2,15 @@ package watcher
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // trackMarkdown selects the files rename tests follow.
@@ -248,5 +252,63 @@ func TestTrackerForgetsUnmatchedSidesAfterWindow(t *testing.T) {
 	}
 	if len(tr.gone) != 0 {
 		t.Fatalf("stale removal still held: %v", tr.gone)
+	}
+}
+
+// silentSource is an event source that reports no changes, only the errors a
+// test sends it. It stands in for a source whose events were all dropped.
+type silentSource struct {
+	events chan fsnotify.Event
+	errs   chan error
+}
+
+func (s *silentSource) Add(string) error              { return nil }
+func (s *silentSource) Events() <-chan fsnotify.Event { return s.events }
+func (s *silentSource) Errors() <-chan error          { return s.errs }
+func (s *silentSource) Recursive() bool               { return true }
+func (s *silentSource) Close() error                  { return nil }
+
+// trackedPaths returns the root-relative paths the tracker holds.
+func trackedPaths(w *Watcher) []string {
+	w.renames.mu.Lock()
+	defer w.renames.mu.Unlock()
+	var out []string
+	for p := range w.renames.byPath {
+		out = append(out, w.rel(p))
+	}
+	slices.Sort(out)
+	return out
+}
+
+// TestDroppedEventsResyncRenameTracking proves that when the source reports
+// it dropped events, the tracker rebuilds from disk: a file created in the
+// gap is tracked and a file removed in the gap is forgotten, though no event
+// arrived for either.
+func TestDroppedEventsResyncRenameTracking(t *testing.T) {
+	src := &silentSource{events: make(chan fsnotify.Event), errs: make(chan error, 1)}
+	prev := newEventSource
+	newEventSource = func(string) (eventSource, error) { return src, nil }
+	t.Cleanup(func() { newEventSource = prev })
+
+	root, _, w := startTracking(t, trackMarkdown, map[string]string{"kept.md": "k\n", "removed.md": "r\n"})
+	if got := trackedPaths(w); !slices.Equal(got, []string{"kept.md", "removed.md"}) {
+		t.Fatalf("seeded %v, want kept.md and removed.md", got)
+	}
+
+	if err := os.Remove(filepath.Join(root, "removed.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "added.md"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src.errs <- fmt.Errorf("%w under %s", errEventsDropped, root)
+
+	deadline := time.Now().Add(5 * time.Second)
+	want := []string{"added.md", "kept.md"}
+	for !slices.Equal(trackedPaths(w), want) {
+		if time.Now().After(deadline) {
+			t.Fatalf("tracker holds %v after dropped events, want %v", trackedPaths(w), want)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
