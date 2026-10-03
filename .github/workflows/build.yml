@@ -110,8 +110,9 @@ jobs:
         working-directory: engine
         env:
           # Darwin needs cgo for the Local Network warmup probe
-          # (internal/network/lanwarmup_darwin.go); darwin jobs run on macOS
-          # runners so the SDK is native. Other targets stay CGO-free static.
+          # (internal/network/lanwarmup_darwin.go) and the FSEvents workspace
+          # watcher (internal/watcher/fsevents_darwin.go); darwin jobs run on
+          # macOS runners so the SDK is native. Other targets stay CGO-free static.
           CGO_ENABLED: ${{ matrix.goos == 'darwin' && '1' || '0' }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -480,8 +481,9 @@ jobs:
           ION_VERSION: ${{ steps.version.outputs.version }}
         run: |
           # cgo required for the Local Network warmup probe
-          # (internal/network/lanwarmup_darwin.go); this job runs on macOS so
-          # cross-arch darwin cgo builds work natively.
+          # (internal/network/lanwarmup_darwin.go) and the FSEvents workspace
+          # watcher (internal/watcher/fsevents_darwin.go); this job runs on
+          # macOS so cross-arch darwin cgo builds work natively.
           #
           # Stamp main.version so `ion version` reports the shipped release
           # instead of the "dev" default. This is observability, not a
@@ -694,8 +696,8 @@ jobs:
           ION_VERSION: ${{ steps.version.outputs.version }}
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          # No cgo: the Local Network warmup probe is darwin-only, so the
-          # windows build is pure Go and cross-arch needs no toolchain.
+          # No cgo: the Local Network warmup probe and the FSEvents watcher
+          # are darwin-only, so the windows build is pure Go and cross-arch needs no toolchain.
           # main.version is stamped for the same observability reason as the
           # mac job — an unstamped binary reports "dev" in every support log.
           case "$TARGET_ARCH" in

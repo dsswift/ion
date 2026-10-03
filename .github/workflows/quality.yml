@@ -297,8 +297,9 @@ jobs:
     # the other three platforms and published engine releases with no assets.
     #
     # CGO_ENABLED=0 for every target, including darwin: the cgo-dependent
-    # Local Network probe is behind `//go:build darwin && cgo` with a
-    # constraint-complementary fallback (internal/network/lanwarmup_other.go),
+    # Local Network probe and FSEvents watcher are behind
+    # `//go:build darwin && cgo` with constraint-complementary fallbacks
+    # (internal/network/lanwarmup_other.go, internal/watcher/source_default.go),
     # so a CGO-free darwin cross-build exercises the real code path for this
     # purpose. This is a compile gate rather than a test job, so it is not
     # mirrored into `make test-linux`.
