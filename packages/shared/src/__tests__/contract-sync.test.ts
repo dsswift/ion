@@ -256,6 +256,15 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     ).toBe(true);
   });
 
+  it("the engine_wiki_links_propagated payload field is present in the Go EngineEvent manifest", () => {
+    // engine_wiki_links_propagated carries a nested WikiLinkPropagationReport
+    // under the `wikiLinksPropagated` key (mirrored in types-wiki-links.ts).
+    expect(
+      new Set(manifest.engineEvent).has("wikiLinksPropagated"),
+      "Go EngineEvent is missing the wikiLinksPropagated payload field",
+    ).toBe(true);
+  });
+
   it("the engine_dispatch_lost payload field is present in the Go EngineEvent manifest", () => {
     // engine_dispatch_lost carries a nested DispatchLostPayload under the
     // `dispatchLost` key (mirrored in types-engine-event.ts). Its absence
