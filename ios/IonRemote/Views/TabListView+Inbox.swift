@@ -156,6 +156,7 @@ extension TabListView {
             } label: {
                 Label("New conversation", systemImage: "plus.bubble")
             }
+            if viewModel.developerSurfaces.worktrees {
             Button {
                 let effectiveDirectory: String
                 if let policy = viewModel.enterpriseNewConversationPolicy,
@@ -182,6 +183,7 @@ extension TabListView {
                 }
             } label: {
                 Label("New worktree conversation", systemImage: "arrow.triangle.branch")
+            }
             }
         }
 
@@ -476,6 +478,8 @@ extension TabListView {
         location: String?,
         branch: String?
     ) -> some View {
+        // A branch name is repository status, which the server may not offer.
+        let branch = viewModel.developerSurfaces.repositoryStatus ? branch : nil
         let row = InboxRowView(tab: tab)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if tab.inboxState == "settled" {

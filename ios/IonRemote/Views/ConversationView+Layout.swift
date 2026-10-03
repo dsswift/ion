@@ -274,10 +274,13 @@ extension ConversationView {
                     .font(.subheadline)
                     .foregroundStyle(theme.accent)
             }
-            Button { showGitPane = true } label: {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.accent)
+            // Absent where the server offers neither the changes list nor the graph.
+            if viewModel.developerSurfaces.gitPaneOffered {
+                Button { showGitPane = true } label: {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.subheadline)
+                        .foregroundStyle(theme.accent)
+                }
             }
             Button { showTerminal = true } label: {
                 Image(systemName: "terminal")

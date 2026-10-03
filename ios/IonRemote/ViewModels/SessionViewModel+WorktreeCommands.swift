@@ -59,6 +59,10 @@ extension SessionViewModel {
     /// to one repository. Sending each alias made the desktop project the same
     /// inventory repeatedly and let legacy duplicate records reach the Inbox.
     func refreshAllWorktrees() {
+        guard developerSurfaces.worktrees else {
+            DiagnosticLog.log("worktree refresh skipped: the server does not offer worktrees", tag: "worktree", level: .debug)
+            return
+        }
         let projects = WorktreeProjectIdentity.refreshProjectPaths(tabs: tabs, states: worktreeStates)
         DiagnosticLog.log("refreshing inbox worktree projects", tag: "worktree", fields: [
             "tab_count": String(tabs.count),
@@ -362,9 +366,12 @@ extension SessionViewModel {
     // MARK: - Inbound
 
     func handleWorktreeState(_ states: [RemoteWorktreeState]) {
+        // Merged into the stored states, not the gated accessor's view of them.
+        var merged = worktreeUI.states
         for state in states {
-            worktreeStates[state.repoPath] = state
+            merged[state.repoPath] = state
         }
+        worktreeStates = merged
         if let pending = pendingBenchConversation,
            let conversation = states.first(where: { $0.repoPath == pending.repoPath })?.benches
             .first(where: { $0.sourceBranch == pending.sourceBranch })?.openConversations.first {

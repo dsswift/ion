@@ -13,6 +13,9 @@ protocol RemoteTransport: AnyObject {
     /// The pairing id this transport serves. Diagnostic log lines are stamped with it.
     var deviceId: String? { get }
 
+    /// The developer surfaces the server offers this connection.
+    var developerSurfaces: DeveloperSurfaces { get }
+
     func send(_ command: RemoteCommand) async throws
     func stop()
 
@@ -27,4 +30,9 @@ protocol RemoteTransport: AnyObject {
     func startSyncHandshake(reason: String)
     /// Called when the app returns to the foreground with a transport still up.
     func revalidateAfterResume()
+}
+
+extension RemoteTransport {
+    /// A transport that learns nothing about developer surfaces offers them all.
+    var developerSurfaces: DeveloperSurfaces { .allEnabled }
 }

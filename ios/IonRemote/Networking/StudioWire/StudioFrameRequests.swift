@@ -229,16 +229,19 @@ struct StudioEnvironmentPolicy: Equatable, Sendable {
     /// An object, or `.null` when the environment has no enterprise policy.
     var enterprisePolicy: JSONValue
     var settingsHiddenGroups: [String]
+    /// The developer surfaces this server offers this connection under the new policy.
+    var developerSurfaces: DeveloperSurfaces?
     var policyHash: String
 }
 
 extension StudioEnvironmentPolicy: Codable {
-    private enum CodingKeys: String, CodingKey { case enterprisePolicy, settingsHiddenGroups, policyHash }
+    private enum CodingKeys: String, CodingKey { case enterprisePolicy, settingsHiddenGroups, developerSurfaces, policyHash }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enterprisePolicy = try container.decodeJSON(forKey: .enterprisePolicy)
         settingsHiddenGroups = try container.decode([String].self, forKey: .settingsHiddenGroups)
+        developerSurfaces = try container.decodeIfPresent(DeveloperSurfaces.self, forKey: .developerSurfaces)
         policyHash = try container.decode(String.self, forKey: .policyHash)
     }
 
@@ -246,6 +249,7 @@ extension StudioEnvironmentPolicy: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(enterprisePolicy, forKey: .enterprisePolicy)
         try container.encode(settingsHiddenGroups, forKey: .settingsHiddenGroups)
+        try container.encodeIfPresent(developerSurfaces, forKey: .developerSurfaces)
         try container.encode(policyHash, forKey: .policyHash)
     }
 }

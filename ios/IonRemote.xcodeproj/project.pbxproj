@@ -237,6 +237,7 @@
 		IONTYPET0000000000001 /* IonTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IONTYPET0000000000002 /* IonTypeTests.swift */; };
 		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
+		D5E7E10A00000000000392A2 /* DeveloperSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */; };
 		A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */; };
 		QUESTNS010000000000BF01 /* QuestionsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS010000000000FR01 /* QuestionsModels.swift */; };
 		C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57A6E00000000000F001 /* WorkStage.swift */; };
@@ -593,6 +594,7 @@
 		5D11465D34541DC6B320B835 /* RemoteTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D11A62EC04EADC7FAD290E7 /* RemoteTransport.swift */; };
 		5D1115DE691C2C78916ECCD8 /* SessionViewModel+StudioWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D11CD09B1D0E695FC74AC0B /* SessionViewModel+StudioWire.swift */; };
 		5D11B39DAF9C41959FFF025C /* StudioEventMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1199E64F4F2F3CE52B684A /* StudioEventMapperTests.swift */; };
+		D5E7E10A00000000000392B2 /* DeveloperSurfacesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E7E10A00000000000392B1 /* DeveloperSurfacesTests.swift */; };
 		7E72A3EAB1FDF290D4B67C96 /* TranscriptTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D72A3EAB1FDF290D4B67C96 /* TranscriptTestSupport.swift */; };
 		7EEAA926E2503310A882EBB2 /* TranscriptStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DEAA926E2503310A882EBB2 /* TranscriptStreamTests.swift */; };
 		7B97E886CCFC8597371C4848 /* DispatchTranscriptViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A97E886CCFC8597371C4848 /* DispatchTranscriptViewModelTests.swift */; };
@@ -1174,6 +1176,7 @@
 		IONTYPET0000000000002 /* IonTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonTypeTests.swift; sourceTree = "<group>"; };
 		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
+		D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSurfaces.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeTypes.swift"; sourceTree = "<group>"; };
 		QUESTNS010000000000FR01 /* QuestionsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsModels.swift"; sourceTree = "<group>"; };
 		C0DE57A6E00000000000F001 /* WorkStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkStage.swift"; sourceTree = "<group>"; };
@@ -1536,6 +1539,7 @@
 		5D11A62EC04EADC7FAD290E7 /* RemoteTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTransport.swift; sourceTree = "<group>"; };
 		5D11CD09B1D0E695FC74AC0B /* SessionViewModel+StudioWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+StudioWire.swift"; sourceTree = "<group>"; };
 		5D1199E64F4F2F3CE52B684A /* StudioEventMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioEventMapperTests.swift; sourceTree = "<group>"; };
+		D5E7E10A00000000000392B1 /* DeveloperSurfacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSurfacesTests.swift; sourceTree = "<group>"; };
 		7D72A3EAB1FDF290D4B67C96 /* TranscriptTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTestSupport.swift; sourceTree = "<group>"; };
 		7DEAA926E2503310A882EBB2 /* TranscriptStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStreamTests.swift; sourceTree = "<group>"; };
 		7A97E886CCFC8597371C4848 /* DispatchTranscriptViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTranscriptViewModelTests.swift; sourceTree = "<group>"; };
@@ -2003,6 +2007,7 @@
 				A1B2C3D4E5F60001000093AA /* MessageAttachment.swift */,
 				A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */,
 				A1B2C3D4E5F60001000300AA /* GitTypes.swift */,
+				D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */,
 				GITBRANCHRESP00000001 /* GitBranchesResponse.swift */,
 				A1B2C3D4E5F60001000400AA /* FileTypes.swift */,
 				A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */,
@@ -2651,6 +2656,7 @@
 				5D11FE36ACF7723AA1457E77 /* StudioServerMigrationTests.swift */,
 				5D11E370649E92E740F0E566 /* StudioTransportTests.swift */,
 				5D1199E64F4F2F3CE52B684A /* StudioEventMapperTests.swift */,
+				D5E7E10A00000000000392B1 /* DeveloperSurfacesTests.swift */,
 				5D104E1E3677AE8A34942A5B /* SealedEnvelopeTests.swift */,
 				AUTHPRFTST000000000002 /* StudioAuthProofTests.swift */,
 				5D1058C7524F37B32490015B /* StudioConnectionTests.swift */,
@@ -3514,6 +3520,7 @@
 				QUESTNS020000000000BF01 /* NormalizedEvent+Questions.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
+				D5E7E10A00000000000392A2 /* DeveloperSurfaces.swift in Sources */,
 				GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */,
 				A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */,
 				A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */,
@@ -3983,6 +3990,7 @@
 				5D11885B6257940F5A1FA254 /* StudioServerMigrationTests.swift in Sources */,
 				5D11328AEC779F302EC4B2F5 /* StudioTransportTests.swift in Sources */,
 				5D11B39DAF9C41959FFF025C /* StudioEventMapperTests.swift in Sources */,
+				D5E7E10A00000000000392B2 /* DeveloperSurfacesTests.swift in Sources */,
 				7E72A3EAB1FDF290D4B67C96 /* TranscriptTestSupport.swift in Sources */,
 				7EEAA926E2503310A882EBB2 /* TranscriptStreamTests.swift in Sources */,
 				7B97E886CCFC8597371C4848 /* DispatchTranscriptViewModelTests.swift in Sources */,

@@ -11,6 +11,8 @@ struct GitPaneView: View {
     @State private var changesExpanded = true
     @State private var graphExpanded = true
 
+    private var surfaces: DeveloperSurfaces { viewModel.developerSurfaces }
+
     private var directory: String {
         viewModel.tab(for: tabId)?.workingDirectory ?? ""
     }
@@ -31,26 +33,34 @@ struct GitPaneView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    branchHeader
-                    summaryBar
-                    // Changes section
-                    collapsibleSection(
-                        title: "Changes",
-                        icon: "doc.badge.plus",
-                        isExpanded: $changesExpanded
-                    ) {
-                        GitChangesListView(directory: directory)
+                    // Each part is its own developer surface: the server may
+                    // offer the graph without the changes list, or the reverse.
+                    if surfaces.repositoryStatus { branchHeader }
+                    if surfaces.sourceControl {
+                        summaryBar
+                        // Changes section
+                        collapsibleSection(
+                            title: "Changes",
+                            icon: "doc.badge.plus",
+                            isExpanded: $changesExpanded
+                        ) {
+                            GitChangesListView(directory: directory)
+                        }
                     }
 
-                    Divider().padding(.vertical, IonSpace.hairlineGap)
+                    if surfaces.sourceControl && surfaces.commitGraph {
+                        Divider().padding(.vertical, IonSpace.hairlineGap)
+                    }
 
-                    // Graph section
-                    collapsibleSection(
-                        title: "Graph",
-                        icon: "point.3.connected.trianglepath.dotted",
-                        isExpanded: $graphExpanded
-                    ) {
-                        GitGraphListView(directory: directory)
+                    if surfaces.commitGraph {
+                        // Graph section
+                        collapsibleSection(
+                            title: "Graph",
+                            icon: "point.3.connected.trianglepath.dotted",
+                            isExpanded: $graphExpanded
+                        ) {
+                            GitGraphListView(directory: directory)
+                        }
                     }
                 }
             }
@@ -69,6 +79,7 @@ struct GitPaneView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    if surfaces.sourceControl {
                     Menu {
                         Button {
                             viewModel.gitPull(directory: directory)
@@ -84,6 +95,7 @@ struct GitPaneView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                    }
                     }
                 }
             }
@@ -213,14 +225,14 @@ struct GitPaneView: View {
 
     private func refresh() {
         guard !directory.isEmpty else { return }
-        viewModel.requestGitChanges(directory: directory)
-        viewModel.requestGitGraph(directory: directory)
+        if surfaces.sourceControl || surfaces.repositoryStatus { viewModel.requestGitChanges(directory: directory) }
+        if surfaces.commitGraph { viewModel.requestGitGraph(directory: directory) }
     }
 
     private func refreshAsync() async {
         guard !directory.isEmpty else { return }
-        viewModel.requestGitChanges(directory: directory)
-        viewModel.requestGitGraph(directory: directory)
+        if surfaces.sourceControl || surfaces.repositoryStatus { viewModel.requestGitChanges(directory: directory) }
+        if surfaces.commitGraph { viewModel.requestGitGraph(directory: directory) }
         Haptic.light()
         // Pull-to-refresh spinner delay: cancellation only ends the spinner early.
         // swiftlint:disable:next silent_try_optional

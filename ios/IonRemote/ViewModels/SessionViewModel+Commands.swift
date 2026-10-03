@@ -151,6 +151,9 @@ extension SessionViewModel {
         // The `clientCmdId` correlates the desktop_tab_created echo back to this
         // pending create (also driving navigation). See SessionViewModel+PendingCreate.
         let clientCmdId = UUID().uuidString
+        // No worktree is asked for where the server does not offer them; the
+        // conversation opens in the directory itself.
+        let useWorktree = developerSurfaces.worktrees ? useWorktree : nil
         // When `profileId` is supplied the desktop creates an engine tab with
         // that profile; nil creates a plain conversation tab. This is the
         // unified post-#256 wire path — both plain and engine tabs go through
