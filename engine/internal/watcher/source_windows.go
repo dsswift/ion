@@ -84,6 +84,13 @@ func newEventSource(root string) (eventSource, error) {
 		exited: make(chan struct{}),
 	}
 	s.ov.HEvent = event
+	// The OS records changes only once the first read is issued, so it must be
+	// pending before the source is handed back and the Watcher walks the tree.
+	if err := s.issueRead(); err != nil {
+		windows.CloseHandle(handle) //nolint:errcheck // already failing; the read error is the one returned
+		windows.CloseHandle(event)  //nolint:errcheck // already failing; the read error is the one returned
+		return nil, err
+	}
 	go s.read()
 	utils.LogWithFields(utils.LevelDebug, "watcher", "recursive source opened", map[string]any{"path": root})
 	return s, nil
@@ -123,38 +130,50 @@ func (s *recursiveSource) Close() error {
 	return err
 }
 
-// read issues one change read at a time and forwards what each returns. It
-// closes Events when it stops, which tells the Watcher's pump to exit.
+// errSourceClosed stops the reader when Close won the race to the next read.
+var errSourceClosed = errors.New("watcher: event source closed")
+
+// issueRead starts one asynchronous change read on the root handle.
+func (s *recursiveSource) issueRead() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing() {
+		return errSourceClosed
+	}
+	if err := windows.ResetEvent(s.ov.HEvent); err != nil {
+		return os.NewSyscallError("ResetEvent", err)
+	}
+	if err := windows.ReadDirectoryChanges(s.handle, &s.buf[0], uint32(len(s.buf)), true, recursiveNotifyFilter, nil, &s.ov, 0); err != nil {
+		return os.NewSyscallError("ReadDirectoryChanges", err)
+	}
+	return nil
+}
+
+// read waits for each pending read, forwards what it returned, and issues the
+// next. Changes made between two reads are held by the OS. It closes Events
+// when it stops, which tells the Watcher's pump to exit.
 func (s *recursiveSource) read() {
 	defer close(s.exited)
 	defer close(s.events)
 	for {
 		var n uint32
-		s.mu.Lock()
-		if s.closing() {
-			s.mu.Unlock()
-			return
-		}
-		err := windows.ResetEvent(s.ov.HEvent)
-		if err == nil {
-			err = windows.ReadDirectoryChanges(s.handle, &s.buf[0], uint32(len(s.buf)), true, recursiveNotifyFilter, nil, &s.ov, 0)
-		}
-		s.mu.Unlock()
-		if err == nil {
-			err = windows.GetOverlappedResult(s.handle, &s.ov, &n, true)
-		}
-		if err != nil {
+		if err := windows.GetOverlappedResult(s.handle, &s.ov, &n, true); err != nil {
 			if !s.closing() {
 				utils.LogWithFields(utils.LevelError, "watcher", "recursive source read failed", map[string]any{"path": s.root, "error": err.Error()})
-				s.sendError(os.NewSyscallError("ReadDirectoryChanges", err))
+				s.sendError(os.NewSyscallError("GetOverlappedResult", err))
 			}
 			return
 		}
 		if n == 0 {
 			s.sendError(errChangeOverflow)
-			continue
+		} else if !s.forward(n) {
+			return
 		}
-		if !s.forward(n) {
+		if err := s.issueRead(); err != nil {
+			if !errors.Is(err, errSourceClosed) {
+				utils.LogWithFields(utils.LevelError, "watcher", "recursive source read failed", map[string]any{"path": s.root, "error": err.Error()})
+				s.sendError(err)
+			}
 			return
 		}
 	}
