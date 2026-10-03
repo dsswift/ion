@@ -171,6 +171,7 @@ type BeforePromptResult struct {
 | `session_before_fork` | Before session fork | `ForkInfo{SourceSessionKey, NewSessionKey, ForkMessageIndex}` | `bool` | Return `true` to cancel fork. |
 | `session_fork` | After fork completes | `ForkInfo{SourceSessionKey, NewSessionKey, ForkMessageIndex}` | ignored | Observe only |
 | `session_before_switch` | Before session switch | `nil` | ignored | Observe only |
+| `session_before_release` | Before the engine releases a quiescent session ([Idle release](../sessions/lifecycle.md#idle-release)) | `SessionReleaseInfo{Reason, IdleMs}` | `bool` | Return `true` to keep the session. The idle clock restarts. |
 
 ### Payload Types
 
@@ -219,6 +220,14 @@ type CompactSummaryRequestResult struct {
 ```
 
 The `compact_summary_request` handler may return a `CompactSummaryRequestResult` value, a `*CompactSummaryRequestResult` pointer, or a bare `string`. All three shapes flow through the same first-non-empty selection. The engine never blocks on this handler; harness implementations that call an LLM must do so with a bounded timeout and surface failures by returning `("", false)` rather than blocking the run. Branch on `Strategy` to tune the summariser to the trigger — e.g. a reactive summary may want to be more aggressive (fewer tokens) because the provider just rejected the prompt, while an auto summary can afford a richer rendering.
+
+**SessionReleaseInfo**
+```go
+type SessionReleaseInfo struct {
+    Reason string // "idle_timeout" or "idle_abort"; treat an unknown reason as a release
+    IdleMs int64  // how long the session has been continuously quiescent
+}
+```
 
 **ForkInfo**
 ```go

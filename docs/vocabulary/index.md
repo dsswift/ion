@@ -126,6 +126,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Guided Questions](#term-guided-questions)
 - [Harness](#term-harness)
 - [Hook](#term-hook)
+- [Idle release](#term-session-idle-release)
 - [Inbox](#term-inbox)
 - [Injection Kind](#term-injection-kind)
 - [Input Bar](#term-input-bar)
@@ -797,6 +798,20 @@ A named set of daily or weekly Schedules whose latest catch-up policy selects on
 - **Implementations:**
   - `engine` / `code` / `go`: `type ScheduleJob` in `engine/internal/extension/sdk_schedules.go`
   - `sdk` / `code` / `go`: `type ScheduleOpts` in `sdk/go/schedule.go`
+
+#### Idle release {#term-session-idle-release}
+
+The engine releasing a quiescent session, one that has no run, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook.
+
+- **ID:** `session-idle-release`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `quiescent session release`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (m *Manager) evaluateIdleRelease` in `engine/internal/session/idle_release.go`
+  - `engine` / `doc` / `markdown`: `Idle release` in `docs/sessions/lifecycle.md`
 
 #### Steer {#term-steer}
 
@@ -3411,6 +3426,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `question round` → [Guided Questions](#term-guided-questions)
 - Alias: `questions card` → [Questions Wizard](#term-questions-wizard)
 - Alias: `questions workflow` → [Guided Questions](#term-guided-questions)
+- Alias: `quiescent session release` → [Idle release](#term-session-idle-release)
 - Alias: `relay channel` → [Channel](#term-channel)
 - Alias: `relay peer` → [Peer](#term-peer)
 - Alias: `resource item` → [Resource](#term-resource)

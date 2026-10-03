@@ -142,6 +142,8 @@ safe reading of "stop" — and is logged.
 
 `all_work` stops every session-owned background Bash task but retains the session object. The next prompt rearms its cancellation root and starts normally.
 
+When the session had no run and no other work when the abort arrived, scopes `all` and `all_work` release the session instead, with the same teardown as `stop_session` (an `engine_dead` follows). The next `send_prompt` for the key fails with `session_not_found` until the client starts the session again. `workspace.releaseIdleSessionOnAbort: false` turns this off, and the `session_before_release` hook can keep any one session. See [Idle release](../sessions/lifecycle.md#idle-release).
+
 Under `orchestrator`, foreground dispatches (the orchestrator's `Agent` tool)
 stop with the run, because they *are* the run rather than peers of it. In-flight
 `ctx.llmCall()` one-shots keep running: they hang off the session root, which

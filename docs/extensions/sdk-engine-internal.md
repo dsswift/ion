@@ -175,6 +175,7 @@ summary, ok := sdk.FireCompactSummaryRequest(ctx, CompactSummaryRequestInfo{
 sdk.FireSessionBeforeFork(ctx, ForkInfo{...})           // returns (cancelled bool, error)
 sdk.FireSessionFork(ctx, ForkInfo{...})
 sdk.FireSessionBeforeSwitch(ctx)
+sdk.FireSessionBeforeRelease(ctx, SessionReleaseInfo{...}) // returns (keep bool, error)
 ```
 
 **Content hooks:**

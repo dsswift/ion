@@ -4264,6 +4264,34 @@
       "notes": "A session is the engine-side run container. A conversation is what a client renders. They are not interchangeable words."
     },
     {
+      "id": "session-idle-release",
+      "term": "Idle release",
+      "definition": "The engine releasing a quiescent session, one that has no run, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "quiescent session release"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (m *Manager) evaluateIdleRelease",
+          "path": "engine/internal/session/idle_release.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "Idle release",
+          "path": "docs/sessions/lifecycle.md"
+        }
+      ]
+    },
+    {
       "id": "session-principal",
       "term": "Session Principal",
       "definition": "A per-session identity attribution stamped on the engine session and, at mint, on the conversation header. Lets one shared engine serve several signed-in people without conflating whose conversation is whose.",
