@@ -15,7 +15,7 @@ Everything here is configured by the [`wikiLinks`](../configuration/engine-json.
 
 Maintenance runs inside a session's **workspace watcher**: the recursive filesystem watcher rooted at the session's working directory. Every session gets one while `wikiLinks.enabled` is true, whether or not it loads an extension. Sessions that share a working directory share one watcher, so a rename is handled once however many sessions watch it.
 
-The watcher holds one file descriptor per watched directory. The workspace ignore patterns keep it out of dependency and build output, and [`workspace.maxWatchedDirs`](../configuration/engine-json.md#workspace) caps it. With `wikiLinks.enabled` set to `false`, a session with no extension loaded runs no watcher at all.
+On macOS the watcher is one FSEvents stream per root, and on Windows one handle on the root, whatever the tree's size. On Linux it holds one inotify watch per directory; the workspace ignore patterns keep it out of dependency and build output, and [`workspace.maxWatchedDirs`](../configuration/engine-json.md#workspace) caps it. With `wikiLinks.enabled` set to `false`, a session with no extension loaded runs no watcher at all.
 
 Every operation is confined to that working directory. A file is read or rewritten only when all of these hold:
 
