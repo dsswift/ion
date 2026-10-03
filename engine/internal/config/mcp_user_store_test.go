@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -37,12 +38,14 @@ func TestUserMcpStore_UserServersJoinTheManagedOnes(t *testing.T) {
 		t.Fatalf("ResolveMcpServers = %v, want the managed server and the user's", servers)
 	}
 	// The server landed in the user's own file, owner-only, and engine.json
-	// (which a managed surface does not read) was left alone.
+	// (which a managed surface does not read) was left alone. Windows has no
+	// POSIX permission bits (a writable file always reports 0o666); owner-only
+	// there is the RestrictToOwner ACL, pinned by owneronly_windows_test.go.
 	info, err := os.Stat(f.userMcpStore())
 	if err != nil {
 		t.Fatalf("user mcp store: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm&0o077 != 0 {
 		t.Errorf("user mcp store mode = %o, want owner-only", perm)
 	}
 	if data, _ := os.ReadFile(filepath.Join(f.home, ".ion", "engine.json")); string(data) != userGlobalEngine {
