@@ -95,7 +95,7 @@ func enterpriseFieldIndex() map[string]fieldSpec {
 // shapes rawFor's decoding table distinguishes.
 func kindOf(t reflect.Type) fieldKind {
 	// Unwrap a single pointer layer (every nested-block field is *T).
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	switch t.Kind() {

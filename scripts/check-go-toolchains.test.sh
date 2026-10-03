@@ -30,12 +30,12 @@ expect_failure() {
 run_check
 
 cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-sed -i.bak 's/toolchain go1\.26\.6/toolchain go1.26.5/' "$TMP_ROOT/relay/go.mod"
+sed -i.bak 's/toolchain go1\.27\.1/toolchain go1.27.0/' "$TMP_ROOT/relay/go.mod"
 rm -f "$TMP_ROOT/relay/go.mod.bak"
 expect_failure "stale relay module"
 
 cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-sed -i.bak 's/golang:1\.26\.6-alpine/golang:1.26.5-alpine/' "$TMP_ROOT/relay/Dockerfile"
+sed -i.bak 's/golang:1\.27\.1-alpine/golang:1.27.0-alpine/' "$TMP_ROOT/relay/Dockerfile"
 rm -f "$TMP_ROOT/relay/Dockerfile.bak"
 expect_failure "stale relay Docker builder"
 

@@ -427,19 +427,19 @@ jobs:
         if: needs.changes.outputs.engine == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.3
+          version: v2.14.0
           working-directory: engine
       - name: golangci-lint relay
         if: needs.changes.outputs.relay == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.3
+          version: v2.14.0
           working-directory: relay
       - name: golangci-lint sdk
         if: needs.changes.outputs.sdk == 'true'
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.3
+          version: v2.14.0
           working-directory: sdk/go
 
   sdk-test:

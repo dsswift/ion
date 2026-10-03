@@ -250,7 +250,7 @@ func isZeroResult(result, zero any) bool {
 	if !rv.IsValid() {
 		return true
 	}
-	if rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface ||
+	if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface ||
 		rv.Kind() == reflect.Map || rv.Kind() == reflect.Slice {
 		return rv.IsNil()
 	}
