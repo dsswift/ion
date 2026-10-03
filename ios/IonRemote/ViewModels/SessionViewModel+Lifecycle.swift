@@ -147,6 +147,8 @@ extension SessionViewModel {
         flushTask = nil
         transport?.stop()
         transport = nil
+        // The next connection is a new listener for the voice configuration.
+        lastSentVoiceConfig = nil
     }
 
     // MARK: - Reconnect Safety Timer

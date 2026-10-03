@@ -44,17 +44,17 @@ struct ConnectionBannerView: View {
     ) -> some View {
         HStack(spacing: IonSpace.compactGap) {
             Image(systemName: icon(state: state, freshness: freshness))
-                .font(.caption)
+                .font(IonType.metadata)
                 .foregroundStyle(iconColor(state: state, freshness: freshness))
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 1) { // design-geometry: sub-hairline 1pt gap between a banner's two caption lines
                 Text(title(state: state, freshness: freshness))
-                    .font(.caption.weight(.medium))
+                    .font(IonType.sectionLabel)
                     .foregroundStyle(.primary)
 
                 if let subtitle = subtitle(state: state, health: health) {
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(IonType.microLabel)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -90,9 +90,9 @@ struct ConnectionBannerView: View {
     private func iconColor(state: ConnectionState, freshness: ConnectionHealth.Freshness) -> Color {
         switch state {
         case .reconnecting, .connecting:
-            return .yellow
+            return theme.statusWarning
         case .disconnected:
-            return .red
+            return theme.statusError
         case .connected:
             return freshness.color
         }
@@ -132,11 +132,6 @@ struct ConnectionBannerView: View {
     }
 
     private func bannerBackground(state: ConnectionState, freshness: ConnectionHealth.Freshness) -> some ShapeStyle {
-        let base: Color = switch state {
-        case .reconnecting, .connecting: .yellow
-        case .disconnected: .red
-        case .connected: freshness.color
-        }
-        return base.opacity(0.12)
+        iconColor(state: state, freshness: freshness).opacity(0.12)
     }
 }

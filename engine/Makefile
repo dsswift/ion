@@ -5,10 +5,12 @@ VERSION ?= dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 # Darwin builds need cgo for the Local Network warmup probe
-# (internal/network/lanwarmup_darwin.go — Network.framework). Linux builds
-# stay CGO_ENABLED=0 for the static FROM-scratch container binary; the darwin
-# probe file is excluded there by build tag, and a darwin build without cgo
-# still compiles (the probe becomes a logged no-op).
+# (internal/network/lanwarmup_darwin.go — Network.framework) and the FSEvents
+# workspace watcher (internal/watcher/fsevents_darwin.go — CoreServices).
+# Linux builds stay CGO_ENABLED=0 for the static FROM-scratch container
+# binary; the darwin files are excluded there by build tag, and a darwin build
+# without cgo still compiles (the probe becomes a logged no-op and the watcher
+# falls back to kqueue, logging a warning).
 CGO_DARWIN := $(if $(filter Darwin,$(shell uname -s)),1,0)
 
 build:

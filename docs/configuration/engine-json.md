@@ -293,7 +293,7 @@ This block is the **weakest** of three resolution layers. Each stronger layer ov
 
 ## workspaceWatchIgnore
 
-Override the engine's default ignore-glob list for the `workspace_file_changed` hook's recursive filesystem watcher. The watcher is rooted at the session `workingDirectory` and fires the hook for every non-ignored create / modify / delete event under the tree. The ignore list runs before fsnotify descriptors are attached, so ignored subtrees (e.g. `node_modules/**`) never consume inotify capacity in the first place.
+Override the engine's default ignore-glob list for the `workspace_file_changed` hook's recursive filesystem watcher. The watcher is rooted at the session `workingDirectory` and fires the hook for every non-ignored create / modify / delete event under the tree. On Linux the ignore list runs before directories are attached, so ignored subtrees (e.g. `node_modules/**`) never consume inotify capacity in the first place. On macOS one FSEvents stream, and on Windows one handle on the root, covers the whole tree and the ignore list filters its events.
 
 This is an array of doublestar glob patterns matched against repo-relative, forward-slash paths. The field is optional; omit it (or supply an empty array) to inherit the engine defaults below.
 
@@ -885,14 +885,14 @@ These follow the same merge semantics as other config fields: higher-priority la
 
 ## workspace
 
-Engine-wide limits for the filesystem-watch and session-lifecycle subsystems. Omit the block (or set a field to `0`) to use the compiled default. These protect the engine's process file-descriptor table: each watched directory consumes one descriptor, and a leaked session keeps its watcher's descriptors open.
+Engine-wide limits for the filesystem-watch and session-lifecycle subsystems. Omit the block (or set a field to `0`) to use the compiled default. These protect the engine's kernel resources: on Linux each watched directory holds one inotify watch, and a leaked session keeps its watcher open.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `sessionReapGraceMs` | int64 | `300000` (5 min) | How long a session whose last owning client connection has disconnected is kept alive before the engine reaps it (full teardown, releasing its workspace watcher). A client that reconnects and re-addresses the same session key within this window cancels the reap, so a transient socket flap or a desktop relaunch never tears down a live session. Raise it if your clients reconnect slowly; lower it to bound file-descriptor growth more aggressively. |
 | `sessionIdleReleaseMs` | int64 | `1800000` (30 min) | How long a session must stay quiescent before the engine releases it with the same teardown as `stop_session`. Quiescent means no run, no accepted work pending, no agent in a non-terminal status, no live background process, and no extension schedule or webhook. The conversation is durable, so prompting the key again starts the session afresh. A negative value disables timed release. Extensions can keep a session through the `session_before_release` hook. See [Idle release](../sessions/lifecycle.md#idle-release). |
 | `releaseIdleSessionOnAbort` | bool | enabled when absent | When an `abort` with scope `all` or `all_work` arrives for a session that was already quiescent, release the session instead of leaving it resident. Explicit `false` keeps the session. Independent of `sessionIdleReleaseMs`. |
-| `maxWatchedDirs` | int | `50000` | Cap on the number of directories a single workspace watcher attaches a descriptor to. When reached, the watcher keeps working for the directories it did attach and stops descending. Raise it for genuinely huge monorepos; lower it to keep a tighter bound on per-watcher descriptors. |
+| `maxWatchedDirs` | int | `50000` | Cap on the number of directories a single workspace watcher attaches to on Linux, where each one holds an inotify watch. When reached, the watcher keeps working for the directories it did attach and stops descending. Raise it for genuinely huge monorepos; lower it to keep a tighter bound per watcher. It does not apply on macOS or Windows, where one subscription on the root covers the whole tree. |
 | `promptContext` | bool | enabled when absent | Workspace context in the prompt. The engine resolves context from three sources in precedence order: per-prompt `ClientWorkspaceContext` > session-level `EngineConfig.ClientWorkspaceContext` > engine worktree registry. Worktree facts (checkout, base repo, branch, siblings) come from the registry; bench and generic client data come from the client-supplied `ClientWorkspaceContext` (with structured bench facts in the `bench` field, generic data in `data`, and prose in `text`). Independent of `security.workspaceContainment` -- containment refuses writes regardless of whether the context prose is delivered. Extensions can replace or suppress the prose via `system_inject` with kind `workspace_context`. Explicit `false` disables. |
 
 Same merge semantics as other config fields: higher-priority layers override lower ones. Zero means "use the compiled default."

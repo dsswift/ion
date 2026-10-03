@@ -235,7 +235,7 @@ One NDJSON line per compact frame. The telemetry forwarder expands each frame in
 | Event | When emitted | Key payload fields |
 |---|---|---|
 | `llm.call` | After each LLM turn completes | `model`, `turn`, `stop_reason`, `duration_ms`, `error` |
-| `tool.execute` | After each tool call completes | `tool`, `duration_ms`, `error` |
+| `tool.execute` | After each tool call completes | `tool`, `duration_ms`, `error`, `fd_open`, `fd_limit`, `fd_delta` |
 | `run.complete` | Once per completed run | `model`, `run_cost_usd`, `aggregate_cost_usd`, `dispatch_depth`, `duration_ms`, `num_turns`, `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` |
 
 All cost and token accounting happens at `run.complete`. The other two event types track latency.

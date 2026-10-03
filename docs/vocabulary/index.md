@@ -2019,10 +2019,10 @@ The shared Settings surface for Desktop Automation: one panel with three labeled
 
 #### Conversation Status Bar {#term-conversation-status-bar}
 
-The strip that shows conversation status and its inline controls: the model picker, the permission mode, and the context indicator.
+The conversation's inline controls, rendered in the controls row of the Input Bar: the model picker, the permission mode, the thinking effort, and the context indicator.
 
 - **ID:** `conversation-status-bar`
-- **Status:** `review-needed`
+- **Status:** `canonical`
 - **Qualifiers:** None
 - **Aliases:** `status bar`
 - **Legacy names:** None
@@ -2030,7 +2030,7 @@ The strip that shows conversation status and its inline controls: the model pick
 - **Implementations:**
   - `ios` / `ui` / `swift`: `struct ConversationStatusBar` in `ios/IonRemote/Views/ConversationStatusBar.swift`
   - `desktop` / `ui` / `typescript`: `export function ComposerControls` in `desktop/src/renderer/components/ComposerControls.tsx`
-- **Notes:** Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol.
+- **Notes:** Both clients place these controls inside the Input Bar, under the message field. iOS keeps the ConversationStatusBar symbol name for the row; the Desktop symbol is ComposerControls. The running and waiting indicator is not part of this concept on either client: iOS renders it in ConversationActivityStrip above the Input Bar.
 
 #### Conversation Terminal Panel {#term-conversation-terminal-panel}
 
@@ -3478,7 +3478,6 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 
 ## Review queue
 
-- [Conversation Status Bar](#term-conversation-status-bar): review needed
 - [Surface](#term-surface): review needed
 
 ## Mechanical rename workflow

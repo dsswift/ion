@@ -14,41 +14,18 @@ import SwiftUI
 
 extension ConversationView {
 
+    /// Above the transcript. Only a legacy multi-instance snapshot puts
+    /// anything here; context occupancy lives in the composer's ring and live
+    /// progress in the activity strip above the composer, so a single-instance
+    /// conversation starts directly with its transcript.
+    @ViewBuilder
     var headerSection: some View {
-        VStack(spacing: 0) {
-            ConversationContextStrip(
-                statusFields: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields,
-                modelOverride: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.modelOverride,
-                preferredModel: viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId),
-                availableModels: viewModel.availableModels,
+        if instances.count > 1 {
+            EngineInstanceBar(
+                tabId: tabId,
+                instances: instances,
+                activeInstanceId: activeInstanceId
             )
-
-            if instances.count > 1 {
-                EngineInstanceBar(
-                    tabId: tabId,
-                    instances: instances,
-                    activeInstanceId: activeInstanceId
-                )
-            }
-
-            let working = viewModel.workingMessage(tabId)
-            if !working.isEmpty {
-                HStack {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text(working)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, IonSpace.contentGap)
-                .padding(.vertical, IonSpace.compactInset)
-                .background(Capsule().fill(Color(.tertiarySystemFill)))
-                .padding(.horizontal, IonSpace.contentGap)
-                .padding(.vertical, IonSpace.hairlineGap)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
     }
 
@@ -59,73 +36,29 @@ extension ConversationView {
         // The host only forwards the user's toggle preference and the
         // two action bindings (dismiss + draft text) the bar needs.
         VStack(spacing: 0) {
-            Divider()
-            // The status bar must ALWAYS be visible for engine tabs, exactly as
-            // it is for plain conversations (ConversationView renders it
-            // unconditionally). Previously this was gated on
-            // `statusFields != nil`, so a fresh engine instance (no status yet)
-            // showed no bar at all — the model picker, permission toggle, and
-            // attachments button vanished. Render the bar always and derive the
-            // status-dependent values nil-safely from the optional fields: the
-            // status dot / context% / extension name self-hide inside the
-            // component when their inputs are absent.
+            // What the conversation is doing, resolved from the signals the
+            // snapshot reliably carries (the same resolver the tests pin). The
+            // extension name rides along from the status fields: a plain
+            // conversation carries none and shows none, by absence of data
+            // rather than a tab-type branch.
             let activeInst = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
-            let engineInputs = ConversationStatusBar.resolveEngineInputs(
-                fields: activeInst?.statusFields,
-                fallbackPreferredModel: viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId),
+            ConversationActivityStrip(
+                activity: ConversationStatusBar.resolveRunActivity(
+                    isRunning: isRunning,
+                    runningAgentCount: runningAgentCount,
+                    runningShellCount: runningShellCount
+                ),
+                workingMessage: viewModel.workingMessage(tabId),
+                extensionName: activeInst?.statusFields?.extensionName
             )
-            ConversationStatusBar(
-                modelOverride: activeInst?.modelOverride,
-                preferredModel: engineInputs.preferredModel,
-                contextPercent: engineInputs.contextPercent,
-                contextTokens: engineInputs.contextTokens,
-                engineContextWindow: engineInputs.engineContextWindow,
-                // The last real turn, which is what wrote the prompt cache the
-                // model-switch estimate prices against.
-                lastTurnAtMs: viewModel.tab(for: tabId)?.lastMessageAt,
-                isRunning: isRunning,
-                permissionMode: viewModel.tab(for: tabId)?.permissionMode,
-                availableModels: viewModel.availableModels,
-                attachmentCount: engineAttachmentCount,
-                onSelectModel: { model, providerId in
-                    viewModel.setModel(tabId: tabId, model: model, providerId: providerId)
-                },
-                onToggleMode: {
-                    guard let current = viewModel.tab(for: tabId)?.permissionMode else { return }
-                    let newMode: PermissionMode = current == .plan ? .auto : .plan
-                    viewModel.setPermissionMode(tabId: tabId, mode: newMode)
-                },
-                onTapAttachments: {
-                    showAttachments = true
-                },
-                onTapContextIndicator: {
-                    showStatusDrawer = true
-                },
-                hasEngineExtension: tabHasExtensions,
-                // DATA-driven (#256 follow-up): pass the harness/extension name
-                // straight through. The status bar renders the badge iff the
-                // name is non-nil/non-empty, so a plain conversation (whose
-                // status fields carry no extensionName) simply shows no badge —
-                // by absence of data, not a tab-type branch. The former
-                // `tabHasExtensions ? … : nil` gate was an illegitimate fork.
-                extensionName: engineInputs.extensionName,
-                runningAgentCount: runningAgentCount,
-                runningShellCount: runningShellCount,
-                thinkingEffort: activeInst?.thinkingEffort ?? "off",
-                onSelectThinkingEffort: { level in
-                    viewModel.setThinkingEffort(tabId: tabId, effort: level)
-                }
-            )
-            Divider()
-            if !pendingAttachments.isEmpty {
-                AttachmentChipsView(attachments: pendingAttachments) { id in
-                    pendingAttachments.removeAll { $0.id == id }
-                }
-            }
+            // The composer renders for every conversation state. A fresh
+            // engine instance with no status yet still gets its model picker,
+            // mode control, and a neutral context ring; the status-dependent
+            // values resolve nil-safely inside ConversationStatusBar.
             engineInputBar
         }
         .engineKeyboardUtilityBar(
-            isEnabled: viewModel.showKeyboardUtilityBarInEngine,
+            isEnabled: viewModel.showKeyboardUtilityBar,
             onDismiss: { isInputFocused = false },
             promptText: promptTextBinding
         )
@@ -267,27 +200,49 @@ extension ConversationView {
         }
     }
 
+    /// Two toolbar items: the conversation's attachments, which carry their
+    /// count, and one menu for the developer surfaces (files, git, terminal)
+    /// and the status drawer. Three accent glyphs in a row competed with the
+    /// title and read as three equal priorities; the menu keeps them one tap
+    /// away without claiming the bar.
     var toolbarButtons: some View {
-        HStack(spacing: 12) {
-            Button { showFileExplorer = true } label: {
-                Image(systemName: "folder")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.accent)
-            }
-            // Absent where the server offers neither the changes list nor the graph.
-            if viewModel.developerSurfaces.gitPaneOffered {
-                Button { showGitPane = true } label: {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.subheadline)
-                        .foregroundStyle(theme.accent)
+        HStack(spacing: IonSpace.contentGap) {
+            Button { showAttachments = true } label: {
+                HStack(spacing: 2) { // design-geometry: 2pt gap between a glyph and its count; below the 4pt rhythm floor
+                    Image(systemName: "paperclip")
+                    if engineAttachmentCount > 0 {
+                        Text("\(engineAttachmentCount)")
+                            .font(IonType.microLabel)
+                    }
                 }
+                .foregroundStyle(engineAttachmentCount > 0 ? theme.accent : theme.textSecondary)
             }
-            Button { showTerminal = true } label: {
-                Image(systemName: "terminal")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.accent)
+            .accessibilityLabel(engineAttachmentCount > 0
+                ? "Attachments, \(engineAttachmentCount)"
+                : "Attachments")
+
+            Menu {
+                Button { showFileExplorer = true } label: {
+                    Label("Files", systemImage: "folder")
+                }
+                // Absent where the server offers neither the changes list nor the graph.
+                if viewModel.developerSurfaces.gitPaneOffered {
+                    Button { showGitPane = true } label: {
+                        Label("Changes", systemImage: "arrow.triangle.branch")
+                    }
+                }
+                Button { showTerminal = true } label: {
+                    Label("Terminal", systemImage: "terminal")
+                }
+                Divider()
+                Button { showStatusDrawer = true } label: {
+                    Label("Conversation status", systemImage: "gauge.with.dots.needle.33percent")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(theme.textSecondary)
             }
-            // Add-instance button removed in #256 (single-instance collapse).
+            .accessibilityLabel("More")
         }
     }
 

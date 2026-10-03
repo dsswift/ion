@@ -23,8 +23,9 @@ extension TabListView {
                 // modifier on the NavigationSplitView would leave the other
                 // column on the system background.
                 .background(theme.background.ignoresSafeArea())
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search conversations or projects…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search conversations")
                 .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     // Separate items, not a grouped HStack — same reasoning as
                     // the iPhone layout below.
@@ -68,7 +69,7 @@ extension TabListView {
             viewModel.sendReportFocus(tabId: tabId)
         }
         // Same stale-destination rule as the iPhone stack. The detail pane
-        // already renders "Select a tab" for an unresolvable selection, but the
+        // already renders "Select a conversation" for an unresolvable selection, but the
         // dead id was kept silently; clearing it keeps selection state honest
         // and makes the event observable in the logs.
         .onChange(of: viewModel.tabIds) { _, _ in
@@ -100,12 +101,16 @@ extension TabListView {
                 List {
                     tabSections(selectionStyle: .navigation)
                 }
+                .listStyle(.plain)
+                .onAppear { refreshInboxOnAppear() }
                 .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, InboxLayout.minHeight(.groupHeader))
                 .safeAreaInset(edge: .top, spacing: 0) {
                     ConnectionBannerView()
                 }
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search conversations or projects…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search conversations")
                 .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         if theme.backgroundView != nil {

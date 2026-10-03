@@ -15,18 +15,14 @@
 // ActionRename event when a removal and a creation describe the same file.
 // See rename.go.
 //
-// Recursive watching is implemented manually by walking the tree at startup
-// and dynamically attaching / detaching on directory create / remove events.
-// fsnotify is non-recursive on Linux and Windows; doing it ourselves yields
-// consistent semantics across macOS / Linux / Windows and lets us apply the
-// ignore-glob list at the directory level (so we never attach inotify
-// descriptors to ignored subtrees like node_modules).
-//
-// Windows is the exception to per-directory attachment: there the event
-// source holds a single recursive handle on the root (see source_windows.go),
-// because an open handle on a subdirectory blocks renaming any directory
-// above it. Attaching a directory is then a no-op, and ignored subtrees are
-// filtered per event instead of per directory.
+// Changes come from an eventSource (source.go). On macOS one FSEvents stream
+// covers the whole tree, and on Windows one ReadDirectoryChangesW handle on
+// the root does: an open handle on a subdirectory there blocks renaming any
+// directory above it. Elsewhere fsnotify is non-recursive, so the watcher
+// walks the tree at startup, attaches every directory, and attaches new
+// directories as they appear, applying the ignore-glob list at the directory
+// level so ignored subtrees like node_modules hold no watch. A recursive
+// source filters ignored subtrees per event instead.
 package watcher
 
 import (
@@ -50,18 +46,19 @@ import (
 // one frame.
 const debounceWindow = 50 * time.Millisecond
 
-// defaultMaxWatchedDirs caps the number of directories a single Watcher will
-// attach an fsnotify/kqueue descriptor to. Each attached directory consumes
-// one file descriptor on macOS (kqueue) and one inotify watch on Linux, so an
-// unbounded walk of a pathologically large tree (a symlink cycle, a monorepo
-// with hundreds of thousands of directories, or a root mistakenly pointed at
-// `/` or `$HOME`) can exhaust the per-process FD limit (default 10240 soft /
-// 61440 hard on macOS) and take down DNS, sockets, and subprocess forks for
-// the entire engine.
+// maxWatchedDirs caps the number of directories a single Watcher attaches to
+// a per-directory source. Each attached directory holds one inotify watch on
+// Linux or one kqueue descriptor per entry on a macOS build without cgo, so an
+// unbounded walk of a
+// pathologically large tree (a symlink cycle, a monorepo with hundreds of
+// thousands of directories, or a root mistakenly pointed at `/` or `$HOME`)
+// can exhaust a per-process kernel limit. A recursive source (FSEvents on
+// macOS, the root handle on Windows) attaches nothing per directory and is
+// not capped.
 //
 // 50_000 is comfortably above any realistic single repository (the Ion repo is
-// ~4800 directories) yet far below the FD ceiling even when several watchers
-// run concurrently. When the cap is hit the watcher keeps functioning for the
+// ~4800 directories) yet far below the per-process ceiling even when several
+// watchers run concurrently. When the cap is hit the watcher keeps functioning for the
 // directories it did attach; it simply stops descending. This is strictly
 // better than the previous unbounded behavior that could exhaust the process.
 //
@@ -121,15 +118,15 @@ type Options struct {
 // ignore globs).
 //
 // Lifecycle: New() validates the root and compiles the ignore patterns;
-// Start() walks the tree, attaches fsnotify, and spawns the event-pump
-// goroutine; Close() stops the goroutine and tears down fsnotify. Start may
-// be called at most once per Watcher.
+// Start() opens the event source, attaches the tree to it, and spawns the
+// event-pump goroutine; Close() stops the goroutine and closes the source.
+// Start may be called at most once per Watcher.
 type Watcher struct {
 	root    string
 	ignores []string
 
 	mu      sync.Mutex
-	fsw     eventSource
+	src     eventSource
 	cancel  context.CancelFunc
 	pending map[string]*pendingEvent
 	pendMu  sync.Mutex
@@ -149,7 +146,7 @@ type Watcher struct {
 	// operators investigating "why aren't events firing under subtree X".
 	truncated bool
 	// attachedCount is the running total of directories this watcher has
-	// attached an fsnotify descriptor to, across the initial Start() walk and
+	// attached to a per-directory source, across the initial Start() walk and
 	// every later attachSubtree() walk. Guarded by mu. The cap is enforced
 	// against this lifetime total, not a per-walk count, so a watcher cannot
 	// creep past the cap by accumulating many small subtree attaches.
@@ -245,12 +242,12 @@ func NewWithOptions(root string, ignores []string, opts Options) (*Watcher, erro
 	}, nil
 }
 
-// Start walks the tree under root, attaches an fsnotify watch to every
-// non-ignored directory, and spawns the event-pump goroutine. onEvent is
+// Start opens the event source, attaches every non-ignored directory when the
+// source is per-directory, and spawns the event-pump goroutine. onEvent is
 // invoked from the pump goroutine after debounce -- callers must not block in
 // the callback (forward to a channel / extension group if heavy work is
 // needed). Start is idempotent on error: a partial walk that fails midway
-// still closes the underlying fsnotify watcher before returning.
+// still closes the event source before returning.
 func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	w.mu.Lock()
 	if w.started {
@@ -266,13 +263,13 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 		return errors.New("watcher: onEvent is nil")
 	}
 
-	fsw, err := newEventSource(w.root)
+	src, err := newEventSource(w.root)
 	if err != nil {
 		w.mu.Unlock()
 		utils.LogWithFields(utils.LevelError, "watcher", "start event source failed", map[string]any{"path": w.root, "error": err.Error()})
 		return err
 	}
-	w.fsw = fsw
+	w.src = src
 	w.onEvent = onEvent
 	pumpCtx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
@@ -281,9 +278,38 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 
 	// Walk the tree and attach to every non-ignored directory. We tolerate
 	// per-entry failures (a dir may be unreadable, deleted mid-walk, etc.)
-	// because losing one subtree should not break the whole watcher.
+	// because losing one subtree should not break the whole watcher. A
+	// recursive source already covers the tree: it walks only to seed rename
+	// tracking, and not at all without it.
+	recursive := src.Recursive()
 	attached := 0
-	walkErr := filepath.Walk(w.root, func(path string, info os.FileInfo, err error) error {
+	var walkErr error
+	if !recursive || w.renames != nil {
+		walkErr = w.startWalk(src, recursive, &attached)
+	}
+	if walkErr != nil {
+		// Walk itself only returns the root-stat error here; per-entry errors
+		// are swallowed above. If we got nothing usable, bail out cleanly.
+		utils.LogWithFields(utils.LevelError, "watcher", "start walk failed", map[string]any{"error": walkErr.Error()})
+		src.Close() //nolint:errcheck // resource close
+		cancel()
+		w.mu.Lock()
+		w.started = false
+		w.src = nil
+		w.cancel = nil
+		w.mu.Unlock()
+		return walkErr
+	}
+
+	utils.LogWithFields(utils.LevelDebug, "watcher", "start attached", map[string]any{"path": w.root, "count": attached, "recursive": recursive})
+	go w.pump(pumpCtx, src)
+	return nil
+}
+
+// startWalk is Start's walk of the existing tree. It seeds rename tracking
+// and, for a per-directory source, attaches every non-ignored directory.
+func (w *Watcher) startWalk(src eventSource, recursive bool, attached *int) error {
+	return filepath.Walk(w.root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk skip", map[string]any{"path": path, "error": err.Error()})
 			return nil
@@ -304,6 +330,9 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk ignore dir", map[string]any{"path": rel})
 			return filepath.SkipDir
 		}
+		if recursive {
+			return nil
+		}
 		// Enforce the directory cap before attaching another descriptor so a
 		// pathologically large tree cannot exhaust the process FD table. Once
 		// the cap is hit we stop descending entirely (SkipDir on the current
@@ -314,37 +343,20 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 			w.markTruncated()
 			return filepath.SkipDir
 		}
-		if err := fsw.Add(path); err != nil {
+		if err := src.Add(path); err != nil {
 			// Release the reserved slot: we did not actually attach a
 			// descriptor, so it must not count against the cap.
 			w.releaseAttach()
-			utils.LogWithFields(utils.LevelDebug, "watcher", "start fsw add failed", map[string]any{"path": path, "error": err.Error()})
+			utils.LogWithFields(utils.LevelDebug, "watcher", "start source add failed", map[string]any{"path": path, "error": err.Error()})
 			return nil
 		}
-		attached++
+		*attached++
 		return nil
 	})
-	if walkErr != nil {
-		// Walk itself only returns the root-stat error here; per-entry errors
-		// are swallowed above. If we got nothing usable, bail out cleanly.
-		utils.LogWithFields(utils.LevelError, "watcher", "start walk failed", map[string]any{"error": walkErr.Error()})
-		fsw.Close() //nolint:errcheck // resource close
-		cancel()
-		w.mu.Lock()
-		w.started = false
-		w.fsw = nil
-		w.cancel = nil
-		w.mu.Unlock()
-		return walkErr
-	}
-
-	utils.LogWithFields(utils.LevelDebug, "watcher", "start attached", map[string]any{"path": w.root, "count": attached})
-	go w.pump(pumpCtx)
-	return nil
 }
 
 // Close stops the pump, cancels any pending debounced events, and tears down
-// fsnotify. Safe to call multiple times. Returns nil if the watcher was never
+// the event source. Safe to call multiple times. Returns nil if the watcher was never
 // started.
 func (w *Watcher) Close() error {
 	w.mu.Lock()
@@ -354,7 +366,7 @@ func (w *Watcher) Close() error {
 	}
 	w.closed = true
 	cancel := w.cancel
-	fsw := w.fsw
+	src := w.src
 	started := w.started
 	w.mu.Unlock()
 
@@ -365,14 +377,18 @@ func (w *Watcher) Close() error {
 	if cancel != nil {
 		cancel()
 	}
-	// Wait for the pump goroutine to exit before closing fsnotify; otherwise
-	// the pump can race on a closed channel.
+	// Wait for the pump goroutine to exit before closing the source;
+	// otherwise the pump can race on a closed channel.
 	<-w.doneCh
 
-	if fsw != nil {
-		if err := fsw.Close(); err != nil {
-			utils.LogWithFields(utils.LevelError, "watcher", "close fsnotify close failed", map[string]any{"error": err.Error()})
+	if src != nil {
+		if err := src.Close(); err != nil {
+			utils.LogWithFields(utils.LevelError, "watcher", "close source close failed", map[string]any{"path": w.root, "error": err.Error()})
 		}
+	}
+
+	if w.renames != nil {
+		w.renames.stopResync()
 	}
 
 	// Drain any pending debounce timers so we don't leak goroutines.
@@ -389,9 +405,9 @@ func (w *Watcher) Close() error {
 	return nil
 }
 
-// pump runs in its own goroutine; consumes fsnotify events / errors and
+// pump runs in its own goroutine; consumes source events / errors and
 // translates them to debounced Info callbacks.
-func (w *Watcher) pump(ctx context.Context) {
+func (w *Watcher) pump(ctx context.Context, src eventSource) {
 	defer close(w.doneCh)
 	utils.LogWithFields(utils.LevelDebug, "watcher", "pump started", map[string]any{"path": w.root})
 	for {
@@ -399,18 +415,21 @@ func (w *Watcher) pump(ctx context.Context) {
 		case <-ctx.Done():
 			utils.LogWithFields(utils.LevelDebug, "watcher", "pump ctx done exiting", map[string]any{"path": w.root})
 			return
-		case ev, ok := <-w.fsw.Events():
+		case ev, ok := <-src.Events():
 			if !ok {
 				utils.LogWithFields(utils.LevelDebug, "watcher", "pump events channel closed exiting", map[string]any{"path": w.root})
 				return
 			}
 			w.handleEvent(ev)
-		case err, ok := <-w.fsw.Errors():
+		case err, ok := <-src.Errors():
 			if !ok {
 				utils.LogWithFields(utils.LevelDebug, "watcher", "pump errors channel closed exiting", map[string]any{"path": w.root})
 				return
 			}
-			utils.LogWithFields(utils.LevelError, "watcher", "pump fsnotify error", map[string]any{"error": err.Error()})
+			utils.LogWithFields(utils.LevelError, "watcher", "pump source error", map[string]any{"path": w.root, "error": err.Error()})
+			if eventsDropped(err) {
+				w.scheduleRenameResync()
+			}
 		}
 	}
 }
@@ -474,24 +493,26 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	w.schedule(path, rel, action)
 }
 
-// attachSubtree walks a newly-created directory, attaches fsnotify to every
-// non-ignored descendant directory, and synthesizes Create events for files
-// already present inside it. The synthesis is necessary because fsnotify on
-// Linux/macOS races with filepath.Walk during fast MkdirAll-then-write
-// sequences: by the time we add the new dir to fsnotify, its child entries
-// may have been created without us seeing the events. Synthesizing from the
-// walk closes that race for content present at attach time.
+// attachSubtree walks a newly-created directory, attaches every non-ignored
+// descendant directory to a per-directory source, and synthesizes Create
+// events for entries already present inside it. For a per-directory source
+// the synthesis closes the race with fast MkdirAll-then-write sequences: by
+// the time the new dir is attached, its children may have been created
+// unseen. A recursive source needs no attach, but still needs the synthesis:
+// a directory moved into the tree arrives as one event for the directory,
+// with none for its contents.
 //
 // The skipRoot argument suppresses an event for the dir whose Create event
 // triggered this walk (we already emitted the Create event for it via the
 // normal pipeline; emitting again would be a duplicate).
 func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 	w.mu.Lock()
-	fsw := w.fsw
+	src := w.src
 	w.mu.Unlock()
-	if fsw == nil {
+	if src == nil {
 		return
 	}
+	recursive := src.Recursive()
 	attached := 0
 	synthesized := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck // walk errors handled per-entry
@@ -503,20 +524,21 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 			if w.shouldIgnore(rel, true) {
 				return filepath.SkipDir
 			}
-			// Enforce the same lifetime directory cap here as in Start(): a
-			// burst of directory-create events under a huge new subtree must
-			// not let the watcher creep past maxWatchedDirs and exhaust the
-			// process FD table.
-			if !w.tryReserveAttach() {
-				w.markTruncated()
-				return filepath.SkipDir
+			if !recursive {
+				// Enforce the same lifetime directory cap here as in Start():
+				// a burst of directory-create events under a huge new subtree
+				// must not let the watcher creep past the cap.
+				if !w.tryReserveAttach() {
+					w.markTruncated()
+					return filepath.SkipDir
+				}
+				if err := src.Add(path); err != nil {
+					w.releaseAttach()
+					utils.LogWithFields(utils.LevelDebug, "watcher", "attach subtree source add failed", map[string]any{"path": path, "error": err.Error()})
+					return nil
+				}
+				attached++
 			}
-			if err := fsw.Add(path); err != nil {
-				w.releaseAttach()
-				utils.LogWithFields(utils.LevelDebug, "watcher", "attach subtree fsw add failed", map[string]any{"path": path, "error": err.Error()})
-				return nil
-			}
-			attached++
 			if path == root && skipRoot {
 				return nil
 			}
@@ -621,7 +643,7 @@ func (w *Watcher) tryReserveAttach() bool {
 }
 
 // releaseAttach gives back a slot reserved by tryReserveAttach when the
-// subsequent fsw.Add failed, so a failed attach does not permanently consume
+// subsequent source Add failed, so a failed attach does not permanently consume
 // cap headroom. Never drops below zero.
 func (w *Watcher) releaseAttach() {
 	w.mu.Lock()
@@ -633,7 +655,7 @@ func (w *Watcher) releaseAttach() {
 
 // rel returns the forward-slash path of `path` relative to the watcher root.
 // Falls back to the absolute path when relpath fails (which should never
-// happen for paths produced by fsnotify under our root, but better safe than
+// happen for paths a source produces under our root, but better safe than
 // confusing a hook handler).
 func (w *Watcher) rel(path string) string {
 	r, err := filepath.Rel(w.root, path)

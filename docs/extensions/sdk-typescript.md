@@ -985,12 +985,23 @@ interface DispatchAgentResult {
   parentDispatchId?: string // the dispatch that spawned this one; empty at top level
   planFilePath?: string // plan file written by child (when planMode was true)
   planExited?: boolean  // true when child called ExitPlanMode
+  errorCode?: 'resource_exhausted' // set when the engine refused to launch the child
+  resourceExhausted?: {            // detail of a resource_exhausted refusal
+    resource: 'file_descriptors' | 'processes' | 'memory'
+    openDescriptors?: number       // engine process's open descriptors at the refusal
+    descriptorLimit?: number       // engine process's descriptor limit
+    message: string                // the operating-system error observed
+  }
 }
 ```
 
 **`toolCount` is always reported**, whether or not `requireToolUse` was declared: it is an observed fact about the run, not a verdict on it. A `0` on an `exitCode: 0` dispatch is the signature of a child that answered instead of working. Prefer it over reconstructing a count from your own `onToolStart` bookkeeping — this is the engine's own count, and it covers every LLM turn including suspend/revive iterations and any work-gate continuation.
 
 **Depth-cap result.** A refused dispatch resolves normally rather than throwing, with `depthCapExceeded: true` and `remainingDepthBudget: 0`. Inspect these fields before treating a zero-valued result as a launched child. Other results may include `remainingDepthBudget` to expose how many child levels remain under the effective engine cap.
+
+**Resource-exhausted result.** Before it accepts a dispatch, the engine starts one no-op subprocess with piped standard streams. A shell command and a child extension both need that from the engine process. When the start fails because the process is out of file descriptors, process slots, or memory, the dispatch is refused before anything starts. It resolves normally rather than throwing, with `errorCode: 'resource_exhausted'`, `exitCode: 1`, no `dispatchId`, and `resourceExhausted` naming the resource. No callback fires.
+
+Dispatched agents are not separate processes. Every run shares the one engine process and its descriptor table, so a new dispatch to the same agent name does not get a clean one. A retry is refused the same way until the engine releases the resource or is restarted. Conversations and dispatch records are on disk and survive a restart: resume a child with `sessionId`. The per-call descriptor readings that trace a leak to a tool are in [telemetry](../observability/consuming-logs.md).
 
 ## DispatchError
 

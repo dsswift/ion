@@ -8,8 +8,12 @@ import AVFoundation
 /// Both the legacy (SFSpeechRecognizer) and modern (SpeechAnalyzer) paths use the
 /// same underlying permission keys: NSMicrophoneUsageDescription and
 /// NSSpeechRecognitionUsageDescription.
+///
+/// Not final: the two aggregate answers (`isFullyGranted`, `isDenied`) are
+/// overridable so a test can run the dictation session against a decided
+/// permission state without touching the system prompt.
 @MainActor
-final class SpeechPermissionManager {
+class SpeechPermissionManager {
 
     // MARK: - State
 

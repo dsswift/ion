@@ -25,6 +25,17 @@ final class LegacySpeechEngine: SpeechEngine {
     // Throttle audio level updates: timestamp of last MainActor dispatch
     private var lastLevelUpdate: CFAbsoluteTime = 0
 
+    /// Identity of the current recording session; see `ModernSpeechEngine` for
+    /// the race this closes. The recognizer delivers its final result after
+    /// `endAudio()`, asynchronously, and that delivery must not be written into
+    /// a session that started after this one ended.
+    private var sessionGeneration: UInt64 = 0
+
+    /// Resumed when the recognizer delivers its final result (or fails) after
+    /// `stopRecording` ends the audio, so the stop can hand back the committed
+    /// transcript rather than the last partial.
+    private var finalizeContinuation: CheckedContinuation<Void, Never>?
+
     // SFSpeechRecognizer's result.bestTranscription.formattedString is already the
     // FULL running transcript for the recognition task — it does not reset at
     // utterance boundaries the way SpeechTranscriber's progressive results do.
@@ -44,9 +55,9 @@ final class LegacySpeechEngine: SpeechEngine {
     // MARK: - SpeechEngine
 
     func startRecording() async throws {
-        DiagnosticLog.log("SPEECH-LEGACY: startRecording called")
+        DiagnosticLog.log("start recording", tag: "speech.legacy")
         guard !isRecording else {
-            DiagnosticLog.log("SPEECH-LEGACY: already recording, ignoring start")
+            DiagnosticLog.log("start recording ignored; already recording", tag: "speech.legacy", level: .warn)
             return
         }
 
@@ -80,8 +91,12 @@ final class LegacySpeechEngine: SpeechEngine {
 
         // Reset transcript for this session — see comment above the engine type
         // for why no separate accumulation state is needed.
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
         transcript = ""
-        DiagnosticLog.log("SPEECH-LEGACY: transcript reset on startRecording")
+        DiagnosticLog.log("transcript state reset", tag: "speech.legacy", fields: [
+            "generation": String(generation)
+        ])
 
         // Install audio tap — callback runs on an AVAudioEngine internal thread
         let inputNode = audioEngine.inputNode
@@ -100,7 +115,7 @@ final class LegacySpeechEngine: SpeechEngine {
 
         audioEngine.prepare()
         try audioEngine.start()
-        DiagnosticLog.log("SPEECH-LEGACY: audio engine started")
+        DiagnosticLog.log("audio engine started", tag: "speech.legacy")
 
         // transcript was already cleared above; just flip the live state flags here.
         errorMessage = nil
@@ -120,7 +135,8 @@ final class LegacySpeechEngine: SpeechEngine {
                         "is_final": String(isFinal),
                         "segment": String(rawSegment.prefix(60))
                     ])
-                    self.applyResult(rawSegment)
+                    self.applyResult(rawSegment, generation: generation)
+                    if isFinal { self.resumeFinalize(reason: "final result") }
                 }
             }
             if let error {
@@ -136,7 +152,10 @@ final class LegacySpeechEngine: SpeechEngine {
                         ])
                         self.errorMessage = error.localizedDescription
                     }
-                    if self.isRecording {
+                    self.resumeFinalize(reason: "recognizer ended")
+                    if self.isRecording, self.sessionGeneration == generation {
+                        // The words heard so far stay in `transcript`: the
+                        // caller reads them when it notices `isRecording` fell.
                         self.teardown(deactivateSession: true)
                     }
                 }
@@ -149,13 +168,45 @@ final class LegacySpeechEngine: SpeechEngine {
             name: AVAudioSession.interruptionNotification,
             object: nil
         )
-        DiagnosticLog.log("SPEECH-LEGACY: recognition task started, isRecording=true")
+        DiagnosticLog.log("recognition task started", tag: "speech.legacy")
     }
 
-    func stopRecording() -> String {
-        DiagnosticLog.log("stop recording", tag: "speech.legacy", fields: [
-            "transcript": String(transcript.prefix(80))
+    func stopRecording() async -> String {
+        guard isRecording else {
+            DiagnosticLog.log("stop recording while idle", tag: "speech.legacy", fields: [
+                "transcript_count": String(transcript.count)
+            ])
+            return transcript
+        }
+        DiagnosticLog.log("stop recording; finalizing", tag: "speech.legacy", fields: [
+            "transcript_count": String(transcript.count)
         ])
+        // Stop the microphone and tell the recognizer the utterance is over. It
+        // answers with one last result flagged final; `resumeFinalize` lets the
+        // wait below return the moment that lands.
+        if audioEngine.isRunning {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            audioEngine.stop()
+        }
+        audioLevel = 0
+        recognitionRequest?.endAudio()
+        let completed = await SpeechEngineFinalize.run { [weak self] in
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isRecording else {
+                        continuation.resume()
+                        return
+                    }
+                    self.finalizeContinuation = continuation
+                }
+            }
+        }
+        DiagnosticLog.log(
+            completed ? "finalize complete" : "finalize timed out",
+            tag: "speech.legacy",
+            level: completed ? .info : .warn,
+            fields: ["transcript_count": String(transcript.count)]
+        )
         let final = transcript
         teardown(deactivateSession: true)
         return final
@@ -163,7 +214,7 @@ final class LegacySpeechEngine: SpeechEngine {
 
     func cancelRecording() {
         DiagnosticLog.log("cancel recording", tag: "speech.legacy", fields: [
-            "transcript": String(transcript.prefix(40))
+            "transcript_count": String(transcript.count)
         ])
         teardown(deactivateSession: true)
         transcript = ""
@@ -175,8 +226,23 @@ final class LegacySpeechEngine: SpeechEngine {
     /// running transcript for the recognition task, not a delta — so each result simply
     /// replaces the current transcript wholesale. No utterance-boundary detection,
     /// no leading-space heuristics, no accumulation buffers required.
-    private func applyResult(_ rawSegment: String) {
+    private func applyResult(_ rawSegment: String, generation: UInt64) {
+        guard generation == sessionGeneration else {
+            DiagnosticLog.log("stale recognition result dropped", tag: "speech.legacy", fields: [
+                "result_generation": String(generation),
+                "generation": String(sessionGeneration)
+            ])
+            return
+        }
         transcript = rawSegment
+    }
+
+    /// Let a pending `stopRecording` return. Safe to call when nothing waits.
+    private func resumeFinalize(reason: String) {
+        guard let continuation = finalizeContinuation else { return }
+        finalizeContinuation = nil
+        DiagnosticLog.trace("finalize resumed", tag: "speech.legacy", fields: ["reason": reason])
+        continuation.resume()
     }
 
     // MARK: - Teardown
@@ -186,6 +252,7 @@ final class LegacySpeechEngine: SpeechEngine {
             "deactivate": String(deactivateSession)
         ])
 
+        resumeFinalize(reason: "teardown")
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
@@ -214,7 +281,7 @@ final class LegacySpeechEngine: SpeechEngine {
 
         isRecording = false
         audioLevel = 0
-        DiagnosticLog.log("SPEECH-LEGACY: teardown complete")
+        DiagnosticLog.log("teardown complete", tag: "speech.legacy")
     }
 
     @objc nonisolated private func handleAudioInterruptionOnMainThread(_ notification: Notification) {

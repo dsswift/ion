@@ -1,13 +1,14 @@
 import SwiftUI
 import UIKit
 
-// MARK: - ConversationView input bar, voice, and submit
+// MARK: - ConversationView input bar: gates, notices, and submit
 //
-// Extracted from the merged ConversationView (formerly EngineView) to keep the
-// main view file under the Swift 600-line cap after the #256 view merge. These
-// are the input-bar subview, the voice-recording controls, the attach button,
-// and the send/scroll actions. They stay members of ConversationView via this
-// extension so the call sites in `body` / `mainContent` are unchanged.
+// The input bar is the composer pill (ConversationView+Composer.swift) plus
+// what sits around it: the capacity warning, the slash-command menu, the
+// image-model disclosure, and the locked-input notices that replace the pill
+// when a conversation accepts no more prompts. The gates that decide what the
+// composer may do (abort, send, banner) and the submit action itself live
+// here, as pure functions where the logic is worth pinning in a test.
 
 extension ConversationView {
 
@@ -62,7 +63,6 @@ extension ConversationView {
 
     /// Pure, view-independent gate for the abort affordance. Extracted so
     /// the visibility logic is unit-testable without instantiating the view.
-    /// Migrated from the dead InputBar.swift (see Fix 3 retirement commit).
     static func computeCanAbort(
         status: TabStatus?,
         hasRunningChildren: Bool?,
@@ -80,7 +80,7 @@ extension ConversationView {
         let activeInst = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
         let effectiveModelId = activeInst?.modelOverride ?? viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId)
         guard !effectiveModelId.isEmpty else { return false }
-        return viewModel.availableModels.first(where: { $0.id == effectiveModelId })?.modelKind == "image"
+        return ModelCatalog.entry(for: effectiveModelId, in: viewModel.availableModels)?.modelKind == "image"
     }
 
     /// Whether the image-model disclosure banner is visible. Gated on the user
@@ -104,7 +104,7 @@ extension ConversationView {
         isImageModel && (isInputFocused || !promptText.isEmpty)
     }
 
-    // MARK: - Engine input bar
+    // MARK: - Input bar
 
     /// Whether this tab's conversation is input-locked (an auto-generated
     /// conflict-fix conversation). Mirrors the desktop InputBar: the input
@@ -148,20 +148,13 @@ extension ConversationView {
                     settledInputNotice
                 }
             } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "lock")
-                        .font(.system(size: 10)) // design-type: SF Symbol lock glyph sized as icon geometry, not text
-                        .foregroundStyle(.tertiary)
-                    Text(viewModel.tab(for: tabId)?.inputLockReason == "landed-worktree"
+                inputNotice(
+                    systemImage: "lock",
+                    text: viewModel.tab(for: tabId)?.inputLockReason == "landed-worktree"
                         ? "Landed worktree review — input is disabled. Retire this worktree when review is complete."
-                        : "Automated fix conversation — input is disabled. Continue the work in its worktree.")
-                        .ionType(.microLabel)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                    Spacer()
-                }
-                .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-                .padding(.vertical, IonSpace.contentGap)
+                        : "Automated fix conversation — input is disabled. Continue the work in its worktree.",
+                    lineLimit: 2
+                )
                 .accessibilityIdentifier("input-locked-notice")
             }
         } else {
@@ -170,34 +163,15 @@ extension ConversationView {
     }
 
     private var permanentlySettledInputNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "archivebox")
-                .font(.system(size: 10)) // design-type: SF Symbol glyph sized as icon geometry, not text
-                .foregroundStyle(.tertiary)
-            Text("Settled history — its worktree was retired.")
-                .ionType(.microLabel)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
-        }
-        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-        .padding(.vertical, IonSpace.contentGap)
-        .accessibilityIdentifier("permanently-settled-input-notice")
+        inputNotice(systemImage: "archivebox", text: "Settled history — its worktree was retired.", lineLimit: 1)
+            .accessibilityIdentifier("permanently-settled-input-notice")
     }
 
     /// Settled conversation notice with an Un-settle action. This notice is used
     /// only while the desktop says the record can restore. A retired-worktree
     /// record uses the permanent notice above.
     private var settledInputNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "archivebox")
-                .font(.system(size: 10)) // design-type: SF Symbol glyph sized as icon geometry, not text
-                .foregroundStyle(.tertiary)
-            Text("Settled — input is paused.")
-                .ionType(.microLabel)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
+        inputNotice(systemImage: "archivebox", text: "Settled — input is paused.", lineLimit: 1) {
             Button {
                 viewModel.unsettleTab(tabId: tabId)
             } label: {
@@ -207,9 +181,35 @@ extension ConversationView {
             }
             .accessibilityIdentifier("unsettle-button")
         }
-        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-        .padding(.vertical, IonSpace.contentGap)
         .accessibilityIdentifier("settled-input-notice")
+    }
+
+    /// A locked-input notice with no trailing action.
+    private func inputNotice(systemImage: String, text: String, lineLimit: Int) -> some View {
+        inputNotice(systemImage: systemImage, text: text, lineLimit: lineLimit) { EmptyView() }
+    }
+
+    /// The one shape every locked-input notice takes: a quiet glyph, one or
+    /// two lines of explanation, and an optional trailing action.
+    private func inputNotice<Trailing: View>(
+        systemImage: String,
+        text: String,
+        lineLimit: Int,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: IonSpace.compactInset) {
+            Image(systemName: systemImage)
+                .font(IonType.microLabel)
+                .foregroundStyle(theme.textTertiary)
+            Text(text)
+                .ionType(.microLabel)
+                .foregroundStyle(theme.textSecondary)
+                .lineLimit(lineLimit)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, IonSpace.rowInset)
+        .padding(.vertical, IonSpace.contentGap)
     }
 
     private var engineInputBarUnlocked: some View {
@@ -230,111 +230,30 @@ extension ConversationView {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // Image model disclosure banner — shown while the user is composing
-            // with an image-generation model selected (showImageModelBanner:
-            // focused or non-empty draft). Informs the user that only the
-            // current message is sent (no conversation history). Compact single
-            // line so it never dominates the input bar on a phone screen.
+            // Image model disclosure — shown while the user is composing with an
+            // image-generation model selected (showImageModelBanner: focused or
+            // non-empty draft). Informs the user that only the current message
+            // is sent (no conversation history). Compact single line so it never
+            // dominates the input bar on a phone screen.
             if showImageModelBanner {
-                HStack(spacing: 4) {
+                HStack(spacing: IonSpace.hairlineGap) {
                     Image(systemName: "photo")
-                        .font(.system(size: 9)) // design-type: SF Symbol photo glyph sized as icon geometry, not text
-                        .foregroundStyle(.tertiary)
+                        .font(IonType.microLabel)
+                        .foregroundStyle(theme.textTertiary)
                     Text("Image model — only this message is sent")
                         .ionType(.microLabel)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(theme.textTertiary)
                         .lineLimit(1)
                     Spacer()
                 }
-                .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-                .padding(.top, IonSpace.hairlineGap)
+                .padding(.horizontal, IonSpace.rowInset)
+                .padding(.bottom, IonSpace.compactInset)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            HStack(spacing: 8) {
-                attachButton
-                TextField("Send a prompt...", text: promptTextBinding, axis: .vertical)
-                    .lineLimit(1...5)
-                    .padding(.horizontal, IonSpace.contentGap)
-                    .padding(.vertical, IonSpace.compactGap)
-                    .background(theme.surfaceSecondary)
-                    .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                    .overlay(RoundedRectangle(cornerRadius: IonTheme.Radius.medium).stroke(
-                        isRecordingVoice ? theme.accent.opacity(0.5) : theme.borderSubtle,
-                        lineWidth: isRecordingVoice ? 1.5 : 1
-                    ))
-                    .focused($isInputFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-
-                // Abort is hidden while voice recording is active: the
-                // recording strip's own stop/cancel controls occupy this
-                // area, and the abort button materializing next to them
-                // mid-interaction shifted the layout so a tap aimed at the
-                // strip landed on abort and killed the running turn (the
-                // "response terminated after three characters" incident).
-                // Abort reappears as soon as recording ends.
-                if canAbort && !isRecordingVoice {
-                    // A Menu rather than a plain Button: stopping the
-                    // orchestrator and stopping the whole tree are different
-                    // decisions, and the destructive one must not be the
-                    // default target of a tap aimed at "stop". Mirrors the
-                    // desktop's split Stop control.
-                    Menu {
-                        Button {
-                            stopOrchestrator()
-                        } label: {
-                            Label(hasRunningChildren
-                                  ? "Stop orchestrator (keep agents)"
-                                  : "Stop orchestrator",
-                                  systemImage: "stop.circle")
-                        }
-                        .disabled(!orchestratorRunning)
-
-                        Button(role: .destructive) {
-                            stopAll()
-                        } label: {
-                            Label("Stop all", systemImage: "stop.fill")
-                        }
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .font(IonType.metadata)
-                            .foregroundStyle(theme.statusError)
-                            .frame(width: IonSpace.screenInset, height: IonSpace.screenInset)
-                            .overlay(Circle().stroke(theme.statusError, lineWidth: 1))
-                    } primaryAction: {
-                        // A plain tap takes the recoverable action; the menu is
-                        // a long-press away for Stop all.
-                        if orchestratorRunning { stopOrchestrator() } else { stopAll() }
-                    }
-                    .accessibilityLabel("Stop")
-                }
-
-                // Mic area: inline recording strip while active, mic button when idle
-                if isRecordingVoice {
-                    VoiceRecordingStrip(
-                        audioLevel: viewModel.speechService.audioLevel,
-                        onStop: { stopVoiceRecording() },
-                        onCancel: { cancelVoiceRecording() }
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                } else {
-                    engineMicButton
-                }
-
-                Button { submitPrompt() } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title)
-                        .foregroundStyle(!cannotSend ? theme.accent : theme.textTertiary)
-                }
-                .disabled(cannotSend)
-            }
-            .padding(.horizontal, IonSpace.contentGap)
-            .padding(.vertical, IonSpace.compactGap)
+            composerPill
         }
         .animation(IonTheme.snappySpring, value: slashFilter)
-        .animation(IonTheme.snappySpring, value: isRecordingVoice)
-        .animation(IonTheme.snappySpring, value: canAbort)
         .animation(.easeInOut(duration: 0.15), value: showImageModelBanner)
         .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
             Button("Open Settings") {
@@ -346,13 +265,6 @@ extension ConversationView {
         } message: {
             Text("Ion Remote needs microphone and speech recognition access to transcribe your voice. Enable both in Settings > Privacy.")
         }
-        .onChange(of: viewModel.speechService.transcript) { _, newTranscript in
-            guard isRecordingVoice else { return }
-            let base = draftBeforeRecording
-            if newTranscript.isEmpty { return }
-            let separator = base.isEmpty ? "" : " "
-            viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, base + separator + newTranscript)
-        }
         .onChange(of: promptText) { _, newText in
             updateSlashFilter(newText)
         }
@@ -362,93 +274,20 @@ extension ConversationView {
     }
 
     private var contextCapacityWarning: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: IonSpace.hairlineGap) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 9)) // design-type: SF Symbol warning glyph sized as icon geometry, not text
+                .font(IonType.microLabel)
                 .foregroundStyle(theme.statusWarning)
             Text(contextCapacityState == .full
                 ? "Context is full — the engine will compact automatically when enabled"
                 : "Context is \(Int(contextCapacity?.percent ?? 0))% full")
                 .ionType(.microLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Spacer()
         }
-        .padding(.horizontal, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-        .padding(.top, IonSpace.hairlineGap)
+        .padding(.horizontal, IonSpace.rowInset)
+        .padding(.bottom, IonSpace.compactInset)
         .accessibilityIdentifier("context-capacity-warning")
-    }
-
-    var engineMicButton: some View {
-        Button {
-            startVoiceRecording()
-        } label: {
-            Image(systemName: "mic.fill")
-                .font(.title3)
-                .foregroundStyle(engineMicButtonColor)
-        }
-        .accessibilityLabel("Record voice input")
-    }
-
-    var engineMicButtonColor: Color {
-        return viewModel.speechService.permissionState == .denied ? Color(.quaternaryLabel) : .secondary
-    }
-
-    func startVoiceRecording() {
-        DiagnosticLog.log("ENGINE-INPUTBAR: startVoiceRecording tapped")
-        Haptic.light()
-        Task {
-            viewModel.speechService.refreshPermissions()
-            if viewModel.speechService.permissionState == .denied {
-                DiagnosticLog.log("ENGINE-INPUTBAR: permission denied — showing alert")
-                showPermissionDeniedAlert = true
-                return
-            }
-            let granted = await viewModel.speechService.requestPermission()
-            guard granted else {
-                DiagnosticLog.log("ENGINE-INPUTBAR: permission request denied")
-                showPermissionDeniedAlert = true
-                return
-            }
-            draftBeforeRecording = promptText
-            isInputFocused = false
-            do {
-                try await viewModel.speechService.startRecording(stoppingVoiceService: viewModel.voiceService)
-                isRecordingVoice = true
-                DiagnosticLog.log("inputbar recording started", tag: "view.inputbar", fields: [
-                    "reason": String(draftBeforeRecording.prefix(40))
-                ])
-            } catch {
-                DiagnosticLog.log("inputbar start recording error", tag: "view.inputbar", level: .error, fields: [
-                    "error": error.localizedDescription
-                ])
-                isRecordingVoice = false
-            }
-        }
-    }
-
-    func stopVoiceRecording() {
-        DiagnosticLog.log("ENGINE-INPUTBAR: stopVoiceRecording — text already in field")
-        viewModel.speechService.cancelRecording()
-        isRecordingVoice = false
-        Haptic.light()
-    }
-
-    func cancelVoiceRecording() {
-        DiagnosticLog.log("ENGINE-INPUTBAR: cancelVoiceRecording — restoring draft snapshot")
-        viewModel.speechService.cancelRecording()
-        isRecordingVoice = false
-        viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, draftBeforeRecording)
-        Haptic.light()
-    }
-
-    var attachButton: some View {
-        Button {
-            showAttachMenu = true
-        } label: {
-            Image(systemName: "paperclip")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
     }
 
     // MARK: - Actions
@@ -513,6 +352,20 @@ extension ConversationView {
     }
 
     func submitPrompt(skipClearConfirm: Bool = false) {
+        // Sending while dictating: finish the session first so the recognizer
+        // commits the words it is still holding, then send what the draft
+        // actually says. Sending the field at the instant of the tap shipped
+        // the recognizer's last guess and dropped its final correction.
+        if isDictating {
+            DiagnosticLog.log("submit while dictating; finishing first", tag: "view.inputbar", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
+            Task {
+                await viewModel.finishDictation(tabId: tabId)
+                submitPrompt(skipClearConfirm: skipClearConfirm)
+            }
+            return
+        }
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard !hasUploading else { return }
@@ -539,15 +392,6 @@ extension ConversationView {
                 pendingClearingCommand = clearing
                 return
             }
-        }
-        // Submitting while a voice recording is active: the transcript is
-        // already in the field (live transcription writes into the draft), so
-        // whatever was being transcribed is what is being sent. Stop the
-        // recording WITHOUT restoring the pre-recording draft snapshot
-        // (cancelVoiceRecording would clobber promptText before the send).
-        if isRecordingVoice {
-            viewModel.speechService.cancelRecording()
-            isRecordingVoice = false
         }
         isNearBottom = true
         forceScrollCounter += 1

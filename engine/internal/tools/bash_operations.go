@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/procctl"
+	"github.com/dsswift/ion/engine/internal/procres"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -135,17 +134,15 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 			// actionable error instead of the raw "pipe: too many open files"
 			// string that gives operators nothing to act on.
 			if isFileDescriptorExhaustion(err) {
-				count := countOpenFds()
-				utils.LogWithFields(utils.LevelError, "tools.bash", "fd exhaustion: subprocess spawn failed", map[string]any{
-					"open_fds": count,
-					"error":    err.Error(),
-					"command":  command,
-				})
+				fields := map[string]any{"error": err.Error(), "command": command}
+				descriptors := procres.ReadDescriptors()
+				descriptors.Fields(fields)
+				utils.LogWithFields(utils.LevelError, "tools.bash", "fd exhaustion: subprocess spawn failed", fields)
 				return result, fmt.Errorf(
 					"engine process has exhausted its file descriptor limit (EMFILE/ENFILE) — "+
 						"open fds: %d. This is caused by accumulated subprocesses or orphaned "+
 						"grandchildren from previous tool calls. Restarting the engine process "+
-						"will clear the leaked descriptors. Raw error: %w", count, err)
+						"will clear the leaked descriptors. Raw error: %w", descriptors.Open, err)
 			}
 			return result, err
 		}
@@ -156,14 +153,9 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 
 // isFileDescriptorExhaustion reports whether err is an fd-exhaustion error
 // (EMFILE — too many open files in process, or ENFILE — system file table full).
-// exec.CommandContext wraps the os.Pipe error from Start as a plain error;
-// check both the syscall errno and the error string to handle both forms.
 func isFileDescriptorExhaustion(err error) bool {
-	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
-		return true
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "too many open files") || strings.Contains(msg, "file table overflow")
+	resource, ok := procres.ExhaustedResource(err)
+	return ok && resource == procres.ResourceFileDescriptors
 }
 
 // shellCommand returns the platform-appropriate shell and arguments for executing

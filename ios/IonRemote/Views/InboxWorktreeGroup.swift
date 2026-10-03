@@ -38,7 +38,16 @@ struct InboxWorktreeGroup<Row: View>: View {
     private var expansionKey: String { InboxNavigator.worktreeExpansionKey(worktree.worktreePath) }
     private var isExpanded: Bool { expanded.contains(expansionKey) }
 
+    /// Whether the header's name would be read twice: the worktree is named
+    /// after its conversation, and that conversation is the only row drawn
+    /// beneath it. Pure so the rule is pinned without a view.
+    static func headerRepeatsRow(worktree: RemoteWorktree, visibleTabs: [RemoteTabState]) -> Bool {
+        guard visibleTabs.count == 1, let only = visibleTabs.first else { return false }
+        return only.displayTitle == worktree.displayName
+    }
+
     var body: some View {
+        let visibleTabs = isExpanded ? tabs : InboxNavigator.collapsedRows(tabs, activeTabId: activeTabId)
         WorktreeRowView(
             worktree: worktree,
             busy: viewModel.worktreeBusyPath == worktree.worktreePath,
@@ -64,18 +73,26 @@ struct InboxWorktreeGroup<Row: View>: View {
                 guard let sourceBranch = worktree.membership?.sourceBranch else { return }
                 viewModel.benchConflictAssist(repoPath: repoPath, sourceBranch: sourceBranch)
             },
+            disclosureExpanded: isExpanded,
+            hidesTitle: Self.headerRepeatsRow(worktree: worktree, visibleTabs: visibleTabs),
+            actionsLocked: viewModel.worktreeActionsLocked(repoPath: repoPath),
         )
-        .overlay(alignment: .trailing) {
+        // The chevron's own target, over the chevron the row draws. In the
+        // side-by-side layout the row's tap cycles conversations, so
+        // expand/collapse needs a target of its own; it sits on the leading
+        // edge, clear of the status marks on the trailing one.
+        .overlay(alignment: .leading) {
             Button {
                 toggle()
             } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption)
-                    .padding(IonSpace.compactGap)
+                Color.clear
+                    .frame(width: InboxLayout.chevronColumn + IonSpace.compactGap, height: InboxLayout.minHeight(.groupHeader))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isExpanded ? "Collapse worktree" : "Expand worktree")
         }
+        .inboxRow(level: 1, kind: .groupHeader)
         .alert("Rename worktree", isPresented: $showRename) {
             TextField("Worktree name", text: $renameTitle)
             Button("Save") {
@@ -97,17 +114,15 @@ struct InboxWorktreeGroup<Row: View>: View {
             Button("Keep it", role: .cancel) {}
         }
 
-        let visibleTabs = isExpanded ? tabs : InboxNavigator.collapsedRows(tabs, activeTabId: activeTabId)
         ForEach(visibleTabs) { tab in
             row(tab)
-                .padding(.leading, IonSpace.sectionGap)
         }
         if isExpanded && tabs.isEmpty && !worktree.isSealed {
             Button("New conversation here") {
                 viewModel.newWorktreeConversation(worktreePath: worktree.worktreePath)
             }
-            .font(.caption)
-            .padding(.leading, IonSpace.sectionGap)
+            .font(IonType.meaning)
+            .inboxRow(level: 2)
         }
     }
 

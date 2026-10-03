@@ -71,6 +71,8 @@ type renameTracker struct {
 	byPath map[string]fileIdentity
 	gone   map[identityKey][]displaced
 	born   map[identityKey][]displaced
+	// resync is the pending rebuild of byPath after dropped events.
+	resync *time.Timer
 }
 
 func newRenameTracker(track func(rel string) bool) *renameTracker {
@@ -253,4 +255,76 @@ func (w *Watcher) deliverRename(pair renamePair) {
 		OldPath:    pair.oldPath,
 		OldRelPath: pair.oldRel,
 	})
+}
+
+// resyncDelay is how long the tracker waits after the last report of dropped
+// events before it rebuilds. Drops arrive in bursts while the tree is still
+// changing; one rebuild after the burst replaces many during it.
+const resyncDelay = 500 * time.Millisecond
+
+// scheduleRenameResync queues a rebuild of the rename tracker's file
+// identities. Called when the event source dropped changes: files created,
+// removed, or rewritten in the gap would otherwise keep a stale identity, or
+// none, and a later rename of one would go uncorrelated.
+func (w *Watcher) scheduleRenameResync() {
+	t := w.renames
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.resync != nil {
+		t.resync.Reset(resyncDelay)
+		return
+	}
+	t.resync = time.AfterFunc(resyncDelay, w.resyncRenames)
+}
+
+// resyncRenames walks the tree and replaces the tracker's file identities
+// with what is on disk now.
+func (w *Watcher) resyncRenames() {
+	t := w.renames
+	t.mu.Lock()
+	t.resync = nil
+	t.mu.Unlock()
+
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+	if closed {
+		return
+	}
+
+	fresh := make(map[string]fileIdentity)
+	filepath.Walk(w.root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck // walk errors handled per-entry
+		if err != nil || info == nil {
+			return nil
+		}
+		rel := w.rel(path)
+		if info.IsDir() {
+			if w.shouldIgnore(rel, true) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Mode().IsRegular() && t.tracks(rel) && !w.shouldIgnore(rel, false) {
+			fresh[path] = newFileIdentity(info)
+		}
+		return nil
+	})
+
+	t.mu.Lock()
+	t.byPath = fresh
+	t.mu.Unlock()
+	utils.LogWithFields(utils.LevelInfo, "watcher", "rename tracking resynced after dropped events", map[string]any{"path": w.root, "count": len(fresh)})
+}
+
+// stopResync cancels a pending rebuild.
+func (t *renameTracker) stopResync() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.resync != nil {
+		t.resync.Stop()
+		t.resync = nil
+	}
 }

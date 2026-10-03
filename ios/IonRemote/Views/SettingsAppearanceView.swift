@@ -87,34 +87,22 @@ struct SettingsAppearanceView: View {
                 Text("View picks Inbox or Ion Classic for the tab list on this device. Git Info shows the current branch and commit counts. Tab Colors tints rows with the color set on desktop (desktop always shows color).")
             }
 
-            // ─── Keyboard Utility Bar ──────────────────────────────
+            // ─── Composer ──────────────────────────────────────────
             //
-            // Per-view toggles for the keyboard utility bar (the strip
-            // above the keyboard with paste / select all / tab / new
-            // line / undo / redo / dismiss buttons). The bar's underlying
-            // implementation lives in InputBar.swift (CLI) and
-            // ConversationView.swift (the conversation view); the toggles default to on
-            // and a previous iOS settings refactor (9b3d1e5f) lost the
-            // UI for these toggles when it deleted SettingsInterfaceView.
-            // Restored here under Appearance because the toggles control
-            // visible chrome, which is the right semantic group.
+            // The keyboard utility bar is the strip above the keyboard with
+            // paste / select all / tab / new line / undo / redo / dismiss.
+            // One toggle: every conversation renders through one composer.
             Section {
                 Toggle(isOn: Binding(
-                    get: { viewModel.showKeyboardUtilityBarInCLI },
-                    set: { viewModel.showKeyboardUtilityBarInCLI = $0 }
+                    get: { viewModel.showKeyboardUtilityBar },
+                    set: { viewModel.showKeyboardUtilityBar = $0 }
                 )) {
-                    Label("Show in Conversation View", systemImage: "keyboard")
-                }
-                Toggle(isOn: Binding(
-                    get: { viewModel.showKeyboardUtilityBarInEngine },
-                    set: { viewModel.showKeyboardUtilityBarInEngine = $0 }
-                )) {
-                    Label("Show in Engine View", systemImage: "keyboard")
+                    Label("Keyboard Shortcuts Bar", systemImage: "keyboard")
                 }
             } header: {
-                Text("Keyboard Utility Bar")
+                Text("Composer")
             } footer: {
-                Text("Adds a toolbar above the keyboard with paste, select all, tab, new line, undo, redo, and dismiss-keyboard buttons. Toggle independently per view.")
+                Text("Adds a row above the keyboard with paste, select all, tab, new line, undo, redo, and a dismiss-keyboard button.")
             }
         }
         .navigationTitle("Appearance")

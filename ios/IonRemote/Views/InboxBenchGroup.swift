@@ -58,102 +58,105 @@ enum BenchAssemblyTime {
 ///     `row` builder, plus the auto-fix flashing overlay.
 struct InboxBenchGroup<Row: View>: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
     let state: RemoteWorktreeState
     let tabsByBenchPath: [String: [RemoteTabState]]
     let terminalTabsByID: [String: RemoteTabState]
     let activeTabId: String?
-    @Binding var expanded: Set<String>
-    /// True only in the side-by-side layout — see
-    /// InboxNavigator.headerTapCycles. When false (iPhone), the bench title
-    /// expands/collapses; "Open Bench Conversation" in the overflow menu is
-    /// the explicit navigation verb.
-    var cyclesOnHeaderTap: Bool = true
     /// Full-featured inbox conversation row (same builder as worktree groups).
     @ViewBuilder let row: (RemoteTabState) -> Row
     @State private var confirmPipelineAi = false
 
     var body: some View {
         ForEach(state.benches) { bench in
-            let key = "bench:\(bench.benchPath)"
             let benchTabs = tabsByBenchPath[bench.benchPath] ?? []
             let conversationTabs = benchTabs.filter { $0.id != bench.benchTerminalTabId }
             let terminalTab = bench.benchTerminalTabId.flatMap { terminalTabsByID[$0] }
-            let occupants = terminalTab.map { conversationTabs + [$0] } ?? conversationTabs
-            let isExpanded = expanded.contains(key)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Image(systemName: "flask").foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                // Line one: the header itself, with its two actions on the
+                // trailing edge. Conversation count uses the role-inclusive
+                // list; an empty bench omits it.
+                HStack(spacing: 0) {
+                    // The bench does not collapse: while its project is open
+                    // its terminal and conversations are always listed, so the
+                    // header has no chevron and its tap goes to the bench
+                    // conversation.
                     Button {
-                        if cyclesOnHeaderTap {
-                            cycleBenchConversation(bench)
-                        } else {
-                            toggle(key)
-                        }
+                        cycleBenchConversation(bench)
                     } label: {
-                        Text("Bench · \(bench.sourceBranch)")
+                        InboxDisclosureHeader(
+                            title: "Bench · \(bench.sourceBranch)",
+                            systemImage: "flask",
+                            count: bench.openConversations.count,
+                            isExpanded: true,
+                            showsChevron: false
+                        ) {
+                            // A healthy bench says its state quietly on the
+                            // header line. Anything that needs attention gets
+                            // the line below instead, in its status colour.
+                            if !benchNeedsAttention(bench) {
+                                Text(benchStatus(bench))
+                                    .font(IonType.microLabel)
+                                    .foregroundStyle(theme.textTertiary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
                         benchActionMenu(bench)
                     }
-                    // Conversation count uses the role-inclusive list. An empty
-                    // bench omits the indicator; positive counts remain visible.
-                    if !bench.openConversations.isEmpty {
-                        Text("\(bench.openConversations.count)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                    Button {
+                        // The desktop's Sync All is the full pipeline with the
+                        // AI cost gate — not the mechanical-only bulk sync.
+                        Haptic.light()
+                        viewModel.startWorktreePipeline(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
+                    } label: {
+                        // While anything is in flight on this repository the
+                        // glyph gives way to a spinner in the same slot.
+                        if actionsLocked {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: Self.actionSize, height: InboxLayout.minHeight(.groupHeader))
+                        } else {
+                            headerGlyph("arrow.triangle.2.circlepath")
+                        }
                     }
-                    Spacer()
+                    .buttonStyle(.plain)
+                    .disabled(actionsLocked)
+                    .accessibilityLabel(actionsLocked ? "Syncing" : "Sync all worktrees")
                     Button {
                         openBenchTerminal(bench)
                     } label: {
-                        Image(systemName: "terminal")
-                            .font(.caption)
+                        headerGlyph("terminal")
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(bench.benchTerminalTabId == nil ? "Open bench terminal" : "Go to bench terminal")
-                    Button {
-                        toggle(key)
-                    } label: {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isExpanded ? "Collapse bench" : "Expand bench")
-                }
-
-                // The bench is a sibling group to worktrees, not a child action
-                // list. Keep its workspace-wide sync control and its current
-                // assembly state in the header's second row so they remain
-                // visible while the conversation list is collapsed.
-                HStack(spacing: 8) {
-                    Button("Sync All") {
-                        // The desktop's Sync All is the full pipeline with the
-                        // AI cost gate — not the mechanical-only bulk sync.
-                        viewModel.startWorktreePipeline(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.caption)
-                    .disabled(viewModel.benchBusy || pipelineRunning)
-
-                    Text(benchStatus(bench))
-                        .font(.caption2)
-                        .foregroundStyle(benchStatusColor(bench))
-                        .lineLimit(1)
-
-                    Spacer(minLength: 0)
-
                     Menu {
                         benchActionMenu(bench)
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        headerGlyph("ellipsis")
                     }
                     .accessibilityLabel("Bench actions")
-                    .disabled(viewModel.benchBusy)
+                    .disabled(actionsLocked)
+                    .opacity(actionsLocked ? 0.4 : 1)
+                }
+
+                // The bench is a sibling group to worktrees, not a child
+                // action list, so a state that needs the operator stays in the
+                // header where it is visible while the group is collapsed.
+                if benchNeedsAttention(bench) {
+                    Text(benchStatus(bench))
+                        .font(IonType.microLabel)
+                        .foregroundStyle(benchStatusColor(bench))
+                        .lineLimit(1)
+                        .padding(.leading, InboxLayout.chevronColumn + InboxLayout.iconColumn + IonSpace.compactInset * 2)
                 }
 
                 pipelineBanner
+                    .padding(.leading, InboxLayout.chevronColumn + InboxLayout.iconColumn + IonSpace.compactInset * 2)
             }
+            .inboxRow(level: 1, kind: .groupHeader)
             .confirmationDialog(
                 pipelineConfirmMessage,
                 isPresented: $confirmPipelineAi,
@@ -172,32 +175,20 @@ struct InboxBenchGroup<Row: View>: View {
                 confirmPipelineAi = phase == .awaitingAiConfirm
             }
 
-            if isExpanded {
-                if let terminalTab {
-                    InboxBenchTerminalRow(tab: terminalTab)
-                        .padding(.leading, IonSpace.sectionGap)
+            if let terminalTab {
+                InboxBenchTerminalRow(tab: terminalTab)
+                    .inboxRow(level: 2)
+            }
+            ForEach(conversationTabs) { tab in
+                benchConversationRow(tab, bench: bench)
+            }
+            if bench.lastAssemblyFailure == "verification", let evidence = bench.lastAssemblyVerification {
+                VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                    Text(evidence.command).font(IonType.mono)
+                    Text(evidence.outputTail).font(IonType.microLabel).lineLimit(4)
                 }
-
-                ForEach(conversationTabs) { tab in
-                    benchConversationRow(tab, bench: bench)
-                }
-                if bench.lastAssemblyFailure == "verification", let evidence = bench.lastAssemblyVerification {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(evidence.command).font(.caption2.monospaced())
-                        Text(evidence.outputTail).font(.caption2).lineLimit(4)
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, IonSpace.sectionGap)
-                }
-            } else {
-                ForEach(InboxNavigator.collapsedRows(occupants, activeTabId: activeTabId)) { tab in
-                    if tab.id == terminalTab?.id {
-                        InboxBenchTerminalRow(tab: tab)
-                            .padding(.leading, IonSpace.sectionGap)
-                    } else {
-                        benchConversationRow(tab, bench: bench)
-                    }
-                }
+                .foregroundStyle(.secondary)
+                .inboxRow(level: 2)
             }
         }
     }
@@ -210,6 +201,15 @@ struct InboxBenchGroup<Row: View>: View {
 
     private var pipelinePhase: RemoteWorktreePipeline.Phase? {
         pipeline?.phase
+    }
+
+    /// The tap target width of a bench header action: the touch minimum.
+    private static var actionSize: CGFloat { IonSpace.Metric.standardRowHeight }
+
+    /// A worktree or bench action is in flight on this repository, so every
+    /// action here is held until it finishes.
+    private var actionsLocked: Bool {
+        viewModel.worktreeActionsLocked(repoPath: state.repoPath)
     }
 
     private var pipelineRunning: Bool {
@@ -234,14 +234,14 @@ struct InboxBenchGroup<Row: View>: View {
                 case .syncing, .resolving, .assembling:
                     ProgressView().controlSize(.mini)
                 case .awaitingAiConfirm:
-                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(theme.statusWarning)
                 case .done:
-                    Image(systemName: "checkmark.circle").foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle").foregroundStyle(theme.statusDone)
                 case .failed:
-                    Image(systemName: "xmark.circle").foregroundStyle(.red)
+                    Image(systemName: "xmark.circle").foregroundStyle(theme.statusError)
                 }
                 Text(pipelineBannerText(pipeline, phase: phase))
-                    .font(.caption2)
+                    .font(IonType.microLabel)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 Spacer(minLength: 0)
@@ -249,7 +249,7 @@ struct InboxBenchGroup<Row: View>: View {
                     Button {
                         viewModel.dismissWorktreePipeline(repoPath: state.repoPath)
                     } label: {
-                        Image(systemName: "xmark").font(.caption2)
+                        Image(systemName: "xmark").font(IonType.microLabel)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Dismiss pipeline result")
@@ -257,7 +257,7 @@ struct InboxBenchGroup<Row: View>: View {
                     Button("Cancel") {
                         viewModel.cancelWorktreePipeline(repoPath: state.repoPath)
                     }
-                    .font(.caption2)
+                    .font(IonType.microLabel)
                     .buttonStyle(.plain)
                 }
             }
@@ -280,12 +280,11 @@ struct InboxBenchGroup<Row: View>: View {
 
     private func benchConversationRow(_ tab: RemoteTabState, bench: RemoteBench) -> some View {
         row(tab)
-            .padding(.leading, IonSpace.sectionGap)
-            .overlay(alignment: .trailing) {
+            .overlay(alignment: .topTrailing) {
                 if tab.id == bench.activeAutoFixTabId {
                     Image(systemName: "bolt.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .font(IonType.microLabel)
+                        .foregroundStyle(theme.statusWarning)
                         .symbolEffect(.variableColor.iterative, value: tab.id == bench.activeAutoFixTabId)
                         .accessibilityLabel("Auto-fix active")
                 }
@@ -311,11 +310,17 @@ struct InboxBenchGroup<Row: View>: View {
         )
     }
 
+    /// Whether the bench's state is one the operator should act on: an open
+    /// merge, a failed assembly, or members out of date.
+    private func benchNeedsAttention(_ bench: RemoteBench) -> Bool {
+        bench.resolutionOpen != nil || bench.lastAssembly == "failed" || state.behindMemberCount(of: bench) > 0
+    }
+
     private func benchStatusColor(_ bench: RemoteBench) -> Color {
-        if bench.resolutionOpen != nil { return .orange }
-        if bench.lastAssembly == "failed" { return .red }
-        if state.behindMemberCount(of: bench) > 0 { return .orange }
-        return .secondary
+        if bench.resolutionOpen != nil { return theme.statusWarning }
+        if bench.lastAssembly == "failed" { return theme.statusError }
+        if state.behindMemberCount(of: bench) > 0 { return theme.statusWarning }
+        return theme.textTertiary
     }
 
     @ViewBuilder
@@ -370,7 +375,13 @@ struct InboxBenchGroup<Row: View>: View {
         viewModel.navigateToTab(next.tabId)
     }
 
-    private func toggle(_ key: String) {
-        if expanded.contains(key) { expanded.remove(key) } else { expanded.insert(key) }
+    /// A header action glyph: one size, one tap target, for every action on
+    /// the bench header's trailing edge.
+    private func headerGlyph(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(IonType.meaning)
+            .foregroundStyle(theme.textSecondary)
+            .frame(width: Self.actionSize, height: InboxLayout.minHeight(.groupHeader))
+            .contentShape(Rectangle())
     }
 }

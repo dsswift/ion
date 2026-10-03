@@ -960,10 +960,10 @@
     {
       "id": "conversation-status-bar",
       "term": "Conversation Status Bar",
-      "definition": "The strip that shows conversation status and its inline controls: the model picker, the permission mode, and the context indicator.",
+      "definition": "The conversation's inline controls, rendered in the controls row of the Input Bar: the model picker, the permission mode, the thinking effort, and the context indicator.",
       "domain": "clients",
       "kind": "ui-component",
-      "status": "review-needed",
+      "status": "canonical",
       "aliases": [
         "status bar"
       ],
@@ -984,7 +984,7 @@
           "path": "desktop/src/renderer/components/ComposerControls.tsx"
         }
       ],
-      "notes": "Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol."
+      "notes": "Both clients place these controls inside the Input Bar, under the message field. iOS keeps the ConversationStatusBar symbol name for the row; the Desktop symbol is ComposerControls. The running and waiting indicator is not part of this concept on either client: iOS renders it in ConversationActivityStrip above the Input Bar."
     },
     {
       "id": "conversation-telemetry",

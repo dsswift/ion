@@ -3,6 +3,7 @@ package extcontext
 import (
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/procres"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -112,6 +113,9 @@ type dispatchSpanEnd struct {
 	toolCount                int
 	childConversationID      string
 	recalled                 bool
+	// startDescriptors is the engine process's descriptor reading taken when
+	// the dispatch was accepted.
+	startDescriptors procres.Descriptors
 }
 
 // finishDispatch emits the engine_dispatch_end workflow event on the parent
@@ -142,7 +146,7 @@ func endDispatchSpan(span *telemetry.SpanHandle, e dispatchSpanEnd) {
 	if span == nil {
 		return
 	}
-	span.End(map[string]any{
+	attrs := map[string]any{
 		"exit_code":                   e.exitCode,
 		"cost_usd":                    e.cost,
 		"input_tokens":                e.inputTokens,
@@ -153,7 +157,19 @@ func endDispatchSpan(span *telemetry.SpanHandle, e dispatchSpanEnd) {
 		"tool_count":                  e.toolCount,
 		"child_conversation_id":       e.childConversationID,
 		"recalled":                    e.recalled,
-	})
+	}
+	// The engine process's descriptor reading at the end of the dispatch, the
+	// reading it started from, and the change between them. Process-wide, so
+	// the delta includes concurrent work.
+	end := procres.ReadDescriptors()
+	end.Fields(attrs)
+	if e.startDescriptors.Open != procres.Unknown {
+		attrs["fd_open_start"] = e.startDescriptors.Open
+	}
+	if delta, ok := end.Delta(e.startDescriptors); ok {
+		attrs["fd_delta"] = delta
+	}
+	span.End(attrs)
 }
 
 // endDispatchSpanPanic closes the dispatch.agent span on the panic-recovery

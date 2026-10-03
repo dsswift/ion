@@ -1,41 +1,41 @@
 import Foundation
 
-// MARK: - Keyboard Utility Bar Toggles
+// MARK: - Keyboard Utility Bar Toggle
 //
 // Extracted from SessionViewModel.swift per ios/AGENTS.md: the parent
-// file is allowlisted with "don't extend; extract". These two computed
-// properties were added by commit `acee1738` for the keyboard utility
-// bar feature (paste / select all / tab / new line / undo / redo /
-// dismiss). They are pure UserDefaults-backed computed properties with
-// no internal SessionViewModel state — moving them to an extension
-// keeps the parent file under cap and matches the existing
-// SessionViewModel+*.swift extension pattern.
+// file is allowlisted with "don't extend; extract". A pure
+// UserDefaults-backed computed property with no internal SessionViewModel
+// state, so it lives in an extension like the other SessionViewModel+*.swift
+// files.
 //
-// Defaults: both bars are on by default so the feature is discoverable;
-// the toggles in Settings → Appearance let users opt out per-surface.
-// The independence (separate keys for CLI and Engine) preserves the
-// original design — a user who finds the bar useful in one context but
-// noisy in the other can disable just that surface.
+// One toggle, one surface. There used to be two keys, one for the CLI input
+// bar and one for the engine view, from when those were two views. Since the
+// #256 merge every non-terminal conversation renders through one
+// ConversationView with one composer, so the second key had no consumer and
+// the two Settings rows controlled the same strip.
 
 extension SessionViewModel {
-    /// Whether the keyboard utility bar (paste / select all / tab / undo /
-    /// redo / dismiss) is shown above the CLI/conversation input bar
-    /// (`InputBar`). iOS-local, on by default. Independent of the engine
-    /// toggle so a user who finds the bar useful in one context but noisy
-    /// in the other can disable just that surface.
-    var showKeyboardUtilityBarInCLI: Bool {
-        get { UserDefaults.standard.object(forKey: "showKeyboardUtilityBarInCLI") == nil
-              ? true
-              : UserDefaults.standard.bool(forKey: "showKeyboardUtilityBarInCLI") }
-        set { UserDefaults.standard.set(newValue, forKey: "showKeyboardUtilityBarInCLI") }
+    /// Whether the keyboard utility bar (paste / select all / tab / new line /
+    /// undo / redo / dismiss) is shown above the composer while the keyboard
+    /// is up. iOS-local, on by default so the feature is discoverable.
+    ///
+    /// Persisted under the key the engine-view toggle used, so a phone that
+    /// had switched the bar off keeps it off across this consolidation. The
+    /// retired CLI key is read once as a fallback for the same reason.
+    var showKeyboardUtilityBar: Bool {
+        get {
+            let defaults = UserDefaults.standard
+            if defaults.object(forKey: Self.keyboardUtilityBarKey) != nil {
+                return defaults.bool(forKey: Self.keyboardUtilityBarKey)
+            }
+            if defaults.object(forKey: Self.legacyCLIKeyboardUtilityBarKey) != nil {
+                return defaults.bool(forKey: Self.legacyCLIKeyboardUtilityBarKey)
+            }
+            return true
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Self.keyboardUtilityBarKey) }
     }
 
-    /// Whether the keyboard utility bar is shown above the engine view's
-    /// input bar (`ConversationView.engineInputBar`). iOS-local, on by default.
-    var showKeyboardUtilityBarInEngine: Bool {
-        get { UserDefaults.standard.object(forKey: "showKeyboardUtilityBarInEngine") == nil
-              ? true
-              : UserDefaults.standard.bool(forKey: "showKeyboardUtilityBarInEngine") }
-        set { UserDefaults.standard.set(newValue, forKey: "showKeyboardUtilityBarInEngine") }
-    }
+    static let keyboardUtilityBarKey = "showKeyboardUtilityBarInEngine"
+    static let legacyCLIKeyboardUtilityBarKey = "showKeyboardUtilityBarInCLI"
 }

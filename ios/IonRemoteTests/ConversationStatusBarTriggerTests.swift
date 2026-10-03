@@ -33,10 +33,8 @@ final class ConversationStatusBarTriggerTests: XCTestCase {
             isRunning: false,
             permissionMode: nil,
             availableModels: [],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {},
             onTapContextIndicator: { called = true }
         )
         // The view renders through SwiftUI body evaluation at layout time;
@@ -60,10 +58,8 @@ final class ConversationStatusBarTriggerTests: XCTestCase {
             isRunning: false,
             permissionMode: nil,
             availableModels: [],
-            attachmentCount: 0,
             onSelectModel: { _, _ in },
             onToggleMode: {},
-            onTapAttachments: {}
             // onTapContextIndicator intentionally omitted — must compile with default
         )
         // Must not crash

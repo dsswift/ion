@@ -72,6 +72,29 @@ extension SessionViewModel {
         set { worktreeUI.benchBusy = newValue }
     }
 
+    /// Whether a worktree or bench action is in flight for `repoPath`: a
+    /// single-worktree operation, a bench operation, or a running sync
+    /// pipeline. While true, every action control on that repository's
+    /// worktrees and bench is disabled, so a second action cannot be started
+    /// on top of the first. The desktop gates its controls the same way.
+    func worktreeActionsLocked(repoPath: String) -> Bool {
+        Self.worktreeActionsLocked(
+            busyPath: worktreeBusyPath,
+            benchBusy: benchBusy,
+            pipelinePhase: worktreePipelines[repoPath]?.phase
+        )
+    }
+
+    static func worktreeActionsLocked(
+        busyPath: String?,
+        benchBusy: Bool,
+        pipelinePhase: RemoteWorktreePipeline.Phase?
+    ) -> Bool {
+        if busyPath != nil || benchBusy { return true }
+        guard let pipelinePhase else { return false }
+        return pipelinePhase != .done && pipelinePhase != .failed
+    }
+
     var pendingBenchConversation: PendingBenchConversation? {
         get { worktreeUI.pendingBenchConversation }
         set { worktreeUI.pendingBenchConversation = newValue }

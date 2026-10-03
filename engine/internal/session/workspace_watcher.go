@@ -13,9 +13,8 @@ import (
 // workspace_file_changed watcher skips when EngineConfig.WorkspaceWatchIgnore
 // is empty. The list targets the directories most repos generate large
 // amounts of churn in (.git, node_modules, build outputs, virtualenvs) so
-// the watcher does not exhaust inotify descriptors on Linux or file
-// descriptors on macOS (kqueue opens an fd per file in every watched
-// directory). Editor swap and tmp files round out the list because they are
+// the watcher does not spend inotify watches on them on Linux, or deliver
+// their event storms on every platform. Editor swap and tmp files round out the list because they are
 // universally noisy.
 //
 // Every pattern carries the `**/` prefix so it matches AT ANY DEPTH, not just
@@ -24,8 +23,9 @@ import (
 // nested `desktop/node_modules/x`. The root-anchored form (`node_modules/**`)
 // was a production defect: in a monorepo, nested node_modules trees were
 // watched, and one npm ci storm (delete + recreate of ~60k files) exhausted
-// the engine's fd table on macOS — kqueue holds an fd per watched file — and
-// starved every session in the process of pipes and sockets.
+// the engine's fd table on macOS, which then watched with kqueue and held an
+// fd per watched file, and starved every session in the process of pipes and
+// sockets.
 //
 // Harness engineers who need different behavior (e.g. watching node_modules
 // for a dependency-debugging extension, or excluding a custom build dir)
@@ -99,8 +99,7 @@ func (m *Manager) sessionExtGroup(s *engineSession) *extension.ExtensionGroup {
 // startWorkspaceWatcher acquires a shared watcher from the Manager's pool
 // for this session's working directory. Returns a release function (or nil
 // when no watcher should run). Multiple sessions on the same directory
-// share one underlying filesystem watcher, avoiding file-descriptor
-// exhaustion on macOS where kqueue requires one FD per watched directory.
+// share one underlying filesystem watcher rather than one each.
 //
 // A watcher has two consumers: extensions, which receive the workspace hooks,
 // and wiki-link maintenance, which is an engine feature and needs renames

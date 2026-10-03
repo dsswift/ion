@@ -103,30 +103,30 @@ struct ConnectionQualityView: View {
 
     @ViewBuilder
     private func popoverContent(quality: ConnectionQuality) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: IonSpace.compactGap) {
             Label(quality.transportLabel, systemImage: transportIcon(quality: quality))
-                .font(.headline)
+                .font(IonType.bodyStrong)
 
-            HStack(spacing: 6) {
+            HStack(spacing: IonSpace.compactInset) {
                 signalBars(quality: quality)
                 Text(quality.signalLevel.label)
                     .foregroundStyle(quality.signalLevel.color)
             }
-            .font(.subheadline)
+            .font(IonType.meaning)
 
             if let latency = quality.latencyLabel {
                 Label("Latency: \(latency)", systemImage: "clock")
-                    .font(.subheadline)
+                    .font(IonType.meaning)
                     .foregroundStyle(.secondary)
             }
 
             if quality.lastBuffered > 0 {
                 Label("Server queue: \(quality.lastBuffered)", systemImage: "tray.full")
-                    .font(.subheadline)
+                    .font(IonType.meaning)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding()
+        .padding(IonSpace.rowInset)
         .presentationCompactAdaptation(.popover)
     }
 

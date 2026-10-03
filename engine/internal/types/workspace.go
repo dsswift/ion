@@ -28,15 +28,17 @@ type WorkspaceConfig struct {
 	SessionReapGraceMs int64 `json:"sessionReapGraceMs,omitempty"` // default: 300000 (5min)
 
 	// MaxWatchedDirs caps the number of directories a single workspace
-	// watcher attaches a filesystem descriptor to. Each watched directory
-	// consumes one kqueue FD (macOS) or inotify watch (Linux), so an
-	// unbounded walk of a pathological tree (symlink cycle, giant monorepo,
-	// or a root mistakenly pointed at "/" or "$HOME") can exhaust the
-	// per-process FD limit. When the cap is reached the watcher keeps working
-	// for the directories it did attach and stops descending.
+	// watcher attaches to a per-directory event source. Each watched
+	// directory holds one inotify watch (Linux), so an unbounded walk of a
+	// pathological tree (symlink cycle, giant monorepo, or a root mistakenly
+	// pointed at "/" or "$HOME") can exhaust a per-process kernel limit. When
+	// the cap is reached the watcher keeps working for the directories it did
+	// attach and stops descending. macOS (one FSEvents stream) and Windows
+	// (one root handle) watch each root with a single subscription that
+	// attaches nothing per directory, so the cap does not apply there.
 	//
 	// Tuning: comfortably above the consumer's largest real working tree, but
-	// below the FD ceiling even with several watchers running concurrently.
+	// below the kernel limit even with several watchers running concurrently.
 	// Zero means the compiled default (50000).
 	MaxWatchedDirs int `json:"maxWatchedDirs,omitempty"` // default: 50000
 

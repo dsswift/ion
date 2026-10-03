@@ -120,7 +120,7 @@ extension ConversationStatusBar {
         engineEffectiveLimit: Int? = nil,
     ) -> ContextCapacity? {
         guard let occupancyTokens, occupancyTokens > 0 else { return nil }
-        let selected = availableModels.first(where: { $0.id == modelId })
+        let selected = ModelCatalog.entry(for: modelId, in: availableModels)
         // The engine's answer is only authoritative while the operator has not
         // moved the picker to a model the engine has not run. A selected model
         // that declares its own limit or window takes precedence.
@@ -180,7 +180,7 @@ extension ConversationStatusBar {
         availableModels: [RemoteModelEntry],
         engineContextWindow: Int?,
     ) -> Int? {
-        if let model = availableModels.first(where: { $0.id == modelId }), model.contextWindow > 0 {
+        if let model = ModelCatalog.entry(for: modelId, in: availableModels), model.contextWindow > 0 {
             return model.contextWindow
         }
         if let engineWindow = engineContextWindow, engineWindow > 0 {

@@ -47,7 +47,7 @@ extension TabListView {
                 Image(systemName: "sidebar.leading")
                     .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(.tertiary)
-                Text("Select a tab")
+                Text("Select a conversation")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text("Choose a conversation from the sidebar.")
@@ -72,7 +72,7 @@ extension TabListView {
         .contextMenu {
             if let project = defaultProject {
                 Button { requestNewConversation(project: project) } label: {
-                    Label("New Tab", systemImage: "plus")
+                    Label("New Conversation", systemImage: "plus.bubble")
                 }
                 Button { viewModel.createTerminalTab(workingDirectory: project.directory) } label: {
                     Label("New Terminal", systemImage: "terminal")
@@ -85,12 +85,12 @@ extension TabListView {
     var emptyStateOverlay: some View {
         if viewModel.tabs.isEmpty {
             VStack(spacing: 12) {
-                Image(systemName: "terminal")
+                Image(systemName: "bubble.left.and.text.bubble.right")
                     .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                     .foregroundStyle(theme.accent)
-                Text("No Tabs")
+                Text("No conversations yet")
                     .font(.title3.weight(.semibold))
-                Text("Tap + to create a new tab or pull to refresh.")
+                Text("Tap + to start one, or pull down to refresh.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -110,7 +110,7 @@ extension TabListView {
                 Text("No Results")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text("No tabs match \"\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\".")
+                Text("No conversations match \"\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\".")
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)

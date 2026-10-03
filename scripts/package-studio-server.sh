@@ -74,10 +74,10 @@ if [ -n "${ION_ENGINE_BIN:-}" ]; then
   cp "$ION_ENGINE_BIN" "$BUNDLE/bin/ion"
   echo "using prebuilt engine $ION_ENGINE_BIN"
 else
-  # CGO on for darwin (Local Network warmup probe, engine/Makefile), off for
-  # linux so the binary is static. A darwin/amd64 build from an arm64 Mac
-  # works because clang can emit x86_64 natively; a linux build from a Mac
-  # is a plain static cross-compile.
+  # CGO on for darwin (Local Network warmup probe and FSEvents watcher,
+  # engine/Makefile), off for linux so the binary is static. A darwin/amd64
+  # build from an arm64 Mac works because clang can emit x86_64 natively; a
+  # linux build from a Mac is a plain static cross-compile.
   CGO=0; [ "$GOOS" = darwin ] && CGO=1
   if [ -n "${ION_BUILD_COMMIT:-}" ]; then
     BUILD_VERSION="$ENGINE_VERSION+$ION_BUILD_COMMIT$([ "${ION_BUILD_DIRTY:-0}" = 1 ] && echo '.dirty')"

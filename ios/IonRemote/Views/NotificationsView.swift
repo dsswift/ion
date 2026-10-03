@@ -57,7 +57,7 @@ struct NotificationsView: View {
             .toolbar {
                 if !unreadNotifications.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Clear All") { showClearAllConfirm = true }
+                        Button("Mark All Read") { showClearAllConfirm = true }
                             .tint(theme.accent)
                     }
                 }
@@ -72,7 +72,7 @@ struct NotificationsView: View {
                 isPresented: $showClearAllConfirm,
                 titleVisibility: .visible
             ) {
-                Button("Mark All as Read", role: .destructive) { clearAll() }
+                Button("Mark All as Read") { clearAll() }
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(item: $selectedResource) { item in
@@ -97,7 +97,7 @@ struct NotificationsView: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: IonTheme.md) {
+        VStack(spacing: IonSpace.contentGap) {
             Image(systemName: "bell.slash")
                 .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text
                 .foregroundStyle(.tertiary)
@@ -108,7 +108,7 @@ struct NotificationsView: View {
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, IonTheme.xl)
+                .padding(.horizontal, IonSpace.sectionGap)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -119,10 +119,10 @@ struct NotificationsView: View {
         List(notifications) { item in
             ResourceRow(item: item, resourceStore: resourceStore, viewModel: viewModel) { selectedResource = $0 }
                 .listRowInsets(EdgeInsets(
-                    top: IonTheme.sm,
-                    leading: IonTheme.lg,
-                    bottom: IonTheme.sm,
-                    trailing: IonTheme.lg
+                    top: IonSpace.compactGap,
+                    leading: IonSpace.rowInset,
+                    bottom: IonSpace.compactGap,
+                    trailing: IonSpace.rowInset
                 ))
         }
         .listStyle(.plain)
@@ -157,25 +157,26 @@ private struct ResourceRow: View {
             }
             onSelect(item)
         } label: {
-            VStack(alignment: .leading, spacing: IonTheme.xs) {
-                HStack(alignment: .firstTextBaseline, spacing: IonTheme.sm) {
+            VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+                HStack(alignment: .firstTextBaseline, spacing: IonSpace.compactGap) {
                     Circle()
                         .fill(isRead ? Color.clear : theme.accent)
                         .frame(width: 7, height: 7)
                         .padding(.top, 3) // design-geometry: 3pt inset; below the 4pt rhythm floor
                     Text(title)
-                        .font(.subheadline.weight(.medium))
+                        .font(isRead ? IonType.body : IonType.bodyStrong)
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(formattedTime)
-                        .font(.caption)
+                        .font(IonType.metadata)
                         .foregroundStyle(.tertiary)
                 }
                 Text(liveItem.content.isEmpty ? "Tap to view…" : String(liveItem.content.prefix(120)))
-                    .font(.caption)
+                    .font(IonType.meaning)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
-                    .padding(.leading, IonTheme.md)
+                    .padding(.leading, IonSpace.contentGap)
             }
         }
         .buttonStyle(.plain)
@@ -233,15 +234,15 @@ struct ResourceDetailView: View {
                         // every other kind keeps the markdown path.
                         if let chart = chartContent {
                             ChartCardView(content: chart)
-                                .padding(IonTheme.lg)
+                                .padding(IonSpace.rowInset)
                                 .onAppear { loadingContent = false }
                         } else {
                             MarkdownContentView(blocks: MarkdownFormatter.parse(liveItem.content))
-                                .padding(IonTheme.lg)
+                                .padding(IonSpace.rowInset)
                                 .onAppear { loadingContent = false }
                         }
                     } else if contentFailed {
-                        HStack(spacing: IonTheme.sm) {
+                        HStack(spacing: IonSpace.compactGap) {
                             Image(systemName: "exclamationmark.circle")
                                 .foregroundStyle(.secondary)
                             Text("Content unavailable")
@@ -256,16 +257,16 @@ struct ResourceDetailView: View {
                             .font(.caption)
                             .tint(theme.accent)
                         }
-                        .padding(IonTheme.lg)
+                        .padding(IonSpace.rowInset)
                     } else {
-                        HStack(spacing: IonTheme.sm) {
+                        HStack(spacing: IonSpace.compactGap) {
                             ProgressView()
                                 .scaleEffect(0.8)
                             Text("Loading…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(IonTheme.lg)
+                        .padding(IonSpace.rowInset)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -32,6 +32,15 @@ final class VoiceService {
         didSet { UserDefaults.standard.set(voiceSystemPrompt, forKey: "voiceSystemPrompt") }
     }
 
+    /// The voice configuration as it travels to the server. Compared before
+    /// each send so a snapshot apply only puts a frame on the wire when
+    /// something changed.
+    struct WireConfig: Equatable, Sendable {
+        let enabled: Bool
+        let mode: String
+        let systemPrompt: String?
+    }
+
     private(set) var isSpeaking = false
     private(set) var speakingMessageId: String?
     private(set) var speakingTabId: String?

@@ -54,25 +54,25 @@ extension EngineMessageRow {
         }
     }
 
+    /// The delivery state as one segment of the bubble's metadata line. The
+    /// caller sets the font; this only picks the glyph, the words, and the
+    /// colour that carries the state.
     @ViewBuilder
     func deliveryStateLabel(_ state: PromptDeliveryState) -> some View {
         switch state {
         case .queued:
-            HStack(spacing: 4) {
+            HStack(spacing: IonSpace.hairlineGap) {
                 ProgressView()
                     .controlSize(.mini)
                 Text("Sending")
-                    .font(.caption2)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.textSecondary)
         case .accepted:
             EmptyView()
         case .rejected(let error):
-            HStack(spacing: 4) {
+            HStack(spacing: IonSpace.hairlineGap) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
                 Text(error ?? "Not delivered")
-                    .font(.caption2)
                     .lineLimit(1)
             }
             .foregroundStyle(theme.statusError)

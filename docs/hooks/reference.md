@@ -443,7 +443,7 @@ type WorkspaceFileChangedInfo struct {
 }
 ```
 
-`workspace_file_changed` is backed by an engine-owned recursive fsnotify watcher rooted at `EngineConfig.WorkingDirectory`. Defaults ignore `.git/**`, `node_modules/**`, `dist/**`, `build/**`, `target/**`, `.next/**`, `.nuxt/**`, `.venv/**`, `__pycache__/**`, `.ion/**`, plus editor noise (`.DS_Store`, `*.swp`, `*.swo`, `*.tmp`, `*~`). Override the whole list via `EngineConfig.WorkspaceWatchIgnore` (non-empty array replaces the defaults; it does not merge).
+`workspace_file_changed` is backed by an engine-owned recursive watcher (FSEvents on macOS, one root handle on Windows, inotify on Linux) rooted at `EngineConfig.WorkingDirectory`. Defaults ignore `.git/**`, `node_modules/**`, `dist/**`, `build/**`, `target/**`, `.next/**`, `.nuxt/**`, `.venv/**`, `__pycache__/**`, `.ion/**`, plus editor noise (`.DS_Store`, `*.swp`, `*.swo`, `*.tmp`, `*~`). Override the whole list via `EngineConfig.WorkspaceWatchIgnore` (non-empty array replaces the defaults; it does not merge).
 
 `workspace_file_changed` is delivered only to an extension that registered a handler for it. A busy tree produces many events, and an extension that never asked for them pays nothing.
 

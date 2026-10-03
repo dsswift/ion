@@ -35,7 +35,7 @@ const recursiveNotifyFilter = windows.FILE_NOTIFY_CHANGE_FILE_NAME |
 
 // errChangeOverflow reports that more changes happened than the buffer could
 // hold, so some were not reported.
-var errChangeOverflow = errors.New("watcher: change buffer overflowed, events were lost")
+var errChangeOverflow = fmt.Errorf("%w: change buffer overflowed", errEventsDropped)
 
 type recursiveSource struct {
 	root   string
@@ -54,7 +54,11 @@ type recursiveSource struct {
 	closeOnce sync.Once
 }
 
-func newEventSource(root string) (eventSource, error) {
+// newEventSource builds the source for a watcher root: one recursive handle
+// on the root.
+var newEventSource = newRecursiveSource
+
+func newRecursiveSource(root string) (eventSource, error) {
 	rootPtr, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		return nil, err
@@ -107,6 +111,7 @@ func (s *recursiveSource) Add(dir string) error {
 
 func (s *recursiveSource) Events() <-chan fsnotify.Event { return s.events }
 func (s *recursiveSource) Errors() <-chan error          { return s.errors }
+func (s *recursiveSource) Recursive() bool               { return true }
 
 func (s *recursiveSource) Close() error {
 	var err error

@@ -198,6 +198,10 @@ extension SessionViewModel {
     func startWorktreePipeline(repoPath: String, sourceBranch: String) {
         DiagnosticLog.log("pipeline start requested", tag: "worktree",
                           fields: ["repo": repoPath, "source_branch": sourceBranch])
+        // Busy from the tap, so the control answers before the server's first
+        // pipeline push. The next worktree state push or op result clears it,
+        // by which time the pipeline's own phase is holding the lock.
+        benchBusy = true
         send(.worktreePipelineStart(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
     }
 

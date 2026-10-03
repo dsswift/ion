@@ -244,7 +244,7 @@ extension TabListView {
     @ViewBuilder
     func conversationAlerts<V: View>(_ content: V) -> some View {
         content
-            .alert("Rename Tab", isPresented: .init(
+            .alert("Rename conversation", isPresented: .init(
                 get: { renamingTabId != nil },
                 set: { if !$0 { renamingTabId = nil } }
             )) {
@@ -260,7 +260,7 @@ extension TabListView {
                     renamingTabId = nil
                 }
             } message: {
-                Text("Enter a new name for this tab.")
+                Text("Enter a new name for this conversation.")
             }
             // Close confirmation for a worktree conversation that still holds work.
             //
