@@ -889,7 +889,7 @@ Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updat
 | Category | Examples |
 |----------|---------|
 | **Lifecycle** | `session_start`, `session_end`, `before_prompt`, `turn_start`, `turn_end`, `message_start`, `message_end`, `tool_start`, `tool_end`, `tool_call`, `on_error`, `agent_start`, `agent_end` |
-| **Session Management** | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `compact_summary_request` |
+| **Session Management** | `session_before_compact`, `session_compact`, `session_before_fork`, `session_fork`, `session_before_switch`, `session_before_release`, `compact_summary_request` |
 | **Pre-Action** | `before_agent_start`, `before_provider_request` |
 | **Content** | `context`, `message_update`, `tool_result`, `input`, `model_select`, `user_bash` |
 | **Per-Tool Call** | `bash_tool_call`, `read_tool_call`, `write_tool_call`, `edit_tool_call`, `grep_tool_call`, `glob_tool_call`, `agent_tool_call` |
