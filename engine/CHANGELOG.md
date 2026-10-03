@@ -18,6 +18,14 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.1](https://github.com/dsswift/ion/compare/engine-v1.97.0...engine-v1.97.1) (2026-10-03)
+
+### Bug Fixes
+
+* **engine:** watch windows workspaces with one root handle (#472) ([c9268bd](https://github.com/dsswift/ion/commit/c9268bddcd1fcbce428b0e09b51bc409b8aac7cf))
+* **engine:** repair stale and racy engine tests (#472) ([5dd6f2c](https://github.com/dsswift/ion/commit/5dd6f2c8fa223c93867aeb6f9e10e0af1867d74c))
+* **engine:** start the windows change read before watching (#472) ([6d5ef4d](https://github.com/dsswift/ion/commit/6d5ef4db4b7db2560e856d4138cefa9e0405160a))
+
 ## [1.97.0](https://github.com/dsswift/ion/compare/engine-v1.96.1...engine-v1.97.0) (2026-10-03)
 
 ### Features
