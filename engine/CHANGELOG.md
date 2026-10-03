@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.3](https://github.com/dsswift/ion/compare/engine-v1.97.2...engine-v1.97.3) (2026-10-03)
+
+### Bug Fixes
+
+* **engine:** park the heartbeat in session tests (#474) ([aa7099c](https://github.com/dsswift/ion/commit/aa7099c832f0671f4526b1822ee6747a4eb676d5))
+
 ## [1.97.2](https://github.com/dsswift/ion/compare/engine-v1.97.1...engine-v1.97.2) (2026-10-03)
 
 ### Bug Fixes

@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.7.1](https://github.com/dsswift/ion/compare/ios-v2.7.0...ios-v2.7.1) (2026-10-03)
+
+### Bug Fixes
+
+* **ios:** keep policy hash and on-host flag on the welcome (#475) ([0f902a8](https://github.com/dsswift/ion/commit/0f902a84bd3c16a5b5327ee00a0b9bfaae012b76))
+
 ## [2.7.0](https://github.com/dsswift/ion/compare/ios-v2.6.1...ios-v2.7.0) (2026-10-03)
 
 ### Features
