@@ -2342,8 +2342,8 @@
           "platform": "sdk",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "on(hook: string",
-          "path": "engine/extensions/sdk/ion-sdk/runtime.ts"
+          "symbol": "on(hook: string, handler: HookHandler<any>): void;",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
         },
         {
           "platform": "engine",
@@ -3729,7 +3729,7 @@
           "platform": "sdk",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>",
+          "symbol": "protectedOperation(",
           "path": "engine/extensions/sdk/ion-sdk/types.ts"
         }
       ]

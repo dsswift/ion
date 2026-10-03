@@ -1056,7 +1056,7 @@ A named point in the engine lifecycle where an extension can observe, change, or
 - **Contract:** `public-sdk`
 - **Implementations:**
   - `engine` / `code` / `go`: `type HookHandler` in `engine/internal/extension/sdk_types.go`
-  - `sdk` / `code` / `typescript`: `on(hook: string` in `engine/extensions/sdk/ion-sdk/runtime.ts`
+  - `sdk` / `code` / `typescript`: `on(hook: string, handler: HookHandler<any>): void;` in `engine/extensions/sdk/ion-sdk/types.ts`
   - `engine` / `doc` / `markdown`: `before_prompt` in `docs/hooks/reference.md`
 - **Notes:** The engine owns the mechanism. The by-name reference is the authority; never pin a hook count in prose.
 
@@ -1252,7 +1252,7 @@ An outbound HTTP call the operator declares by name in the global engine.json or
 - **Contract:** `public-sdk`
 - **Implementations:**
   - `engine` / `code` / `go`: `func DoProtectedOperation` in `engine/internal/extension/protected_operation.go`
-  - `sdk` / `code` / `typescript`: `protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `typescript`: `protectedOperation(` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 ### public-contract
 
