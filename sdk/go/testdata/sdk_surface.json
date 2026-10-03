@@ -202,6 +202,7 @@
     "schedule_registered",
     "session_before_compact",
     "session_before_fork",
+    "session_before_release",
     "session_before_switch",
     "session_compact",
     "session_end",
