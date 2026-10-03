@@ -98,3 +98,45 @@ func TestEngineRuntimeConfig_GetWorkspace_NilSafe(t *testing.T) {
 		t.Errorf("GetWorkspace().MaxWatchedDirsOr() = %d, want 7", got)
 	}
 }
+
+func TestWorkspaceConfig_SessionIdleRelease(t *testing.T) {
+	no := false
+	cases := []struct {
+		name    string
+		in      *WorkspaceConfig
+		after   time.Duration
+		timed   bool
+		onAbort bool
+	}{
+		{"nil uses defaults", nil, DefaultSessionIdleRelease, true, true},
+		{"zero uses defaults", &WorkspaceConfig{}, DefaultSessionIdleRelease, true, true},
+		{"configured duration", &WorkspaceConfig{SessionIdleReleaseMs: 5000}, 5 * time.Second, true, true},
+		{"negative disables timed release only", &WorkspaceConfig{SessionIdleReleaseMs: -1}, 0, false, true},
+		{"abort release off", &WorkspaceConfig{ReleaseIdleSessionOnAbort: &no}, DefaultSessionIdleRelease, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			after, timed := tc.in.SessionIdleRelease()
+			if after != tc.after || timed != tc.timed {
+				t.Errorf("SessionIdleRelease() = (%s, %v), want (%s, %v)", after, timed, tc.after, tc.timed)
+			}
+			if got := tc.in.ReleaseIdleSessionOnAbortEnabled(); got != tc.onAbort {
+				t.Errorf("ReleaseIdleSessionOnAbortEnabled() = %v, want %v", got, tc.onAbort)
+			}
+		})
+	}
+}
+
+func TestMergeWorkspace_SessionIdleRelease(t *testing.T) {
+	no := false
+	merged := MergeWorkspace(
+		&WorkspaceConfig{SessionIdleReleaseMs: 60000, ReleaseIdleSessionOnAbort: &no},
+		&WorkspaceConfig{SessionIdleReleaseMs: -1},
+	)
+	if merged.SessionIdleReleaseMs != -1 {
+		t.Errorf("SessionIdleReleaseMs = %d, want higher layer's -1", merged.SessionIdleReleaseMs)
+	}
+	if merged.ReleaseIdleSessionOnAbortEnabled() {
+		t.Error("lower layer's releaseIdleSessionOnAbort=false was lost")
+	}
+}

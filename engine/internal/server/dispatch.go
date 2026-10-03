@@ -161,7 +161,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// manager, so a client that predates the field is unaffected.
 		scope := session.ParseAbortScope(cmd.AbortScope)
 		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key, "abort_scope": string(scope)})
-		s.manager.SendAbortScoped(cmd.Key, scope)
+		s.manager.AbortOrRelease(cmd.Key, scope)
 
 	case "abort_agent":
 		// Compatibility command for name-addressed process handles. The empty-name

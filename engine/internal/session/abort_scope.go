@@ -135,7 +135,7 @@ func (m *Manager) SendAbortScoped(key string, scope AbortScope) {
 		s.operatorAbortRunID = rid
 		s.operatorAbortScope = scope
 	} else {
-		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: no run to record operator stop against", map[string]any{"key": key, "abort_scope": string(scope)})
+		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: no run to record operator stop against", map[string]any{"key": key, "abort_scope": string(scope)})
 	}
 	if scope == AbortScopeOrchestrator {
 		s.orchestratorAbortRunID = rid
@@ -162,7 +162,7 @@ func (m *Manager) SendAbortScoped(key string, scope AbortScope) {
 		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: cancelling for", map[string]any{"run_id": rid, "key": key, "abort_scope": string(scope)})
 		m.backend.Cancel(rid)
 	} else {
-		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: no active requestid for", map[string]any{"key": key, "abort_scope": string(scope)})
+		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: no active requestid for", map[string]any{"key": key, "abort_scope": string(scope)})
 	}
 
 	if scope == AbortScopeAll || scope == AbortScopeAllWork {

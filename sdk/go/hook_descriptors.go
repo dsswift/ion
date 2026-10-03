@@ -10,7 +10,7 @@
 //
 //	none        -> NoResult      (the engine discards the return)
 //	string      -> StringResult  (non-empty replaces an engine value)
-//	bool        -> BoolResult    (false cancels)
+//	bool        -> BoolResult    (true cancels)
 //	block       -> ToolCallResult
 //	perToolCall -> PerToolCallResult
 //	rejection   -> ContextRejectionResult
@@ -74,13 +74,13 @@ var HookAgentEnd = Hook[AgentInfo, NoResult]{Name: HookNameAgentEnd}
 
 // --- Session management ---
 
-// HookSessionBeforeCompact fires before compaction. Return false to cancel.
+// HookSessionBeforeCompact fires before compaction. Return true to cancel.
 var HookSessionBeforeCompact = Hook[CompactionInfo, BoolResult]{Name: HookNameSessionBeforeCompact}
 
 // HookSessionCompact fires after compaction completes.
 var HookSessionCompact = Hook[CompactionInfo, NoResult]{Name: HookNameSessionCompact}
 
-// HookSessionBeforeFork fires before a session fork. Return false to cancel.
+// HookSessionBeforeFork fires before a session fork. Return true to cancel.
 var HookSessionBeforeFork = Hook[ForkInfo, BoolResult]{Name: HookNameSessionBeforeFork}
 
 // HookSessionFork fires after a session fork.
@@ -88,6 +88,10 @@ var HookSessionFork = Hook[ForkInfo, NoResult]{Name: HookNameSessionFork}
 
 // HookSessionBeforeSwitch fires before the session switches conversations.
 var HookSessionBeforeSwitch = Hook[NoPayload, NoResult]{Name: HookNameSessionBeforeSwitch}
+
+// HookSessionBeforeRelease fires before the engine releases a session that has
+// nothing left to do. Return true to keep the session.
+var HookSessionBeforeRelease = Hook[SessionReleaseInfo, BoolResult]{Name: HookNameSessionBeforeRelease}
 
 // HookCompactSummaryRequest asks the harness for a compaction summary,
 // short-circuiting the engine's regex fact extractor. Return an empty summary
@@ -189,7 +193,7 @@ var HookAgentToolResult = Hook[ToolResultInfo, NoResult]{Name: HookNameAgentTool
 
 // --- Context discovery ---
 
-// HookContextDiscover fires per discovered context file. Return false to
+// HookContextDiscover fires per discovered context file. Return true to
 // exclude it.
 var HookContextDiscover = Hook[ContextDiscoverInfo, BoolResult]{Name: HookNameContextDiscover}
 
@@ -366,7 +370,8 @@ func allHookDescriptors() []descriptorInfo {
 
 		descriptorOf(HookSessionBeforeCompact), descriptorOf(HookSessionCompact),
 		descriptorOf(HookSessionBeforeFork), descriptorOf(HookSessionFork),
-		descriptorOf(HookSessionBeforeSwitch), descriptorOf(HookCompactSummaryRequest),
+		descriptorOf(HookSessionBeforeSwitch), descriptorOf(HookSessionBeforeRelease),
+		descriptorOf(HookCompactSummaryRequest),
 
 		descriptorOf(HookBeforeAgentStart), descriptorOf(HookBeforeProviderRequest),
 

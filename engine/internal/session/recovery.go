@@ -110,6 +110,11 @@ func (m *Manager) clearRunRecovery(conversationID, key string, args ...string) b
 		}
 		return cleared, nil
 	})
+	if errors.Is(err, conversation.ErrNotFound) {
+		// A session whose conversation was never written holds no journal.
+		utils.LogWithFields(utils.LevelDebug, "session.recovery", "no conversation file, no active run journal to clear", map[string]any{"key": key, "conversation_id": conversationID, "reason": reason})
+		return true
+	}
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "session.recovery", "could not clear active run journal", map[string]any{"key": key, "conversation_id": conversationID, "reason": reason, "error": err.Error()})
 		return false

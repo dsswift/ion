@@ -97,6 +97,25 @@ When a backend run exits:
 9. Close the session recorder.
 10. Emit `engine_dead`.
 
+## Idle release
+
+A session is **quiescent** when nothing inside the engine will act on it again:
+
+- no run is active, launching, or compacting, and the session is not settled;
+- no accepted work is pending (queued prompts, live dispatches, background completions, polls, client-tool calls, a parked run);
+- no agent in the snapshot has status `running`;
+- no session-owned background process or child process is alive;
+- no extension holds a schedule or webhook registration.
+
+The engine releases a quiescent session with the same teardown as [Stop](#stop-stopsession), including `engine_dead`. Two triggers do this:
+
+1. **Timed.** Each heartbeat tick measures how long every session has been continuously quiescent. Any work resets the clock. A session quiescent for `workspace.sessionIdleReleaseMs` (default 30 minutes) is released.
+2. **Abort.** An `abort` with scope `all` or `all_work` for a session that was already quiescent has nothing to stop, so it releases the session (`workspace.releaseIdleSessionOnAbort`, default on). An `orchestrator` abort never releases, and neither does an abort an extension issues through its context.
+
+Before either release the engine fires `session_before_release` with the reason (`idle_timeout` or `idle_abort`) and the quiescent duration. A handler that returns `true` keeps the session, and the idle clock restarts. Work that arrives while the hook runs also cancels the release.
+
+The conversation is durable. A client that prompts a released key gets `session_not_found` and starts the session again; the conversation and its dispatch history rehydrate from disk.
+
 ## Plan Mode
 
 ### Plan ID lifetime

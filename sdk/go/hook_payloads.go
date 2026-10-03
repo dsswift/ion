@@ -93,6 +93,17 @@ type ForkInfo struct {
 	ForkMessageIndex int    `json:"forkMessageIndex"`
 }
 
+// SessionReleaseInfo is the payload for session_before_release: the engine is
+// about to release a session that has nothing left to do.
+type SessionReleaseInfo struct {
+	// Reason is "idle_timeout" (quiescent for the configured duration) or
+	// "idle_abort" (an abort arrived for an already quiescent session). New
+	// reasons may be added.
+	Reason string `json:"reason"`
+	// IdleMs is how long the session has been continuously quiescent.
+	IdleMs int64 `json:"idleMs"`
+}
+
 // CompactSummaryRequestInfo is the payload for compact_summary_request. The
 // message slice is already cut at the last boundary, so prior summaries are
 // not re-scanned.

@@ -305,6 +305,8 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		}
 	})
 
+	s.wireSessionRelease(mgr)
+
 	// Command lanes route incoming commands into bounded per-session
 	// serial queues. Initialised before events are wired so the lanes
 	// are ready when the first client connects.

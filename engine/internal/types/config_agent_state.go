@@ -143,3 +143,31 @@ func minBound(current int, ceiling *int) int {
 	}
 	return current
 }
+
+// MergeAgentStateMetadataLimits overlays the fields src sets onto a copy of
+// dst. Either may be nil; neither is mutated.
+func MergeAgentStateMetadataLimits(dst, src *AgentStateMetadataLimits) *AgentStateMetadataLimits {
+	if src == nil {
+		return dst
+	}
+	out := AgentStateMetadataLimits{}
+	if dst != nil {
+		out = *dst
+	}
+	if src.MaxValueBytes != nil {
+		out.MaxValueBytes = src.MaxValueBytes
+	}
+	if src.MaxEntryBytes != nil {
+		out.MaxEntryBytes = src.MaxEntryBytes
+	}
+	if src.MaxSnapshotBytes != nil {
+		out.MaxSnapshotBytes = src.MaxSnapshotBytes
+	}
+	if src.MaxDepth != nil {
+		out.MaxDepth = src.MaxDepth
+	}
+	if src.MaxDispatchEntries != nil {
+		out.MaxDispatchEntries = src.MaxDispatchEntries
+	}
+	return &out
+}

@@ -522,6 +522,14 @@
       ],
       "result": "bool"
     },
+    "session_before_release": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "idleMs",
+        "reason"
+      ],
+      "result": "bool"
+    },
     "session_before_switch": {
       "payloadKind": "none",
       "result": "none"

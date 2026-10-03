@@ -51,6 +51,7 @@ const (
 	HookNameSessionBeforeFork     = "session_before_fork"
 	HookNameSessionFork           = "session_fork"
 	HookNameSessionBeforeSwitch   = "session_before_switch"
+	HookNameSessionBeforeRelease  = "session_before_release"
 	HookNameCompactSummaryRequest = "compact_summary_request"
 
 	// Pre-action.
@@ -187,8 +188,8 @@ type NoResult struct{}
 // that replaces an engine-computed value. Returning the empty string abstains.
 type StringResult string
 
-// BoolResult is the result type for the cancellable hooks: false cancels the
-// pending operation.
+// BoolResult is the result type for the cancellable hooks: true cancels the
+// pending operation, false abstains.
 type BoolResult bool
 
 // OnHook registers a typed hook handler.

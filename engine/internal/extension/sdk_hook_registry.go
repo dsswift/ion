@@ -99,6 +99,7 @@ func hookSpecs() map[string]hookSpec {
 		HookSessionBeforeFork:     {Payload: ForkInfo{}, Result: hookResultBool},
 		HookSessionFork:           {Payload: ForkInfo{}, Result: hookResultNone},
 		HookSessionBeforeSwitch:   {Payload: nil, Result: hookResultNone},
+		HookSessionBeforeRelease:  {Payload: SessionReleaseInfo{}, Result: hookResultBool},
 		HookCompactSummaryRequest: {Payload: CompactSummaryRequestInfo{}, Result: hookResultStructured, ResultType: CompactSummaryRequestResult{}},
 
 		// --- Pre-action ---
