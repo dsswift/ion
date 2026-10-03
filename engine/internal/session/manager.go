@@ -204,6 +204,11 @@ func (m *Manager) GetTelemetryConfig() *types.TelemetryConfig {
 // a need to tune cadence per deployment.
 const DefaultSessionStatusHeartbeatInterval = 30 * time.Second
 
+// initialHeartbeatInterval is the cadence a new Manager starts with. It is a
+// variable so a test binary can start Managers whose heartbeat never ticks
+// unless a test shortens it with SetHeartbeatInterval.
+var initialHeartbeatInterval = DefaultSessionStatusHeartbeatInterval
+
 // NewManager creates a Manager wired to the given backend.
 // It registers normalized/exit/error listeners on the backend so that
 // events are translated and forwarded through OnEvent.
@@ -224,7 +229,7 @@ func NewManager(b backend.RunBackend) *Manager {
 		heartbeatStop:     make(chan struct{}),
 		heartbeatDone:     make(chan struct{}),
 		heartbeatKick:     make(chan struct{}, 1),
-		heartbeatInterval: DefaultSessionStatusHeartbeatInterval,
+		heartbeatInterval: initialHeartbeatInterval,
 		runOnce:           newRunOnceRegistry(),
 	}
 

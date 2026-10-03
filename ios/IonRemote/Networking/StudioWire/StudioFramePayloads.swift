@@ -143,6 +143,11 @@ struct StudioWelcome: Equatable, Sendable {
     /// The developer surfaces this server offers this connection. Absent from
     /// a server that predates the field, which offers them all.
     var developerSurfaces: DeveloperSurfaces?
+    /// Hash of `enterprisePolicy`. Absent from a server that predates the field.
+    var policyHash: String?
+    /// Whether this connection runs on the server's own host. Absent from a
+    /// server that predates the field, which reads as not on the host.
+    var onHost: Bool?
     /// The first-paint snapshot, uninterpreted. A thin view's snapshot carries no tabs.
     var snapshot: JSONValue
 }
@@ -151,7 +156,7 @@ extension StudioWelcome: Codable {
     private enum CodingKeys: String, CodingKey {
         case protocolVersion, environmentId, label, platform, serverVersion, engineVersion
         case capabilities, principal, scopes, pairedClientId, relays, directAddresses
-        case enterprisePolicy, settingsHiddenGroups, developerSurfaces, snapshot
+        case enterprisePolicy, settingsHiddenGroups, developerSurfaces, policyHash, onHost, snapshot
     }
 
     init(from decoder: Decoder) throws {
@@ -176,6 +181,8 @@ extension StudioWelcome: Codable {
         enterprisePolicy = try container.decodeJSON(forKey: .enterprisePolicy)
         settingsHiddenGroups = try container.decode([String].self, forKey: .settingsHiddenGroups)
         developerSurfaces = try container.decodeIfPresent(DeveloperSurfaces.self, forKey: .developerSurfaces)
+        policyHash = try container.decodeIfPresent(String.self, forKey: .policyHash)
+        onHost = try container.decodeIfPresent(Bool.self, forKey: .onHost)
         snapshot = try container.decodeJSON(forKey: .snapshot)
     }
 
@@ -196,6 +203,8 @@ extension StudioWelcome: Codable {
         try container.encode(enterprisePolicy, forKey: .enterprisePolicy)
         try container.encode(settingsHiddenGroups, forKey: .settingsHiddenGroups)
         try container.encodeIfPresent(developerSurfaces, forKey: .developerSurfaces)
+        try container.encodeIfPresent(policyHash, forKey: .policyHash)
+        try container.encodeIfPresent(onHost, forKey: .onHost)
         try container.encode(snapshot, forKey: .snapshot)
     }
 }
