@@ -164,7 +164,7 @@ Reference: [`docs/extensions/studio-sdk.md`](docs/extensions/studio-sdk.md).
 | Source | LOCAL environment only: `customFields['ion-desktop']` | The engine's own `EnterpriseConfig` |
 | Enforced by | The desktop client | The engine, republished on `studio_welcome.enterprisePolicy` |
 
-A remote server must never narrow a visiting desktop's own UI. Neither policy is a setting; a persisted setting has one of four scopes (`environment`, `account`, `personal`, `device`) in `packages/shared/src/settings-registry.ts`. The registry's fifth value, `runtime`, marks a key that is held in memory and never persisted. Environment settings gate on the `admin` scope. `settingsHiddenGroups` is device policy only.
+A remote server must never narrow a visiting desktop's own UI. What a server offers is a different thing: `customFields['ion-server'].developerSurfaces` switches a developer surface off for every connection, and a client shows no control for it on that server's conversations only (`packages/shared/src/developer-surfaces.ts`). `customFields['ion-desktop'].developerSurfaces` is the device-policy form. Neither policy is a setting; a persisted setting has one of four scopes (`environment`, `account`, `personal`, `device`) in `packages/shared/src/settings-registry.ts`. The registry's fifth value, `runtime`, marks a key that is held in memory and never persisted. Environment settings gate on the `admin` scope. `settingsHiddenGroups` is device policy only.
 
 ## Cross-platform parity
 

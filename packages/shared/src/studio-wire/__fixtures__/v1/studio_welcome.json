@@ -11,6 +11,8 @@
   "scopes": ["conversations:read", "conversations:operate", "terminal:operate", "git:write", "admin"],
   "enterprisePolicy": null,
   "settingsHiddenGroups": [],
+  "developerSurfaces": { "sourceControl": true, "commitGraph": true, "repositoryStatus": true, "worktrees": true },
+  "policyHash": "sha256:deadbeef",
   "snapshot": {
     "tabs": [],
     "settings": {},
