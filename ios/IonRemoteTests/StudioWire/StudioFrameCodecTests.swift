@@ -120,6 +120,27 @@ final class StudioFrameCodecTests: XCTestCase {
         XCTAssertNil(decoded.directAddresses)
     }
 
+    /// The policy hash and the on-host flag are optional on the wire, and a
+    /// welcome that carries them keeps them through decode and encode.
+    func testWelcomeKeepsItsPolicyHashAndOnHostFlag() throws {
+        var welcome = try jsonObject(try fixture("studio_welcome.json")) as? [String: Any] ?? [:]
+        welcome["policyHash"] = "sha256:abc"
+        welcome["onHost"] = true
+        let text = String(decoding: try JSONSerialization.data(withJSONObject: welcome), as: UTF8.self)
+        guard case .welcome(let decoded) = try StudioFrame.decode(text: text) else { return XCTFail("not a welcome") }
+        XCTAssertEqual(decoded.policyHash, "sha256:abc")
+        XCTAssertEqual(decoded.onHost, true)
+        let frame = StudioFrame.welcome(decoded)
+        XCTAssertEqual(try jsonObject(try frame.encodedText()), try jsonObject(text))
+
+        welcome.removeValue(forKey: "policyHash")
+        welcome.removeValue(forKey: "onHost")
+        let bare = String(decoding: try JSONSerialization.data(withJSONObject: welcome), as: UTF8.self)
+        guard case .welcome(let older) = try StudioFrame.decode(text: bare) else { return XCTFail("not a welcome") }
+        XCTAssertNil(older.policyHash)
+        XCTAssertNil(older.onHost)
+    }
+
     func testUnknownReasonsAreKeptNotRefused() throws {
         guard case .close(let close) = try StudioFrame.decode(text: #"{"type":"studio_close","reason":"moved_house"}"#),
               case .refused(let refused) = try StudioFrame.decode(text: #"{"type":"studio_refused","reason":"full_moon"}"#) else {
