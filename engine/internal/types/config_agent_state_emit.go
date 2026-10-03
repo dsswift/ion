@@ -79,3 +79,22 @@ func (l *AgentStateEmitLimits) Resolved() ResolvedAgentStateEmitLimits {
 	}
 	return out
 }
+
+// MergeAgentStateEmitLimits overlays the fields src sets onto a copy of dst.
+// Either may be nil; neither is mutated.
+func MergeAgentStateEmitLimits(dst, src *AgentStateEmitLimits) *AgentStateEmitLimits {
+	if src == nil {
+		return dst
+	}
+	out := AgentStateEmitLimits{}
+	if dst != nil {
+		out = *dst
+	}
+	if src.CoalesceMs != nil {
+		out.CoalesceMs = src.CoalesceMs
+	}
+	if src.Dedup != nil {
+		out.Dedup = src.Dedup
+	}
+	return &out
+}

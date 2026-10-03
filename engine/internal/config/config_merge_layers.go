@@ -98,6 +98,8 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.DisableSkillSystemPrompt != nil {
 		dst.Limits.DisableSkillSystemPrompt = src.Limits.DisableSkillSystemPrompt
 	}
+	dst.Limits.AgentStateMetadata = types.MergeAgentStateMetadataLimits(dst.Limits.AgentStateMetadata, src.Limits.AgentStateMetadata)
+	dst.Limits.AgentStateEmit = types.MergeAgentStateEmitLimits(dst.Limits.AgentStateEmit, src.Limits.AgentStateEmit)
 
 	// MCP servers: merge maps
 	if len(src.McpServers) > 0 {
