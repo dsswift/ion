@@ -4,16 +4,17 @@
 # ones that have nothing to build.
 #
 # A draft is invisible to the desktop update feed, to /releases/latest, and to
-# `ion studio update`. build.yml's per-component publish job flips it public
-# once every asset is attached. So a half-built release can never be seen.
+# `ion studio update`. publish-tested-releases.mjs flips it public once every
+# asset is attached and its Quality jobs passed. So a half-built or untested
+# release can never be seen.
 #
 # Usage:
 #   RELEASE_REPORT='<release-damnit json>' hold-built-releases.sh
 #
-# BUILT_COMPONENTS names the components build.yml has a publish job for. A
+# BUILT_COMPONENTS names the components build.yml has a ready job for. A
 # component not listed here is published immediately, marked non-latest: the
 # engine release is the one the README install command resolves through
-# /releases/latest, and its publish job is what marks it latest.
+# /releases/latest, and publish-tested-releases.mjs is what marks it latest.
 
 set -euo pipefail
 

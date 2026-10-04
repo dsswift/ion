@@ -89,7 +89,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 ### Heavy gates — never run during development
 
-`make test-linux` (and its `-engine`, `-desktop`, and `-server` parts), `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, `govulncheck ./...`, relay `go test -race ./...`, `npm audit`, full `npm test`, `npm -w server run test:integration`, `make ios-check`. Run one only when `/create-pr` says to or the user asks. CI's test lane (`.github/workflows/quality.yml`, on every push to `main`) is authoritative; a failure there is filed as an issue and never holds a release. A new engine, desktop, or server test job in `quality.yml` must be mirrored into `make test-linux`. Rationale: [`docs/contributing/quality-gates.md`](docs/contributing/quality-gates.md).
+`make test-linux` (and its `-engine`, `-desktop`, and `-server` parts), `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, `govulncheck ./...`, relay `go test -race ./...`, `npm audit`, full `npm test`, `npm -w server run test:integration`, `make ios-check`. Run one only when `/create-pr` says to or the user asks. CI's test lane (`.github/workflows/quality.yml`, on every push to `main`) is authoritative; a failure there is filed as an issue and keeps the releases it gates as drafts; it never blocks a push. A new engine, desktop, or server test job in `quality.yml` must be mirrored into `make test-linux`. Rationale: [`docs/contributing/quality-gates.md`](docs/contributing/quality-gates.md).
 
 ## Branch workflow
 

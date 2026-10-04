@@ -1,21 +1,26 @@
 name: Release Summary
 
+# Dispatched by publish-tested-releases.mjs once every release a push cut is
+# public, with the Release run that saved the push's report. A manual re-send
+# passes either that run id or the report itself.
 on:
-  workflow_call:
-    inputs:
-      release_report:
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
+      release_run_id:
+        description: 'Release workflow run whose release-report artifact to announce'
+        required: false
+        type: string
+        default: ''
       release_report:
         description: 'Release report JSON (paste from a prior release run for manual re-send)'
-        required: true
+        required: false
         type: string
+        default: ''
 
 permissions:
   contents: read
   packages: read
+  actions: read
 
 jobs:
   notify:
@@ -27,10 +32,34 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Load the release report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RELEASE_RUN_ID" ]; then
+            gh run download "$RELEASE_RUN_ID" -n release-report -D /tmp/release-report -R "${{ github.repository }}"
+            cp /tmp/release-report/release-report.json /tmp/release-report.json
+            echo "report from Release run $RELEASE_RUN_ID"
+          elif [ -n "$RELEASE_REPORT" ]; then
+            printf '%s' "$RELEASE_REPORT" > /tmp/release-report.json
+            echo "report from the release_report input"
+          else
+            echo "::error::pass release_run_id or release_report"
+            exit 1
+          fi
+          jq -e '.releases' /tmp/release-report.json > /dev/null
+          {
+            echo 'RELEASE_REPORT<<RELEASE_REPORT_EOF'
+            cat /tmp/release-report.json
+            echo
+            echo 'RELEASE_REPORT_EOF'
+          } >> "$GITHUB_ENV"
+
       - name: Select engine image tag
         id: engine-image
-        env:
-          RELEASE_REPORT: ${{ inputs.release_report }}
         run: |
           set -euo pipefail
           ENGINE_VERSION=$(echo "$RELEASE_REPORT" | jq -r '
@@ -70,8 +99,6 @@ jobs:
           chmod 600 /tmp/ion-data/.ion/engine.json
 
       - name: Build release context document
-        env:
-          RELEASE_REPORT: ${{ inputs.release_report }}
         run: |
           set -euo pipefail
           bash .github/scripts/build-release-summary-context.sh /tmp/ion-context.md

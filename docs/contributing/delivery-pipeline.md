@@ -6,19 +6,20 @@ sidebar_position: 7
 
 # Delivery Pipeline
 
-Code lands on `main` by direct push. Every push is versioned, built, and published without waiting on a review, a test run, or a scan. Tests and scans still run; their findings arrive as issues, not as blocked releases.
+Code lands on `main` by direct push. Every push is versioned and built without waiting on a review, a test run, or a scan. A built release goes public only once its tests pass for that commit. Test failures and scan findings arrive as issues; neither ever blocks a push.
 
-The rule in one line: **if it is on `main`, every service that changed gets a version and a binary.**
+The rule in one line: **if it is on `main`, every service that changed gets a version and a binary; users get the binary once its tests pass.**
 
 ## What happens on a push
 
 Three lanes start at once. None waits for another.
 
-| Lane | Workflow | Starts | Finishes | Blocks a release? |
+| Lane | Workflow | Starts | Finishes | Holds a release? |
 |------|----------|--------|----------|-------------------|
 | Version | `release.yml` (job `release`) | On push | Under a minute | It *is* the release |
-| Build and publish | `build.yml` (called by `release.yml`) | After the version lane | Engine ~5 min, desktop ~10 min | Only its own service |
-| Test | `quality.yml` | On push | Depends on scope | Never |
+| Build | `build.yml` (called by `release.yml`) | After the version lane | Engine ~5 min, desktop ~10 min | Only its own service |
+| Test | `quality.yml` | On push | Depends on scope | Each service whose gating jobs failed or are still running |
+| Publish | `build.yml` job `publish`, and `publish.yml` after every Quality run | When a build or a test run finishes | Seconds | It *is* the publish |
 
 ### The version lane
 
@@ -32,9 +33,19 @@ Two pushes close together do not race: `release.yml` runs under a concurrency gr
 
 A release is created **as a draft**. `.github/scripts/hold-built-releases.sh` runs right after `release-damnit` and holds every release that has a build job (`engine`, `server`, `desktop`, `relay`) as a draft. A draft is invisible to the desktop auto-updater, to `/releases/latest`, and to `ion studio update`. Releases with nothing to build (`ios`, `sdk/go`) are published on the spot.
 
-`build.yml` then builds only the services in the release report. Each service has a `publish-<service>` job that flips its draft public once every job that attaches one of its assets has succeeded. The engine's publish job also marks it `latest`, because the README install command resolves through `/releases/latest`.
+`build.yml` then builds only the services in the release report, from the pushed commit plus its version bump (never whatever `main` has moved to since). Each service has a `ready-<service>` job that runs once every job that attaches one of its assets has succeeded. It sets the commit status `release/<service>` on the pushed commit, naming the tag (and, for the server, the engine release its bundle carries). Images push only their version tags; `:latest` moves at publish.
 
-So a failure in one service's build leaves that service's draft in place and publishes every other service. The draft has all the assets that did upload; rerun the failed jobs from the run page and the publish job runs again. A release is never public with files missing.
+So a failure in one service's build leaves that service's draft in place. The draft has all the assets that did upload; rerun the failed jobs from the run page and the ready job runs again. A release is never public with files missing.
+
+### The publish step
+
+`.github/scripts/publish-tested-releases.mjs` makes a draft public when both halves are done for the commit it was cut from: its `release/<service>` status says the build is ready, and every Quality job that gates the service passed. Builds and tests finish in either order, so it runs at both ends: `build.yml`'s `publish` job and the `publish.yml` workflow on every Quality completion on `main`, including a rerun. One concurrency group keeps the two from interleaving, and each run sweeps every draft, so whichever finishes second publishes.
+
+Which Quality jobs gate which service is the `GATES` table in that script. A service that carries another's code waits for its jobs too: the desktop builds the engine and the server from the same commit, and the server bundle waits for the engine release it carries to be public. A gating job that a push skipped (its paths were untouched) takes the verdict of the nearest earlier run of it, since its inputs have not changed since then. A job that was cancelled holds until it is rerun.
+
+Publishing a service's newest version moves its `ghcr.io` `:latest` tag and, for the engine, marks the release `latest`, because the README install command resolves through `/releases/latest`. An older version whose tests pass after a newer one goes public without taking `latest` back.
+
+When every release a push cut is public, the publish step dispatches the release summary (`release-summary.yml`) with the Release run that saved the push's report.
 
 A failed build is filed, the same way a failed test is. `build.yml` ends in a `report` job that files an issue per failed job, labelled `ci-failure`, titled `Release build failed on main: <job>`. `release.yml` has its own for the jobs outside the build, titled `Release failed on main: <job>`. A dry run files nothing.
 
@@ -42,9 +53,9 @@ The Windows install smoke test (`scripts/ci/windows-smoke.ps1`) is the one runti
 
 ### The test lane
 
-`quality.yml` runs every test, lint, and drift check, scoped to the paths the push touched. An iOS-only push runs no Windows job; an engine push runs the engine matrix on all three operating systems and nothing for the desktop. The scope map is `.github/quality-paths.yml`, pinned by `scripts/test-quality-path-scopes.sh`. Scheduled and manual runs validate every scope.
+`quality.yml` runs every test, lint, and drift check, scoped to the paths the push touched. An iOS-only push runs no Windows job; an engine push runs the engine matrix on all three operating systems and nothing for the desktop. The scope map is `.github/quality-paths.yml`, pinned by `scripts/test-quality-path-scopes.sh`. Scheduled and manual runs validate every scope. A push to `main` never cancels an earlier push's run: each run is the verdict its commit's releases wait for.
 
-The lane ends in a `report` job that reads every job's result and files an issue per failure, labelled `ci-failure`, titled `Tests failed on main: <job>`. A repeat of the same failure comments on the open issue instead of opening another. Pull requests, when you open one, get their checks inline and file nothing.
+The lane ends in a `report` job that reads every job's result and files an issue per failure, labelled `ci-failure`, titled `Tests failed on main: <job>`. A failure in a gating job keeps that service's release a draft: fix forward (the next push cuts a new release), or rerun the job if it was flaky. A repeat of the same failure comments on the open issue instead of opening another. Pull requests, when you open one, get their checks inline and file nothing.
 
 **Flaky tests are filed, not tolerated.** When a run is rerun and a job that failed on the earlier attempt passes on this one, the commit did not change, so the test is flaky. The `report` job files it under the `flaky` label. That issue is fixed the day it appears.
 
@@ -80,11 +91,13 @@ Open a pull request when you want a review or a preview. Its checks run inline a
 
 | Need | Do |
 |------|----|
-| A build job failed and the draft is waiting | Re-run failed jobs on the run page. Passed jobs are kept; the publish job runs when the failed ones pass. |
+| A build job failed and the draft is waiting | Re-run failed jobs on the run page. Passed jobs are kept; the ready and publish jobs run when the failed ones pass. |
+| A test failed and the draft is waiting | Fix forward, or re-run the failed Quality jobs if they were flaky. `publish.yml` sweeps when the rerun finishes. |
+| See why a release is still a draft | Open the latest **Publish** run, or the `publish` job of the build: each held release has one line saying what it waits for. Run **Publish** by hand to sweep again. |
 | Rebuild the Windows installer for the current desktop version, no new release | Run the **Rebuild Windows Desktop** workflow (`rebuild-windows.yml`). |
 | Reproduce a release-only failure from a branch | Run **Build** by hand with `dry_run: true`, the branch as `ref`, and a release report naming versions that already exist. |
-| Re-send the release summary | Run **Release Summary** by hand with the release report from the run. |
+| Re-send the release summary | Run **Release Summary** by hand with the Release run id, or paste the release report. |
 
 ## What this trades
 
-`main` can carry a broken build for the minutes it takes to fix forward, and a test failure ships with an issue attached. That is the chosen trade: integration is never blocked, a version exists for every change, and a bug is a bug with a link, not a stalled branch.
+`main` can carry a broken build or a failing test for the minutes it takes to fix forward. That is the chosen trade: integration is never blocked, a version exists for every change, and a bug is a bug with a link, not a stalled branch. What users install is held to a stricter rule: a service's release reaches them only after its tests pass.

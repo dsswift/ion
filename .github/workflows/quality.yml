@@ -1,11 +1,15 @@
 name: Quality
 
 # The test lane. It runs beside the release build on every push to main and
-# never in front of it: a failure here is filed as an issue by the `report`
-# job at the bottom, and the release for that push ships regardless. Every
-# product job is scoped to the paths the push touched, on pull requests and
-# on main alike, so an iOS-only push runs no Windows job. Scheduled and
-# manual runs validate every scope.
+# never in front of the push: the push lands, versions, and builds without
+# waiting. Its verdict gates publishing instead: a built release stays a draft
+# until the jobs that gate its component pass for that commit (GATES in
+# .github/scripts/publish-tested-releases.mjs, run by publish.yml when this
+# workflow completes). A failure is filed as an issue by the `report` job at
+# the bottom. Every product job is scoped to the paths the push touched, on
+# pull requests and on main alike, so an iOS-only push runs no Windows job;
+# a job a push skips takes its verdict from the nearest earlier run of it.
+# Scheduled and manual runs validate every scope.
 on:
   pull_request:
   push:
@@ -16,11 +20,12 @@ on:
     - cron: '17 4 * * *'
   workflow_dispatch:
 
-# A newer push to the same branch supersedes an unfinished run; its report
-# covers the newer commit. Scheduled and manual runs are never cancelled.
+# A newer push to a pull request supersedes its unfinished run. A push to main
+# is never cancelled: each one cuts releases that wait for this run's verdict
+# on that exact commit, and the next push's run only tests what it touched.
 concurrency:
-  group: quality-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+  group: quality-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -69,6 +74,7 @@ jobs:
           bash .github/scripts/open-ci-issue.test.sh
           bash .github/scripts/report-run-failures.test.sh
           bash .github/scripts/hold-built-releases.test.sh
+          node --test .github/scripts/publish-tested-releases.test.mjs
 
   go-toolchains:
     runs-on: ubuntu-latest
@@ -813,4 +819,4 @@ jobs:
           # Never paste this into the command: a commit subject in a job
           # output can hold a quote, and the shell would read it as code.
           NEEDS_JSON: ${{ toJSON(needs) }}
-        run: bash .github/scripts/report-run-failures.sh ci-failure "Tests failed on main"
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Tests failed on main" "The releases this job gates stay drafts until it passes; rerun it or fix forward."

@@ -1,0 +1,62 @@
+name: Publish
+
+# The test end of the release hold. A release is held as a draft until its
+# build is done and its Quality jobs passed (see
+# .github/scripts/publish-tested-releases.mjs). build.yml's `publish` job
+# sweeps when a build finishes; this sweeps when a Quality run on main
+# finishes, including a rerun of failed jobs. Whichever lands second publishes.
+# Run it by hand to sweep again.
+on:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  statuses: read
+  actions: write
+
+jobs:
+  publish:
+    # A pull request's Quality run gates nothing.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish every built and tested release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/publish-tested-releases.mjs
+
+  # A failed sweep leaves releases held with nobody told; file it.
+  report:
+    needs: [publish]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: File failures as issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: bash .github/scripts/report-run-failures.sh ci-failure "Publish failed on main" "Built and tested releases stay drafts until this job passes."
