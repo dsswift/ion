@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -112,7 +113,7 @@ func (s *PermissionHookServer) UnregisterToken(token string) {
 
 // GenerateSettingsJSON creates a settings file content for --settings flag.
 //
-// # The shape is load-bearing and was wrong
+// # The shape is load-bearing
 //
 // Each entry under "PreToolUse" is a MATCHER GROUP, not a hook. The group names
 // which tools it applies to and carries a nested "hooks" array of the commands
@@ -120,17 +121,20 @@ func (s *PermissionHookServer) UnregisterToken(token string) {
 //
 //	"PreToolUse": [ { "matcher": "*", "hooks": [ { "type": "command", ... } ] } ]
 //
-// This function used to put "type" and "command" directly on the group, with no
-// nested array. The CLI read each group, looked for hooks to run, found none,
-// and ran nothing — so this server listened on a port that never received a
-// single request for the whole time it existed. Nothing failed and nothing was
-// logged, because there was no failure: the CLI did exactly what a group with no
-// hooks says to do. Every permission decision on a delegated-CLI run was
-// therefore never consulted.
+// With "type" and "command" directly on the group and no nested array, the CLI
+// finds no hooks to run and runs nothing: nothing fails, nothing is logged, and
+// no permission decision is ever consulted.
 //
 // The matcher is "*" because this server is the permission rail for the whole
 // run, not a rule about one tool. A group scoped to a single tool would silently
 // exempt every other tool from policy.
+//
+// # The command fails closed
+//
+// The CLI refuses a tool only when its hook command exits with status 2. Any
+// other failure is non-blocking and the tool runs. The command is therefore
+// `ion hook-relay`, which exits 2 whenever it cannot get a decision from this
+// server (see cmd/ion/cmd_hook_relay.go).
 func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 	settings := map[string]interface{}{
 		"hooks": map[string]interface{}{
@@ -140,7 +144,7 @@ func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 					"hooks": []map[string]interface{}{
 						{
 							"type":    "command",
-							"command": fmt.Sprintf("curl -s -X POST %s -H 'Content-Type: application/json' -d @-", s.URL(token)),
+							"command": hookRelayCommand(s.URL(token)),
 						},
 					},
 				},
@@ -149,6 +153,33 @@ func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 	}
 	data, _ := json.MarshalIndent(settings, "", "  ") //nolint:errcheck // marshal of a fixed local struct cannot fail
 	return data
+}
+
+// hookRelayCommand returns the shell command a delegated CLI runs for its
+// PreToolUse hook: the Ion binary itself, as `ion hook-relay --url <url>`. The
+// Ion binary is guaranteed present, because it spawned the CLI.
+func hookRelayCommand(url string) string {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		// os.Executable should not fail for a running process. Fall back to
+		// "ion" on PATH; if that is missing too the shell exits 127 and the
+		// hook is non-blocking, so log it loudly.
+		utils.LogWithFields(utils.LevelError, "backend.permission_hook", "os.Executable failed resolving hook relay command; falling back to ion on PATH", map[string]any{"error": utils.ErrStr(err)})
+		exe = "ion"
+	}
+	return shellQuote(exe) + " hook-relay --url " + shellQuote(url)
+}
+
+// shellQuote wraps s in single quotes for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// SetPermEngine replaces the permission engine this server consults.
+func (s *PermissionHookServer) SetPermEngine(permEng *permissions.Engine) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.permEngine = permEng
 }
 
 // SetOnAsk registers a callback for permission requests that need user approval.
@@ -264,8 +295,11 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 	}
 
 	// Route through permission engine
-	if s.permEngine != nil {
-		result := s.permEngine.Check(permissions.CheckInfo{
+	s.mu.Lock()
+	permEng := s.permEngine
+	s.mu.Unlock()
+	if permEng != nil {
+		result := permEng.Check(permissions.CheckInfo{
 			Tool:  req.ToolName,
 			Input: req.Input,
 		})

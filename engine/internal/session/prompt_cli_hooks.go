@@ -3,69 +3,15 @@ package session
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
-
-// wirePermissionHookServer wires a Permission Hook server for the CLI backend
-// so that hook-driven "ask" decisions surface as engine_permission_request
-// events to consumers and block the subprocess until the user responds.
-//
-// Under HybridBackend, this only wires when the model resolves to the
-// inner *ClaudeCodeBackend. API-routed hybrid runs use the in-process permission
-// engine path (identical to plain "backend": "api").
-func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *types.RunOptions, permEng *permissions.Engine) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
-		return
-	}
-	if permEng == nil {
-		return
-	}
-
-	hookServer, err := backend.NewPermissionHookServer(permEng)
-	if err != nil {
-		utils.LogWithFields(utils.LevelError, "session", "permissionhookserver start failed", map[string]any{"key": key, "error": err.Error()})
-		return
-	}
-	token := fmt.Sprintf("run-%d", time.Now().UnixMilli())
-	hookServer.RegisterToken(token)
-
-	// Install the human-wait configuration so an unanswered permission dialog
-	// waits indefinitely by default (and applies the configured fail-action
-	// only when an operator sets a finite human-wait). A nil config yields the
-	// indefinite default (the server-side accessors are nil-safe).
-	if m.config != nil {
-		hookServer.SetTimeouts(m.config.Timeouts)
-	}
-
-	// When the hook server gets an "ask" decision, emit
-	// engine_permission_request and block until the user responds with an
-	// option ID. The same closure serves the codex backend's approvals
-	// (see wireCodexPermissions).
-	hookServer.SetOnAsk(m.permissionAskClosure(key))
-
-	settingsJSON := hookServer.GenerateSettingsJSON(token)
-
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("ion-settings-%s.json", token))
-	if err := os.WriteFile(tmpFile, settingsJSON, 0600); err != nil {
-		utils.LogWithFields(utils.LevelError, "session", "failed to write hook settings", map[string]any{"key": key, "error": err.Error()})
-		hookServer.Close()
-		return
-	}
-	opts.HookSettingsPath = tmpFile
-	s.hookSettingsPath = tmpFile
-	utils.LogWithFields(utils.LevelInfo, "session", "hook settings written to", map[string]any{"tmp_file": tmpFile})
-}
 
 // buildToolAliasDirective renders a system-prompt directive that maps bare
 // extension tool names to their MCP-prefixed forms.  The CLI backend bridges

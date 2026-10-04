@@ -577,7 +577,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		runCfg = m.buildRunConfig(s, key, requestID, apiBackend, extGroup, skipExtensions, permEng, telemCollector, mcpConns, opts.Model, turnPrincipal(s, overrides))
 	}
 
-	m.wirePermissionHookServer(s, key, &opts, permEng)
+	if err := m.wirePermissionHookServer(s, key, &opts, permEng); err != nil {
+		return m.abortPromptWithoutRail(s, key, requestID, overrides, err)
+	}
 	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)

@@ -98,6 +98,7 @@ func (m *Manager) stopSessionGuarded(key string, guard func(*engineSession) stri
 		recorder: s.recorder, toolServer: s.toolServer,
 		fsWatcherRelease: s.fsWatcherRelease, sessionMemory: s.sessionMemory,
 		hookSettingsPath: s.hookSettingsPath,
+		permHookServer:   s.permHookServer,
 		conversationID:   s.conversationID,
 		key:              key, session: s,
 	}

@@ -60,4 +60,26 @@ func TestGenerateSettingsJSON_MatcherGroupShape(t *testing.T) {
 	if !strings.Contains(hook.Command, s.URL("tok")) {
 		t.Errorf("hook command does not post to this server's URL: %q", hook.Command)
 	}
+	// The command must be the relay, which exits 2 when it cannot get a
+	// decision. A plain HTTP client exits with some other status when the
+	// server is unreachable, and the CLI then runs the tool unchecked.
+	if !strings.Contains(hook.Command, " hook-relay --url ") {
+		t.Errorf("hook command must run `ion hook-relay`, got %q", hook.Command)
+	}
+	if strings.Contains(hook.Command, "curl") {
+		t.Errorf("hook command must not depend on curl: %q", hook.Command)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/usr/local/bin/ion":       "'/usr/local/bin/ion'",
+		"/Apps/Ion Studio/ion":     "'/Apps/Ion Studio/ion'",
+		"/tmp/it's/ion":            `'/tmp/it'\''s/ion'`,
+		"http://127.0.0.1:1/a?b&c": "'http://127.0.0.1:1/a?b&c'",
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
+	}
 }

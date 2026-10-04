@@ -504,6 +504,7 @@ type engineSession struct {
 	recorder            *recorder.Recorder
 	toolServer          *backend.ToolServer
 	hookSettingsPath    string
+	permHookServer      *backend.PermissionHookServer
 	procRegistry        *extension.ProcessRegistry
 	pending             *pending.Broker
 	resourceBroker      *resource.Broker
