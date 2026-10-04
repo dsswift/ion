@@ -44,6 +44,7 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 	if hookServer != nil {
 		// The session's engine can be replaced when its policy is re-resolved.
 		hookServer.SetPermEngine(permEng)
+		hookServer.SetPlanPolicySource(m.cliPlanPolicySource(s))
 		if m.config != nil {
 			hookServer.SetTimeouts(m.config.Timeouts)
 		}
@@ -78,6 +79,7 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 	// option ID. The same closure serves the codex backend's approvals
 	// (see wireCodexPermissions).
 	hookServer.SetOnAsk(m.permissionAskClosure(key))
+	hookServer.SetPlanPolicySource(m.cliPlanPolicySource(s))
 
 	settingsPath = filepath.Join(os.TempDir(), fmt.Sprintf("ion-settings-%s.json", token))
 	if err := os.WriteFile(settingsPath, hookServer.GenerateSettingsJSON(token), 0600); err != nil {

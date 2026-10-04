@@ -45,6 +45,11 @@ type ToolServer struct {
 	// otherwise-invisible "tools registered but never delivered" failure into a
 	// logged one. Atomic because acceptLoop goroutines increment it concurrently.
 	connections atomic.Int64
+
+	// planPolicy reports whether the session is planning and, if so, the
+	// policy that decides which bridged tools may run. Nil means no plan-mode
+	// boundary is applied here.
+	planPolicy PlanPolicySource
 }
 
 // toolEntry stores a tool's handler alongside its MCP metadata so
@@ -149,6 +154,13 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 			}
 			if args == nil {
 				args = make(map[string]interface{})
+			}
+
+			if refusal := ts.planRefusal(name, args); refusal != "" {
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: refusal}},
+					IsError: true,
+				}, nil
 			}
 
 			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{"name": name})
@@ -270,6 +282,38 @@ func (ts *ToolServer) SocketPath() string {
 	return ts.sockPath
 }
 
+// SetPlanPolicySource installs the session's plan policy. Every tool call
+// consults it, so the read-only boundary follows the session's live mode
+// instead of being fixed by which tools were registered when the server
+// started.
+func (ts *ToolServer) SetPlanPolicySource(source PlanPolicySource) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.planPolicy = source
+}
+
+// planRefusal returns the model-facing refusal for a call the plan policy
+// denies, or "" when the call may run.
+func (ts *ToolServer) planRefusal(name string, input map[string]interface{}) string {
+	ts.mu.Lock()
+	source := ts.planPolicy
+	ts.mu.Unlock()
+	if source == nil {
+		return ""
+	}
+	policy, planning := source()
+	if !planning {
+		return ""
+	}
+	decision := policy.DecideBridged(name, input)
+	if !decision.Denied() {
+		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "plan policy allowed bridged tool", map[string]any{"key": ts.key, "name": name, "rule": decision.Rule})
+		return ""
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "plan policy refused bridged tool", map[string]any{"key": ts.key, "name": name, "rule": decision.Rule})
+	return decision.Reason
+}
+
 // HasTool reports whether a tool of the given name is registered. Exposed for
 // tests that assert which tools a delegated-CLI child's tool server carries.
 func (ts *ToolServer) HasTool(name string) bool {
@@ -293,6 +337,9 @@ func (ts *ToolServer) InvokeTool(ctx context.Context, name string, input map[str
 	ts.mu.Unlock()
 	if !ok {
 		return nil, false, nil
+	}
+	if refusal := ts.planRefusal(name, input); refusal != "" {
+		return &types.ToolResult{Content: refusal, IsError: true}, true, nil
 	}
 	res, err := entry.handler(ctx, input)
 	return res, true, err

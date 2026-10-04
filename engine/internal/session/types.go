@@ -505,9 +505,12 @@ type engineSession struct {
 	toolServer          *backend.ToolServer
 	hookSettingsPath    string
 	permHookServer      *backend.PermissionHookServer
-	procRegistry        *extension.ProcessRegistry
-	pending             *pending.Broker
-	resourceBroker      *resource.Broker
+	// cliPlanPolicy holds the plan-policy inputs staged for the current
+	// delegated-CLI prompt. See stageCliPlanPolicy.
+	cliPlanPolicy  backend.PlanPolicy
+	procRegistry   *extension.ProcessRegistry
+	pending        *pending.Broker
+	resourceBroker *resource.Broker
 
 	// mcpConnectOnce single-flights the lazy MCP connect for this session, and
 	// mcpConnectDone records (under m.mu) that it has run.

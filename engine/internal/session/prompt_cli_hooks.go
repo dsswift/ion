@@ -89,6 +89,9 @@ func (m *Manager) ensureCliToolServerAttached(s *engineSession, key string, opts
 	if ts == nil {
 		return
 	}
+	// Whichever wire* helper created the server, it enforces the session's
+	// plan policy on every call.
+	ts.SetPlanPolicySource(m.cliPlanPolicySource(s))
 
 	// Already attached by this turn's create-branch wiring: claude-code sets
 	// McpConfig, ACP appends to CliMcpServers. Both are keyed on the fresh

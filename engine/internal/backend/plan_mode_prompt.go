@@ -18,6 +18,10 @@ import (
 // are most useful, and the model silently fell back to raw Grep/Read sweeps.
 var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "AgentStatus", "WebFetch", "WebSearch", "Skill"}
 
+// DefaultPlanModeTools returns a copy of the read-only tool set a plan policy
+// allows when the harness supplies no list of its own.
+func DefaultPlanModeTools() []string { return append([]string(nil), defaultPlanModeTools...) }
+
 // planModeReminderInterval is the number of assistant turns after the most
 // recent plan-mode notice before the sparse reminder is sent again. Matches
 // Claude Code's TURNS_BETWEEN_ATTACHMENTS=5 design (src/utils/attachments.ts).

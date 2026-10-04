@@ -41,6 +41,10 @@ type PermissionHookServer struct {
 	// report an infinite human-wait for a nil receiver). Set via SetTimeouts
 	// from the session manager, which holds the engine config.
 	timeouts *types.TimeoutsConfig
+	// planPolicy reports whether the session is planning and, if so, the
+	// policy that decides which native tools may run. Nil means the server
+	// applies no plan-mode boundary.
+	planPolicy PlanPolicySource
 }
 
 // NewPermissionHookServer creates a hook server on a random local port.
@@ -175,6 +179,14 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// SetPlanPolicySource installs the session's plan policy. The server reads it
+// on every request, so the answer follows the session's live mode.
+func (s *PermissionHookServer) SetPlanPolicySource(source PlanPolicySource) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.planPolicy = source
+}
+
 // SetPermEngine replaces the permission engine this server consults.
 func (s *PermissionHookServer) SetPermEngine(permEng *permissions.Engine) {
 	s.mu.Lock()
@@ -266,6 +278,22 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 	if reason, denied := asyncModeDenial(req.ToolName, req.Input); denied {
 		s.respond(w, req.ToolName, "deny", "async mode unavailable on this backend", reason)
 		return
+	}
+
+	// Plan-mode boundary, ahead of policy. Like the async gate this is not a
+	// permission decision: a planning session is read-only whatever any rule
+	// allows, and the operator must not be asked to approve a call it will
+	// refuse.
+	s.mu.Lock()
+	planSource := s.planPolicy
+	s.mu.Unlock()
+	if planSource != nil {
+		if policy, planning := planSource(); planning {
+			if decision := policy.DecideNativeCli(req.ToolName, req.Input); decision.Denied() {
+				s.respond(w, req.ToolName, "deny", "plan policy: "+decision.Rule, decision.Reason)
+				return
+			}
+		}
 	}
 
 	// Engine-bridged tools are policy-checked where they execute, in their own
