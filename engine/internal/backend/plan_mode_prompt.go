@@ -18,55 +18,10 @@ import (
 // are most useful, and the model silently fell back to raw Grep/Read sweeps.
 var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "AgentStatus", "WebFetch", "WebSearch", "Skill"}
 
-// planModeReminderInterval is the number of turns between sparse plan-mode
-// reminder injections. The first reminder fires on turn 2 (first post-entry
-// turn); subsequent reminders fire only when at least this many turns have
-// elapsed since the last injection. Matches Claude Code's
-// TURNS_BETWEEN_ATTACHMENTS=5 design (src/utils/attachments.ts).
+// planModeReminderInterval is the number of assistant turns after the most
+// recent plan-mode notice before the sparse reminder is sent again. Matches
+// Claude Code's TURNS_BETWEEN_ATTACHMENTS=5 design (src/utils/attachments.ts).
 const planModeReminderInterval = 5
-
-// planModeFirstTurnReminderThreshold is the conversation message count above
-// which the sparse reminder fires even on turn 1 of a run. Fresh plan-mode
-// entry (small message count) already has the full prompt in context — no
-// double-injection needed. But mature single-turn rounds (many messages) are
-// exactly the case where the model drifts: the full prompt is ~220+ messages
-// back, and turn > 1 never fires because each "what's next?" is its own run.
-// Tuned at 8 so the very first turn of a brand-new plan-mode session is
-// silent, while any session that has had a back-and-forth gets the reminder.
-const planModeFirstTurnReminderThreshold = 8
-
-// shouldInjectPlanModeReminder is the throttle decision for the sparse
-// reminder. Returns true on the first post-entry turn (lastReminderTurn==0)
-// or when at least planModeReminderInterval turns have elapsed since the
-// previous injection. Pulled out as a free function for direct unit testing
-// without spinning up a full ApiBackend run.
-func shouldInjectPlanModeReminder(turn, lastReminderTurn int) bool {
-	if turn < 2 {
-		return false
-	}
-	return lastReminderTurn == 0 || (turn-lastReminderTurn) >= planModeReminderInterval
-}
-
-// shouldInjectPlanModeReminderForRun is the extended gate that replaces the
-// simple `turn > 1` check in the runloop. It folds in the "mature session
-// turn-1" branch so single-turn rounds in long-running plan-mode conversations
-// also receive the reminder.
-//
-// Gate logic:
-//   - Turn 1 and conversation is small (≤ threshold): skip — the full prompt
-//     was just injected at plan-mode entry, double-reminding is noise.
-//   - Turn 1 and conversation is large (> threshold): inject — the full prompt
-//     is far back in context; this is the mid-plan follow-up case that was
-//     previously broken.
-//   - Turn 2+: delegate to the existing shouldInjectPlanModeReminder throttle
-//     (first post-entry turn fires unconditionally; subsequent turns respect
-//     planModeReminderInterval).
-func shouldInjectPlanModeReminderForRun(turn, lastReminderTurn, conversationMessageCount int) bool {
-	if turn == 1 {
-		return conversationMessageCount > planModeFirstTurnReminderThreshold
-	}
-	return shouldInjectPlanModeReminder(turn, lastReminderTurn)
-}
 
 func buildPlanModePrompt(planFilePath string, planFileExists bool, allowedBashCommands, allowedMcpTools []string) string {
 	planFileHeader := fmt.Sprintf("**Your plan file for this session: `%s`**", planFilePath)
@@ -108,7 +63,7 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 		mcpSection = fmt.Sprintf("\n- You MAY call MCP tools matching: %s. All other MCP tools are blocked.", strings.Join(allowedMcpTools, ", "))
 	}
 
-	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits, run any non-readonly tools, or make any changes to the system -- with the sole exception of writing to the plan file below. This overrides any conflicting instructions you have received elsewhere in this prompt or conversation.
+	return fmt.Sprintf(`[PLAN MODE] Plan mode is now active. It stays active until a later message in this conversation says plan mode has ended. While it is active you MUST NOT make any edits, run any non-readonly tools, or make any changes to the system -- with the sole exception of writing to the plan file below. Until plan mode ends, these restrictions take precedence over other instructions.
 
 ## Plan File
 %s
@@ -182,7 +137,7 @@ func buildPlanModeSparseReminder(planFilePath string) string {
 	}
 
 	return fmt.Sprintf(
-		"Plan mode still active (see full instructions earlier in conversation). "+
+		"Plan mode still active (see the full plan-mode instructions earlier in this conversation). "+
 			"Read-only except the plan file. "+
 			"**Your plan file for this session: `%s`** — this is the only valid plan file for this session. "+
 			"Do NOT use any plan file path you see elsewhere in conversation history — those paths are from prior completed cycles and are no longer valid. "+

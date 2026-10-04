@@ -76,18 +76,21 @@ type activeRun struct {
 	planMode          bool                     // true when this run is in plan mode
 	planFilePath      string                   // only writable file during plan mode
 	// planModeSparseReminderOverride is the harness-supplied sparse reminder text
-	// resolved once at run setup from RunOptions.PlanModeSparseReminder (highest
-	// priority) or the plan_mode_prompt hook's SparseReminder return field.
-	// Empty means "use buildPlanModeSparseReminder at injection time" (the
-	// engine default). Set in runloop_setup.go alongside planFilePath.
+	// resolved from RunOptions.PlanModeSparseReminder (highest priority) or the
+	// plan_mode_prompt hook's SparseReminder return field. Empty means "use
+	// buildPlanModeSparseReminder" (the engine default).
 	planModeSparseReminderOverride string
-	// planModeReminderTurn is the turn number on which the sparse plan-mode
-	// reminder last fired. The reminder is throttled to once per
-	// planModeReminderInterval turns to avoid the ~per-tool-round churn that
-	// previously anchored AskUserQuestion-as-turn-ender behavior in the model.
-	// Reset to 0 whenever a run re-enters plan mode via the EnterPlanMode
-	// sentinel so the throttle does not silence the first post-entry reminder.
-	planModeReminderTurn int
+	// planModePromptOverride is the harness-supplied plan-mode instruction
+	// text (RunOptions.PlanModePrompt, else the plan_mode_prompt hook). Empty
+	// means the engine default. Resolved once per run; see
+	// resolvePlanModeHarness.
+	planModePromptOverride string
+	// planHarnessResolved latches that resolvePlanModeHarness ran.
+	planHarnessResolved bool
+	// planNoticeMemo remembers a plan-mode notice this run delivered or
+	// withheld without writing it to the entry tree. Nil when the tree is the
+	// whole record. See reconcilePlanMode.
+	planNoticeMemo *planNoticeMemo
 	// planModeAllowedBashCommands is the set of command prefixes that the
 	// Bash tool is allowed to execute during plan mode. When non-empty,
 	// Bash is included in the plan-mode tool list but gated at execution

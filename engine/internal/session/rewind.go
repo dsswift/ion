@@ -149,9 +149,8 @@ func (m *Manager) rewindToEntryLocked(key, sessionID string, conv *conversation.
 // in effect at the rewind point. An existing-on-disk guard mirrors SetPlanMode /
 // SendPrompt: a path that no longer exists (or an empty path, meaning the rewind
 // landed before any plan) clears the field so the next plan-mode entry allocates
-// a fresh slug rather than pointing at a gone file. planModePromptSent resets so
-// the reentry guidance re-fires; hasExitedPlanMode tracks whether a plan file is
-// carried, matching SetPlanMode's disable path.
+// a fresh slug rather than pointing at a gone file. hasExitedPlanMode tracks
+// whether a plan file is carried, matching SetPlanMode's disable path.
 func (m *Manager) restorePlanFileForRewind(key, planFilePath string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -169,7 +168,6 @@ func (m *Manager) restorePlanFileForRewind(key, planFilePath string) {
 	} else {
 		s.planFilePath = ""
 	}
-	s.planModePromptSent = false
 	s.hasExitedPlanMode = s.planFilePath != ""
 	utils.LogWithFields(utils.LevelInfo, "session.rewind", "rewind: plan file restored", map[string]any{"key": key, "plan_file_path": s.planFilePath, "has_exited_plan_mode": s.hasExitedPlanMode})
 }

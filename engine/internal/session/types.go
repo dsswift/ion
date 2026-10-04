@@ -430,7 +430,6 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planModeAllowedMcpTools     []string
 	planFilePath                string
-	planModePromptSent          bool
 	// lostDispatches queues the dispatches rehydrateDispatchState resolved as
 	// lost (persisted status running/suspended with a fresh, empty registry —
 	// they died with the previous engine process). announceLostDispatches

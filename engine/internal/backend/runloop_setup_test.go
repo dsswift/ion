@@ -23,7 +23,7 @@ func TestBuildSystemPrompt_ResumeWithoutDuplication(t *testing.T) {
 	opts := &types.RunOptions{
 		AppendSystemPrompt: claudeContent,
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-1", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-1")
 	count := strings.Count(result, claudeContent)
 	if count != 1 {
 		t.Errorf("expected CLAUDE.md to appear once, appeared %d times", count)
@@ -37,7 +37,7 @@ func TestBuildSystemPrompt_SystemPromptOverride(t *testing.T) {
 	opts := &types.RunOptions{
 		SystemPrompt: "new system prompt",
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-2", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-2")
 	if result != "new system prompt" {
 		t.Errorf("expected SystemPrompt override, got %q", result)
 	}
@@ -48,7 +48,7 @@ func TestBuildSystemPrompt_PreservedWhenNoAppend(t *testing.T) {
 		System: "preserved system",
 	}
 	opts := &types.RunOptions{} // no SystemPrompt, no AppendSystemPrompt
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-3", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-3")
 	if result != "preserved system" {
 		t.Errorf("expected conv.System to be preserved, got %q", result)
 	}
@@ -60,7 +60,7 @@ func TestBuildSystemPrompt_FirstPromptClean(t *testing.T) {
 	opts := &types.RunOptions{
 		AppendSystemPrompt: claudeContent,
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-4", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-4")
 	count := strings.Count(result, claudeContent)
 	if count != 1 {
 		t.Errorf("expected content once, appeared %d times", count)
@@ -81,7 +81,7 @@ func TestBuildSystemPrompt_PlanModeWithAppend(t *testing.T) {
 		PlanMode:           true,
 		PlanFilePath:       "/tmp/nonexistent-plan.md",
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-5", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-5")
 	count := strings.Count(result, "context content")
 	if count != 1 {
 		t.Errorf("expected 'context content' once in plan mode, appeared %d times", count)
@@ -97,7 +97,7 @@ func TestBuildSystemPrompt_ExplicitBaseWithAppend(t *testing.T) {
 		SystemPrompt:       "fresh base",
 		AppendSystemPrompt: "appended context",
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-6", nil)
+	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-6")
 	if !strings.HasPrefix(result, "fresh base\n\nappended context") {
 		t.Errorf("expected fresh base + append, got %q", result)
 	}
@@ -504,23 +504,23 @@ func TestBuildToolDefs_PlanModeNoEnterPlanMode(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPrompt_PlanModeReentryPrepended(t *testing.T) {
-	conv := &conversation.Conversation{}
-	opts := &types.RunOptions{
-		PlanMode:        true,
-		PlanFilePath:    "/tmp/plan.md",
-		PlanModeReentry: true,
+// The system prompt is part of the provider's cached prefix, so it must be
+// identical whatever the run's mode. Plan-mode instructions are delivered as
+// notices instead (plan_mode_notice.go).
+func TestBuildSystemPrompt_IsModeInvariant(t *testing.T) {
+	build := func(opts *types.RunOptions) string {
+		opts.SystemPrompt = "base"
+		opts.AppendSystemPrompt = "context"
+		return buildSystemPrompt(opts, &conversation.Conversation{}, RunHooks{}, "req-7")
 	}
-	result := buildSystemPrompt(opts, conv, RunHooks{}, "req-7", nil)
-
-	if !strings.Contains(result, "Re-entering Plan Mode") {
-		t.Error("expected reentry prompt in system prompt")
+	auto := build(&types.RunOptions{})
+	plan := build(&types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md", PlanModeReentry: true, PlanModePrompt: "HARNESS PLAN PROMPT"})
+	implement := build(&types.RunOptions{ImplementationPhase: true, PlanFilePath: "/tmp/plan.md"})
+	if plan != auto || implement != auto {
+		t.Fatalf("system prompt differs by mode:\nauto=%q\nplan=%q\nimplement=%q", auto, plan, implement)
 	}
-	// Reentry should come before the standard plan mode prompt
-	reentryIdx := strings.Index(result, "Re-entering Plan Mode")
-	planModeIdx := strings.Index(result, "[PLAN MODE]")
-	if reentryIdx > planModeIdx {
-		t.Error("reentry prompt should appear before standard plan mode prompt")
+	if strings.Contains(plan, "PLAN MODE") || strings.Contains(plan, "HARNESS PLAN PROMPT") {
+		t.Errorf("plan-mode text leaked into the system prompt: %q", plan)
 	}
 }
 
@@ -678,7 +678,6 @@ func TestPlanModeSparseReminderOverride_RunOptions(t *testing.T) {
 func TestPlanModeSparseReminderOverride_HookResult(t *testing.T) {
 	hookReminder := "HOOK SPARSE REMINDER"
 	run := &activeRun{requestID: "hook-sparse-test"}
-	conv := &conversation.Conversation{}
 	opts := &types.RunOptions{
 		PlanMode:     true,
 		PlanFilePath: "/tmp/plan.md",
@@ -690,7 +689,7 @@ func TestPlanModeSparseReminderOverride_HookResult(t *testing.T) {
 		},
 	}
 
-	buildSystemPrompt(opts, conv, hooks, "hook-sparse-test", run)
+	NewApiBackend().resolvePlanModeHarness(run, hooks, opts)
 
 	if run.planModeSparseReminderOverride != hookReminder {
 		t.Errorf("hook SparseReminder not cached: want %q got %q", hookReminder, run.planModeSparseReminderOverride)
@@ -706,7 +705,6 @@ func TestPlanModeSparseReminderOverride_RunOptionsWinsOverHook(t *testing.T) {
 		requestID:                      "runoptions-wins",
 		planModeSparseReminderOverride: runOptionsReminder, // pre-set from StartRunWithConfig
 	}
-	conv := &conversation.Conversation{}
 	opts := &types.RunOptions{
 		PlanMode:               true,
 		PlanFilePath:           "/tmp/plan.md",
@@ -718,10 +716,10 @@ func TestPlanModeSparseReminderOverride_RunOptionsWinsOverHook(t *testing.T) {
 		},
 	}
 
-	buildSystemPrompt(opts, conv, hooks, "runoptions-wins", run)
+	NewApiBackend().resolvePlanModeHarness(run, hooks, opts)
 
 	// run.planModeSparseReminderOverride was pre-set from RunOptions;
-	// the hook branch in buildSystemPrompt only writes when the field is empty.
+	// resolvePlanModeHarness only writes the hook value when the field is empty.
 	if run.planModeSparseReminderOverride != runOptionsReminder {
 		t.Errorf("RunOptions reminder should win over hook: want %q got %q", runOptionsReminder, run.planModeSparseReminderOverride)
 	}
@@ -732,14 +730,13 @@ func TestPlanModeSparseReminderOverride_RunOptionsWinsOverHook(t *testing.T) {
 // the run's override stays empty (engine uses buildPlanModeSparseReminder).
 func TestPlanModeSparseReminderOverride_DefaultWhenBothEmpty(t *testing.T) {
 	run := &activeRun{requestID: "default-reminder"}
-	conv := &conversation.Conversation{}
 	opts := &types.RunOptions{
 		PlanMode:     true,
 		PlanFilePath: "/tmp/plan.md",
 		// PlanModeSparseReminder is empty
 	}
 	// No hook set.
-	buildSystemPrompt(opts, conv, RunHooks{}, "default-reminder", run)
+	NewApiBackend().resolvePlanModeHarness(run, RunHooks{}, opts)
 
 	if run.planModeSparseReminderOverride != "" {
 		t.Errorf("expected empty override (engine will use default), got %q", run.planModeSparseReminderOverride)

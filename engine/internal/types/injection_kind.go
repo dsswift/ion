@@ -105,12 +105,11 @@ const (
 
 	// InjectionKindSystemSteer is an engine- or harness-authored steering
 	// message injected into the turn stream to keep the model on its
-	// constraints: a plan-mode reminder, a turn-limit warning, a
-	// max-token continuation. The engine injects these transiently today
-	// (see backend.injectSystemMessage), so the kind exists mainly to
-	// classify the rows earlier versions persisted — and to give any
-	// consumer that injects its own steering a correct classification
-	// instead of an unclassified user turn.
+	// constraints: a turn-limit warning, a max-token continuation. It also
+	// classifies the plan-mode reminder rows earlier versions persisted
+	// before the plan-mode notice kinds below existed, and gives any consumer
+	// that injects its own steering a correct classification instead of an
+	// unclassified user turn.
 	InjectionKindSystemSteer InjectionKind = "system_steer"
 
 	// InjectionKindSteer is a steer message injected mid-turn onto a live run.
@@ -136,7 +135,34 @@ const (
 	// it ("Plan retained") instead — a presentation choice the kind enables and
 	// the engine does not make (ADR-017).
 	InjectionKindPlanRetained InjectionKind = "plan_retained"
+
+	// InjectionKindPlanModeEnter is the notice that tells the model plan mode
+	// is now active, carrying the plan-mode instructions. The engine appends it
+	// to the conversation at the point the mode changed, so the instructions
+	// sit in history as a dated fact rather than in the system prompt.
+	InjectionKindPlanModeEnter InjectionKind = "plan_mode_enter"
+
+	// InjectionKindPlanModeExit is the notice that tells the model plan mode
+	// has ended. It is what makes an earlier plan_mode_enter notice safe to
+	// keep in history: the two read as a timeline.
+	InjectionKindPlanModeExit InjectionKind = "plan_mode_exit"
+
+	// InjectionKindPlanModeReminder is the short periodic notice that plan
+	// mode is still active, sent when enough turns have passed since the last
+	// plan-mode notice.
+	InjectionKindPlanModeReminder InjectionKind = "plan_mode_reminder"
 )
+
+// IsPlanModeNotice reports whether this kind is one of the plan-mode notices
+// the engine appends when a run's mode and what the model was last told
+// disagree.
+func (k InjectionKind) IsPlanModeNotice() bool {
+	switch k {
+	case InjectionKindPlanModeEnter, InjectionKindPlanModeExit, InjectionKindPlanModeReminder:
+		return true
+	}
+	return false
+}
 
 // IsMachineToMachine reports whether a turn of this kind was authored by an
 // engine-side actor rather than by a user.
@@ -158,7 +184,10 @@ func (k InjectionKind) IsMachineToMachine() bool {
 		InjectionKindCheckIn,
 		InjectionKindRevive,
 		InjectionKindRunRecovery,
-		InjectionKindSystemSteer:
+		InjectionKindSystemSteer,
+		InjectionKindPlanModeEnter,
+		InjectionKindPlanModeExit,
+		InjectionKindPlanModeReminder:
 		return true
 	case InjectionKindNone, InjectionKindSteer, InjectionKindStructuredAnswer, InjectionKindPlanRetained:
 		return false
@@ -209,4 +238,7 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindSystemSteer,
 	InjectionKindSteer,
 	InjectionKindPlanRetained,
+	InjectionKindPlanModeEnter,
+	InjectionKindPlanModeExit,
+	InjectionKindPlanModeReminder,
 }

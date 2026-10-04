@@ -28,6 +28,9 @@ const KIND_EXPECTATIONS: ReadonlyArray<{ kind: string; machineAuthored: boolean;
   { kind: 'system_steer', machineAuthored: true, suppressed: true },
   { kind: 'steer', machineAuthored: false, suppressed: false },
   { kind: 'plan_retained', machineAuthored: false, suppressed: false },
+  { kind: 'plan_mode_enter', machineAuthored: true, suppressed: true },
+  { kind: 'plan_mode_exit', machineAuthored: true, suppressed: true },
+  { kind: 'plan_mode_reminder', machineAuthored: true, suppressed: true },
 ]
 
 describe('suppressesInjection', () => {

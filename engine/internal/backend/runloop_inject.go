@@ -11,10 +11,11 @@ import (
 // adds a transient message (suppress mode) or persists it normally.
 //
 // kind selects the per-injection disable flag and is the value passed to the
-// OnSystemInject hook. Recognized kinds: "plan_mode_reminder",
-// "turn_limit_warning", "max_token_continue", "nested_context", and the
-// early-stop continuation kind. An unrecognized kind is always injected
-// (no disable gate) — callers own that contract.
+// OnSystemInject hook. Recognized kinds: "turn_limit_warning",
+// "max_token_continue", "nested_context", and the early-stop continuation
+// kind. An unrecognized kind is always injected (no disable gate) — callers
+// own that contract. Plan-mode notices do not come through here; see
+// reconcilePlanMode.
 func (b *ApiBackend) injectSystemMessage(
 	run *activeRun,
 	conv *conversation.Conversation,
@@ -25,10 +26,6 @@ func (b *ApiBackend) injectSystemMessage(
 ) {
 	// Check per-injection disable flag
 	switch kind {
-	case "plan_mode_reminder":
-		if opts.DisablePlanModeReminder {
-			return
-		}
 	case "turn_limit_warning":
 		if opts.DisableTurnLimitWarning {
 			return
@@ -64,16 +61,7 @@ func (b *ApiBackend) injectSystemMessage(
 	}
 
 	// Add message: transient (in-memory only) or persistent.
-	//
-	// plan_mode_reminder is ALWAYS transient regardless of SuppressSystemMessages:
-	// a "plan mode still active" claim is only true for the turn it is injected
-	// and becomes a lie the moment the mode changes. Persisting it (as the old
-	// code did) causes the model to read stale mode-claims in later turns after
-	// a mode transition, and bloats the conversation history with identical
-	// copies. Other kinds (turn_limit_warning, max_token_continue, nested_context,
-	// early-stop) are legitimately part of history and keep the existing
-	// persist-on-default path.
-	transient := opts.SuppressSystemMessages || kind == "plan_mode_reminder"
+	transient := opts.SuppressSystemMessages
 	if transient {
 		conversation.AddTransientUserMessage(conv, text)
 	} else {

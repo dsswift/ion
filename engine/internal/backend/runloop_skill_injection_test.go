@@ -76,7 +76,7 @@ func TestBuildSystemPromptDoesNotRepeatSkillListing(t *testing.T) {
 	skills.ClearSkillRegistry()
 	defer skills.ClearSkillRegistry()
 	skills.RegisterSkill(&skills.Skill{Name: "alpha"})
-	got := buildSystemPrompt(&types.RunOptions{SystemPrompt: "base"}, &conversation.Conversation{}, RunHooks{}, "request", nil)
+	got := buildSystemPrompt(&types.RunOptions{SystemPrompt: "base"}, &conversation.Conversation{}, RunHooks{}, "request")
 	if strings.Contains(got, "Available Skills") {
 		t.Fatalf("listing must be conversation delta, not system prompt: %q", got)
 	}

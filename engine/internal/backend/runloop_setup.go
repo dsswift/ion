@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -306,14 +305,14 @@ func stampPrincipalAtMint(conv *conversation.Conversation, principal *types.Sess
 }
 
 // buildSystemPrompt assembles the final system prompt for a run, layering in
-// plan-mode prompt, before_prompt hook contributions, and the capability
-// prompt. May rewrite opts.Prompt and opts.PlanModeTools as a side effect when
-// a hook returns a non-empty replacement. When run is non-nil and the
-// plan_mode_prompt hook returns a SparseReminder, the override is cached on
-// run.planModeSparseReminderOverride for use by per-turn reminder injections
-// (the RunOptions.PlanModeSparseReminder field takes precedence over the hook
-// at injection time — see runloop.go).
-func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, hooks RunHooks, requestID string, run *activeRun) string {
+// before_prompt hook contributions and the capability prompt. May rewrite
+// opts.Prompt as a side effect when a hook returns a non-empty replacement.
+//
+// Nothing here depends on the run's mode. Plan-mode instructions are delivered
+// as notices in the conversation (plan_mode_notice.go), because the system
+// prompt is part of the provider's cached prefix and must not change when the
+// mode does.
+func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, hooks RunHooks, requestID string) string {
 	systemPrompt := conv.System
 	if opts.SystemPrompt != "" {
 		systemPrompt = opts.SystemPrompt
@@ -324,47 +323,6 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 		// when conv.System already contains content from a previous run.
 		base := opts.SystemPrompt // explicit override, or ""
 		systemPrompt = base + "\n\n" + opts.AppendSystemPrompt
-	}
-	if opts.PlanMode {
-		// Check extension hook for custom plan mode prompt
-		planPrompt := opts.PlanModePrompt
-		if planPrompt == "" && hooks.OnPlanModePrompt != nil {
-			customPrompt, customTools, customSparseReminder := hooks.OnPlanModePrompt(opts.PlanFilePath)
-			if customPrompt != "" {
-				planPrompt = customPrompt
-			}
-			if customTools != nil {
-				opts.PlanModeTools = customTools
-			}
-			// Cache the hook's sparse-reminder override on the run so per-turn
-			// reminder injections in runloop.go can reuse it without re-firing
-			// the hook. RunOptions.PlanModeSparseReminder takes precedence (see
-			// runloop.go reminder resolution block), so we only cache the hook
-			// result here; the resolution priority check happens at injection time.
-			if customSparseReminder != "" && run != nil && run.planModeSparseReminderOverride == "" {
-				run.planModeSparseReminderOverride = customSparseReminder
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "sparse_reminder_override=hook", map[string]any{
-					"run_id": requestID,
-					"len":    len(customSparseReminder),
-				})
-			}
-		}
-		if planPrompt == "" {
-			// Use default plan mode prompt. The bash allowlist passed into
-			// the prompt prose is the EFFECTIVE allowlist (session ∪ per-
-			// prompt additions, de-duplicated), so when a slash command
-			// declares additional commands in its frontmatter the model
-			// sees them in the prompt-time tool list.
-			_, err := os.Stat(opts.PlanFilePath)
-			planPrompt = buildPlanModePrompt(opts.PlanFilePath, err == nil, effectiveBashAllowlist(*opts), effectiveMcpAllowlist(*opts))
-		}
-		// Prepend reentry guidance when returning to plan mode after a
-		// previous exit. This tells the LLM to read the existing plan and
-		// decide whether to amend, replace, or extend it.
-		if opts.PlanModeReentry {
-			planPrompt = buildPlanModeReentryPrompt(opts.PlanFilePath) + "\n\n" + planPrompt
-		}
-		systemPrompt += "\n\n" + planPrompt
 	}
 	// Fire before_prompt hook (before finalizing system prompt)
 	if hooks.OnBeforePrompt != nil {
@@ -678,12 +636,9 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 
 // AssembleSystemPromptOnDemand assembles the system prompt outside of an active
 // run. Exported so the session layer can reconstruct the prompt for on-demand
-// operations (e.g. ComputeAndEmitContextBreakdown) without needing a live
-// activeRun. Equivalent to buildSystemPrompt with a nil run — the nil-guard
-// inside that function means the plan_mode_sparse_reminder cache path is
-// skipped, which is correct for the on-demand case (no run is in flight).
+// operations (e.g. ComputeAndEmitContextBreakdown) without a live activeRun.
 func AssembleSystemPromptOnDemand(opts *types.RunOptions, conv *conversation.Conversation) string {
-	return buildSystemPrompt(opts, conv, RunHooks{}, "on-demand", nil)
+	return buildSystemPrompt(opts, conv, RunHooks{}, "on-demand")
 }
 
 // ResolveProviderOnDemand resolves the provider for the given model and returns

@@ -53,6 +53,11 @@ func CountUserPrompts(conv *Conversation) int {
 		if md.DisplayOnly {
 			continue
 		}
+		if types.InjectionKind(md.InjectionKind).IsPlanModeNotice() {
+			// An engine notice about the run's mode, not something the user
+			// prompted.
+			continue
+		}
 		blocks := contentToBlocks(md.Content)
 		if isContextInjectionBlocks(blocks) || isSkillMetaBlocks(blocks) {
 			continue

@@ -35,6 +35,9 @@ func TestIsMachineToMachineIsExhaustive(t *testing.T) {
 		InjectionKindSystemSteer:              true,
 		InjectionKindSteer:                    false,
 		InjectionKindPlanRetained:             false,
+		InjectionKindPlanModeEnter:            true,
+		InjectionKindPlanModeExit:             true,
+		InjectionKindPlanModeReminder:         true,
 	}
 
 	for _, k := range AllInjectionKinds {

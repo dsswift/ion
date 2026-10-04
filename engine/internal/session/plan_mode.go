@@ -62,7 +62,6 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 		if s.planFilePath != "" {
 			s.hasExitedPlanMode = true
 		}
-		s.planModePromptSent = false
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "log", map[string]any{"session_id": key, "enabled": enabled, "was": was, "source": source, "allowed_tools": allowedTools, "has_exited_plan_mode": s.hasExitedPlanMode, "plan_file_path": s.planFilePath})
 }
