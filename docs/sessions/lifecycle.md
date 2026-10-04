@@ -46,7 +46,9 @@ During the agent loop, the engine may inject internal user-role messages for LLM
 
 | Type | When | Default text |
 |------|------|-------------|
-| Plan mode reminder | Turn 2+ in plan mode | `[SYSTEM] Plan mode still active...` |
+| Plan mode enter | The run is planning and the model has not been told so | `[PLAN MODE] Plan mode is now active...` |
+| Plan mode exit | The model was told it is planning and the run is not | `[PLAN MODE ENDED] Plan mode has ended...` |
+| Plan mode reminder | Five assistant turns after the last plan-mode notice, while planning | `[SYSTEM] Plan mode still active...` |
 | Turn limit warning | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
 | Max token continue | `max_tokens` stop reason | `Continue from where you left off.` |
 
@@ -131,22 +133,29 @@ The plan ID is **preserved** across plan-mode toggles. Toggling plan mode off �
 
 The plan ID is only retired when the engine **session itself is replaced**. On the desktop this happens when the user clicks Implement, which calls `resetTabSession()` and creates a fresh engine session. The next plan-mode enable then allocates a new slug.
 
-On re-entry (plan mode re-enabled after a prior exit within the same session), `SendPrompt` sets `PlanModeReentry=true` on the run options. The plan-mode system prompt is prepended with reentry guidance that instructs the LLM to read the existing plan before making changes.
+On re-entry (plan mode re-enabled after a prior exit within the same session), `SendPrompt` sets `PlanModeReentry=true` on the run options. The plan-mode enter notice is prefixed with re-entry guidance that instructs the LLM to read the existing plan before making changes.
+
+### How plan mode reaches the model
+
+Plan mode never changes a run's tool list or its system prompt. Those two are the start of the prompt a provider caches, and a change to either rewrites the whole cached conversation. Plan mode is delivered two other ways ([ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md)):
+
+- **Notices.** The plan-mode instructions are appended to the conversation as a `plan_mode_enter` notice where the mode changed. A `plan_mode_exit` notice ends it, and a `plan_mode_reminder` repeats the short form every five assistant turns. Each is saved exactly as sent. The engine decides which notice is due by reading the conversation's current path, so a rewind, a compaction, or a clear is handled without special cases.
+- **The plan policy.** Every tool stays in the list. While a run is planning, a call is checked when it is made: read-only tools, plan-safe tools, and allowlisted Bash and MCP tools run; a write to the plan file runs; everything else is refused with a reason that names what the model can use instead.
 
 ### Plan mode prose overrides
 
-The engine's plan-mode framing — both the full system prompt injected at run start and the sparse reminder injected periodically during the run — can be overridden at three levels, in decreasing priority:
+The engine's plan-mode framing — both the full instructions sent as the enter notice and the sparse reminder sent periodically while planning — can be overridden at three levels, in decreasing priority:
 
 1. **`RunOptions.PlanModePrompt` / `RunOptions.PlanModeSparseReminder`** (per-prompt, highest priority)
    Set on each `send_prompt` dispatch via the `planModePrompt` and `planModeSparseReminder` fields in the [client command](../protocol/client-commands.md#send_prompt). When non-empty, the engine uses these strings verbatim. When empty, the engine falls through to the next layer.
 
 2. **`plan_mode_prompt` SDK hook** (per-extension)
-   Extensions can return a `PlanModePromptResult{Prompt, Tools, SparseReminder}` from the `plan_mode_prompt` hook. `Prompt` replaces the full prompt; `Tools` overrides the allowed tool list; `SparseReminder` overrides the per-turn reminder text. Empty fields inherit the engine default. See [`plan_mode_prompt`](../hooks/reference.md#plan-mode-3) for the hook reference. The hook only fires when `RunOptions.PlanModePrompt` is empty (i.e. the RunOptions layer did not override).
+   Extensions can return a `PlanModePromptResult{Prompt, Tools, SparseReminder}` from the `plan_mode_prompt` hook. `Prompt` replaces the full instructions; `Tools` overrides the read-only tool set the plan policy allows; `SparseReminder` overrides the reminder text. Empty fields inherit the engine default. See [`plan_mode_prompt`](../hooks/reference.md#plan-mode-3) for the hook reference. The hook only fires when `RunOptions.PlanModePrompt` is empty (i.e. the RunOptions layer did not override).
 
 3. **Engine defaults** (lowest priority)
    `buildPlanModePrompt(planFilePath, planFileExists)` builds the full prompt; `buildPlanModeSparseReminder(planFilePath)` builds the per-turn reminder. Both include the end-of-turn discipline text (`AskUserQuestion` or `ExitPlanMode`) and the Forbidden Prose Patterns callout. These are the values used when no override is set at any layer.
 
-The desktop ships its reference prose as `ENTER_PLAN_MODE_DESCRIPTION` (full prompt framing for `EnterPlanMode` tool), and forwards `PLAN_MODE_SPARSE_REMINDER` as the sparse-reminder override on every engine-tab and CLI prompt dispatch (see `desktop/src/main/prompt-pipeline.ts`). Third-party harnesses set their own values or omit these fields to inherit the engine defaults.
+The server ships its reference prose as `ENTER_PLAN_MODE_DESCRIPTION` (the `EnterPlanMode` tool description) and forwards `PLAN_MODE_SPARSE_REMINDER` as the sparse-reminder override on every prompt dispatch (see `server/src/engine/prompt-pipeline-prose.ts`). The `EnterPlanMode` description is shown in every mode, so it must not claim that the tool's presence means plan mode is off. Third-party harnesses set their own values or omit these fields to inherit the engine defaults.
 
 Power users can customize the desktop's defaults via `~/.ion/settings.json` `desktop.*` keys — see the [desktop power-user overrides](../configuration/settings-json.md) section.
 
@@ -154,11 +163,11 @@ Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md): the 
 
 ### Plan mode on delegated-CLI backends
 
-The ApiBackend implements plan mode itself (tool gating, write gates, `ExitPlanMode` interception). The delegated-CLI backends instead enter each CLI's **native** plan mechanism and normalize its native plan output back into the same event contract — `engine_plan_mode_changed` on entry, `engine_plan_file_written` when the plan lands, `engine_plan_proposal` at the proposal boundary — so consumers see one identical surface regardless of backend.
+The ApiBackend implements plan mode itself (the plan policy, notices, `ExitPlanMode` interception), and so does claude-code, through the engine's hook server and MCP tool server. codex and the ACP backends instead enter each CLI's **native** plan mechanism. All of them normalize plan output back into the same event contract — `engine_plan_mode_changed` on entry, `engine_plan_file_written` when the plan lands, `engine_plan_proposal` at the proposal boundary — so consumers see one identical surface regardless of backend.
 
 | Backend | Native entry | Native plan capture |
 |---------|--------------|---------------------|
-| claude-code | `--permission-mode plan` | The `ExitPlanMode` tool argument (`plan`) streamed in the assistant message |
+| claude-code | None. The spawn is the same in every mode; the engine sends a `plan_mode_enter` notice on the user turn, refuses the CLI's write tools at the `PreToolUse` hook, and bridges `WritePlan`, `EditPlan`, `ExitPlanMode`, and `EnterPlanMode` over MCP | The plan file written through `WritePlan`/`EditPlan`; the `ExitPlanMode` `plan` argument as a fallback |
 | codex | `turn/start` `collaborationMode{mode:"plan"}` | The completed `plan` thread item (authoritative over `item/plan/delta`) |
 | cursor (ACP) | `session/set_mode` to the advertised plan/architect mode | The `plan` session update's entries, snapshotted at prompt return |
 | grok (ACP) | none — the dispatch-time capability gate declines the prompt with a typed `engine_capability_unsupported` event before any run starts (grok's `Capabilities()` reports `PlanMode: false`). A direct backend consumer that dispatches anyway gets the runtime backstop: a clean `engine_error` with `errorCode: plan_mode_unsupported` and a deliberate exit 0 | n/a |
@@ -169,13 +178,13 @@ Native modes can be sticky on the CLI side. Non-plan codex turns on a resumed th
 
 ### Model-initiated plan-mode entry
 
-In auto mode the engine injects the [`EnterPlanMode`](../tools/reference.md#enterplanmode) sentinel tool so the model can request a plan-mode transition mid-conversation.
+The [`EnterPlanMode`](../tools/reference.md#enterplanmode) sentinel tool is in the tool list in every mode, so the model can request a plan-mode transition mid-conversation. A call from a run that is already planning is answered with "already active", and a call from an implementation run (`implementationPhase`) is refused.
 
 When the model calls `EnterPlanMode`:
 
 1. The engine fires the [`before_plan_mode_enter`](../hooks/reference.md#plan-mode-3) hook. Extensions can veto by returning `Allow: &false`. Default is auto-approve.
 2. If denied, the run continues in auto mode and the denial reason is returned to the model as the tool result.
-3. If allowed, the session flips to plan mode and the run **continues** (unlike `ExitPlanMode`, which terminates the run). The plan-mode framing is returned as the tool result so the model sees it immediately.
+3. If allowed, the session flips to plan mode and the run **continues** (unlike `ExitPlanMode`, which terminates the run). The tool result states that plan mode is active and names the plan file. The read-only boundary applies from the model's next tool call, and the plan-mode instructions follow as the enter notice.
 4. The desktop and iOS UI reflect the transition via `engine_plan_mode_changed{enabled: true}`.
 
 ### Model-initiated plan-mode exit

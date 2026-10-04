@@ -3651,6 +3651,49 @@
       ]
     },
     {
+      "id": "plan-mode-notice",
+      "term": "Plan Mode Notice",
+      "definition": "A machine-authored user turn the engine appends to a conversation where a run's plan mode and what the model was last told disagree. There are three: enter carries the plan-mode instructions, exit ends an earlier enter, and reminder repeats the short form while planning continues. Each is saved exactly as it was sent, so the conversation reads as a timeline and the prompt a provider caches is never changed by a mode switch.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "InjectionKindPlanModeEnter",
+          "path": "engine/internal/types/injection_kind.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func ReconcilePlanMode",
+          "path": "engine/internal/conversation/plan_mode_ledger.go"
+        }
+      ]
+    },
+    {
+      "id": "plan-policy",
+      "term": "Plan Policy",
+      "definition": "The single decision of whether one tool call may run while a run is planning. Plan mode is read-only apart from the plan file, and the policy enforces that when a tool is called instead of by leaving tools out of the list the model sees. The API run loop, the delegated-CLI hook server, and the engine's MCP tool server all ask it.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "PlanPolicy",
+          "path": "engine/internal/backend/plan_policy.go"
+        }
+      ]
+    },
+    {
       "id": "policy-failure",
       "term": "Policy Failure",
       "definition": "A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.",

@@ -101,3 +101,4 @@ The engine is also UI-agnostic. It emits typed data events over the socket. It h
 | [ADR-027](adr/027-contextual-per-pairing-authentication.md) | Accepted | Interactive OIDC is pairing-contextual and user-initiated; desktop displays last-reported mobile identity without treating it as authority. |
 | [ADR-028](adr/028-interrupted-run-recovery.md) | Accepted | Durable engine journals resume configured interrupted runs without replaying client input. |
 | [ADR-032](adr/032-authenticated-client-data-access.md) | Accepted | Cached desktop data is visible only while a pairing retains authenticated authority; transport loss and explicit authorization failure are separate states. |
+| [ADR-038](adr/038-mode-invariant-prompt-prefix.md) | Accepted | A run's tool list and system prompt do not depend on plan mode. Plan mode is delivered as notices in the conversation and enforced when a tool is called, so switching modes keeps the provider's prompt cache. |

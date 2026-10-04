@@ -170,6 +170,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
 - [Placement](#term-placement)
+- [Plan Mode Notice](#term-plan-mode-notice)
+- [Plan Policy](#term-plan-policy)
 - [Policy Failure](#term-policy-failure)
 - [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
@@ -718,6 +720,33 @@ The decision about whether a tool call may run. The engine classifies the call a
   - `engine` / `wire` / `go`: `type PermissionRequestEvent struct` in `engine/internal/types/normalized_event.go`
   - `desktop` / `ui` / `typescript`: `PermissionCard` in `desktop/src/renderer/components/PermissionCard.tsx`
   - `ios` / `ui` / `swift`: `struct PermissionCardView` in `ios/IonRemote/Views/PermissionCardView.swift`
+
+#### Plan Mode Notice {#term-plan-mode-notice}
+
+A machine-authored user turn the engine appends to a conversation where a run's plan mode and what the model was last told disagree. There are three: enter carries the plan-mode instructions, exit ends an earlier enter, and reminder repeats the short form while planning continues. Each is saved exactly as it was sent, so the conversation reads as a timeline and the prompt a provider caches is never changed by a mode switch.
+
+- **ID:** `plan-mode-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `InjectionKindPlanModeEnter` in `engine/internal/types/injection_kind.go`
+  - `engine` / `code` / `go`: `func ReconcilePlanMode` in `engine/internal/conversation/plan_mode_ledger.go`
+
+#### Plan Policy {#term-plan-policy}
+
+The single decision of whether one tool call may run while a run is planning. Plan mode is read-only apart from the plan file, and the policy enforces that when a tool is called instead of by leaving tools out of the list the model sees. The API run loop, the delegated-CLI hook server, and the engine's MCP tool server all ask it.
+
+- **ID:** `plan-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `PlanPolicy` in `engine/internal/backend/plan_policy.go`
 
 #### Policy Failure {#term-policy-failure}
 

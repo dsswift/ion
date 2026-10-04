@@ -58,6 +58,7 @@ Find a package with `ls engine/internal` or `graphify query "<symbol>"`.
 - `NormalizedEvent` (`internal/types/normalized_event.go`) uses bare names. `translateToEngineEvent()` adds `engine_` before the socket. Bare names never reach a consumer. Wire list: `internal/types/engine_event.go`.
 - Contract manifest: `internal/types/contract_test.go` writes `internal/types/testdata/contracts.json`. Commit the regenerated manifest with the Go change. Full sync steps: root `AGENTS.md` § "Cross-language contract sync".
 - Commands: `internal/protocol/protocol.go`.
+- Nothing that varies with a run's mode or from run to run goes in the tool list or the system prompt. Both are the start of the prompt a provider caches; a change rewrites the whole cached conversation. Say it in a message appended to the conversation, and enforce it when a tool is called ([ADR-038](../docs/architecture/adr/038-mode-invariant-prompt-prefix.md)). `backend.prompt_prefix` warns when a prefix changes between runs.
 
 ## Providers and tools
 
