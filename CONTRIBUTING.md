@@ -141,8 +141,11 @@ After merge:
   - Updates `release-please-manifest.json`.
   - Pushes a `chore: release versions [skip ci]` commit back to `main`.
   - Creates a GitHub release with tag `<component>-v<version>`.
-- The build workflow runs against the new tags and uploads artifacts
-  (binaries, container images) to each release.
+- Each release that has artifacts is held as a draft. The build workflow
+  uploads its artifacts (binaries, container images).
+- The release goes public once its artifacts are attached and its tests in
+  the Quality workflow pass for the merge commit. A release whose tests fail
+  stays a draft and never reaches users.
 
 ## Why Merge Commits Matter
 
@@ -221,6 +224,7 @@ Open issues at https://github.com/dsswift/ion/issues. Include:
 
 - `.github/workflows/release.yml` — release detection and tagging.
 - `.github/workflows/build.yml` — artifact build and upload. Dispatch it with `dry_run` and a `ref` to build and verify a branch (signing, the Windows smoke test) without publishing anything.
+- `.github/workflows/publish.yml` and `.github/scripts/publish-tested-releases.mjs` — publish each held release once it is built and its tests pass. See `docs/contributing/delivery-pipeline.md`.
 - `release-please-config.json` — component definitions.
 - `release-please-manifest.json` — current version of each component (read-only for contributors).
 - https://github.com/dsswift/release-damnit — the release-detection tool used by `release.yml`.

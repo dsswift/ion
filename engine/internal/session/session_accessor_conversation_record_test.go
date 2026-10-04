@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"os"
 	"testing"
 
@@ -12,7 +13,7 @@ var _ extcontext.ConversationRecordAccessor = (*sessionAccessor)(nil)
 
 func TestConversationRecordPath_EmptyWithNoConversation(t *testing.T) {
 	setupPrincipalGuardTest(t)
-	acc := &sessionAccessor{s: &engineSession{principal: principalFor("oidc:alice")}, key: "k"}
+	acc := &sessionAccessor{s: &engineSession{agents: agents.NewRegistry(), principal: principalFor("oidc:alice")}, key: "k"}
 	if got := acc.ConversationRecordPath(); got != "" {
 		t.Errorf("ConversationRecordPath with no conversation = %q, want empty", got)
 	}
@@ -21,7 +22,7 @@ func TestConversationRecordPath_EmptyWithNoConversation(t *testing.T) {
 func TestConversationRecordPath_NamesTheSessionsRecord(t *testing.T) {
 	setupPrincipalGuardTest(t)
 	id := savedConversationOwnedBy(t, "oidc:alice")
-	acc := &sessionAccessor{s: &engineSession{conversationID: id, principal: principalFor("oidc:alice")}, key: "k"}
+	acc := &sessionAccessor{s: &engineSession{agents: agents.NewRegistry(), conversationID: id, principal: principalFor("oidc:alice")}, key: "k"}
 
 	path := acc.ConversationRecordPath()
 	if _, err := os.Stat(path); err != nil {
@@ -34,7 +35,7 @@ func TestConversationRecordPath_NamesTheSessionsRecord(t *testing.T) {
 func TestReadConversation_ReadsAFinishedRecordByID(t *testing.T) {
 	setupPrincipalGuardTest(t)
 	finished := savedConversationOwnedBy(t, "oidc:alice")
-	acc := &sessionAccessor{s: &engineSession{principal: principalFor("oidc:alice")}, key: "k"}
+	acc := &sessionAccessor{s: &engineSession{agents: agents.NewRegistry(), principal: principalFor("oidc:alice")}, key: "k"}
 
 	record, err := acc.ReadConversation(finished, 0, 10)
 	if err != nil {
@@ -51,7 +52,7 @@ func TestReadConversation_ReadsAFinishedRecordByID(t *testing.T) {
 func TestReadConversation_RefusesAnotherPrincipalsRecordUnderStrict(t *testing.T) {
 	setupPrincipalGuardTest(t)
 	theirs := savedConversationOwnedBy(t, "oidc:alice")
-	acc := &sessionAccessor{s: &engineSession{principal: principalFor("oidc:bob")}, key: "k"}
+	acc := &sessionAccessor{s: &engineSession{agents: agents.NewRegistry(), principal: principalFor("oidc:bob")}, key: "k"}
 
 	if _, err := acc.ReadConversation(theirs, 0, 0); !errors.Is(err, ErrConversationNotOwned) {
 		t.Fatalf("cross-principal read error = %v, want ErrConversationNotOwned", err)

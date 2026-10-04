@@ -12,7 +12,7 @@ import (
 // every one of 1,873 emissions across 15 hours; without throttling that is
 // 1,873 events describing one unchanging condition.
 func TestClampAdvisory_SuppressesRepeatsWithinWindow(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	rep := agents.ClampReport{AgentName: "a", Scope: "value", OriginalBytes: 3145728}
 	now := time.Now()
 
@@ -28,7 +28,7 @@ func TestClampAdvisory_SuppressesRepeatsWithinWindow(t *testing.T) {
 }
 
 func TestClampAdvisory_EmitsAgainAfterWindow(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	rep := agents.ClampReport{AgentName: "a", Scope: "value", OriginalBytes: 100}
 	now := time.Now()
 
@@ -41,7 +41,7 @@ func TestClampAdvisory_EmitsAgainAfterWindow(t *testing.T) {
 // A payload that changed size by an order of magnitude is new information,
 // not a repeat — suppressing it would hide a growing leak behind the throttle.
 func TestClampAdvisory_MateriallyDifferentSizeBypassesWindow(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	now := time.Now()
 
 	s.shouldEmitClampAdvisory(agents.ClampReport{AgentName: "a", Scope: "value", OriginalBytes: 1000}, now)
@@ -55,7 +55,7 @@ func TestClampAdvisory_MateriallyDifferentSizeBypassesWindow(t *testing.T) {
 // The limit is per (agent, scope): two agents clamping simultaneously are two
 // separate conditions and each deserves its own advisory.
 func TestClampAdvisory_IsScopedPerAgentAndScope(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	now := time.Now()
 
 	if !s.shouldEmitClampAdvisory(agents.ClampReport{AgentName: "a", Scope: "value", OriginalBytes: 100}, now) {

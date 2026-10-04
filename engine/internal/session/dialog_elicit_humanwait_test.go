@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func newHumanWaitMockSession(t *testing.T) (*Manager, *mockBackend, *engineSessi
 	const requestID = "hw-req-1"
 	mb := newMockBackend()
 	m := &Manager{sessions: make(map[string]*engineSession), backend: mb}
-	s := &engineSession{key: key, pending: pending.New(), requestID: requestID}
+	s := &engineSession{agents: agents.NewRegistry(), key: key, pending: pending.New(), requestID: requestID}
 	s.newSessionRootContext()
 	m.sessions[key] = s
 	return m, mb, s, requestID

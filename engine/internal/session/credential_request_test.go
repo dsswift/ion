@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func newCredentialTestSession(t *testing.T, subject string) (*Manager, *engineSe
 	t.Helper()
 	key := "test-session"
 	m := &Manager{sessions: make(map[string]*engineSession)}
-	s := &engineSession{key: key, pending: pending.New(), principal: &types.SessionPrincipal{Subject: subject}}
+	s := &engineSession{agents: agents.NewRegistry(), key: key, pending: pending.New(), principal: &types.SessionPrincipal{Subject: subject}}
 	s.newSessionRootContext()
 	m.sessions[key] = s
 	return m, s, key

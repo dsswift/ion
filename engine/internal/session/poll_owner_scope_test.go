@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func newPollOwnerSession(t *testing.T) (*Manager, *engineSession, string) {
 	t.Helper()
 	m := &Manager{sessions: map[string]*engineSession{}}
 	key := "poll-owner-session"
-	s := &engineSession{activePolls: map[string]*activePoll{}}
+	s := &engineSession{agents: agents.NewRegistry(), activePolls: map[string]*activePoll{}}
 	m.sessions[key] = s
 	return m, s, key
 }

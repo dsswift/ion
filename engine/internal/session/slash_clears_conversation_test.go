@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,7 +125,8 @@ func TestApplySlashClearsConversationAbortsOnDurableFailure(t *testing.T) {
 	}
 
 	s := &engineSession{
-		key: key, conversationID: conv.ID, lastContextPct: 70, lastContextTokens: 700,
+		agents: agents.NewRegistry(),
+		key:    key, conversationID: conv.ID, lastContextPct: 70, lastContextTokens: 700,
 		lastPermissionDenials: []types.PermissionDenial{{ToolName: "AskUserQuestion"}},
 	}
 	mgr := &Manager{sessions: map[string]*engineSession{key: s}}

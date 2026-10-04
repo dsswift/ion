@@ -37,6 +37,8 @@ permissions:
   pull-requests: write
   packages: write
   issues: write
+  statuses: write
+  actions: write
 
 # Two pushes in quick succession must not race: the second run's version
 # computation has to see the first run's version-bump commit, or both bump
@@ -52,6 +54,7 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created || 'false' }}
       release_report: ${{ steps.release.outputs.release_report || '{"releases":[],"components":[],"summary":{"total_releases":0,"total_commits":0,"by_bump_type":{"major":0,"minor":0,"patch":0}}}' }}
+      build_sha: ${{ steps.build-sha.outputs.sha }}
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -104,10 +107,11 @@ jobs:
       # release-damnit publishes each release the moment it creates it, before
       # a single binary exists. Held as a draft here, a release is invisible
       # to the desktop's update feed, the README install link, and `latest`
-      # until its own build.yml publish job has attached every asset. A build
-      # that fails leaves a draft with a rerun button, never a published
-      # release with files missing. Components with no build job (ios, sdk)
-      # have nothing to wait for and publish now.
+      # until every asset is attached and this push's Quality jobs for it have
+      # passed (publish-tested-releases.mjs). A build or test that fails leaves
+      # a draft, never a published release that is missing files or failed its
+      # tests. Components with no build job (ios, sdk) have nothing to wait
+      # for and publish now.
       - name: Hold built releases as drafts, publish the rest
         if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
         env:
@@ -115,30 +119,43 @@ jobs:
           RELEASE_REPORT: ${{ steps.release.outputs.release_report }}
         run: bash .github/scripts/hold-built-releases.sh
 
+      # The summary is sent by publish-tested-releases.mjs once every release
+      # in this report is public, from a later workflow; it reads the report
+      # from here.
+      - name: Save the release report
+        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
+        env:
+          RELEASE_REPORT: ${{ steps.release.outputs.release_report }}
+        run: printf '%s' "$RELEASE_REPORT" > release-report.json
+
+      - name: Upload the release report
+        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-report
+          path: release-report.json
+
+      # Build exactly the commit that was tested plus its version bump, never
+      # whatever main has moved to by the time a build job checks out.
+      - name: Record the commit to build
+        id: build-sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build:
     needs: release
     if: needs.release.outputs.releases_created == 'true'
     uses: ./.github/workflows/build.yml
     with:
       release_report: ${{ needs.release.outputs.release_report }}
-    secrets: inherit
-
-  # The summary names every release in the report, so it goes out only once
-  # every publish job has succeeded; a partial build is rerun first (its
-  # draft is waiting), and the summary follows that rerun.
-  notify:
-    needs: [release, build]
-    if: needs.release.outputs.releases_created == 'true' && needs.build.result == 'success'
-    uses: ./.github/workflows/release-summary.yml
-    with:
-      release_report: ${{ needs.release.outputs.release_report }}
+      ref: ${{ needs.release.outputs.build_sha }}
+      gate_sha: ${{ github.sha }}
     secrets: inherit
 
   # The jobs of this file, as issues. The build jobs file their own from
   # inside build.yml, by name; listing `build` here would file the same
   # failure a second time under a title that says less.
   report:
-    needs: [release, notify]
+    needs: [release]
     if: always() && inputs.dry_run != true
     runs-on: ubuntu-latest
     steps:

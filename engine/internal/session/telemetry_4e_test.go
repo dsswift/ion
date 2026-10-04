@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -27,7 +28,7 @@ func TestExtensionRespawnTelemetry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := &Manager{}
 			col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-			s := &engineSession{key: "sess-respawn", telemetry: col}
+			s := &engineSession{agents: agents.NewRegistry(), key: "sess-respawn", telemetry: col}
 			h := extension.NewHost()
 
 			m.emitExtensionRespawnTelemetry(s, "sess-respawn", h, 2, tc.err)
@@ -63,7 +64,7 @@ func TestExtensionRespawnTelemetry(t *testing.T) {
 // the session has no telemetry collector.
 func TestExtensionRespawnTelemetryNilCollector(t *testing.T) {
 	m := &Manager{}
-	s := &engineSession{key: "sess-nil"}
+	s := &engineSession{agents: agents.NewRegistry(), key: "sess-nil"}
 	h := extension.NewHost()
 	// Must not panic.
 	m.emitExtensionRespawnTelemetry(s, "sess-nil", h, 1, nil)
@@ -75,7 +76,7 @@ func TestExtensionRespawnTelemetryNilCollector(t *testing.T) {
 func TestExtensionColdstartTelemetry(t *testing.T) {
 	m := &Manager{}
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	s := &engineSession{key: "sess-cold", telemetry: col}
+	s := &engineSession{agents: agents.NewRegistry(), key: "sess-cold", telemetry: col}
 	h := extension.NewHost()
 
 	m.emitExtensionColdstartTelemetry(s, "sess-cold", h, "/path/to/ext/index.ts")
@@ -103,7 +104,7 @@ func TestExtensionColdstartTelemetry(t *testing.T) {
 
 	// A .js entry point reports transpiled_ts false.
 	col2 := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	s2 := &engineSession{key: "sess-cold-js", telemetry: col2}
+	s2 := &engineSession{agents: agents.NewRegistry(), key: "sess-cold-js", telemetry: col2}
 	m.emitExtensionColdstartTelemetry(s2, "sess-cold-js", h, "/path/to/ext/index.js")
 	var foundJS *telemetry.Event
 	ev2 := col2.BufferedEvents()
@@ -129,7 +130,7 @@ func TestExtensionRespawnTelemetry_CorrelationCtx(t *testing.T) {
 	m := &Manager{}
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	const wantConvID = "conv-respawn-789"
-	s := &engineSession{key: "sess-respawn-ctx", telemetry: col, conversationID: wantConvID}
+	s := &engineSession{agents: agents.NewRegistry(), key: "sess-respawn-ctx", telemetry: col, conversationID: wantConvID}
 	h := extension.NewHost()
 
 	m.emitExtensionRespawnTelemetry(s, "sess-respawn-ctx", h, 1, nil)
@@ -161,7 +162,7 @@ func TestExtensionColdstartTelemetry_CorrelationCtx(t *testing.T) {
 	m := &Manager{}
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	const wantConvID = "conv-coldstart-abc"
-	s := &engineSession{key: "sess-cold-ctx", telemetry: col, conversationID: wantConvID}
+	s := &engineSession{agents: agents.NewRegistry(), key: "sess-cold-ctx", telemetry: col, conversationID: wantConvID}
 	h := extension.NewHost()
 
 	m.emitExtensionColdstartTelemetry(s, "sess-cold-ctx", h, "/ext/index.ts")

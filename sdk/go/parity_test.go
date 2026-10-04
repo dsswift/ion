@@ -292,7 +292,7 @@ func TestContextEnvelopeMatchesEngineManifest(t *testing.T) {
 }
 
 func compareContextSchema(want sdkJSONSchema, got reflect.Type, path string) error {
-	for got.Kind() == reflect.Ptr {
+	for got.Kind() == reflect.Pointer {
 		got = got.Elem()
 	}
 	if got.Kind() != reflect.Struct {
@@ -328,7 +328,7 @@ func compareContextSchema(want sdkJSONSchema, got reflect.Type, path string) err
 }
 
 func compareContextFieldSchema(want sdkJSONSchema, got reflect.Type, path string) error {
-	for got.Kind() == reflect.Ptr {
+	for got.Kind() == reflect.Pointer {
 		got = got.Elem()
 	}
 	switch want.Kind {
@@ -475,7 +475,7 @@ func isRawMessageType(rt reflect.Type) bool {
 // jsonFieldNamesOf returns a struct's sorted JSON field names, matching the
 // engine generator's extraction so the two lists are comparable.
 func jsonFieldNamesOf(rt reflect.Type) []string {
-	for rt != nil && rt.Kind() == reflect.Ptr {
+	for rt != nil && rt.Kind() == reflect.Pointer {
 		rt = rt.Elem()
 	}
 	if rt == nil || rt.Kind() != reflect.Struct {

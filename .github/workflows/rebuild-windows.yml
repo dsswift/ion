@@ -16,11 +16,20 @@ name: Rebuild Windows Desktop
 on:
   workflow_dispatch: {}
 
+# build.yml's own permissions; a called workflow gets no more than its caller.
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  statuses: write
+  actions: write
+
 jobs:
   rebuild:
     runs-on: ubuntu-latest
     outputs:
       release_report: ${{ steps.report.outputs.release_report }}
+      gate_sha: ${{ steps.gate.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,10 +53,23 @@ jobs:
             summary: {total_releases: 0, total_commits: 0, by_bump_type: {major: 0, minor: 0, patch: 0}}
           }')
           echo "release_report=${REPORT}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # A held release is published by the commit it was cut from: its build
+      # marks that commit ready, and that commit's Quality run gates it.
+      - name: Read the commit the release was cut from
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh release view "desktop-v${{ steps.report.outputs.version }}" -R "${{ github.repository }}" --json targetCommitish -q .targetCommitish)
+          echo "desktop-v${{ steps.report.outputs.version }} was cut from ${SHA}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: rebuild
     uses: ./.github/workflows/build.yml
     with:
       release_report: ${{ needs.rebuild.outputs.release_report }}
+      gate_sha: ${{ needs.rebuild.outputs.gate_sha }}
     secrets: inherit

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -11,7 +12,7 @@ import (
 func TestEvaluateSlashModelBoundaryPolicy(t *testing.T) {
 	const key = "boundary-policy"
 	makeManager := func() (*Manager, *engineSession) {
-		s := &engineSession{key: key, lastModel: "current-model"}
+		s := &engineSession{agents: agents.NewRegistry(), key: key, lastModel: "current-model"}
 		m := &Manager{sessions: map[string]*engineSession{key: s}}
 		return m, s
 	}

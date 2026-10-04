@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"strings"
 	"sync"
 	"testing"
@@ -32,7 +33,7 @@ func TestWirePrincipalRun_CommandPatternsEnforcedWithSandboxOffAndOn(t *testing.
 			mgr.SetConfig(enterprisePatternConfig(required, pattern))
 
 			runCfg := &backend.RunConfig{}
-			mgr.wirePrincipalRun(&engineSession{}, "key", nil, runCfg)
+			mgr.wirePrincipalRun(&engineSession{agents: agents.NewRegistry()}, "key", nil, runCfg)
 
 			if (runCfg.SandboxCfg != nil) != required {
 				t.Fatalf("SandboxCfg set = %v, want %v", runCfg.SandboxCfg != nil, required)
@@ -59,7 +60,7 @@ func TestSetConfig_NoPatternsWiresNone(t *testing.T) {
 	mgr.SetConfig(&types.EngineRuntimeConfig{})
 
 	runCfg := &backend.RunConfig{}
-	mgr.wirePrincipalRun(&engineSession{}, "key", nil, runCfg)
+	mgr.wirePrincipalRun(&engineSession{agents: agents.NewRegistry()}, "key", nil, runCfg)
 	if len(runCfg.CommandPatterns) != 0 || runCfg.SandboxCfg != nil {
 		t.Errorf("expected no patterns and no sandbox, got %d patterns, sandbox=%v", len(runCfg.CommandPatterns), runCfg.SandboxCfg != nil)
 	}

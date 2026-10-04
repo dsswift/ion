@@ -32,7 +32,7 @@ The agent's job ends at the commit. Squashing, pushing, and whether to open a pu
 
 `main` refuses force-pushes (its ruleset), and the version-bump commit the pipeline pushes lands on top of yours. So a fix after a push is an ordinary conventional commit pushed on top, which gets its own version and its own release. There is nothing to re-squash.
 
-**A test failed on `main`. Do I re-align and re-squash?** No. Read the issue the test lane filed, fix forward, push. The release for the failing push already shipped; the fix ships as the next one.
+**A test failed on `main`. Do I re-align and re-squash?** No. Read the issue the test lane filed, fix forward, push. The release for the failing push stays a draft and never reaches users; the fix ships as the next one. If the test was flaky, rerun it instead, and the held release goes public when it passes.
 
 **Do not re-run `/squash` on a published branch**, including a branch that has a pull request open. Rebuilding history that has been pushed requires a force-push, which breaks review threads and severs the mapping between review comments and the code they describe. Fix commits land on top as ordinary conventional commits.
 

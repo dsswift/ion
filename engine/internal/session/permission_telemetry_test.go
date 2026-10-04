@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/permissions"
@@ -29,6 +30,7 @@ func TestWirePermissionDecisionTelemetry_CtxFields(t *testing.T) {
 	collector := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 
 	sess := &engineSession{
+		agents:         agents.NewRegistry(),
 		key:            sessionKey,
 		conversationID: convID,
 		permEngine:     permEng,
@@ -113,7 +115,7 @@ func TestWirePermissionDecisionTelemetry_NilGuards(t *testing.T) {
 	m.wirePermissionDecisionTelemetry(nil)
 
 	// nil permEngine must not panic.
-	m.wirePermissionDecisionTelemetry(&engineSession{})
+	m.wirePermissionDecisionTelemetry(&engineSession{agents: agents.NewRegistry()})
 }
 
 // TestWirePermissionDecisionTelemetry_LatencyIsFractionalFloat pins that the
@@ -128,6 +130,7 @@ func TestWirePermissionDecisionTelemetry_LatencyIsFractionalFloat(t *testing.T) 
 	collector := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 
 	sess := &engineSession{
+		agents:         agents.NewRegistry(),
 		key:            "sess-latency",
 		conversationID: "conv-latency",
 		permEngine:     permEng,
@@ -197,6 +200,7 @@ func TestWirePermissionDecisionTelemetry_InputPreviewGatedByPrivacyLevel(t *test
 			})
 
 			sess := &engineSession{
+				agents:         agents.NewRegistry(),
 				key:            "sess-privacy",
 				conversationID: "conv-privacy",
 				permEngine:     permEng,

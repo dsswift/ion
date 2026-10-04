@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"strings"
 	"testing"
 
@@ -58,7 +59,7 @@ func TestIdentityPolicyAsyncResolverRechecksAfterIdentityLoss(t *testing.T) {
 
 	mgr := NewManager(newMockBackend())
 	mgr.mu.Lock()
-	mgr.sessions["required"] = &engineSession{key: "required", identityPolicy: identityPolicy{requirement: identityOperator, extensions: []string{"required-extension"}}}
+	mgr.sessions["required"] = &engineSession{agents: agents.NewRegistry(), key: "required", identityPolicy: identityPolicy{requirement: identityOperator, extensions: []string{"required-extension"}}}
 	mgr.mu.Unlock()
 	host := extension.NewHost()
 	host.SetSessionKey("required")

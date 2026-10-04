@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -17,7 +18,7 @@ import (
 // high/low cases; removing the "off" clearing fails the off case.
 func TestBuildRunOptions_ThinkingEffortOverride(t *testing.T) {
 	newSession := func() *engineSession {
-		return &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
+		return &engineSession{agents: agents.NewRegistry(), config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 	}
 
 	t.Run("high sets effort thinking", func(t *testing.T) {

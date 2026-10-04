@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,7 @@ func TestBuildSessionStatusMirror_NilSessionHandled(t *testing.T) {
 // event yet" once the dispatcher migration completes (Phase 4).
 func TestBuildSessionStatusMirror_HasInflightRunReflectsSession(t *testing.T) {
 	s := &engineSession{
+		agents:         agents.NewRegistry(),
 		key:            "inflight-key",
 		conversationID: "conv-123",
 		requestID:      "run-xyz",
@@ -138,7 +140,7 @@ func TestBuildSessionStatusMirror_HasInflightRunReflectsSession(t *testing.T) {
 // mirror must track it so consumers cannot disagree based on which
 // event they read.
 func TestBuildSessionStatusMirror_StatusFieldsSessionIDOverrides(t *testing.T) {
-	s := &engineSession{conversationID: "stale-conv"}
+	s := &engineSession{agents: agents.NewRegistry(), conversationID: "stale-conv"}
 	f := &types.StatusFields{State: "idle", SessionID: "fresh-conv"}
 	mirror := buildSessionStatusMirror("override-key", f, s)
 	if mirror.SessionStatus.SessionID != "fresh-conv" {

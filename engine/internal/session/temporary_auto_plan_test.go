@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
@@ -63,7 +64,8 @@ func TestTemporaryAutoPlanWaitsForBackgroundWorkThenProposes(t *testing.T) {
 	registry.Register("agent-1", func(string) {}, nil, "tab")
 	workflow := &temporaryAutoPlanWorkflow{runID: "root-run", planFile: "/tmp/plan.md"}
 	s := &engineSession{
-		key: "tab", planMode: true, conversationID: "conv",
+		agents: agents.NewRegistry(),
+		key:    "tab", planMode: true, conversationID: "conv",
 		dispatchRegistry: registry, temporaryAutoPlan: workflow,
 	}
 	mgr := &Manager{sessions: map[string]*engineSession{"tab": s}}

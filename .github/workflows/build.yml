@@ -1,13 +1,18 @@
 name: Build
 
 # Every release named in the report arrives here as a draft (release.yml
-# holds it). Each component's publish-* job at the bottom flips its draft
-# public once every one of that component's assets is attached, so a build
-# failure leaves a draft with a rerun button and never a published release
-# with files missing. Tests do not run here: the Quality workflow is the test
-# lane and it never blocks a build. The one runtime check in this file, the
-# Windows install smoke, records its failure as an issue and the installer
-# still ships.
+# holds it). Each component's ready-* job at the bottom marks the gate commit
+# `release/<component>` once every one of that component's assets is
+# attached; the `publish` job then runs publish-tested-releases.mjs, which
+# makes a draft public only when its build is marked ready and its Quality
+# jobs passed. A build failure leaves a draft with a rerun button and never a
+# published release with files missing. Tests do not run here: the Quality
+# workflow is the test lane and runs beside this one. The one runtime check in
+# this file, the Windows install smoke, records its failure as an issue and
+# the installer still ships.
+#
+# Images push only their version tags here. `:latest` moves when the release
+# goes public.
 #
 # A dry run builds and verifies everything a release would (signing, the
 # Windows smoke test, bundle checks) from any ref, and publishes nothing: no
@@ -25,6 +30,12 @@ on:
         required: false
         type: string
         default: main
+      # The commit whose Quality run gates these releases: the commit each
+      # release was cut from. Defaults to the triggering commit.
+      gate_sha:
+        required: false
+        type: string
+        default: ''
       dry_run:
         required: false
         type: boolean
@@ -40,6 +51,11 @@ on:
         required: false
         type: string
         default: main
+      gate_sha:
+        description: 'Commit whose Quality run gates these releases (default: the triggering commit)'
+        required: false
+        type: string
+        default: ''
       dry_run:
         description: 'Build and verify only; publish nothing'
         required: false
@@ -50,6 +66,8 @@ permissions:
   contents: write
   packages: write
   issues: write
+  statuses: write
+  actions: write
 
 jobs:
   build-engine:
@@ -273,25 +291,25 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             ghcr.io/${{ github.repository }}/engine:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository }}/engine:latest
 
   # The Studio server bundle: engine binary + Node runtime + built server in
   # one tarball per platform, uploaded to the server-v<version> release
   # (studio-server-checksums adds the installer script once).
   # install-studio-server.sh and `ion studio update` download exactly these. The engine binary is the signed release
   # asset for engine/VERSION (never rebuilt here); when this same release
-  # also ships the engine, build-engine and publish-engine run first.
-  # Waiting on publish-engine keeps the download away from the moment the
-  # engine release goes from draft to public: a lookup that straddles that
-  # change finds the release under neither state. A skipped or failed
-  # publish-engine leaves the release in one state, so the bundle still builds.
+  # also ships the engine, its build and ready-engine run first so every
+  # engine asset is attached. The engine release can go from draft to public
+  # at any moment (its tests finishing), so the asset is looked up in the
+  # release list, which holds drafts and public releases alike, and fetched
+  # by id. The server's ready job records which engine release it bundled;
+  # the server goes public only once that engine release is public.
   #
   # node-pty ships prebuilds for macOS only and compiles on Linux, so each
   # bundle is packaged on a runner of its own platform (see
   # scripts/package-studio-server.sh).
   build-studio-server:
     if: always() && contains(fromJSON(inputs.release_report).components, 'server') && !contains(needs.build-engine.result, 'failure')
-    needs: [build-engine, publish-engine]
+    needs: [build-engine, ready-engine]
     strategy:
       fail-fast: false
       matrix:
@@ -332,10 +350,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          TAG="engine-v${{ steps.version.outputs.engine }}"
+          ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ID=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .assets[] | select(.name == \"$ASSET\") | .id")
+          if [ -z "$ID" ]; then
+            echo "::error::$TAG has no asset $ASSET"
+            exit 1
+          fi
           mkdir -p build/engine-release
-          gh release download "engine-v${{ steps.version.outputs.engine }}" -R "${{ github.repository }}" \
-            -p "ion-${{ matrix.goos }}-${{ matrix.goarch }}" -D build/engine-release
-          chmod +x "build/engine-release/ion-${{ matrix.goos }}-${{ matrix.goarch }}"
+          gh api "repos/${{ github.repository }}/releases/assets/$ID" -H 'Accept: application/octet-stream' > "build/engine-release/$ASSET"
+          chmod +x "build/engine-release/$ASSET"
+          echo "downloaded $ASSET from $TAG (asset $ID)"
 
       - name: Install workspace dependencies
         run: npm ci --ignore-scripts
@@ -446,7 +473,6 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             ghcr.io/${{ github.repository }}/relay:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository }}/relay:latest
 
   build-desktop:
     if: contains(fromJSON(inputs.release_report).components, 'desktop')
@@ -950,75 +976,110 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}/studio-server:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}/studio-server:sha-${{ steps.sha.outputs.short }}
-            ghcr.io/${{ github.repository }}/studio-server:latest
 
   # ---------------------------------------------------------------------------
-  # Publish. Each component's draft goes public only when every job that
-  # attaches one of its assets has succeeded. `always()` is what lets a
-  # publish job evaluate at all when a sibling component's job failed or was
-  # skipped; the per-job result checks are the real gate. A failed publish
-  # condition leaves the draft in place: rerun the failed jobs and the
-  # publish job runs again.
-  publish-engine:
+  # Ready, then publish. Each ready-* job marks the gate commit
+  # `release/<component>` once every job that attaches one of that component's
+  # assets has succeeded; the description starts with the tag. `always()` is
+  # what lets a ready job evaluate at all when a sibling component's job failed
+  # or was skipped; the per-job result checks are the real gate. A failed
+  # condition leaves the draft in place: rerun the failed jobs and the ready
+  # job runs again.
+  ready-engine:
     if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'engine') && needs.build-engine.result == 'success' && needs.engine-checksums.result == 'success' && needs.build-engine-image.result == 'success'
     needs: [build-engine, engine-checksums, build-engine-image]
     runs-on: ubuntu-latest
     steps:
-      # README install commands point at /releases/latest/download/ion-...,
-      # so the engine is the one release marked latest.
-      - name: Publish the engine release as latest
+      - name: Mark the engine build ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_REPORT: ${{ inputs.release_report }}
+          GATE_SHA: ${{ inputs.gate_sha || github.sha }}
         run: |
           TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="engine") | .tag_name')
-          gh release edit "$TAG" --draft=false --latest -R "${{ github.repository }}"
-          echo "published $TAG (latest)"
+          gh api "repos/${{ github.repository }}/statuses/$GATE_SHA" -f state=success -f context=release/engine -f description="$TAG"
+          echo "ready: $TAG at $GATE_SHA"
 
-  publish-server:
+  ready-server:
     if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'server') && needs.build-studio-server.result == 'success' && needs.studio-server-checksums.result == 'success' && needs.build-server.result == 'success'
     needs: [build-studio-server, studio-server-checksums, build-server]
     runs-on: ubuntu-latest
     steps:
-      - name: Publish the server release
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      # The engine release the bundles downloaded (build-studio-server reads
+      # the same file from the same ref).
+      - name: Mark the server build ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_REPORT: ${{ inputs.release_report }}
+          GATE_SHA: ${{ inputs.gate_sha || github.sha }}
         run: |
           TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="server") | .tag_name')
-          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
-          echo "published $TAG"
+          ENGINE="engine-v$(tr -d '[:space:]' < engine/VERSION)"
+          gh api "repos/${{ github.repository }}/statuses/$GATE_SHA" -f state=success -f context=release/server -f description="$TAG with $ENGINE"
+          echo "ready: $TAG (bundles $ENGINE) at $GATE_SHA"
 
-  publish-desktop:
+  ready-desktop:
     if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'desktop') && needs.build-desktop.result == 'success' && needs.build-desktop-windows.result == 'success'
     needs: [build-desktop, build-desktop-windows]
     runs-on: ubuntu-latest
     steps:
-      # Publishing is what makes latest-mac.yml and latest.yml visible to the
-      # auto-updater, so no desktop ever sees a feed whose installer is not
-      # yet attached.
-      - name: Publish the desktop release
+      - name: Mark the desktop build ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_REPORT: ${{ inputs.release_report }}
+          GATE_SHA: ${{ inputs.gate_sha || github.sha }}
         run: |
           TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="desktop") | .tag_name')
-          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
-          echo "published $TAG"
+          gh api "repos/${{ github.repository }}/statuses/$GATE_SHA" -f state=success -f context=release/desktop -f description="$TAG"
+          echo "ready: $TAG at $GATE_SHA"
 
-  publish-relay:
+  ready-relay:
     if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'relay') && needs.build-relay.result == 'success'
     needs: build-relay
     runs-on: ubuntu-latest
     steps:
-      - name: Publish the relay release
+      - name: Mark the relay build ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_REPORT: ${{ inputs.release_report }}
+          GATE_SHA: ${{ inputs.gate_sha || github.sha }}
         run: |
           TAG=$(echo "$RELEASE_REPORT" | jq -r '.releases[] | select(.component=="relay") | .tag_name')
-          gh release edit "$TAG" --draft=false --latest=false -R "${{ github.repository }}"
-          echo "published $TAG"
+          gh api "repos/${{ github.repository }}/statuses/$GATE_SHA" -f state=success -f context=release/relay -f description="$TAG"
+          echo "ready: $TAG at $GATE_SHA"
+
+  # Publishing the auto-updater feeds (latest-mac.yml, latest.yml) and the
+  # engine's /releases/latest happens here or in publish.yml, whichever runs
+  # last of build and tests; the shared concurrency group keeps the two
+  # sweeps from interleaving.
+  publish:
+    if: always() && !inputs.dry_run
+    needs: [ready-engine, ready-server, ready-desktop, ready-relay]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish every built and tested release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/publish-tested-releases.mjs
 
   # The lane's outcome, as issues. Every job above feeds this, so a build or
   # publish failure is filed instead of sitting on a red run nobody opened. A
@@ -1034,10 +1095,11 @@ jobs:
       - build-desktop
       - build-desktop-windows
       - build-server
-      - publish-engine
-      - publish-server
-      - publish-desktop
-      - publish-relay
+      - ready-engine
+      - ready-server
+      - ready-desktop
+      - ready-relay
+      - publish
     if: always() && !inputs.dry_run
     runs-on: ubuntu-latest
     steps:

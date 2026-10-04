@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,7 +118,7 @@ func TestResolveCliContinuity_BridgesWhenNoCursor(t *testing.T) {
 	writeSeedConv(t, "seedconv-1")
 
 	mgr := NewManager(backend.NewClaudeCodeBackend())
-	s := &engineSession{key: "k1", conversationID: "seedconv-1"}
+	s := &engineSession{agents: agents.NewRegistry(), key: "k1", conversationID: "seedconv-1"}
 	opts := types.RunOptions{Model: "claude-opus-4-8", Prompt: "and its population?"}
 
 	mgr.resolveCliContinuity(s, &opts)
@@ -150,7 +151,7 @@ func TestResolveCliContinuity_SkipsSeedForLiteralPrompt(t *testing.T) {
 	writeSeedConv(t, "seedconv-compact")
 
 	mgr := NewManager(backend.NewClaudeCodeBackend())
-	s := &engineSession{key: "k-compact", conversationID: "seedconv-compact"}
+	s := &engineSession{agents: agents.NewRegistry(), key: "k-compact", conversationID: "seedconv-compact"}
 	opts := types.RunOptions{Model: "claude-opus-4-8", Prompt: "/compact", SkipCliHistorySeed: true}
 
 	mgr.resolveCliContinuity(s, &opts)
@@ -169,7 +170,7 @@ func TestResolveCliContinuity_ResumesOnValidCursor(t *testing.T) {
 	leaf := writeSeedConv(t, "seedconv-2")
 
 	mgr := NewManager(backend.NewClaudeCodeBackend())
-	s := &engineSession{key: "k2", conversationID: "seedconv-2",
+	s := &engineSession{agents: agents.NewRegistry(), key: "k2", conversationID: "seedconv-2",
 		nativeSessions: map[string]conversation.NativeSessionCursor{
 			"claude-code": {Cursor: "claude-uuid-abc", HeadEntryID: leaf},
 		}}
@@ -194,7 +195,7 @@ func TestResolveCliContinuity_BridgesOnStaleCursor(t *testing.T) {
 	advanceSeedConv(t, "seedconv-3")
 
 	mgr := NewManager(backend.NewClaudeCodeBackend())
-	s := &engineSession{key: "k3", conversationID: "seedconv-3",
+	s := &engineSession{agents: agents.NewRegistry(), key: "k3", conversationID: "seedconv-3",
 		nativeSessions: map[string]conversation.NativeSessionCursor{
 			"claude-code": {Cursor: "claude-uuid-abc", HeadEntryID: leaf},
 		}}
@@ -222,7 +223,7 @@ func TestResolveCliContinuity_ResumesCliOnlyConversationWithoutFile(t *testing.T
 	t.Setenv("HOME", home)
 
 	mgr := NewManager(backend.NewClaudeCodeBackend())
-	s := &engineSession{key: "k4", conversationID: "cli-only-no-file",
+	s := &engineSession{agents: agents.NewRegistry(), key: "k4", conversationID: "cli-only-no-file",
 		nativeSessions: map[string]conversation.NativeSessionCursor{
 			"claude-code": {Cursor: "claude-uuid-xyz", HeadEntryID: ""},
 		}}
@@ -244,7 +245,7 @@ func TestResolveCliContinuity_NoopForApiBackend(t *testing.T) {
 	writeSeedConv(t, "seedconv-5")
 
 	mgr := NewManager(backend.NewApiBackend())
-	s := &engineSession{key: "k5", conversationID: "seedconv-5"}
+	s := &engineSession{agents: agents.NewRegistry(), key: "k5", conversationID: "seedconv-5"}
 	opts := types.RunOptions{Model: "claude-opus-4-8", Prompt: "hello"}
 
 	mgr.resolveCliContinuity(s, &opts)

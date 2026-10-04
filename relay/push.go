@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/net/http2"
 )
 
 const (
@@ -90,6 +89,17 @@ type APNsPusher struct {
 	queue chan pushRequest
 }
 
+// newAPNsTransport builds the transport every APNs request goes out on. APNs
+// speaks HTTP/2 only, so the transport must negotiate it even when a caller
+// supplies its own TLS config, which turns the automatic upgrade off.
+func newAPNsTransport() *http.Transport {
+	return &http.Transport{
+		ForceAttemptHTTP2:   true,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	}
+}
+
 // NewAPNsPusher builds a pusher from the .p8 key's PEM bytes.
 func NewAPNsPusher(keyData []byte, keyID, teamID, topic string) (*APNsPusher, error) {
 	if topic == "" {
@@ -111,8 +121,7 @@ func NewAPNsPusher(keyData []byte, keyID, teamID, topic string) (*APNsPusher, er
 		return nil, fmt.Errorf("APNs key is not ECDSA")
 	}
 
-	transport := &http2.Transport{}
-	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	client := &http.Client{Transport: newAPNsTransport(), Timeout: 30 * time.Second}
 
 	// The default endpoint serves a phone that did not report its token's
 	// environment. A phone that did is routed by endpoint() instead.
