@@ -10,7 +10,7 @@ import (
 )
 
 // prompt_cli_plan_file_tools.go — handlers for the WritePlan/EditPlan pair the
-// engine exposes to a delegated claude-code plan-mode run.
+// engine exposes to a delegated claude-code run.
 //
 // These handlers live in the session package rather than beside their tool
 // contracts in internal/backend because both need two things only the manager
@@ -28,10 +28,8 @@ import (
 // registerPlanFileTools registers the WritePlan/EditPlan pair on a run's MCP
 // ToolServer and returns their wire names for the tool-alias directive.
 //
-// Both plan-mode registration paths call this — the plan-mode spawn
-// (wirePlanModeToolServer) and the auto-mode spawn that may enter plan mode
-// mid-run (wireEnterPlanModeToolServer) — so the model has the same authoring
-// surface whichever way the session reached plan mode.
+// wirePlanToolServer calls this for every claude-code run, so the model has the
+// same authoring surface whichever way the session reached plan mode.
 func (m *Manager) registerPlanFileTools(ts *backend.ToolServer, key string) []string {
 	writeName, writeDesc, writeSchema := backend.CliWritePlanTool()
 	ts.RegisterTool(writeName, writePlanToolHandler(m, key), writeDesc, writeSchema)

@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"os"
 	"strconv"
 	"strings"
 
@@ -43,22 +42,27 @@ func cliResumeArgs(opts types.RunOptions) []string {
 }
 
 // buildClaudeArgs assembles the argv for the claude CLI subprocess from a run's
-// options. It is extracted from runProcess so the plan-mode spawn contract is
+// options. It is extracted from runProcess so the spawn contract is
 // unit-testable without launching a process.
 //
 // Permission model:
-//   - Default (and auto mode) spawns "bypassPermissions". The engine is
-//     security-free by design; the harness owns any approval layer via hooks.
-//     A caller may override via opts.PermissionModeCli.
+//   - The spawn uses "bypassPermissions" unless a caller overrides it via
+//     opts.PermissionModeCli. The engine is security-free by design; the
+//     harness owns any approval layer via hooks.
 //   - Plan mode does NOT use the CLI's native "--permission-mode plan". Headless
 //     `claude -p --permission-mode plan` exposes no ExitPlanMode tool (the model
 //     can never signal completion) and hard-denies every Write/Edit with an
-//     interactive-approval error that no headless daemon can satisfy. Instead the
-//     engine OWNS plan mode, mirroring the ApiBackend: spawn read-only under
-//     bypassPermissions with the mutating tools removed via --disallowedTools
-//     (verified against claude 2.1.x to drop them from the model's advertised
-//     tool list entirely), inject the plan prompt, and expose an engine
-//     ExitPlanMode through the MCP ToolServer (see wirePlanModeToolServer).
+//     interactive-approval error that no headless daemon can satisfy. The
+//     engine OWNS plan mode instead, mirroring the ApiBackend.
+//
+// Nothing here depends on whether the run is planning. The arguments decide the
+// tools and the system prompt the CLI sends to its provider, and that prompt is
+// cached as a prefix: an argument that changed with the mode would discard the
+// cache at every switch. Plan mode reaches a run two other ways. The read-only
+// boundary is enforced when a tool is called (the PreToolUse hook server and
+// the MCP ToolServer both consult the session's plan policy), and the
+// instructions arrive as a notice on the user turn (see
+// Manager.deliverCliPlanNotice).
 func buildClaudeArgs(opts types.RunOptions) []string {
 	args := []string{
 		"-p",
@@ -73,29 +77,10 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 	}
 
 	permMode := "bypassPermissions"
-	if !opts.PlanMode && opts.PermissionModeCli != "" {
+	if opts.PermissionModeCli != "" {
 		permMode = opts.PermissionModeCli
 	}
 	args = append(args, "--permission-mode", permMode)
-
-	// Tool removal is now reserved for the read-only boundary. The async-mode
-	// problem it briefly also served is handled at the PreToolUse hook instead
-	// (cli_async_gate.go), which refuses the broken MODE and leaves the tool
-	// itself in the model's hands — the native tools stay available and behave
-	// the way the harness decides.
-	//
-	// Removal was the wrong instrument for that job. It is tool-level, so
-	// stripping background Bash also stripped foreground Bash, and the CLI's
-	// refusal for a removed tool is terminal-sounding and not ours to reword.
-	// Under bypassPermissions the CLI drops a disallowed tool from the advertised
-	// list entirely, which is exactly what plan mode needs and exactly what an
-	// argument-level rule must not do.
-	if opts.PlanMode {
-		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "plan-mode spawn: removing mutating tools from the advertised set", map[string]any{
-			"tools": cliPlanModeDisallowedTools,
-		})
-		args = append(args, "--disallowedTools", strings.Join(cliPlanModeDisallowedTools, ","))
-	}
 
 	if opts.Model != "" {
 		// Bare id on the CLI: a provider-qualified id ("anthropic/<model>")
@@ -118,29 +103,14 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 		args = append(args, "--system-prompt", opts.SystemPrompt)
 	}
 
-	// Append-system-prompt: the plan-mode prose (plan mode only) followed by any
-	// caller-supplied append text (e.g. the MCP tool-alias directive from
-	// wirePlanModeToolServer). resolveCliPlanModePrompt applies the harness seam:
-	// RunOptions.PlanModePrompt wins, else the engine default. Because the plan
-	// run is read-only with no file-writing tools, the engine default instructs
-	// the model to deliver its finished plan as the ExitPlanMode `plan` argument.
-	appendPrompt := opts.AppendSystemPrompt
-	if opts.PlanMode {
-		_, statErr := os.Stat(opts.PlanFilePath)
-		planPrompt := resolveCliPlanModePrompt(opts, statErr == nil)
-		if appendPrompt != "" {
-			appendPrompt = planPrompt + "\n\n" + appendPrompt
-		} else {
-			appendPrompt = planPrompt
-		}
-	}
-	if appendPrompt != "" {
-		args = append(args, "--append-system-prompt", appendPrompt)
+	// Append-system-prompt: caller-supplied append text (e.g. the MCP tool-alias
+	// directive).
+	if opts.AppendSystemPrompt != "" {
+		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
 	}
 
 	// Allowed tools: use the provided list, or a read-only default. This is
-	// advisory under bypassPermissions (the real plan-mode boundary is
-	// --disallowedTools above), but it keeps the non-plan defaults tight.
+	// advisory under bypassPermissions, but it keeps the defaults tight.
 	allowedTools := opts.AllowedTools
 	if len(allowedTools) == 0 {
 		if opts.HookSettingsPath != "" {

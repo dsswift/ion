@@ -50,11 +50,9 @@ var cliShellToolNames = []string{"Bash", "Poll", "TaskGet", "TaskStop"}
 // wireCliShellToolServer registers the engine's shell and async tools on the
 // per-session ToolServer for a delegated claude-code run.
 //
-// No-op for every other backend, and for a run that SPAWNS in plan mode: a plan
-// spawn has no shell today (cliPlanModeDisallowedTools strips the CLI's Bash)
-// and this must not hand one back. A run that spawns in auto mode and enters
-// plan mode mid-subprocess keeps the tools it spawned with, exactly as it keeps
-// the CLI's native tool list — --disallowedTools is fixed at spawn.
+// No-op for every other backend. The tools are registered in every mode: the
+// ToolServer's plan policy refuses them while the session is planning, except
+// Bash for a command on the plan-mode allowlist.
 //
 // Runs AFTER wireAgentToolServer, which has already created, started, and
 // attached the ToolServer for a CLI run, so the common path only registers more
@@ -78,13 +76,6 @@ func (m *Manager) wireCliShellToolServer(s *engineSession, key string, opts *typ
 		// Root-owned polls only, matching buildRunConfig: a dispatched child's
 		// poll belongs to that dispatch and must not hold the root run open.
 		return m.OutstandingPollIDsFor(key, "")
-	}
-
-	if opts.PlanMode {
-		utils.LogWithFields(utils.LevelDebug, "session", "cli shell tool wiring skipped (plan-mode spawn is shell-free); park seams wired", map[string]any{
-			"key": key,
-		})
-		return
 	}
 
 	m.mu.Lock()

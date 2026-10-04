@@ -18,20 +18,18 @@ import (
 // the plan file as the single source of truth and keep ExitPlanMode a bare
 // signal.
 //
-// A delegated claude-code plan run cannot use that mechanism. Its read-only
-// boundary is --disallowedTools, fixed at spawn (buildClaudeArgs), and it
-// filters by tool NAME with no per-call seam — so the only options it offers
-// are "Write is available for every path in the repo" or "Write is gone". The
-// engine chose gone, which historically left the ExitPlanMode `plan` argument
-// as the sole channel a plan could travel on, and made the model re-emit the
-// entire plan as tool arguments even when it had already authored it.
+// A delegated claude-code run does not use that mechanism for its own Write and
+// Edit tools: the engine refuses them outright while the session is planning
+// (PlanPolicy.DecideNativeCli), so the model has one unambiguous way to reach
+// the plan file.
 //
-// WritePlan and EditPlan restore the native behavior without reopening the
-// boundary. They are engine-owned MCP tools with NO path parameter: the target
-// is resolved from session state inside the handler, so the model cannot name a
-// file at all. There is no path to validate, no traversal to defend against,
-// and no gate that can be talked around — the property the ApiBackend gets by
-// checking a path, these get by never accepting one.
+// That way is WritePlan and EditPlan. They are engine-owned MCP tools with NO
+// path parameter: the target is resolved from session state inside the handler,
+// so the model cannot name a file at all. There is no path to validate, no
+// traversal to defend against, and no gate that can be talked around — the
+// property the ApiBackend gets by checking a path, these get by never accepting
+// one. They also keep ExitPlanMode a bare signal: the plan is already on disk
+// when the model exits, so it never has to resend it as a tool argument.
 //
 // This file owns the tool contracts (names, descriptions, schemas) and the
 // pure edit mechanics. The handlers live in the session package, which is where

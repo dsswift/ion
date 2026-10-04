@@ -585,8 +585,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
 	m.wireCliShellToolServer(s, key, &opts, permEng)
-	m.wireEnterPlanModeToolServer(s, key, &opts)
-	m.wirePlanModeToolServer(s, key, &opts)
+	m.wirePlanToolServer(s, key, &opts)
 	m.wireQuestionToolServer(s, key, &opts)
 
 	// Fire before_prompt for ClaudeCodeBackend (ApiBackend wires this inside buildRunConfig).
@@ -761,7 +760,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// continued on claude-code). See native_session.go and
 	// cli_history_seed.go. Runs after opts.Prompt is finalized.
 	opts.SkipCliHistorySeed = overrides != nil && overrides.SkipCliHistorySeed
+	userPrompt := opts.Prompt
 	m.resolveCliContinuity(s, &opts)
+	m.deliverCliPlanNotice(s, key, extGroup, skipExtensions, &opts, userPrompt)
 
 	return m.launchRun(key, s, requestID, opts, runCfg)
 }

@@ -11,97 +11,69 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// wireEnterPlanModeToolServer / enterPlanModeToolHandler tests.
+// wirePlanToolServer / enterPlanModeToolHandler tests.
 //
 // Split from manager_cli_hooks_test.go to stay under the file-size cap.
 
-// TestWireEnterPlanModeToolServer_RegistersForCliAutoMode pins the gap this
-// closes: previously only the ApiBackend's in-process runloop exposed
-// EnterPlanMode, so a delegated claude-code CLI run had no way to request a
-// transition into plan mode at all.
-func TestWireEnterPlanModeToolServer_RegistersForCliAutoMode(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("enter-ts1")
+// planToolNames are the engine-owned plan tools a claude-code run registers.
+var planToolNames = []string{"EnterPlanMode", "ExitPlanMode", "WritePlan", "EditPlan"}
 
-	opts := types.RunOptions{PlanMode: false}
-	mgr.wireEnterPlanModeToolServer(s, "enter-ts1", &opts)
+// TestWirePlanToolServer_SameToolsInEveryMode pins the cache contract for the
+// plan tools: a plan run, an auto run, and an implementation run register the
+// same four tools and get the same alias directive. The set of tools a run
+// registers is part of the prompt its provider caches, so it must not change
+// with the mode.
+func TestWirePlanToolServer_SameToolsInEveryMode(t *testing.T) {
+	var directives []string
+	for name, opts := range map[string]types.RunOptions{
+		"auto":      {},
+		"plan":      {PlanMode: true},
+		"implement": {ImplementationPhase: true},
+	} {
+		mgr := NewManager(backend.NewClaudeCodeBackend())
+		s := newCliSession("plan-tools-" + name)
+		mgr.wirePlanToolServer(s, "plan-tools-"+name, &opts)
 
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts == nil {
-		t.Fatal("expected ToolServer to be created for claude-code auto mode")
+		mgr.mu.Lock()
+		ts := s.toolServer
+		mgr.mu.Unlock()
+		if ts == nil {
+			t.Fatalf("%s: expected a ToolServer for claude-code", name)
+		}
+		for _, tool := range planToolNames {
+			if !ts.HasTool(tool) {
+				t.Errorf("%s: %s must be registered in every mode", name, tool)
+			}
+		}
+		if opts.McpConfig == "" {
+			t.Errorf("%s: expected McpConfig to be attached", name)
+		}
+		directives = append(directives, opts.AppendSystemPrompt)
+		ts.Stop()
 	}
-	if !ts.HasTool("EnterPlanMode") {
-		t.Error("expected EnterPlanMode to be registered on the auto-mode ToolServer")
+	for _, d := range directives[1:] {
+		if d != directives[0] {
+			t.Fatalf("the alias directive differs by mode:\n%q\n%q", directives[0], d)
+		}
 	}
-	if opts.McpConfig == "" {
-		t.Error("expected McpConfig to be attached")
+	if !strings.Contains(directives[0], "ExitPlanMode = mcp__ion-extensions__ExitPlanMode") {
+		t.Errorf("expected the plan tool alias directive, got: %q", directives[0])
 	}
-	if !strings.Contains(opts.AppendSystemPrompt, "EnterPlanMode = mcp__ion-extensions__EnterPlanMode") {
-		t.Errorf("expected the EnterPlanMode alias directive, got: %q", opts.AppendSystemPrompt)
-	}
-	ts.Stop()
 }
 
-// TestWireEnterPlanModeToolServer_NoopWhenAlreadyPlanMode verifies the
-// sentinel is not registered on a run already in plan mode — ExitPlanMode is
-// the tool for that turn, not this one.
-func TestWireEnterPlanModeToolServer_NoopWhenAlreadyPlanMode(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("enter-ts2")
+// TestWirePlanToolServer_NoopForNonCliBackend verifies the wiring is scoped to
+// claude-code: an API-backed run gets its plan sentinels through the in-process
+// runloop, not the MCP ToolServer.
+func TestWirePlanToolServer_NoopForNonCliBackend(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	s := newCliSession("plan-tools-api")
 
 	opts := types.RunOptions{PlanMode: true}
-	mgr.wireEnterPlanModeToolServer(s, "enter-ts2", &opts)
+	mgr.wirePlanToolServer(s, "plan-tools-api", &opts)
 
 	mgr.mu.Lock()
 	ts := s.toolServer
 	mgr.mu.Unlock()
-
-	if ts != nil {
-		t.Error("expected no ToolServer when already in plan mode")
-	}
-}
-
-// TestWireEnterPlanModeToolServer_NoopWhenImplementationPhase mirrors the
-// ApiBackend's runloop_setup.go suppression: RunOptions.ImplementationPhase
-// skips the EnterPlanMode injection so the model cannot propose a fresh plan
-// mid-implementation. Same flag, same behavior, on the CLI path.
-func TestWireEnterPlanModeToolServer_NoopWhenImplementationPhase(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("enter-ts3")
-
-	opts := types.RunOptions{PlanMode: false, ImplementationPhase: true}
-	mgr.wireEnterPlanModeToolServer(s, "enter-ts3", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts != nil {
-		t.Error("expected no ToolServer during implementation phase")
-	}
-}
-
-// TestWireEnterPlanModeToolServer_NoopForNonCliBackend verifies the wiring is
-// scoped to claude-code: an API-backed run gets EnterPlanMode through the
-// in-process runloop (interceptEnterPlanMode), not the MCP ToolServer.
-func TestWireEnterPlanModeToolServer_NoopForNonCliBackend(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-	s := newCliSession("enter-ts4")
-
-	opts := types.RunOptions{PlanMode: false}
-	mgr.wireEnterPlanModeToolServer(s, "enter-ts4", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
 	if ts != nil {
 		t.Error("expected no ToolServer for non-CLI backend")
 	}
@@ -270,37 +242,4 @@ func TestEnterPlanModeToolHandler_NoRestartNoQueuedContinuation(t *testing.T) {
 	if len(s.promptQueue) != 0 {
 		t.Fatalf("expected no queued continuation prompt (no restart), got %d queued", len(s.promptQueue))
 	}
-}
-
-// TestWireEnterPlanModeToolServer_RegistersExitPlanModeToo pins the core
-// mechanism of this fix: EnterPlanMode and ExitPlanMode are registered
-// together on the SAME auto-mode ToolServer in one wiring call, so the model
-// can call ExitPlanMode without a restart the moment it decides its plan is
-// ready — mirroring the ApiBackend's interceptEnterPlanMode, which makes
-// ExitPlanMode callable moments later in the SAME run.
-func TestWireEnterPlanModeToolServer_RegistersExitPlanModeToo(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("enter-ts5")
-
-	opts := types.RunOptions{PlanMode: false}
-	mgr.wireEnterPlanModeToolServer(s, "enter-ts5", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts == nil {
-		t.Fatal("expected ToolServer to be created for claude-code auto mode")
-	}
-	if !ts.HasTool("EnterPlanMode") {
-		t.Error("expected EnterPlanMode to be registered on the auto-mode ToolServer")
-	}
-	if !ts.HasTool("ExitPlanMode") {
-		t.Error("expected ExitPlanMode to be registered alongside EnterPlanMode, so no restart is needed to call it")
-	}
-	if !strings.Contains(opts.AppendSystemPrompt, "ExitPlanMode = mcp__ion-extensions__ExitPlanMode") {
-		t.Errorf("expected the ExitPlanMode alias directive, got: %q", opts.AppendSystemPrompt)
-	}
-	ts.Stop()
 }

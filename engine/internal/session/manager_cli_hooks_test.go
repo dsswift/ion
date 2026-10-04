@@ -671,87 +671,6 @@ func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
 	existingTS.Stop()
 }
 
-// ---------------------------------------------------------------------------
-// wirePlanModeToolServer tests
-// ---------------------------------------------------------------------------
-
-// TestWirePlanModeToolServer_RegistersExitPlanModeForCliPlanMode pins the
-// engine-owned CLI plan-mode fix: a claude-code plan-mode run gets a callable
-// ExitPlanMode on its MCP ToolServer plus the alias directive so the model knows
-// the prefixed name. Without this the CLI model has no way to signal that its
-// plan is ready.
-func TestWirePlanModeToolServer_RegistersExitPlanModeForCliPlanMode(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("plan-ts1")
-
-	opts := types.RunOptions{PlanMode: true}
-	mgr.wirePlanModeToolServer(s, "plan-ts1", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts == nil {
-		t.Fatal("expected ToolServer to be created for claude-code plan mode")
-	}
-	if !ts.HasTool("ExitPlanMode") {
-		t.Error("expected ExitPlanMode to be registered on the plan-mode ToolServer")
-	}
-	if opts.McpConfig == "" {
-		t.Error("expected McpConfig to be attached")
-	}
-	if !strings.Contains(opts.AppendSystemPrompt, "ExitPlanMode = mcp__ion-extensions__ExitPlanMode") {
-		t.Errorf("expected the ExitPlanMode alias directive, got: %q", opts.AppendSystemPrompt)
-	}
-	ts.Stop()
-}
-
-// TestWirePlanModeToolServer_NoopWhenNotPlanMode verifies the tool is not
-// registered on an ordinary (non-plan) run.
-func TestWirePlanModeToolServer_NoopWhenNotPlanMode(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("plan-ts2")
-
-	opts := types.RunOptions{PlanMode: false}
-	mgr.wirePlanModeToolServer(s, "plan-ts2", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts != nil {
-		t.Error("expected no ToolServer when not in plan mode")
-	}
-	if strings.Contains(opts.AppendSystemPrompt, "ExitPlanMode") {
-		t.Error("expected no ExitPlanMode directive when not in plan mode")
-	}
-}
-
-// TestWirePlanModeToolServer_NoopForNonCliBackend verifies the wiring is scoped
-// to claude-code: an API-backed plan-mode run wires ExitPlanMode through the
-// in-process runloop, not the MCP ToolServer.
-func TestWirePlanModeToolServer_NoopForNonCliBackend(t *testing.T) {
-	mb := newMockBackend()
-	mgr := NewManager(mb)
-	s := newCliSession("plan-ts3")
-
-	opts := types.RunOptions{PlanMode: true}
-	mgr.wirePlanModeToolServer(s, "plan-ts3", &opts)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-
-	if ts != nil {
-		t.Error("expected no ToolServer for non-CLI backend")
-	}
-	if opts.McpConfig != "" {
-		t.Error("expected no McpConfig for non-CLI backend")
-	}
-}
-
 // TestBuildAgentToolHandler_RoutesThroughDispatch pins the root-model-called
 // ion_agent fix: when a CLI parent's model invokes the ion_agent MCP tool, the
 // handler routes through the shared depth-0 dispatch (buildRootAgentSpawner),
@@ -1056,108 +975,113 @@ func newPlanSafetyExtGroup(safety map[string]bool) *extension.ExtensionGroup {
 	return g
 }
 
-// TestWireToolServer_PlanModeWithholdsUnsafeExtensionTool pins the read-only
-// plan-mode boundary fix: a claude-code plan-mode run registers only plan-safe
-// extension tools on the MCP ToolServer. A non-plan-safe (mutating) extension
-// tool must NOT be advertised, and its name must not reach the alias directive.
-// Remove the plan-mode filter in wireToolServer and this goes red — the mutating
-// tool becomes callable during plan mode, breaking the read-only contract.
-func TestWireToolServer_PlanModeWithholdsUnsafeExtensionTool(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("wts-plan1")
+// TestWireToolServer_PlanModeRefusesUnsafeExtensionToolAtTheCall pins the
+// read-only boundary for extension tools on a delegated CLI. Every extension
+// tool is registered in every mode, so the tool list the model's provider
+// caches does not change with the mode. A planning session is stopped at the
+// call instead: a non-plan-safe tool is refused, a plan-safe one runs, and a
+// plan-mode MCP allowlist entry admits an otherwise-refused tool.
+//
+// Revert-check: drop the plan policy from the ToolServer and deploy_service
+// runs while the session is planning.
+func TestWireToolServer_PlanModeRefusesUnsafeExtensionToolAtTheCall(t *testing.T) {
+	run := func(t *testing.T, key string, opts types.RunOptions) (*backend.ToolServer, func(string) *types.ToolResult) {
+		t.Helper()
+		mgr := NewManager(backend.NewClaudeCodeBackend())
+		s := newCliSession(key)
+		mgr.mu.Lock()
+		mgr.sessions[key] = s
+		mgr.mu.Unlock()
+		extGroup := newPlanSafetyExtGroup(map[string]bool{
+			"read_docs":      true,
+			"deploy_service": false,
+		})
 
-	extGroup := newPlanSafetyExtGroup(map[string]bool{
-		"read_docs":      true,  // plan-safe -> registered
-		"deploy_service": false, // mutating -> withheld
+		mgr.stageCliPlanPolicy(s, key, &opts, extGroup)
+		mgr.wireToolServer(s, key, &opts, extGroup)
+		mgr.ensureCliToolServerAttached(s, key, &opts)
+
+		mgr.mu.Lock()
+		ts := s.toolServer
+		s.planMode = opts.PlanMode
+		mgr.mu.Unlock()
+		if ts == nil {
+			t.Fatal("expected a ToolServer")
+		}
+		t.Cleanup(ts.Stop)
+		for _, name := range []string{"read_docs", "deploy_service"} {
+			if !ts.HasTool(name) {
+				t.Errorf("%s must be registered in every mode", name)
+			}
+			if !strings.Contains(opts.AppendSystemPrompt, name) {
+				t.Errorf("%s must appear in the alias directive in every mode", name)
+			}
+		}
+		return ts, func(name string) *types.ToolResult {
+			res, ok, err := ts.InvokeTool(context.Background(), name, map[string]interface{}{})
+			if err != nil || !ok {
+				t.Fatalf("InvokeTool(%s): ok=%v err=%v", name, ok, err)
+			}
+			return res
+		}
+	}
+
+	t.Run("planning", func(t *testing.T) {
+		_, invoke := run(t, "wts-plan1", types.RunOptions{PlanMode: true})
+		if res := invoke("deploy_service"); !res.IsError || !strings.HasPrefix(res.Content, "Plan mode:") {
+			t.Errorf("a planning session ran a non-plan-safe extension tool: %+v", res)
+		}
+		if res := invoke("read_docs"); res.IsError {
+			t.Errorf("a plan-safe extension tool was refused: %s", res.Content)
+		}
 	})
 
-	opts := types.RunOptions{PlanMode: true}
-	mgr.wireToolServer(s, "wts-plan1", &opts, extGroup)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-	if ts != nil {
-		defer ts.Stop()
-	}
-
-	if ts == nil {
-		t.Fatal("expected ToolServer to be created for the plan-safe tool")
-	}
-	if !ts.HasTool("read_docs") {
-		t.Error("plan-safe extension tool read_docs must be registered")
-	}
-	if ts.HasTool("deploy_service") {
-		t.Error("non-plan-safe extension tool deploy_service must be withheld in plan mode")
-	}
-	if strings.Contains(opts.AppendSystemPrompt, "deploy_service") {
-		t.Errorf("withheld tool must not appear in the alias directive:\n%s", opts.AppendSystemPrompt)
-	}
-	if !strings.Contains(opts.AppendSystemPrompt, "read_docs") {
-		t.Errorf("plan-safe tool must appear in the alias directive:\n%s", opts.AppendSystemPrompt)
-	}
-}
-
-// TestWireToolServer_AutoModeRegistersAllExtensionTools verifies the filter is
-// scoped to plan mode: an ordinary (non-plan) run registers every extension
-// tool, plan-safe or not.
-func TestWireToolServer_AutoModeRegistersAllExtensionTools(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("wts-auto1")
-
-	extGroup := newPlanSafetyExtGroup(map[string]bool{
-		"read_docs":      true,
-		"deploy_service": false,
+	t.Run("planning with allowlist", func(t *testing.T) {
+		_, invoke := run(t, "wts-plan2", types.RunOptions{
+			PlanMode:                true,
+			PlanModeAllowedMcpTools: []string{"mcp__" + backend.McpServerName + "__deploy_service"},
+		})
+		if res := invoke("deploy_service"); res.IsError {
+			t.Errorf("an allowlisted extension tool was refused while planning: %s", res.Content)
+		}
 	})
 
-	opts := types.RunOptions{PlanMode: false}
-	mgr.wireToolServer(s, "wts-auto1", &opts, extGroup)
-
-	mgr.mu.Lock()
-	ts := s.toolServer
-	mgr.mu.Unlock()
-	if ts != nil {
-		defer ts.Stop()
-	}
-
-	if ts == nil {
-		t.Fatal("expected ToolServer to be created")
-	}
-	if !ts.HasTool("read_docs") || !ts.HasTool("deploy_service") {
-		t.Error("auto mode must register every extension tool regardless of plan-safety")
-	}
+	t.Run("auto mode", func(t *testing.T) {
+		_, invoke := run(t, "wts-auto1", types.RunOptions{})
+		if res := invoke("deploy_service"); res.IsError {
+			t.Errorf("auto mode refused an extension tool: %s", res.Content)
+		}
+	})
 }
 
-// TestWireToolServer_PlanModeAllowlistAdmitsUnsafeTool verifies that an
-// explicit per-run plan-mode MCP allowlist admits an otherwise-mutating
-// extension tool — the harness escape hatch that mirrors the API backend.
-func TestWireToolServer_PlanModeAllowlistAdmitsUnsafeTool(t *testing.T) {
-	cb := backend.NewClaudeCodeBackend()
-	mgr := NewManager(cb)
-	s := newCliSession("wts-plan2")
+// TestWireToolServer_ReusesTheSessionServer pins that a session keeps one
+// ToolServer across prompts. A server per prompt leaves the previous one
+// listening with nothing to stop it.
+func TestWireToolServer_ReusesTheSessionServer(t *testing.T) {
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	s := newCliSession("wts-reuse")
+	extGroup := newToolExtGroup([]string{"dispatch_agent"})
 
-	extGroup := newPlanSafetyExtGroup(map[string]bool{"deploy_service": false})
-
-	opts := types.RunOptions{
-		PlanMode:                true,
-		PlanModeAllowedMcpTools: []string{"mcp__" + backend.McpServerName + "__deploy_service"},
-	}
-	mgr.wireToolServer(s, "wts-plan2", &opts, extGroup)
-
+	first := types.RunOptions{}
+	mgr.wireToolServer(s, "wts-reuse", &first, extGroup)
 	mgr.mu.Lock()
 	ts := s.toolServer
 	mgr.mu.Unlock()
-	if ts != nil {
-		defer ts.Stop()
-	}
-
 	if ts == nil {
-		t.Fatal("expected ToolServer created for allowlisted tool")
+		t.Fatal("expected a ToolServer after the first prompt")
 	}
-	if !ts.HasTool("deploy_service") {
-		t.Error("an allowlisted extension tool must be registered even in plan mode")
+	defer ts.Stop()
+
+	second := types.RunOptions{}
+	mgr.wireToolServer(s, "wts-reuse", &second, extGroup)
+	mgr.mu.Lock()
+	again := s.toolServer
+	mgr.mu.Unlock()
+	if again != ts {
+		t.Fatal("a second prompt replaced the session's ToolServer")
+	}
+	if first.AppendSystemPrompt != second.AppendSystemPrompt {
+		t.Fatalf("the alias directive changed between prompts:\n%q\n%q", first.AppendSystemPrompt, second.AppendSystemPrompt)
 	}
 }
 
