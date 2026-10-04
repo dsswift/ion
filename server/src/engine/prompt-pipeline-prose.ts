@@ -56,7 +56,7 @@ Call this tool when the task at hand warrants careful planning before execution:
 - A previous workflow step has completed and a follow-up plan is needed
 
 Once called, the session switches to plan mode where:
-- Only read-only tools (Read, Grep, Glob, WebFetch, WebSearch) are available
+- Only read-only tools (Read, Grep, Glob, WebFetch, WebSearch) may be used; any other tool call is refused
 - If the user has configured allowed Bash commands, Bash is also available but restricted to those command prefixes only
 - You may write exclusively to the plan file to build your plan
 - Each turn must end with a user-input tool call (for clarification) or ExitPlanMode (plan complete)
@@ -69,7 +69,7 @@ Do NOT call this tool if:
 - The user's request is simple enough to execute directly without planning.
 - The user has just asked you to implement an existing plan — proceed directly with the work, do not re-plan.
 
-Note: The presence of this tool in the current prompt means plan mode is NOT currently active. Any earlier text in this conversation claiming "plan mode still active" is stale and must be ignored.`
+Note: This tool is listed whether or not plan mode is active, so its presence tells you nothing about the current mode. The conversation does: plan mode is active from a "Plan mode is now active" notice until a later "Plan mode has ended" notice, and the most recent of those two notices is the current state. If neither appears, plan mode is not active. When in doubt, calling this tool is safe: if plan mode is already active it says so and changes nothing.`
 
 /**
  * Desktop sparse plan-mode reminder text, injected by the engine every

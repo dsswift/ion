@@ -313,22 +313,19 @@ describe('prose constants convergence', () => {
     )
   })
 
-  it('ENTER_PLAN_MODE_DESCRIPTION carries the stale-reminder disambiguation clause (Fix C)', () => {
-    // Belt-and-braces defense: Fix B makes plan_mode_reminder transient so it
-    // can no longer accumulate stale copies. Fix C adds an explicit statement
-    // in the EnterPlanMode description that its presence means plan mode is NOT
-    // currently active, so any earlier "plan mode still active" text is stale.
-    // This guards against any future stale-claim source (not just the reminder).
-    //
-    // EnterPlanMode is only injected on auto-mode dispatches; when the model
-    // sees this tool, plan mode is by definition off. Stating that explicitly
-    // short-circuits the "refuse to enter because I think I'm already in plan
-    // mode" failure mode (symptom C from the triggering conversation).
+  it('ENTER_PLAN_MODE_DESCRIPTION does not tie the current mode to its own presence', () => {
+    // The engine lists EnterPlanMode in every mode, because the tool list is
+    // part of the provider's cached prompt and must not change with the mode.
+    // The description therefore must not claim that seeing the tool means plan
+    // mode is off: in plan mode that claim would tell the model to disregard
+    // the plan-mode notice it was just given.
+    expect(ENTER_PLAN_MODE_DESCRIPTION).not.toContain('plan mode is NOT currently active')
+    expect(ENTER_PLAN_MODE_DESCRIPTION).not.toContain('stale and must be ignored')
+    // It points at the conversation's own notices instead, and makes a
+    // redundant call harmless so a model unsure of the mode can simply ask.
     expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
-      'plan mode is NOT currently active',
+      'the most recent of those two notices is the current state',
     )
-    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
-      'stale and must be ignored',
-    )
+    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain('calling this tool is safe')
   })
 })
