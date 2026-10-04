@@ -192,6 +192,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Built once: the list does not depend on the run's mode, so a mid-run
 	// plan-mode entry changes nothing here.
 	toolDefs, serverTools := b.buildToolDefs(run, opts, provider)
+	b.observePromptPrefix(run, conv.ID, model, conv.System, toolDefs, serverTools)
 
 	// Resolve context capacity once for the serving model. The proactive gate must
 	// reserve the same model output budget as prompt admission and status reporting;

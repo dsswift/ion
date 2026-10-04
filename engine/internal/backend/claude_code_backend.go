@@ -291,6 +291,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	// Build the CLI argv. Extracted to buildClaudeArgs (claude_code_args.go) so
 	// the spawn contract is unit-testable without spawning a process.
 	args := buildClaudeArgs(opts)
+	observeCliPromptPrefix(run.requestID, opts.ConversationID, args)
 
 	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "spawning", map[string]any{
 		"claude_path": claudePath,

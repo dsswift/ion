@@ -130,14 +130,24 @@ func containsName(names []string, want string) bool {
 	return false
 }
 
-// mustJSON renders a value for byte comparison.
+// mustJSON renders a value for comparison, in a form that does not depend on
+// whether it holds typed blocks (a live message) or generic maps (the same
+// message reloaded from disk).
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
 	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(raw)
+	var generic any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatal(err)
+	}
+	out, err := json.Marshal(generic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 // messageText concatenates the text and tool_result content of one message.
