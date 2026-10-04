@@ -529,7 +529,7 @@ type PlanModePromptResult struct {
 
 // SystemInjectInfo is the payload for the system_inject hook.
 type SystemInjectInfo struct {
-	Kind        string                    `json:"kind"`        // "plan_mode_reminder", "turn_limit_warning", "max_token_continue", "workspace_context"
+	Kind        string                    `json:"kind"`        // "plan_mode_enter", "plan_mode_exit", "plan_mode_reminder", "turn_limit_warning", "max_token_continue", "workspace_context"
 	DefaultText string                    `json:"defaultText"` // engine's default injection text
 	Turn        int                       `json:"turn"`        // current turn number
 	MaxTurns    int                       `json:"maxTurns"`    // configured max turns (0 = unlimited)

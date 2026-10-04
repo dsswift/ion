@@ -3317,9 +3317,9 @@ export interface EarlyStopContinuedInfo {
  * {@link SystemInjectResult}.
  *
  * The `kind` field discriminates the injection reason. Known kinds:
- * `"plan_mode_reminder"`, `"turn_limit_warning"`, `"max_token_continue"`,
- * `"early_stop_continue"`. Unknown kinds should be treated as
- * forward-compatible.
+ * `"plan_mode_enter"`, `"plan_mode_exit"`, `"plan_mode_reminder"`,
+ * `"turn_limit_warning"`, `"max_token_continue"`, `"early_stop_continue"`.
+ * Unknown kinds should be treated as forward-compatible.
  */
 export interface SystemInjectInfo {
   /** Discriminator for the injection reason. */
@@ -3478,8 +3478,9 @@ export interface HookPayloadMap {
   before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo;
 
   // System inject -- fired before the engine injects any system message.
-  // The `kind` discriminator carries the reason (plan_mode_reminder,
-  // turn_limit_warning, max_token_continue, early_stop_continue).
+  // The `kind` discriminator carries the reason (plan_mode_enter,
+  // plan_mode_exit, plan_mode_reminder, turn_limit_warning,
+  // max_token_continue, early_stop_continue).
   system_inject: SystemInjectInfo;
 
   // Early-stop continuation -- engine provides the mechanism, harness

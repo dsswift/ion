@@ -419,8 +419,9 @@ type BeforePlanModeAutoExitResult struct {
 // SystemInjectInfo is the payload for system_inject, fired before the engine
 // injects any system message. Kind carries the reason.
 type SystemInjectInfo struct {
-	// Kind is the injection reason: plan_mode_reminder, turn_limit_warning,
-	// max_token_continue, early_stop_continue, workspace_context.
+	// Kind is the injection reason: plan_mode_enter, plan_mode_exit,
+	// plan_mode_reminder, turn_limit_warning, max_token_continue,
+	// early_stop_continue, workspace_context.
 	Kind string `json:"kind"`
 	// DefaultText is the engine's own injection text.
 	DefaultText string `json:"defaultText"`
