@@ -155,10 +155,11 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		planMode:             options.PlanMode,
 		planFilePath:         options.PlanFilePath,
 		// Cache the RunOptions sparse-reminder override (highest precedence).
-		// The plan_mode_prompt hook may also contribute a value later in
-		// buildSystemPrompt; RunOptions wins so we set it unconditionally
-		// and buildSystemPrompt only writes the hook value when this is empty.
+		// The plan_mode_prompt hook may also contribute a value later
+		// (resolvePlanModeHarness); RunOptions wins, so the hook value is
+		// only written when this is empty.
 		planModeSparseReminderOverride: options.PlanModeSparseReminder,
+		planModeAllowedBashCommands:    effectiveBashAllowlist(options),
 		planModeAutoExitEnabled:        resolvePlanModeAutoExit(&options, cfg),
 		opts:                           &options,
 		cfg:                            cfg,
@@ -177,6 +178,8 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		"conversation_id":     options.ConversationID,
 		"plan_mode":           options.PlanMode,
 		"plan_mode_auto_exit": run.planModeAutoExitEnabled,
+		"plan_bash_allowlist": run.planModeAllowedBashCommands,
+		"per_prompt_bash":     options.BashAllowlistAdditionsForThisPrompt,
 	})
 
 	b.mu.Lock()

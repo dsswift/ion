@@ -84,6 +84,23 @@ func (b *ApiBackend) resolvePlanModeHarness(run *activeRun, hooks RunHooks, opts
 	})
 }
 
+// announcePlanModeAtRunStart emits the state-transition event for a run that
+// starts while the session is already in plan mode, so consumers can mirror
+// the flag. It carries the plan identity (path and slug) so a consumer can
+// name the plan and tell the first announcement for a path from later ones.
+func (b *ApiBackend) announcePlanModeAtRunStart(run *activeRun) {
+	b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
+		Enabled:      true,
+		PlanFilePath: run.planFilePath,
+		PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+	}})
+	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "run started in plan mode", map[string]any{
+		"run_id":         run.requestID,
+		"plan_file":      run.planFilePath,
+		"bash_allowlist": run.planModeAllowedBashCommands,
+	})
+}
+
 // reconcilePlanMode appends the plan-mode notice the run owes the model, if
 // any. Called at the top of every turn, before the provider call.
 func (b *ApiBackend) reconcilePlanMode(

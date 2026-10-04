@@ -155,6 +155,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// tool definitions are built below.
 	if run.planMode {
 		b.resolvePlanModeHarness(run, hooks, &opts)
+		b.announcePlanModeAtRunStart(run)
 	}
 
 	// Seed the nested-context dedup set now that conv.System carries the eager
@@ -188,11 +189,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	maxBudget := opts.MaxBudgetUsd
 
 	// Build tool definitions (built-in + external/MCP + capabilities + filters)
+	// Built once: the list does not depend on the run's mode, so a mid-run
+	// plan-mode entry changes nothing here.
 	toolDefs, serverTools := b.buildToolDefs(run, opts, provider)
-	// Latch the plan-mode state this list was built under so the turn loop
-	// can detect a mid-run flip (EnterPlanMode sentinel) and rebuild. See
-	// activeRun.toolDefsBuiltForPlanMode.
-	run.toolDefsBuiltForPlanMode = run.planMode
 
 	// Resolve context capacity once for the serving model. The proactive gate must
 	// reserve the same model output budget as prompt admission and status reporting;
@@ -373,33 +372,6 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			messages = append(messages, sanitized...)
 		} else {
 			messages = sanitized
-		}
-
-		// Plan mode can flip mid-run: the model calls the EnterPlanMode
-		// sentinel and interceptEnterPlanMode sets run.planMode true
-		// (runloop_plan_mode_gates.go). The tool list built before this loop
-		// is then stale — it still advertises the auto-mode set, so the model
-		// is instructed to finish via ExitPlanMode while that tool is absent
-		// from what the provider receives. Rebuild on divergence only;
-		// buildToolDefs reassembles MCP and external tool defs, so an
-		// unconditional per-turn rebuild would pay that cost every turn for a
-		// list that almost never changes.
-		if run.planMode != run.toolDefsBuiltForPlanMode {
-			toolDefs, serverTools = b.buildToolDefs(run, opts, provider)
-			run.toolDefsBuiltForPlanMode = run.planMode
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "tool defs rebuilt: plan mode flipped mid-run", map[string]any{
-				"run_id":     run.requestID,
-				"turn":       turn,
-				"plan_mode":  run.planMode,
-				"tool_count": len(toolDefs),
-			})
-		} else {
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "tool defs reused (plan mode unchanged)", map[string]any{
-				"run_id":     run.requestID,
-				"turn":       turn,
-				"plan_mode":  run.planMode,
-				"tool_count": len(toolDefs),
-			})
 		}
 
 		streamOpts := types.LlmStreamOptions{

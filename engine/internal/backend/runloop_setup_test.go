@@ -382,28 +382,20 @@ func TestBuildToolDefs_PlanModeInjectsExitAndAsk(t *testing.T) {
 	}
 }
 
-// TestBuildToolDefs_PlanModeEmitCarriesPathAndSlug pins that the
-// plan-mode-entered emit fired at run setup (when a run STARTS while the
-// session is already in plan mode — a continuation of an existing plan)
-// carries the plan identity: PlanFilePath and the derived PlanSlug.
-//
-// Regression target: this emit previously sent PlanModeChangedEvent{Enabled:
-// true} with NO path/slug, producing a nameless, non-dedupable second
-// divider on the clients ("Plan created" with no plan name, not clickable).
-// run.planFilePath is populated at run creation from options.PlanFilePath, so
-// the path is available here and must be carried. Reverting the
-// runloop_setup.go fix (back to a bare Enabled:true emit) turns this red.
-func TestBuildToolDefs_PlanModeEmitCarriesPathAndSlug(t *testing.T) {
+// TestAnnouncePlanModeAtRunStart_CarriesPathAndSlug pins that the
+// plan-mode-entered event fired when a run STARTS while the session is already
+// in plan mode carries the plan identity: PlanFilePath and the derived
+// PlanSlug. Without them a consumer gets a nameless announcement it cannot
+// tell apart from another plan's.
+func TestAnnouncePlanModeAtRunStart_CarriesPathAndSlug(t *testing.T) {
 	b := NewApiBackend()
 	var emitted []types.NormalizedEvent
 	b.OnNormalized(func(_ string, ev types.NormalizedEvent) {
 		emitted = append(emitted, ev)
 	})
 	run := &activeRun{requestID: "test", planMode: true, planFilePath: "/tmp/happy-jumping-rabbit.md"}
-	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/happy-jumping-rabbit.md"}
-	provider := &mockLlmProvider{id: "anthropic"}
 
-	b.buildToolDefs(run, opts, provider)
+	b.announcePlanModeAtRunStart(run)
 
 	var pmc *types.PlanModeChangedEvent
 	for _, ev := range emitted {
@@ -426,84 +418,6 @@ func TestBuildToolDefs_PlanModeEmitCarriesPathAndSlug(t *testing.T) {
 	}
 }
 
-func TestBuildToolDefs_NoPlanModeHasAskButNoExit(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "test"}
-	opts := types.RunOptions{} // not plan mode
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-
-	hasAsk := false
-	for _, td := range toolDefs {
-		if td.Name == "ExitPlanMode" {
-			t.Error("ExitPlanMode sentinel should not appear outside plan mode")
-		}
-		if td.Name == "AskUserQuestion" {
-			hasAsk = true
-		}
-	}
-	if !hasAsk {
-		t.Error("expected AskUserQuestion tool to be available outside plan mode")
-	}
-}
-
-// TestBuildToolDefs_AutoModeInjectsEnterPlanMode verifies that EnterPlanMode is
-// injected when not in plan mode so the LLM can request a transition.
-func TestBuildToolDefs_AutoModeInjectsEnterPlanMode(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "test"}
-	opts := types.RunOptions{PlanMode: false}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-
-	hasEnter := false
-	hasExit := false
-	for _, td := range toolDefs {
-		if td.Name == "EnterPlanMode" {
-			hasEnter = true
-		}
-		if td.Name == "ExitPlanMode" {
-			hasExit = true
-		}
-	}
-	if !hasEnter {
-		t.Error("expected EnterPlanMode tool in auto mode")
-	}
-	if hasExit {
-		t.Error("ExitPlanMode should not appear in auto mode")
-	}
-}
-
-// TestBuildToolDefs_PlanModeNoEnterPlanMode verifies that EnterPlanMode is NOT
-// injected when already in plan mode (ExitPlanMode is instead).
-func TestBuildToolDefs_PlanModeNoEnterPlanMode(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "test", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-
-	hasEnter := false
-	hasExit := false
-	for _, td := range toolDefs {
-		if td.Name == "EnterPlanMode" {
-			hasEnter = true
-		}
-		if td.Name == "ExitPlanMode" {
-			hasExit = true
-		}
-	}
-	if hasEnter {
-		t.Error("EnterPlanMode should not appear in plan mode")
-	}
-	if !hasExit {
-		t.Error("expected ExitPlanMode tool in plan mode")
-	}
-}
-
 // The system prompt is part of the provider's cached prefix, so it must be
 // identical whatever the run's mode. Plan-mode instructions are delivered as
 // notices instead (plan_mode_notice.go).
@@ -521,55 +435,6 @@ func TestBuildSystemPrompt_IsModeInvariant(t *testing.T) {
 	}
 	if strings.Contains(plan, "PLAN MODE") || strings.Contains(plan, "HARNESS PLAN PROMPT") {
 		t.Errorf("plan-mode text leaked into the system prompt: %q", plan)
-	}
-}
-
-// TestBuildToolDefs_ImplementationPhaseSkipsEnterPlanMode verifies that the
-// engine omits the EnterPlanMode sentinel tool from the run's tool list when
-// the harness has set RunOptions.ImplementationPhase=true. This replaces
-// the previous prompt-text substring-matching mechanism with a structured
-// boolean — see the field comment in engine/internal/types/types.go.
-//
-// The negative control (auto mode WITHOUT the flag injects EnterPlanMode)
-// is already covered by TestBuildToolDefs_AutoModeInjectsEnterPlanMode
-// above; this test is the positive-suppression case.
-func TestBuildToolDefs_ImplementationPhaseSkipsEnterPlanMode(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "impl-1"}
-	opts := types.RunOptions{
-		ImplementationPhase: true,
-		// Auto mode (PlanMode=false). EnterPlanMode would normally be
-		// injected here; the flag must suppress it.
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	for _, td := range toolDefs {
-		if td.Name == "EnterPlanMode" {
-			t.Errorf("EnterPlanMode tool should NOT be injected when ImplementationPhase=true; found in tool list")
-		}
-	}
-}
-
-// TestBuildToolDefs_ImplementationPhaseIgnoredInPlanMode verifies that the
-// flag is a no-op in plan mode — plan-mode runs never inject EnterPlanMode
-// regardless of the flag, and the runloop's else branch (which is where
-// the flag is checked) is not exercised. Locks in that the flag is
-// strictly subtractive: it can only suppress, never add.
-func TestBuildToolDefs_ImplementationPhaseIgnoredInPlanMode(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "impl-plan"}
-	opts := types.RunOptions{
-		PlanMode:            true,
-		ImplementationPhase: true,
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	for _, td := range toolDefs {
-		if td.Name == "EnterPlanMode" {
-			t.Errorf("EnterPlanMode tool should NOT be injected in plan mode; found in tool list")
-		}
 	}
 }
 
@@ -886,58 +751,6 @@ func TestStampPrincipalAtMint_NeverOverwritesExistingOwner(t *testing.T) {
 	}
 }
 
-// --- plan mode Bash allowlist tests ---
-
-// TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet verifies that the
-// Bash tool appears in the plan-mode tool list when the session has a
-// non-empty PlanModeAllowedBashCommands.
-func TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "bash-allow", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts := types.RunOptions{
-		PlanMode:                    true,
-		PlanFilePath:                "/tmp/plan.md",
-		PlanModeAllowedBashCommands: []string{"gh", "git log"},
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	hasBash := false
-	for _, td := range toolDefs {
-		if td.Name == "Bash" {
-			hasBash = true
-			break
-		}
-	}
-	if !hasBash {
-		t.Error("expected Bash tool in plan mode when PlanModeAllowedBashCommands is set")
-	}
-	// Verify the allowlist was stored on the run.
-	if len(run.planModeAllowedBashCommands) != 2 {
-		t.Errorf("expected 2 bash allowlist entries on run, got %d", len(run.planModeAllowedBashCommands))
-	}
-}
-
-// TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty verifies that Bash is
-// excluded from plan-mode tools when no bash allowlist is configured.
-func TestBuildToolDefs_PlanModeNoBashWhenAllowlistEmpty(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "no-bash", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts := types.RunOptions{
-		PlanMode:     true,
-		PlanFilePath: "/tmp/plan.md",
-		// PlanModeAllowedBashCommands is nil
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	for _, td := range toolDefs {
-		if td.Name == "Bash" {
-			t.Error("Bash tool should NOT appear in plan mode when no bash allowlist is set")
-		}
-	}
-}
-
 // TestBuildPlanModePrompt_BashAllowlist verifies that the plan mode prompt
 // includes bash-specific guidance when the allowlist is non-empty.
 func TestBuildPlanModePrompt_BashAllowlist(t *testing.T) {
@@ -1040,94 +853,6 @@ func TestEffectiveBashAllowlist_UnionDedupe(t *testing.T) {
 	}
 }
 
-// TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState verifies that
-// per-prompt additions land on `activeRun.planModeAllowedBashCommands`
-// alongside (after de-dup) the session-level entries. This is the gate
-// state consulted by applyPlanModeBashGate per-tool-call, so without
-// this assertion the per-prompt additions would be silently denied at
-// runtime even though they appeared in the system prompt.
-func TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "per-prompt", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts := types.RunOptions{
-		PlanMode:                            true,
-		PlanFilePath:                        "/tmp/plan.md",
-		PlanModeAllowedBashCommands:         []string{"gh"},
-		BashAllowlistAdditionsForThisPrompt: []string{"git diff"},
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	hasBash := false
-	for _, td := range toolDefs {
-		if td.Name == "Bash" {
-			hasBash = true
-			break
-		}
-	}
-	if !hasBash {
-		t.Error("expected Bash in tool list when per-prompt additions extend the session allowlist")
-	}
-	// Effective allowlist on the run: ["gh", "git diff"], de-duplicated and
-	// session-first.
-	got := run.planModeAllowedBashCommands
-	want := []string{"gh", "git diff"}
-	if len(got) != len(want) {
-		t.Fatalf("expected %v on run, got %v", want, got)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("entry %d: got %q want %q", i, got[i], want[i])
-		}
-	}
-}
-
-// TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist is the
-// regression test for the bug where a slash command dispatched as an extension
-// command (e.g. /create-issue) could not run its allowed Bash side effect
-// during plan mode. The session has NO bash allowlist; the only allowances are
-// per-prompt additions carried on RunOptions (the path the extension SDK's
-// sendPrompt now feeds). The engine must, for this run only:
-//
-//	(a) include Bash in the plan-mode tool list, and
-//	(b) install the additions on activeRun.planModeAllowedBashCommands so the
-//	    runtime gate enforces exactly those prefixes.
-//
-// Before the fix, an extension-command dispatch carried no additions, so the
-// effective allowlist was empty, Bash was excluded, and the command's
-// `gh issue create` was default-denied until plan mode exited. Reverting the
-// additions plumbing (so RunOptions.BashAllowlistAdditionsForThisPrompt no
-// longer reaches the run) makes this test fail: Bash is absent and the run
-// state is empty.
-func TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{requestID: "additions-only", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts := types.RunOptions{
-		PlanMode:     true,
-		PlanFilePath: "/tmp/plan.md",
-		// No PlanModeAllowedBashCommands — the session has no allowlist.
-		BashAllowlistAdditionsForThisPrompt: []string{"gh issue create"},
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	hasBash := false
-	for _, td := range toolDefs {
-		if td.Name == "Bash" {
-			hasBash = true
-			break
-		}
-	}
-	if !hasBash {
-		t.Error("expected Bash in plan-mode tool list when per-prompt additions are the only allowance")
-	}
-
-	got := run.planModeAllowedBashCommands
-	if len(got) != 1 || got[0] != "gh issue create" {
-		t.Fatalf("expected run.planModeAllowedBashCommands=[gh issue create], got %v", got)
-	}
-}
-
 // --- PlanModeSafe external tool tests ---
 
 // TestBuildToolDefs_PlanModeSafe_SurvivesFilter verifies that an external tool
@@ -1158,31 +883,6 @@ func TestBuildToolDefs_PlanModeSafe_SurvivesFilter(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected PlanModeSafe=true tool to survive plan-mode filtering")
-	}
-}
-
-// TestBuildToolDefs_PlanModeSafe_UnsafeFiltered verifies that an external tool
-// WITHOUT PlanModeSafe is still excluded in plan mode.
-func TestBuildToolDefs_PlanModeSafe_UnsafeFiltered(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{
-		requestID:    "plan-safe-filtered",
-		planMode:     true,
-		planFilePath: "/tmp/plan.md",
-		cfg: &RunConfig{
-			ExternalTools: []types.LlmToolDef{
-				{Name: "my_unsafe_tool", Description: "Not safe in plan mode", PlanModeSafe: false},
-			},
-		},
-	}
-	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	for _, td := range toolDefs {
-		if td.Name == "my_unsafe_tool" {
-			t.Error("expected non-PlanModeSafe tool to be filtered out in plan mode")
-		}
 	}
 }
 
@@ -1226,55 +926,6 @@ func TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools(t *testing.T) {
 	}
 	if !foundAsk {
 		t.Error("expected AskUserQuestion to remain in plan mode tool list alongside PlanModeSafe tools")
-	}
-}
-
-// TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist pins the BLOCKER
-// contract from Fix 7: per-prompt additions live only for one run and
-// MUST NOT mutate the session-level engineSession.planModeAllowedBashCommands.
-// We simulate two consecutive runs in the same session by reusing the
-// same activeRun and inspecting opts.PlanModeAllowedBashCommands (the
-// session-level source) across the boundary.
-//
-// The buildToolDefs path is the engine surface this test exercises;
-// the activeRun.planModeAllowedBashCommands change is run-local. The
-// real persistence check is done at the session layer (Fix 7's session
-// allowlist remains the source of truth across prompts).
-func TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist(t *testing.T) {
-	b := NewApiBackend()
-
-	// Prompt 1: session allowlist ["gh"], per-prompt additions ["git diff"].
-	// The effective allowlist for this run is ["gh", "git diff"]. Crucially,
-	// the input opts.PlanModeAllowedBashCommands is NOT mutated — the per-
-	// prompt additions live on the activeRun, not on the session source.
-	run1 := &activeRun{requestID: "run-1", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts1 := types.RunOptions{
-		PlanMode:                            true,
-		PlanFilePath:                        "/tmp/plan.md",
-		PlanModeAllowedBashCommands:         []string{"gh"},
-		BashAllowlistAdditionsForThisPrompt: []string{"git diff"},
-	}
-	provider := &mockLlmProvider{id: "anthropic"}
-	_, _ = b.buildToolDefs(run1, opts1, provider)
-
-	if len(opts1.PlanModeAllowedBashCommands) != 1 || opts1.PlanModeAllowedBashCommands[0] != "gh" {
-		t.Errorf("session-level allowlist mutated by per-prompt additions: got %v, want [gh]", opts1.PlanModeAllowedBashCommands)
-	}
-
-	// Prompt 2: same session allowlist ["gh"], no per-prompt additions.
-	// The effective allowlist must be ["gh"] only — "git diff" from the
-	// prior prompt must NOT carry over.
-	run2 := &activeRun{requestID: "run-2", planMode: true, planFilePath: "/tmp/plan.md"}
-	opts2 := types.RunOptions{
-		PlanMode:                    true,
-		PlanFilePath:                "/tmp/plan.md",
-		PlanModeAllowedBashCommands: []string{"gh"},
-	}
-	_, _ = b.buildToolDefs(run2, opts2, provider)
-
-	got := run2.planModeAllowedBashCommands
-	if len(got) != 1 || got[0] != "gh" {
-		t.Errorf("per-prompt additions leaked into a subsequent run: got %v, want [gh]", got)
 	}
 }
 
@@ -1351,33 +1002,6 @@ func TestBuildToolDefs_PlanMode_SkillSurvivesFilter(t *testing.T) {
 		}
 	}
 	t.Error("expected Skill to survive plan-mode filtering; skills are unusable in plan mode without it")
-}
-
-// TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered guards the other side of
-// the change: admitting Skill must not widen the plan-mode surface generally.
-// Write and Edit are permitted (plan-file gate enforces the target), but the
-// genuinely mutating tools stay out.
-func TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered(t *testing.T) {
-	b := NewApiBackend()
-	run := &activeRun{
-		requestID:    "plan-mutating-filtered",
-		planMode:     true,
-		planFilePath: "/tmp/plan.md",
-		cfg:          &RunConfig{},
-	}
-	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
-	provider := &mockLlmProvider{id: "anthropic"}
-
-	toolDefs, _ := b.buildToolDefs(run, opts, provider)
-	for _, td := range toolDefs {
-		if td.Name == "NotebookEdit" {
-			t.Error("NotebookEdit must remain filtered out in plan mode")
-		}
-		// Bash is only admitted when an allowlist is configured; none here.
-		if td.Name == "Bash" {
-			t.Error("Bash must remain filtered out in plan mode with no allowlist")
-		}
-	}
 }
 
 // --- Enterprise clamp on the run-time plan-mode Bash allowlist ---

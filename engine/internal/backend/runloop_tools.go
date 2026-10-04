@@ -657,7 +657,7 @@ func (b *ApiBackend) executeTools(
 			})
 		}
 
-		// When applyPlanModeWriteGate rewrote a stray plan-shaped target to
+		// When applyPlanPolicy rewrote a stray plan-shaped target to
 		// the canonical plan file, the physical write already succeeded
 		// (block.Input["file_path"] was rewritten in-place so the tool ran
 		// against the canonical path). But returning success would leave

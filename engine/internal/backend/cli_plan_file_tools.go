@@ -12,7 +12,7 @@ import (
 // mode.
 //
 // The ApiBackend gives a plan-mode model the real Write and Edit tools and
-// restricts them per call by TARGET path (applyPlanModeWriteGate): a write to
+// restricts them per call by TARGET path (PlanPolicy.Decide): a write to
 // the canonical plan file runs, a plan-shaped write elsewhere is redirected
 // onto it, anything else is blocked. That is what lets the native path treat
 // the plan file as the single source of truth and keep ExitPlanMode a bare

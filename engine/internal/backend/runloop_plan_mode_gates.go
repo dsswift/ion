@@ -161,9 +161,14 @@ func interceptExitPlanMode(
 }
 
 // interceptEnterPlanMode handles the EnterPlanMode sentinel tool call.
-// Only fires during auto-mode runs (run.planMode == false); in plan
-// mode the LLM should not call this, and falling through to "Unknown
-// tool" lets the model self-correct.
+//
+// The tool is in the list in every mode, so the answer depends on the run:
+//
+//   - Already planning: nothing to do; the model is told so.
+//   - Implementing an approved plan (RunOptions.ImplementationPhase): refused.
+//     The harness handed this run a plan to carry out, and a fresh plan-mode
+//     entry part-way through is exactly what that flag rules out.
+//   - Otherwise: the before_plan_mode_enter hook decides.
 //
 // Side effects (when allowed): flips run.planMode true, latches the
 // resolved planFilePath, and emits PlanModeChangedEvent{Enabled:true}.
@@ -175,8 +180,23 @@ func interceptEnterPlanMode(
 	hooks RunHooks,
 	emit func(*activeRun, types.NormalizedEvent),
 ) (handled bool) {
-	if run.planMode || block.Name != tools.EnterPlanModeName {
+	if block.Name != tools.EnterPlanModeName {
 		return false
+	}
+	answer := func(content, outcome string) bool {
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool answered without a mode change", map[string]any{
+			"run_id":  run.requestID,
+			"outcome": outcome,
+		})
+		results[i] = conversation.ToolResultEntry{ToolUseID: block.ID, Content: content}
+		emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{ToolID: block.ID, Content: content}})
+		return true
+	}
+	if run.planMode {
+		return answer("Plan mode is already active. Keep planning, and call "+tools.ExitPlanModeName+" when the plan is ready.", "already_planning")
+	}
+	if run.opts != nil && run.opts.ImplementationPhase {
+		return answer("Plan mode is not available: this run is carrying out a plan that was already approved. Continue the implementation.", "implementation_phase")
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool requested", map[string]any{
 		"run_id": run.requestID,

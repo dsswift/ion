@@ -41,9 +41,6 @@ func (run *activeRun) planPolicy(cwd string) PlanPolicy {
 		if len(p.AllowedTools) == 0 {
 			p.AllowedTools = run.opts.PlanModeTools
 		}
-		if len(p.BashAllowlist) == 0 {
-			p.BashAllowlist = effectiveBashAllowlist(*run.opts)
-		}
 		p.McpAllowlist = effectiveMcpAllowlist(*run.opts)
 	}
 	if len(p.AllowedTools) == 0 {

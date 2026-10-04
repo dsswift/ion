@@ -2,7 +2,9 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,22 +14,12 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// Regression coverage for the mid-run plan-mode tool-list rebuild.
+// End-to-end coverage for the mode-invariant prompt prefix.
 //
-// runLoop builds the provider tool list ONCE before the turn loop, because
-// buildToolDefs reassembles MCP and external tool definitions and paying that
-// per turn would be waste. But plan mode can flip mid-run: the model calls the
-// EnterPlanMode sentinel and interceptEnterPlanMode sets run.planMode = true
-// (runloop_plan_mode_gates.go). Before the fix these tests pin, the provider
-// kept receiving the auto-mode list for the remainder of the run — with
-// EnterPlanMode still present and ExitPlanMode absent — so the plan-mode prompt
-// instructed the model to finish via a tool it had not been given.
-//
-// The tests below drive a real run through StartRunWithConfig and capture the
-// Tools slice handed to the provider on EVERY turn, then assert on the turn
-// that follows the EnterPlanMode call. Asserting the post-flip turn (rather
-// than inspecting buildToolDefs directly) is what makes this a regression test:
-// it fails on the unfixed runloop and passes on the fixed one.
+// A provider caches a prompt as a prefix: tools, then system prompt, then
+// messages. These tests drive a real run through StartRunWithConfig, capture
+// what the provider is handed on every call, and assert that the prefix does
+// not change when the run's plan mode does.
 
 // toolCapturingProvider records the tool list of every Stream call so a test
 // can assert on the per-turn tool set rather than only the final one.
@@ -42,6 +34,9 @@ type toolCapturingProvider struct {
 	responses [][]types.LlmStreamEvent
 	// toolsPerCall[i] holds the tool names passed on Stream call i.
 	toolsPerCall [][]string
+	// optsPerCall[i] holds the request passed on Stream call i, with the tool
+	// and message slices copied so later turns cannot alter the record.
+	optsPerCall []types.LlmStreamOptions
 }
 
 func (m *toolCapturingProvider) ID() string { return m.id }
@@ -63,6 +58,10 @@ func (m *toolCapturingProvider) Stream(ctx context.Context, opts types.LlmStream
 	idx := m.callCount
 	m.callCount++
 	m.toolsPerCall = append(m.toolsPerCall, names)
+	captured := opts
+	captured.Tools = append([]types.LlmToolDef(nil), opts.Tools...)
+	captured.Messages = append([]types.LlmMessage(nil), opts.Messages...)
+	m.optsPerCall = append(m.optsPerCall, captured)
 	m.mu.Unlock()
 
 	go func() {
@@ -95,6 +94,13 @@ func (m *toolCapturingProvider) toolsForCall(i int) []string {
 	return m.toolsPerCall[i]
 }
 
+// requestForCall returns the captured request for a given Stream call index.
+func (m *toolCapturingProvider) requestForCall(i int) types.LlmStreamOptions {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.optsPerCall[i]
+}
+
 func (m *toolCapturingProvider) callsMade() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -124,38 +130,86 @@ func containsName(names []string, want string) bool {
 	return false
 }
 
-// TestToolDefsRebuiltAfterMidRunPlanModeEnter is the red-on-revert test for the
-// stale tool list. Turn 1 calls EnterPlanMode; turn 2's provider call must
-// carry the PLAN-MODE tool set.
-//
-// Without the rebuild the turn-2 list is byte-identical to turn 1's: it still
-// advertises EnterPlanMode and the mutating tools, and omits ExitPlanMode.
-func TestToolDefsRebuiltAfterMidRunPlanModeEnter(t *testing.T) {
+// mustJSON renders a value for byte comparison.
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// messageText concatenates the text and tool_result content of one message.
+func messageText(t *testing.T, msg types.LlmMessage) string {
+	t.Helper()
+	blocks, ok := msg.Content.([]types.LlmContentBlock)
+	if !ok {
+		t.Fatalf("message content is %T", msg.Content)
+	}
+	var b strings.Builder
+	for _, block := range blocks {
+		b.WriteString(block.Text)
+		b.WriteString(block.Content)
+	}
+	return b.String()
+}
+
+// assertPrefixStable fails unless every captured request carries the same
+// tools and system prompt, and each request's messages extend the previous
+// request's without altering any earlier one.
+func assertPrefixStable(t *testing.T, provider *toolCapturingProvider) {
+	t.Helper()
+	first := provider.requestForCall(0)
+	wantTools, wantSystem := mustJSON(t, first.Tools), first.System
+	prev := first
+	for i := 1; i < provider.callsMade(); i++ {
+		req := provider.requestForCall(i)
+		if got := mustJSON(t, req.Tools); got != wantTools {
+			t.Fatalf("call %d: tool list changed\nwas %v\nnow %v", i, provider.toolsForCall(0), provider.toolsForCall(i))
+		}
+		if req.System != wantSystem {
+			t.Fatalf("call %d: system prompt changed\nwas %q\nnow %q", i, wantSystem, req.System)
+		}
+		if len(req.Messages) < len(prev.Messages) {
+			t.Fatalf("call %d: messages shrank from %d to %d", i, len(prev.Messages), len(req.Messages))
+		}
+		for j := range prev.Messages {
+			if mustJSON(t, req.Messages[j]) != mustJSON(t, prev.Messages[j]) {
+				t.Fatalf("call %d: earlier message %d changed", i, j)
+			}
+		}
+		prev = req
+	}
+}
+
+// TestPrefixStableAcrossMidRunPlanModeEnter is the red-on-revert test for the
+// cache contract. Turn 1 calls EnterPlanMode; turn 2's request must carry the
+// same tools and system prompt, and learn about plan mode from a notice
+// appended to the messages.
+func TestPrefixStableAcrossMidRunPlanModeEnter(t *testing.T) {
 	planFile := t.TempDir() + "/plan.md"
 
 	provider := setupToolCapturingProvider([][]types.LlmStreamEvent{
-		// Turn 1: the model requests plan mode.
 		toolUseResponse(tools.EnterPlanModeName, "tc-enter", map[string]any{}, 10, 5),
-		// Turn 2: plain text end_turn. Auto-exit synthesis is disabled below
-		// so this turn terminates the run without extra machinery.
+		// Auto-exit synthesis is disabled below so this turn ends the run.
 		textResponse("planning now", 10, 5),
 	})
 
 	b := NewApiBackend()
-	c := collectEvents(b, "req-rebuild")
+	c := collectEvents(b, "req-prefix-enter")
 
 	autoExitOff := false
 	cfg := &RunConfig{
 		Hooks: RunHooks{
 			// Approve the model's plan-mode entry and hand back the plan
-			// file path, exactly as the session layer's
-			// RequestPlanModeEnter does in production.
+			// file path, as the session layer does in production.
 			OnPlanModeEnter: func() (bool, string, string) {
 				return true, "", planFile
 			},
 		},
 	}
-	b.StartRunWithConfig("req-rebuild", types.RunOptions{
+	b.StartRunWithConfig("req-prefix-enter", types.RunOptions{
 		Prompt:           "review this",
 		ProjectPath:      t.TempDir(),
 		Model:            testModel,
@@ -166,60 +220,89 @@ func TestToolDefsRebuiltAfterMidRunPlanModeEnter(t *testing.T) {
 	if !waitForExit(c, 5*time.Second) {
 		t.Fatal("timed out waiting for run to exit")
 	}
-
 	if got := provider.callsMade(); got < 2 {
 		t.Fatalf("expected at least 2 provider calls (turn 1 + turn 2), got %d", got)
 	}
 
-	// Turn 1 ran in auto mode: EnterPlanMode offered, ExitPlanMode not.
-	turn1 := provider.toolsForCall(0)
-	if !containsName(turn1, tools.EnterPlanModeName) {
-		t.Errorf("turn 1 tools should offer %s, got %v", tools.EnterPlanModeName, turn1)
-	}
-	if containsName(turn1, tools.ExitPlanModeName) {
-		t.Errorf("turn 1 tools should NOT offer %s (auto mode), got %v", tools.ExitPlanModeName, turn1)
-	}
+	assertPrefixStable(t, provider)
 
-	// Turn 2 is the assertion this test exists for. After the mid-run flip the
-	// provider must see the plan-mode set.
-	turn2 := provider.toolsForCall(1)
-	if !containsName(turn2, tools.ExitPlanModeName) {
-		t.Errorf("turn 2 tools must offer %s after mid-run plan-mode entry, got %v",
-			tools.ExitPlanModeName, turn2)
-	}
-	if containsName(turn2, tools.EnterPlanModeName) {
-		t.Errorf("turn 2 tools must NOT still offer %s once in plan mode, got %v",
-			tools.EnterPlanModeName, turn2)
-	}
-	// Bash is filtered out of the plan-mode list when no allowlist is
-	// configured. Its presence on turn 2 is the same staleness defect seen
-	// from the write side.
-	if containsName(turn2, "Bash") {
-		t.Errorf("turn 2 tools must NOT offer Bash in plan mode, got %v", turn2)
-	}
-	// Write and Edit ARE expected in plan mode: buildToolDefs allows them
-	// unconditionally so the model can author the plan file, and
-	// applyPlanModeWriteGate restricts the target to the canonical plan path
-	// at call time (runloop_plan_mode_gates.go). Asserting their presence
-	// pins that this turn-2 list is the real plan-mode list.
-	for _, expected := range []string{"Write", "Edit"} {
-		if !containsName(turn2, expected) {
-			t.Errorf("turn 2 tools should offer %s in plan mode (plan-file authoring), got %v",
-				expected, turn2)
+	// Both sentinels and the mutating tools are in the list in both modes.
+	for _, name := range []string{tools.EnterPlanModeName, tools.ExitPlanModeName, "Bash", "Write", "Edit", "Read"} {
+		if !containsName(provider.toolsForCall(0), name) {
+			t.Errorf("tool list should offer %s in every mode, got %v", name, provider.toolsForCall(0))
 		}
 	}
-	// Read survives the filter — a positive control proving the turn-2 list is
-	// a real plan-mode list and not simply empty.
-	if !containsName(turn2, "Read") {
-		t.Errorf("turn 2 tools should still offer Read in plan mode, got %v", turn2)
+
+	// The model learns the rules from the notice that follows the tool result.
+	turn2 := provider.requestForCall(1)
+	last := messageText(t, turn2.Messages[len(turn2.Messages)-1])
+	if !strings.Contains(last, "[PLAN MODE]") || !strings.Contains(last, planFile) {
+		t.Fatalf("turn 2 must end with the plan-mode enter notice, got %q", last)
+	}
+	if strings.Contains(turn2.System, "PLAN MODE") {
+		t.Fatalf("plan-mode text must not be in the system prompt: %q", turn2.System)
 	}
 }
 
-// TestToolDefsNotRebuiltWhenPlanModeStable pins the other side of the
-// conditional: a run whose plan-mode state never changes must reuse the list
-// built before the loop. This is what keeps the fix from degrading into an
-// unconditional per-turn rebuild.
-func TestToolDefsNotRebuiltWhenPlanModeStable(t *testing.T) {
+// TestPlanModeBashAllowlistReachesTheCall drives the per-prompt Bash allowance
+// end to end. A slash command may declare extra Bash prefixes for one prompt;
+// the run must allow exactly those in plan mode, refuse everything else, and
+// not carry them into the next run.
+func TestPlanModeBashAllowlistReachesTheCall(t *testing.T) {
+	planFile := t.TempDir() + "/plan.md"
+	autoExitOff := false
+	start := func(reqID string, additions []string, commands ...string) *toolCapturingProvider {
+		var script [][]types.LlmStreamEvent
+		for i, cmd := range commands {
+			script = append(script, toolUseResponse("Bash", fmt.Sprintf("tc-%d", i), map[string]any{"command": cmd}, 10, 5))
+		}
+		script = append(script, textResponse("done", 10, 5))
+		provider := setupToolCapturingProvider(script)
+		b := NewApiBackend()
+		c := collectEvents(b, reqID)
+		b.StartRunWithConfig(reqID, types.RunOptions{
+			Prompt:                              "file the issue",
+			ProjectPath:                         t.TempDir(),
+			Model:                               testModel,
+			EarlyStopEnabled:                    testEarlyStopDisabled(),
+			PlanMode:                            true,
+			PlanFilePath:                        planFile,
+			PlanModeAutoExit:                    &autoExitOff,
+			BashAllowlistAdditionsForThisPrompt: additions,
+		}, &RunConfig{})
+		if !waitForExit(c, 5*time.Second) {
+			t.Fatal("timed out waiting for run to exit")
+		}
+		return provider
+	}
+	// resultAfter returns the text of the tool-result message that follows
+	// tool call n: the message right after that call's assistant turn.
+	resultAfter := func(provider *toolCapturingProvider, n int) string {
+		before := len(provider.requestForCall(n).Messages)
+		return messageText(t, provider.requestForCall(n + 1).Messages[before+1])
+	}
+
+	// SAFETY: `echo` stands in for a real side-effecting command.
+	withAddition := start("req-bash-addition", []string{"echo issue create"}, "echo issue create --title x", "git diff")
+	if got := resultAfter(withAddition, 0); strings.HasPrefix(got, "Plan mode:") {
+		t.Errorf("a command matching the per-prompt allowance was refused: %s", got)
+	}
+	if got := resultAfter(withAddition, 1); !strings.Contains(got, "not in the allowed list") {
+		t.Errorf("a command outside the allowance must be refused, got: %s", got)
+	}
+	if !containsName(withAddition.toolsForCall(0), "Bash") {
+		t.Errorf("Bash must be in the plan-mode tool list, got %v", withAddition.toolsForCall(0))
+	}
+
+	next := start("req-bash-next", nil, "echo issue create --title x")
+	if got := resultAfter(next, 0); !strings.HasPrefix(got, "Plan mode: Bash is not available") {
+		t.Errorf("the allowance leaked into a later run; want Bash refused, got: %s", got)
+	}
+}
+
+// TestToolListStableWithinARun pins that a run with no mode change hands the
+// provider the same list on every turn.
+func TestToolListStableWithinARun(t *testing.T) {
 	provider := setupToolCapturingProvider([][]types.LlmStreamEvent{
 		// Turn 1: a normal tool call, no plan-mode transition.
 		toolUseResponse("Read", "tc-read", map[string]any{"file_path": "/nonexistent"}, 10, 5),

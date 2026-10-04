@@ -23,9 +23,9 @@ import (
 //
 // The order is preserved: session entries first (in their original
 // order), then per-prompt additions that aren't already present. The
-// result drives both the system-prompt prose (`buildPlanModePrompt`)
-// and the run-time gate (`run.planModeAllowedBashCommands` consulted
-// by `applyPlanModeBashGate` in runloop_plan_mode_gates.go).
+// result drives both the plan-mode instruction prose
+// (`buildPlanModePrompt`) and the plan policy's Bash rule
+// (`run.planModeAllowedBashCommands`, read by `PlanPolicy.Decide`).
 //
 // Crucially this function returns a new slice — neither input is
 // mutated, and the session-level `engineSession.planModeAllowedBashCommands`
@@ -348,10 +348,13 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 	return systemPrompt
 }
 
-// buildToolDefs assembles the active tool list for a run: built-in tools plus
-// external/MCP tools plus capability tools, then applies plan-mode filtering,
-// allowed/suppressed filters, and provider-side WebSearch swap. Returns the
-// final tool definitions and any provider server-side tool descriptors.
+// buildToolDefs assembles the tool list for a run: built-in tools plus
+// external/MCP tools plus capability tools plus the engine sentinels, then
+// applies the allowed/suppressed filters and the provider-side WebSearch swap.
+// Returns the final tool definitions and any provider server-side tool
+// descriptors.
+//
+// The result does not depend on the run's mode. See the sentinel block below.
 func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provider providers.LlmProvider) ([]types.LlmToolDef, []map[string]any) {
 	toolDefs := tools.GetToolDefs()
 	var externalTools []types.LlmToolDef
@@ -383,182 +386,27 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		InputSchema: askDef.InputSchema,
 	})
 
-	// Filter tools if plan mode and inject ExitPlanMode.
+	// Plan-mode sentinels, in every mode. The tool list is part of the
+	// provider's cached prefix, so it must not depend on whether the run is
+	// planning, in auto mode, or implementing an approved plan. What a call to
+	// either sentinel does in the run's current mode is decided when it is
+	// called (interceptEnterPlanMode / interceptExitPlanMode), and the
+	// read-only boundary is the plan policy (plan_policy.go), not this list.
 	//
-	// The predicate is the LIVE run state (run.planMode), not opts.PlanMode.
-	// opts is the immutable snapshot of how the run STARTED; plan mode can be
-	// entered mid-run when the model calls the EnterPlanMode sentinel, which
-	// sets run.planMode = true (interceptEnterPlanMode in
-	// runloop_plan_mode_gates.go). Gating on opts.PlanMode here meant a
-	// mid-run rebuild still produced the auto-mode list, so the model was
-	// handed the plan-mode prompt — "finish via ExitPlanMode" — while
-	// ExitPlanMode was absent from its tools for the rest of the run.
-	//
-	// run.planMode is initialised from options.PlanMode at run creation
-	// (api_backend.go), so a run that STARTS in plan mode is unaffected: the
-	// two agree on turn 1 and only diverge after a mid-run transition.
-	// run may be nil in narrow unit tests that exercise the web-search arms;
-	// fall back to opts.PlanMode so those call sites keep working.
-	planModeActive := opts.PlanMode
-	if run != nil {
-		planModeActive = run.planMode
-	}
-	if planModeActive {
-		planTools := opts.PlanModeTools
-		if len(planTools) == 0 {
-			planTools = defaultPlanModeTools
-		}
-		run.planModeTools = planTools
-		allowed := make(map[string]bool, len(planTools)+2)
-		for _, t := range planTools {
-			allowed[t] = true
-		}
-		// Always allow Write/Edit so the LLM can write to the plan file
-		// (plan-file-only gate in executeTools enforces the target restriction)
-		allowed["Write"] = true
-		allowed["Edit"] = true
-		// Compute the effective allowlist (session ∪ per-prompt additions,
-		// de-duplicated) so the Bash-tool-inclusion gate, the run-time
-		// gate state, and the system-prompt prose all agree on what Bash
-		// commands are permitted for this run.
-		effectiveAllowlist := effectiveBashAllowlist(opts)
-		// Include Bash when the effective allowlist is non-empty (either
-		// the session has an allowlist, or the prompt carries per-prompt
-		// additions, or both).
-		if len(effectiveAllowlist) > 0 {
-			allowed["Bash"] = true
-		}
-		// AskUserQuestion is injected unconditionally above; keep it through
-		// the plan-mode filter so it is still available during plan mode.
-		allowed[tools.AskUserQuestionName] = true
-		mcpAllowlist := effectiveMcpAllowlist(opts)
-		var filtered []types.LlmToolDef
-		for _, td := range toolDefs {
-			// Poll is auto-mode orchestration. It starts a permissive evidence
-			// collector and may run Bash under normal permissions, so it is never
-			// exposed in plan mode — even when a custom plan tool list names it or
-			// a future edit accidentally marks it PlanModeSafe.
-			if td.Name == "Poll" {
-				continue
-			}
-			if allowed[td.Name] || td.PlanModeSafe || (strings.HasPrefix(td.Name, "mcp__") && mcpToolAllowed(td.Name, mcpAllowlist)) {
-				filtered = append(filtered, td)
-			}
-		}
-		toolDefs = filtered
-
-		// Always inject ExitPlanMode sentinel when in plan mode
-		exitPlanDef := tools.ExitPlanModeTool()
-		toolDefs = append(toolDefs, types.LlmToolDef{
-			Name:        exitPlanDef.Name,
-			Description: exitPlanDef.Description,
-			InputSchema: exitPlanDef.InputSchema,
-		})
-
-		// Emit a state-transition event so consumers can mirror the active
-		// plan-mode flag. Snapshot-style: the event is the authoritative
-		// signal that the run is now in plan mode.
-		//
-		// Carry the plan identity (path + slug) on every emission. This site
-		// fires when a run STARTS while the session is already in plan mode
-		// (a continuation/subsequent turn of an existing plan); run.planFilePath
-		// is already populated from options.PlanFilePath at run creation
-		// (api_backend.go), so the path is available here. Populating it
-		// matches the model-initiated EnterPlanMode emit in
-		// runloop_plan_mode_gates.go and lets consumers (a) render the plan
-		// slug on the divider and (b) distinguish the first divider for a path
-		// ("Plan created") from subsequent ones ("Plan updated"). Omitting the
-		// path here produced a nameless, non-dedupable second divider on the
-		// clients. PlanSlugFromPath returns "" for an empty path, so the
-		// pathological empty-path case degrades to today's slug-less divider.
-		b.emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
-			Enabled:      true,
-			PlanFilePath: run.planFilePath,
-			PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
-		}})
-		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "event", map[string]any{
-			"run_id":         run.requestID,
-			"tools_filtered": len(toolDefs),
-			"allowed":        planTools,
-		})
-		// Install the EFFECTIVE allowlist on the run so applyPlanModeBashGate
-		// (executed per-tool-call in runloop_plan_mode_gates.go) sees the
-		// same set the system prompt advertised and the tool-list gate
-		// included Bash for. The per-prompt additions live ONLY in this
-		// run's activeRun.planModeAllowedBashCommands and never persist
-		// to the session-level engineSession.planModeAllowedBashCommands.
-		run.planModeAllowedBashCommands = effectiveAllowlist
-		// Log both sides of the conditional per AGENTS.md logging-policy.
-		// The bash-allowlist transition from RunOptions → activeRun is
-		// the boundary where session-level config + per-prompt additions
-		// become run-local state; if a future bug surfaces in the bash gate
-		// the log line here lets a developer confirm the list arrived intact.
-		// When per-prompt additions are present, log the breakdown so an
-		// operator can distinguish session-level entries from per-prompt
-		// additions when investigating "why was this command allowed?"
-		if len(effectiveAllowlist) > 0 {
-			if len(opts.BashAllowlistAdditionsForThisPrompt) > 0 {
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "applied_to_run ( + )", map[string]any{
-					"run_id":               run.requestID,
-					"bash_allowlist":       effectiveAllowlist,
-					"session_id":           opts.PlanModeAllowedBashCommands,
-					"per_prompt_additions": opts.BashAllowlistAdditionsForThisPrompt,
-				})
-			} else {
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "applied_to_run", map[string]any{
-					"run_id":         run.requestID,
-					"bash_allowlist": effectiveAllowlist,
-				})
-			}
-		} else {
-			utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "no bash_allowlist (default-deny)", map[string]any{
-				"run_id": run.requestID,
-			})
-		}
-	} else {
-		// Inject EnterPlanMode sentinel in auto mode so the LLM can request
-		// a transition into plan mode when it judges the task warrants planning.
-		// Symmetric with ExitPlanMode which is injected only in plan mode.
-		//
-		// Implementation-phase suppression: when the harness has set
-		// RunOptions.ImplementationPhase=true (e.g. a harness button that
-		// hands off an approved plan to an "implement" run), the engine
-		// skips the injection entirely so the model can't propose a fresh
-		// plan-mode entry mid-implementation. This replaces the previous
-		// prompt-text substring-matching mechanism with a structured
-		// boolean — see the field comment in
-		// engine/internal/types/types.go.
-		if opts.ImplementationPhase {
-			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "skipping EnterPlanMode injection (implementation_phase=true)", map[string]any{
-				"run_id": run.requestID,
-			})
-		} else {
-			// Resolve the EnterPlanMode tool description: harness-supplied
-			// prose wins; empty falls back to the engine's one-line
-			// default. Per ADR-004 the policy prose lives in the harness;
-			// the engine never composes its own opinionated framing.
-			// Log which branch ran so the operational log captures the
-			// resolution path (logging policy: log both sides of every
-			// decision).
-			descSource := "default"
-			descLen := 0
-			if opts.EnterPlanModeDescription != "" {
-				descSource = "harness"
-				descLen = len(opts.EnterPlanModeDescription)
-			}
-			enterPlanDef := tools.EnterPlanModeToolWithDescription(opts.EnterPlanModeDescription)
-			toolDefs = append(toolDefs, types.LlmToolDef{
-				Name:        enterPlanDef.Name,
-				Description: enterPlanDef.Description,
-				InputSchema: enterPlanDef.InputSchema,
-			})
-			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "injected EnterPlanMode in auto mode", map[string]any{
-				"run_id":               run.requestID,
-				"enter_plan_mode_desc": descSource,
-				"len":                  descLen,
-			})
-		}
-	}
+	// The EnterPlanMode description is harness-supplied prose when present,
+	// else the engine's one-line default (ADR-004).
+	exitPlanDef := tools.ExitPlanModeTool()
+	toolDefs = append(toolDefs, types.LlmToolDef{
+		Name:        exitPlanDef.Name,
+		Description: exitPlanDef.Description,
+		InputSchema: exitPlanDef.InputSchema,
+	})
+	enterPlanDef := tools.EnterPlanModeToolWithDescription(opts.EnterPlanModeDescription)
+	toolDefs = append(toolDefs, types.LlmToolDef{
+		Name:        enterPlanDef.Name,
+		Description: enterPlanDef.Description,
+		InputSchema: enterPlanDef.InputSchema,
+	})
 
 	// Filter by allowedTools if specified (empty list = no tools, nil = all tools)
 	if opts.AllowedTools != nil {

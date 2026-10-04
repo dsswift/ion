@@ -51,7 +51,8 @@ func boundedClientToolValidationDiagnostic(err error) string {
 //
 // Filtering applied here, before any backend adapter sees the set:
 //   - empty names (invalid declaration entries)
-//   - plan-mode safety: a plan-mode run drops tools not marked PlanModeSafe
+//   - plan-mode safety on a delegated-CLI backend: a plan-mode run drops
+//     tools not marked PlanModeSafe
 //   - AllowedTools (when non-nil, the run's allowlist) and SuppressTools
 //
 // Collision handling with extension/MCP tools deliberately stays at each
@@ -77,13 +78,19 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 	}
 
 	filtered := make([]types.ClientToolDef, 0, len(gateCfg.ClientTools))
+	// The API backend keeps every client tool in the list and refuses a
+	// non-plan-safe one when it is called (backend.PlanPolicy), so its tool
+	// list does not change with the mode. The delegated-CLI backends still
+	// withhold them from a plan-mode run.
+	_, apiServed := m.resolvedBackend(opts.Model).(*backend.ApiBackend)
+	planFiltered := opts.PlanMode && !apiServed
 	var droppedPlanMode, droppedPolicy int
 	for _, ct := range gateCfg.ClientTools {
 		if ct.Name == "" {
 			utils.LogWithFields(utils.LevelWarn, "session.toolgate", "client tool with empty name skipped", map[string]any{"key": key})
 			continue
 		}
-		if opts.PlanMode && !ct.PlanModeSafe {
+		if planFiltered && !ct.PlanModeSafe {
 			droppedPlanMode++
 			continue
 		}
