@@ -93,7 +93,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 ## Branch workflow
 
-`main` is the integration branch; the operator lands work by direct push, and every push is versioned, built, and published by the delivery pipeline ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Pull requests are optional. Read the active branch with `git branch --show-current`; never hardcode one. Never `git push`.
+`main` is the integration branch; the operator lands work by direct push, and every push is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Pull requests are optional. Read the active branch with `git branch --show-current`; never hardcode one. Never `git push`.
 
 ## Commits
 

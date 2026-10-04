@@ -1,6 +1,6 @@
 ---
 title: Delivery Pipeline
-description: How a push to main becomes versioned, built, published releases, and where tests and scans fit so they never hold a release.
+description: How a push to main becomes versioned, built releases, how tests decide when each one goes public, and why neither tests nor scans ever block a push.
 sidebar_position: 7
 ---
 
