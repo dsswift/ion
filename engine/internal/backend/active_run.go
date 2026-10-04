@@ -95,6 +95,10 @@ type activeRun struct {
 	// prefixes are permitted. Set from RunOptions.PlanModeAllowedBashCommands
 	// in buildToolDefs.
 	planModeAllowedBashCommands []string
+	// planModeTools is the read-only tool set the plan policy allows for this
+	// run: the harness-supplied list when there is one. Empty means the
+	// policy falls back to RunOptions.PlanModeTools, then defaultPlanModeTools.
+	planModeTools []string
 
 	// toolDefsBuiltForPlanMode records the plan-mode state that the run's
 	// current tool list was assembled under. runLoop builds the tool defs

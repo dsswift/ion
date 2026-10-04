@@ -154,6 +154,18 @@ func (b *ApiBackend) executeTools(
 			return nil
 		}
 
+		// Plan-mode boundary, ahead of the permission check so the operator
+		// is never asked to approve a call plan mode will refuse. See
+		// applyPlanPolicy.
+		planGate := b.applyPlanPolicy(run, block, results, i, cwd)
+		if planGate.handled {
+			return nil
+		}
+		planWriteOverwrite := planGate.planWriteOverwrite
+		planWriteRedirectNotice := planGate.redirectNotice
+		planWriteToCanonical := planGate.planWriteToCanonical
+		planFileHadContentBefore := planGate.planFileHadContentBefore
+
 		// Permission check (Step 3)
 		if permEng != nil {
 			// Classify first so the tier flows into the permission engine
@@ -302,35 +314,13 @@ func (b *ApiBackend) executeTools(
 		// the input and output contract.
 		toolSpan := startToolExecuteSpan(telem, run, block.Name, block.Input)
 
-		// Plan-mode gates (extracted to runloop_plan_mode_gates.go to
-		// keep this dispatch loop focused). Each gate either short-
-		// circuits this per-tool goroutine (returning handled=true,
-		// after setting results[i] and emitting any ToolResultEvent)
-		// or proceeds. The Write gate additionally latches
-		// planWriteOverwrite for the post-execution overwrite
-		// warning that the Write tool-result append below depends on.
-		var planWriteOverwrite bool
-		var planWriteRedirectNotice string
-		var planWriteToCanonical bool
-		var planFileHadContentBefore bool
-		{
-			gateRes := applyPlanModeWriteGate(run, block, results, i, cwd, b.emit)
-			if gateRes.handled {
-				return nil
-			}
-			planWriteOverwrite = gateRes.planWriteOverwrite
-			planWriteRedirectNotice = gateRes.redirectNotice
-			planWriteToCanonical = gateRes.planWriteToCanonical
-			planFileHadContentBefore = gateRes.planFileHadContentBefore
-			if applyPlanModeBashGate(run, block, results, i, b.emit) {
-				return nil
-			}
-			if interceptExitPlanMode(run, block, results, i, hooks, b.emit) {
-				return nil
-			}
-			if interceptEnterPlanMode(run, block, results, i, hooks, b.emit) {
-				return nil
-			}
+		// Plan-mode sentinels (runloop_plan_mode_gates.go). Each either
+		// short-circuits this per-tool goroutine or proceeds.
+		if interceptExitPlanMode(run, block, results, i, hooks, b.emit) {
+			return nil
+		}
+		if interceptEnterPlanMode(run, block, results, i, hooks, b.emit) {
+			return nil
 		}
 
 		// Intercept human-wait client tools (AskUserQuestions and any

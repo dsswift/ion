@@ -450,6 +450,7 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		if len(planTools) == 0 {
 			planTools = defaultPlanModeTools
 		}
+		run.planModeTools = planTools
 		allowed := make(map[string]bool, len(planTools)+2)
 		for _, t := range planTools {
 			allowed[t] = true
