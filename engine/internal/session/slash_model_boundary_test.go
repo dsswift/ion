@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"sync"
 	"testing"
 
@@ -47,7 +48,7 @@ func newTierNoticeManager(t *testing.T) (*Manager, *tierNoticeRecorder, string) 
 	const key = "tier-notice-session"
 	rec := &tierNoticeRecorder{}
 	mgr := &Manager{sessions: make(map[string]*engineSession)}
-	mgr.sessions[key] = &engineSession{}
+	mgr.sessions[key] = &engineSession{agents: agents.NewRegistry()}
 	mgr.onEvent = rec.record
 	return mgr, rec, key
 }

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -22,7 +23,7 @@ func TestInitialIdentityChangedPrecedesSessionStart(t *testing.T) {
 	})
 	group := extension.NewExtensionGroup()
 	group.Add(host)
-	s := &engineSession{key: "identity-order", extGroup: group}
+	s := &engineSession{agents: agents.NewRegistry(), key: "identity-order", extGroup: group}
 	manager.fireInitialIdentityChanged(s, s.key)
 	if err := group.FireSessionStart(&extension.Context{}); err != nil {
 		t.Fatalf("session start: %v", err)

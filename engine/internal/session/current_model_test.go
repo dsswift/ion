@@ -2,12 +2,13 @@ package session
 
 import (
 	"fmt"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"sync"
 	"testing"
 )
 
 func TestSessionAccessorCurrentModelConcurrentUpdate(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	accessor := &sessionAccessor{s: s}
 
 	var wg sync.WaitGroup

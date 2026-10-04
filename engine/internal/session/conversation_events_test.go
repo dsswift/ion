@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -33,7 +34,7 @@ func bufferedRootConvEvents(c *telemetry.Collector, name string) []telemetry.Eve
 }
 
 func newConvEventsTestSession(key, conversationID string) *engineSession {
-	return &engineSession{key: key, conversationID: conversationID}
+	return &engineSession{agents: agents.NewRegistry(), key: key, conversationID: conversationID}
 }
 
 // TestEmitConversationEvents_NoConversationID_NoEmit pins the guard in

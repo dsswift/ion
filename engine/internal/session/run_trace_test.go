@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -41,7 +42,7 @@ func TestNewRunTraceStartsTraceWithoutValidCaller(t *testing.T) {
 // trace, before the run identity is cleared.
 func TestEmitRunSpanLockedRecordsRunSpan(t *testing.T) {
 	collector := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	s := &engineSession{telemetry: collector, conversationID: "conv-1"}
+	s := &engineSession{agents: agents.NewRegistry(), telemetry: collector, conversationID: "conv-1"}
 	traceID, span := newRunTrace("k", "run-1", &PromptOverrides{Traceparent: utils.FormatTraceparent(callerTrace, callerSpan)})
 	s.setRunIdentity("run-1", traceID)
 	s.setRunSpan(span)
@@ -80,7 +81,7 @@ func TestEmitRunSpanLockedRecordsRunSpan(t *testing.T) {
 // every other span in the same run about who caused it.
 func TestEmitRunSpanLockedStampsPrincipalIdentity(t *testing.T) {
 	collector := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	s := &engineSession{telemetry: collector, conversationID: "conv-1", principal: &types.SessionPrincipal{Subject: "local:jdoe", DisplayName: "jdoe"}}
+	s := &engineSession{agents: agents.NewRegistry(), telemetry: collector, conversationID: "conv-1", principal: &types.SessionPrincipal{Subject: "local:jdoe", DisplayName: "jdoe"}}
 	traceID, span := newRunTrace("k", "run-1", nil)
 	s.setRunIdentity("run-1", traceID)
 	s.setRunSpan(span)
@@ -101,7 +102,7 @@ func TestEmitRunSpanLockedStampsPrincipalIdentity(t *testing.T) {
 }
 
 func TestClearRunIdentityClearsRunSpan(t *testing.T) {
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	s.setRunIdentity("run-1", callerTrace)
 	s.setRunSpan(runSpan{spanID: callerSpan})
 	s.clearRunIdentity()

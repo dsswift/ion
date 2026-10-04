@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"strings"
 	"testing"
 
@@ -343,7 +344,7 @@ func TestCaptureNativeSessionCursor_PersistsAndRehydrates(t *testing.T) {
 
 	// Restart: a fresh session rehydrates the cursor and the next
 	// same-provider dispatch resumes natively instead of re-bridging.
-	s2 := &engineSession{key: "restarted", conversationID: "persist-conv-1"}
+	s2 := &engineSession{agents: agents.NewRegistry(), key: "restarted", conversationID: "persist-conv-1"}
 	mgr.rehydrateNativeSessions(s2, conv)
 	opts := types.RunOptions{Model: "claude-opus-4-8", Prompt: "after restart"}
 	mgr.resolveCliContinuity(s2, &opts)

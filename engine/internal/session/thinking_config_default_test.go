@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -31,7 +32,7 @@ func managerWithThinkingDefault(cfg *types.ThinkingConfig) *Manager {
 }
 
 func newThinkingSession() *engineSession {
-	return &engineSession{config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
+	return &engineSession{agents: agents.NewRegistry(), config: types.EngineConfig{WorkingDirectory: testWorkDir()}}
 }
 
 // Nobody expressed an opinion → the engine.json default applies.

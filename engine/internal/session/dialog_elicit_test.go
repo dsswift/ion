@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func newElicitTestSession(t *testing.T, timeouts *types.TimeoutsConfig) (*Manage
 	if timeouts != nil {
 		m.config = &types.EngineRuntimeConfig{Timeouts: timeouts}
 	}
-	s := &engineSession{key: key, pending: pending.New()}
+	s := &engineSession{agents: agents.NewRegistry(), key: key, pending: pending.New()}
 	s.newSessionRootContext()
 	m.sessions[key] = s
 	return m, s, key

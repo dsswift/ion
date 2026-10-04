@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -12,7 +13,7 @@ func newPrincipalWiringAccessor(principal *types.SessionPrincipal) *sessionAcces
 	api := backend.NewApiBackend()
 	api.SetAuthResolver(auth.NewResolver(&types.AuthConfig{}))
 	m := &Manager{backend: api, sessions: map[string]*engineSession{}}
-	return &sessionAccessor{m: m, s: &engineSession{principal: principal}, key: "tab-1"}
+	return &sessionAccessor{m: m, s: &engineSession{agents: agents.NewRegistry(), principal: principal}, key: "tab-1"}
 }
 
 // A dispatched child gets the provider credential context and git identity of

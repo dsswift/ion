@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"sync"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestApplicationConfigChangedReachesSessionsScoped(t *testing.T) {
 		group := extension.NewExtensionGroup()
 		group.Add(host)
 		manager.mu.Lock()
-		manager.sessions[key] = &engineSession{key: key, extGroup: group, principal: principal}
+		manager.sessions[key] = &engineSession{agents: agents.NewRegistry(), key: key, extGroup: group, principal: principal}
 		manager.mu.Unlock()
 	}
 	addSession("process-session", "ext-a", nil)

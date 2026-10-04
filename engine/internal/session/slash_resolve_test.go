@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -105,7 +106,7 @@ func TestResolveSlashIntoOptsCarriesFrontmatterForPersistence(t *testing.T) {
 	work := t.TempDir()
 	writeTemplate(t, work, ".ion/commands/x.md", "---\nmy-extension-key: durable-value\nallowed-tools: [Read, Grep]\n---\nBody")
 	mgr := NewManager(newMockBackend())
-	s := &engineSession{config: types.EngineConfig{WorkingDirectory: work}}
+	s := &engineSession{agents: agents.NewRegistry(), config: types.EngineConfig{WorkingDirectory: work}}
 	opts := &types.RunOptions{Prompt: "/x", ResolveSlash: true}
 
 	resolved, failed, err := mgr.resolveSlashIntoOpts(s, "slash-frontmatter", opts)

@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"os"
 	"path/filepath"
 	"testing"
@@ -279,7 +280,7 @@ func TestNormalizeSlashThinkingForResolvedModel(t *testing.T) {
 func TestCommandOwnedSlashModelSkipsModelSelect(t *testing.T) {
 	const commandModel = "slash-tier-model"
 	mgr := NewManager(newMockBackend())
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	host := extension.NewHost()
 	host.SDK().On(extension.HookModelSelect, func(_ *extension.Context, _ interface{}) (interface{}, error) {
 		return "selector-must-not-win", nil
@@ -297,7 +298,7 @@ func TestCommandOwnedSlashModelSkipsModelSelect(t *testing.T) {
 func TestRefreshSlashModelProvenanceAfterModelSelect(t *testing.T) {
 	const selected = "slash-selected-model"
 	mgr := NewManager(newMockBackend())
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	host := extension.NewHost()
 	host.SDK().On(extension.HookModelSelect, func(_ *extension.Context, _ interface{}) (interface{}, error) {
 		return selected, nil

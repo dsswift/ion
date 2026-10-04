@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/dsswift/ion/engine/internal/session/agents"
 	"reflect"
 	"sync"
 	"testing"
@@ -75,7 +76,7 @@ func TestPolicyConfig_PerPrincipal(t *testing.T) {
 		}
 	}
 
-	s := &engineSession{}
+	s := &engineSession{agents: agents.NewRegistry()}
 	mgr.wireSessionPermissions(s, testPrincipal("contractor@example.com"))
 	if got := s.permEngine.Check(permissions.CheckInfo{Tool: "Write"}); got.Decision != "deny" {
 		t.Errorf("contractor session permission decision = %q, want deny", got.Decision)
