@@ -671,6 +671,7 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		}}
 	}
 
+	sortToolDefs(toolDefs)
 	return toolDefs, serverTools
 }
 
