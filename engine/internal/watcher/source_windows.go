@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
@@ -90,12 +91,13 @@ func newRecursiveSource(root string) (eventSource, error) {
 	s.ov.HEvent = event
 	// The OS records changes only once the first read is issued, so it must be
 	// pending before the source is handed back and the Watcher walks the tree.
-	if err := s.issueRead(); err != nil {
+	started := make(chan error, 1)
+	go s.read(started)
+	if err := <-started; err != nil {
 		windows.CloseHandle(handle) //nolint:errcheck // already failing; the read error is the one returned
 		windows.CloseHandle(event)  //nolint:errcheck // already failing; the read error is the one returned
 		return nil, err
 	}
-	go s.read()
 	utils.LogWithFields(utils.LevelDebug, "watcher", "recursive source opened", map[string]any{"path": root})
 	return s, nil
 }
@@ -154,12 +156,27 @@ func (s *recursiveSource) issueRead() error {
 	return nil
 }
 
-// read waits for each pending read, forwards what it returned, and issues the
-// next. Changes made between two reads are held by the OS. It closes Events
-// when it stops, which tells the Watcher's pump to exit.
-func (s *recursiveSource) read() {
+// read issues the first read and reports its result on started, then waits
+// for each pending read, forwards what it returned, and issues the next.
+// Changes made between two reads are held by the OS. It closes Events when it
+// stops, which tells the Watcher's pump to exit.
+//
+// A read on a handle opened without a completion port belongs to the thread
+// that issued it, and Windows finishes it, cancelled or not, on that thread.
+// If the thread is then parked in a blocking call such as a pipe read, which
+// the Go scheduler is free to do with any thread, CancelIoEx never returns.
+// Every read is therefore issued from this goroutine, pinned to a thread that
+// runs nothing else, so that thread is always free to finish the read.
+func (s *recursiveSource) read(started chan<- error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	defer close(s.exited)
 	defer close(s.events)
+	err := s.issueRead()
+	started <- err
+	if err != nil {
+		return
+	}
 	for {
 		var n uint32
 		if err := windows.GetOverlappedResult(s.handle, &s.ov, &n, true); err != nil {
