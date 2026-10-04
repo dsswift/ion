@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.5](https://github.com/dsswift/ion/compare/engine-v1.97.4...engine-v1.97.5) (2026-10-04)
+
+### Bug Fixes
+
+* **engine:** issue windows watch reads from a pinned thread (#476) ([1f8dfb9](https://github.com/dsswift/ion/commit/1f8dfb9c4e1666045f52e60210b19f060fd203c3))
+* **engine:** give test sessions an agent registry ([1aa01a7](https://github.com/dsswift/ion/commit/1aa01a7ea8afe0894f3e23b461b80d4e3fba69c0))
+
 ## [1.97.4](https://github.com/dsswift/ion/compare/engine-v1.97.3...engine-v1.97.4) (2026-10-03)
 
 ## [1.97.3](https://github.com/dsswift/ion/compare/engine-v1.97.2...engine-v1.97.3) (2026-10-03)

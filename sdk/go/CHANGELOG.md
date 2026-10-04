@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.22](https://github.com/dsswift/ion/compare/sdk/go-v0.1.21...sdk/go-v0.1.22) (2026-10-04)
+
 ## [0.1.21](https://github.com/dsswift/ion/compare/sdk/go-v0.1.20...sdk/go-v0.1.21) (2026-10-03)
 
 ### Features

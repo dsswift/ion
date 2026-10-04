@@ -10,6 +10,8 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.7.2](https://github.com/dsswift/ion/compare/ios-v2.7.1...ios-v2.7.2) (2026-10-04)
+
 ## [2.7.1](https://github.com/dsswift/ion/compare/ios-v2.7.0...ios-v2.7.1) (2026-10-03)
 
 ### Bug Fixes

@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.9.1](https://github.com/dsswift/ion/compare/relay-v1.9.0...relay-v1.9.1) (2026-10-04)
+
+### Bug Fixes
+
+* **relay:** move apns push off deprecated http2 transport ([b52aa77](https://github.com/dsswift/ion/commit/b52aa770e0ccf6a433321b168590b1dcc5d24a66))
+
 ## [1.9.0](https://github.com/dsswift/ion/compare/relay-v1.8.1...relay-v1.9.0) (2026-09-29)
 
 ### Features
