@@ -287,5 +287,11 @@ type activeRun struct {
 	// processStream reads on the run goroutine.
 	currentAttempt atomic.Int64
 
+	// skillGrants are the allowed-tools of skills invoked during this run.
+	// They settle a permission "ask" as "allow" and die with the run.
+	// Seeded from RunOptions.SkillGrants (slash invocation) and extended by
+	// the Skill tool. Guarded by run.mu.
+	skillGrants []types.PermissionRule
+
 	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
 }

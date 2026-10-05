@@ -257,6 +257,25 @@ type RunOptions struct {
 	// injections (the per-run analogue of SuppressSystemMessages but scoped to
 	// the nested-context mechanism specifically).
 	DisableNestedContext bool `json:"disableNestedContext,omitempty"`
+	// ContextIncludeMaxDepth caps the @-include hops followed from one
+	// context file, for both the eager walk and nested loading. Zero means the
+	// built-in default (context.DefaultIncludeMaxDepth). Filled from
+	// engine.json limits.contextIncludeMaxDepth when unset.
+	ContextIncludeMaxDepth int `json:"contextIncludeMaxDepth,omitempty"`
+	// DisableSkillShellExecution replaces skill shell placeholders with a
+	// policy marker instead of running them, for this run. Set from engine.json
+	// limits.disableSkillShellExecution; a per-run true can only add to it.
+	DisableSkillShellExecution bool `json:"disableSkillShellExecution,omitempty"`
+	// SkillGrants pre-approve tools for this run, from the allowed-tools of a
+	// skill invoked by slash command. The Skill tool adds its grants to the
+	// live run directly. A grant settles an "ask" as "allow"; it never
+	// overrides "deny".
+	SkillGrants []PermissionRule `json:"-"`
+	// SlashSkill is set when a slash invocation resolved to a skill. The
+	// skill's shell commands are run from it after the session lock is
+	// released, because a command may take minutes. Internal; never on the
+	// wire.
+	SlashSkill *SlashSkillRender `json:"-"`
 	// DisableSkillSystemPrompt turns off the engine's skill-listing +
 	// proactive-invocation system-prompt section for this run (see
 	// tools.BuildSkillSystemPromptSection). Zero value (false) means the
@@ -516,4 +535,14 @@ type RunOptions struct {
 	// the cursor so a resumed native session can never silently lack a
 	// newly declared tool. In-process only (json:"-").
 	ClientToolSignature string `json:"-"`
+}
+
+// SlashSkillRender describes a skill reached by slash command whose body is
+// still to be rendered (shell injection) before the run starts.
+type SlashSkillRender struct {
+	Name        string
+	Source      string // path of the SKILL.md
+	Dir         string // directory of the SKILL.md
+	Args        string
+	Frontmatter map[string]any
 }

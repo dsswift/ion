@@ -523,6 +523,13 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			enterprise.Limits.PlanModeAllowedBashCommands,
 		)
 	}
+	// Skill shell execution: one-way seal. An enterprise true forces it off;
+	// a lower layer cannot turn it back on.
+	if enterprise.Limits != nil && enterprise.Limits.DisableSkillShellExecution != nil && *enterprise.Limits.DisableSkillShellExecution {
+		sealed := true
+		result.Limits.DisableSkillShellExecution = &sealed
+		utils.Log("ConfigMerge", "enterprise: skill shell execution disabled by policy")
+	}
 	if enterprise.Limits != nil && enterprise.Limits.PlanModeAllowedMcpTools != nil {
 		result.Limits.PlanModeAllowedMcpTools = intersectMcpToolsWithCeiling(
 			result.Limits.PlanModeAllowedMcpTools,

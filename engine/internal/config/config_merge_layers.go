@@ -98,6 +98,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.DisableSkillSystemPrompt != nil {
 		dst.Limits.DisableSkillSystemPrompt = src.Limits.DisableSkillSystemPrompt
 	}
+	if src.Limits.ContextIncludeMaxDepth != nil {
+		dst.Limits.ContextIncludeMaxDepth = src.Limits.ContextIncludeMaxDepth
+	}
+	if src.Limits.DisableSkillShellExecution != nil {
+		dst.Limits.DisableSkillShellExecution = src.Limits.DisableSkillShellExecution
+	}
 	dst.Limits.AgentStateMetadata = types.MergeAgentStateMetadataLimits(dst.Limits.AgentStateMetadata, src.Limits.AgentStateMetadata)
 	dst.Limits.AgentStateEmit = types.MergeAgentStateEmitLimits(dst.Limits.AgentStateEmit, src.Limits.AgentStateEmit)
 

@@ -103,6 +103,7 @@ func (b *ApiBackend) executeTools(
 	if run.opts != nil && run.opts.SessionKey != "" {
 		gCtx = tools.WithSkillSessionKey(gCtx, run.opts.SessionKey)
 	}
+	gCtx = stampSkillRuntime(gCtx, run, hooks.OnSkillLoad, permEng)
 
 	if spawnerFn != nil {
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
@@ -184,10 +185,11 @@ func (b *ApiBackend) executeTools(
 				tier = t
 			}
 			checkResult := permEng.Check(permissions.CheckInfo{
-				Tool:  block.Name,
-				Input: block.Input,
-				Cwd:   cwd,
-				Tier:  tier,
+				Tool:   block.Name,
+				Input:  block.Input,
+				Cwd:    cwd,
+				Tier:   tier,
+				Grants: run.skillGrantsSnapshot(),
 			})
 			if permReqFn != nil {
 				payload := map[string]interface{}{

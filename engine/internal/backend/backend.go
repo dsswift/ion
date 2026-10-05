@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/principalboundary"
 	"github.com/dsswift/ion/engine/internal/sandbox"
+	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -231,6 +232,10 @@ type RunHooks struct {
 	// When allowed=false, reason is returned to the LLM in the tool result.
 	// Nil callback means auto-approve (used in tests and CLI backend).
 	OnPlanModeEnter func() (allowed bool, reason string, planFilePath string)
+
+	// OnSkillLoad fires the skill_load hook when the Skill tool invokes a
+	// skill, before its shell commands run. Nil means no observers.
+	OnSkillLoad func(skills.LoadEvent) skills.LoadDecision
 
 	// OnPlanModeExit is called when the LLM invokes the ExitPlanMode sentinel
 	// tool, before the run is terminated and the plan-ready card is shown.

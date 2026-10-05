@@ -277,7 +277,7 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 	skill := skills.GetSkillFor(sessionKey, name)
 	if skill == nil {
 		utils.LogWithFields(utils.LevelInfo, "tools.skill", "unknown skill requested", map[string]any{
-			"model": name, "key": sessionKey, "count": len(available),
+			"skill": name, "key": sessionKey, "count": len(available),
 		})
 		return &types.ToolResult{
 			Content: fmt.Sprintf("Unknown skill: %s\nAvailable skills: %s", name, strings.Join(available, ", ")),
@@ -312,6 +312,42 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 		baseDir = filepath.Dir(skill.Source)
 	}
 
+	rt, hasRuntime := skillRuntimeFrom(ctx)
+	disableShell := rt.DisableShell
+	if !hasRuntime {
+		// No run or session stamped a policy: run nothing rather than run
+		// commands nobody checked.
+		disableShell = true
+		utils.LogWithFields(utils.LevelWarn, "tools.skill", "skill shell runtime absent; commands not run", map[string]any{"skill": name, "key": sessionKey})
+	}
+	grants := skill.AllowedTools
+	rendered, renderErr := skills.Render(ctx, skills.RenderInput{
+		Name:        skill.Name,
+		Source:      skill.Source,
+		BaseDir:     baseDir,
+		Args:        args,
+		Invocation:  skills.InvocationTool,
+		Frontmatter: stringMapToAny(skill.Metadata),
+		Body:        skills.SubstituteArguments(skill.Content, args),
+		OnLoad:      rt.OnLoad,
+		Permit: func(command string) (bool, string) {
+			if rt.Permit == nil {
+				return true, ""
+			}
+			return rt.Permit(command, baseDir, grants)
+		},
+		Exec:         SkillShellExec,
+		DisableShell: disableShell,
+	})
+	if renderErr != nil {
+		utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill invocation aborted", map[string]any{"skill": name, "key": sessionKey, "error": renderErr})
+		return &types.ToolResult{Content: renderErr.Error(), IsError: true}, nil
+	}
+	if len(grants) > 0 && rt.Grant != nil {
+		rt.Grant(grants)
+		utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill allowed-tools granted for this run", map[string]any{"skill": name, "count": len(grants)})
+	}
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Skill: %s\n", skill.Name)
 	if skill.Description != "" {
@@ -321,12 +357,9 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 		fmt.Fprintf(&sb, "Base directory for this skill: %s\n", baseDir)
 		sb.WriteString("Relative paths in this skill (e.g. references/...) resolve against this base directory.\n")
 	}
-	if args != "" {
-		fmt.Fprintf(&sb, "Arguments: %s\n", args)
-	}
-	sb.WriteString(skill.Content)
+	sb.WriteString(rendered)
 
-	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"model": name, "path": baseDir, "count": len(args), "key": sessionKey})
+	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"skill": name, "path": baseDir, "count": len(args), "key": sessionKey})
 
 	return &types.ToolResult{
 		// The full body reaches this continuation through typed skill_content,
@@ -339,4 +372,15 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 			InvokedAt: time.Now().UnixMilli(),
 		},
 	}, nil
+}
+
+func stringMapToAny(m map[string]string) map[string]any {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

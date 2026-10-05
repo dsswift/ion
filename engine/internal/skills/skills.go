@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -82,6 +83,11 @@ type Skill struct {
 	// the `disable-model-invocation` frontmatter key; treat "true" (case-
 	// insensitive) as true, anything else as false.
 	DisableModelInvocation bool
+
+	// AllowedTools are the grants parsed from the `allowed-tools`
+	// frontmatter key. They pre-approve tools for the run that invokes the
+	// skill; they never restrict other tools. See ParseAllowedTools.
+	AllowedTools []types.PermissionRule
 }
 
 // SkillPaths holds conventional skill directory paths.
@@ -135,6 +141,13 @@ func LoadSkill(path string) (*Skill, error) {
 					// Detect YAML block scalar indicators: > (folded) or | (literal).
 					// Trailing spaces on the indicator line are normalised away.
 					indicator := strings.TrimRight(val, " \t")
+					if val == "" {
+						// A YAML sequence (`key:` then `  - item` lines) is
+						// kept as newline-joined items.
+						i++
+						metadata[key] = collectSequence(lines, &i)
+						continue
+					}
 					if indicator == ">" || indicator == "|" {
 						i++ // advance past the indicator line
 						val = collectBlockScalar(lines, &i, indicator == ">")
@@ -177,7 +190,23 @@ func LoadSkill(path string) (*Skill, error) {
 		Metadata:               metadata,
 		WhenToUse:              metadata["when_to_use"],
 		DisableModelInvocation: disableModelInvocation,
+		AllowedTools:           ParseAllowedTools([]string{metadata["allowed-tools"]}, filepath.Dir(path)),
 	}, nil
+}
+
+// collectSequence gathers `- item` lines starting at lines[*i]. On return, *i
+// points to the first line that is not a sequence item.
+func collectSequence(lines []string, i *int) string {
+	var items []string
+	for *i < len(lines) {
+		trimmed := strings.TrimSpace(lines[*i])
+		if !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		items = append(items, strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+		*i++
+	}
+	return strings.Join(items, "\n")
 }
 
 // collectBlockScalar gathers indented continuation lines starting at lines[*i].

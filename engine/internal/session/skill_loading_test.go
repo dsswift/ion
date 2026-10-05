@@ -601,7 +601,7 @@ func TestSkillLoading_EndToEndIonSkillViaTool(t *testing.T) {
 	if !strings.Contains(content, "Reviews code for quality issues") {
 		t.Error("expected description in invocation")
 	}
-	if !strings.Contains(content, "Arguments: main.go") {
+	if !strings.Contains(content, "ARGUMENTS: main.go") {
 		t.Error("expected arguments in invocation")
 	}
 	if !strings.Contains(content, "Review the code and identify bugs") {

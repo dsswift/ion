@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -49,6 +50,10 @@ type ResolvedSlash struct {
 	// ExpandedBody is the template body with $ARGUMENTS substituted (or the
 	// trailing ARGUMENTS block appended). This is what the model consumes.
 	ExpandedBody string
+	// SkillPath is the SKILL.md path when the command resolved to a skill,
+	// empty otherwise. A skill's body is rendered (shell injection) before
+	// the run starts.
+	SkillPath string
 	// Frontmatter is the full parsed frontmatter map — known keys AND any
 	// unknown keys, preserved verbatim. Extensions read this (via the
 	// resolution hook) to branch on keys the engine ignores.
@@ -162,7 +167,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 			continue
 		}
 		fm, body := parseOpenFrontmatter(string(data))
-		expanded := substituteArguments(body, args)
+		expanded := skills.SubstituteArguments(body, args)
 		skillDir := ""
 		if c.isSkill {
 			skillDir = filepath.Dir(c.path)
@@ -183,6 +188,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 			UserInvocable:       frontmatterUserInvocable(fm),
 			Context:             frontmatterContext(fm),
 			ClearsConversation:  frontmatterBool(fm, "clears-conversation", "clears_conversation"),
+			SkillPath:           skillPathIf(c.isSkill, c.path),
 		}, true
 	}
 
@@ -265,6 +271,16 @@ func applyResolvedSlashToOpts(key string, opts *types.RunOptions, res *ResolvedS
 	// fresh conversation boundary; mid-conversation it is recorded but not
 	// applied. See slash_model_boundary.go.
 	applySlashModelHint(opts, res.Model, modelApplied)
+
+	if res.SkillPath != "" {
+		opts.SlashSkill = &types.SlashSkillRender{
+			Name:        trimSlashCommand(res.Command),
+			Source:      res.SkillPath,
+			Dir:         filepath.Dir(res.SkillPath),
+			Args:        res.Args,
+			Frontmatter: cloneResolvedSlashFrontmatter(res.Frontmatter),
+		}
+	}
 
 	if len(res.AllowedBashCommands) > 0 {
 		opts.BashAllowlistAdditionsForThisPrompt = unionStrings(
@@ -357,4 +373,11 @@ func unionStrings(dst, src []string) []string {
 		}
 	}
 	return dst
+}
+
+func skillPathIf(isSkill bool, path string) string {
+	if isSkill {
+		return path
+	}
+	return ""
 }

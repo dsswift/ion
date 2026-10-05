@@ -470,6 +470,12 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if cfg.Limits.DisableSkillSystemPrompt != nil && *cfg.Limits.DisableSkillSystemPrompt {
 		opts.DisableSkillSystemPrompt = true
 	}
+	if cfg.Limits.DisableSkillShellExecution != nil && *cfg.Limits.DisableSkillShellExecution {
+		opts.DisableSkillShellExecution = true
+	}
+	if opts.ContextIncludeMaxDepth == 0 && cfg.Limits.ContextIncludeMaxDepth != nil && *cfg.Limits.ContextIncludeMaxDepth > 0 {
+		opts.ContextIncludeMaxDepth = *cfg.Limits.ContextIncludeMaxDepth
+	}
 	if cfg.WebSearch != nil && cfg.WebSearch.Mode != "" {
 		opts.WebSearchMode = cfg.WebSearch.Mode
 	}
@@ -560,24 +566,29 @@ func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {
 	})
 }
 
-// injectContextFiles discovers Ion-native instruction files (AGENTS.md,
-// ION.md, .ion/*) plus the user's ~/.ion root, and—when the session's
-// ClaudeCompat flag is set—Claude-compat files (CLAUDE.md, .claude/*) and the
-// ~/.claude root, then appends them to the system prompt. The gate mirrors the
-// slash-command / skill subsystem: Ion roots are unconditional, Claude roots
-// are honored only when the consumer enabled ClaudeCompat.
 // testInjectContextFilesHook is called at the start of injectContextFiles when
 // non-nil. Tests use it to stall the off-lock inject phase deterministically,
 // without depending on a real slow filesystem. Nil in production.
 var testInjectContextFilesHook func()
 
-func injectContextFiles(s *engineSession, opts *types.RunOptions) {
+// injectContextFiles discovers Ion-native instruction files (AGENTS.md,
+// ION.md, .ion/*) plus the user's ~/.ion root, and—when the session's
+// ClaudeCompat flag is set—Claude-compat files (CLAUDE.md, .claude/*) and the
+// ~/.claude root, then appends them to the system prompt. The gate mirrors the
+// slash-command / skill subsystem: Ion roots are unconditional, Claude roots
+// are honored only when the consumer enabled ClaudeCompat. Each file passes
+// through the context_discover and context_load hooks.
+//
+// It returns the files it injected so injectExtensionContext can hand the same
+// list to context_inject, rather than walking (and firing the per-file hooks)
+// a second time.
+func (m *Manager) injectContextFiles(s *engineSession, key string, opts *types.RunOptions) []ioncontext.DiscoveredContext {
 	if testInjectContextFilesHook != nil {
 		testInjectContextFilesHook()
 	}
 	if s.config.WorkingDirectory == "" {
 		utils.Log("Session", "injectContextFiles: skipped (empty WorkingDirectory)")
-		return
+		return nil
 	}
 	// Root sessions always walk both layers; compat follows the session flag.
 	// Shares the BuildContextPrompt formatter with the dispatch path so root
@@ -586,6 +597,8 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 		IncludeGlobalContext:  true,
 		IncludeProjectContext: true,
 		ClaudeCompat:          s.config.ClaudeCompat,
+		IncludeMaxDepth:       opts.ContextIncludeMaxDepth,
+		Hooks:                 m.contextWalkHooks(s, key),
 	}
 	content, ctxFiles := ioncontext.BuildContextPrompt(s.config.WorkingDirectory, "root", policy)
 	if s.config.ClaudeCompat {
@@ -599,6 +612,7 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 	if content != "" {
 		opts.AppendSystemPrompt += content
 	}
+	return ctxFiles
 }
 
 // injectWorkspaceContext delivers workspace facts through both context hooks
@@ -653,21 +667,18 @@ func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *typ
 	return &workspace
 }
 
-// injectExtensionContext fires context_inject and capability injection on each host.
-func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *types.RunOptions, workspace *workspaces.PromptContext) {
+// injectExtensionContext fires context_inject and capability injection on each
+// host. ctxFiles is what injectContextFiles injected, so DiscoveredPaths names
+// exactly the files the model sees: no duplicates and no hook-rejected files.
+func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *types.RunOptions, workspace *workspaces.PromptContext, ctxFiles []ioncontext.DiscoveredContext) {
 	if s.extGroup == nil || s.extGroup.IsEmpty() {
 		return
 	}
 	var discoveredPaths []string
-	if s.config.WorkingDirectory != "" {
-		cfg := ioncontext.IonPreset()
-		cfg.ClaudeCompat = s.config.ClaudeCompat
-		ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, cfg)
-		for _, cf := range ctxFiles {
-			discoveredPaths = append(discoveredPaths, cf.Path)
-		}
-		utils.LogWithFields(utils.LevelDebug, "session", "injectextensioncontext: , discovered path(s) for context_inject", map[string]any{"claude_compat": s.config.ClaudeCompat, "count": len(discoveredPaths)})
+	for _, cf := range ctxFiles {
+		discoveredPaths = append(discoveredPaths, cf.Path)
 	}
+	utils.LogWithFields(utils.LevelDebug, "session", "injectextensioncontext: discovered path(s) for context_inject", map[string]any{"claude_compat": s.config.ClaudeCompat, "count": len(discoveredPaths)})
 
 	ctx := m.newExtContext(s, key)
 	injected := s.extGroup.FireContextInject(ctx, extension.ContextInjectInfo{

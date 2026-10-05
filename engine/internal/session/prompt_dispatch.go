@@ -461,7 +461,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released for off-lock inject", map[string]any{"key": key, "model": opts.Model})
 
 	// --- Off-lock: context injection (I/O-heavy) ---
-	injectContextFiles(s, &opts)
+	ctxFiles := m.injectContextFiles(s, key, &opts)
 	var clientWsCtx *types.ClientWorkspaceContext
 	if overrides != nil && overrides.ClientWorkspaceContext != nil {
 		clientWsCtx = overrides.ClientWorkspaceContext
@@ -469,7 +469,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		clientWsCtx = s.config.ClientWorkspaceContext
 	}
 	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
-	m.injectExtensionContext(s, key, &opts, workspaceContext)
+	m.injectExtensionContext(s, key, &opts, workspaceContext, ctxFiles)
 	injectPluginContext(s, &opts)
 
 	if s.sessionMemory != nil {
@@ -492,6 +492,17 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	telemCollector := s.telemetry
 	m.mu.RUnlock()
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: off-lock inject complete", map[string]any{"key": key})
+
+	// A slash-invoked skill runs its shell commands now, off the lock.
+	if err := m.renderSlashSkill(s, key, &opts, extGroup, permEng); err != nil {
+		m.mu.Lock()
+		s.clearRunIdentityFor(requestID)
+		m.unbindRunLocked(requestID)
+		m.mu.Unlock()
+		m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
+		m.emitCommandResult(key, trimSlashCommand(opts.ResolvedSlashCommand), err)
+		return err
+	}
 
 	// Queue-mode completions become durable inputs only when a run actually
 	// starts. Claim them here, after the session lock is released, then let the

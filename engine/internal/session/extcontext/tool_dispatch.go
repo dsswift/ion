@@ -66,6 +66,12 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 
 	// 1. Built-in tools (Read, Write, Edit, Bash, Grep, Glob, Agent, etc).
 	if tools.GetTool(toolName) != nil {
+		// The Skill tool runs a skill's shell commands. The session supplies
+		// the same gates a run applies (permission policy, skill_load,
+		// disableSkillShellExecution); without them the tool runs none.
+		if skillRuntime, ok := sa.(interface{ SkillRuntime() tools.SkillRuntime }); ok {
+			ctx = tools.WithSkillRuntime(ctx, skillRuntime.SkillRuntime())
+		}
 		toolResult, err := tools.ExecuteTool(ctx, toolName, input, cwd)
 		if err != nil {
 			return nil, err

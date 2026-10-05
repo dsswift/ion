@@ -267,6 +267,11 @@ type EnterpriseLimits struct {
 	// plan mode. Entries match an exact tool name or a narrower `__`-delimited
 	// MCP tool name.
 	PlanModeAllowedMcpTools []string `json:"planModeAllowedMcpTools,omitempty"`
+
+	// DisableSkillShellExecution, when true, forces skill shell injection off
+	// on this machine; no lower layer can turn it back on. False or nil is no
+	// policy on this axis.
+	DisableSkillShellExecution *bool `json:"disableSkillShellExecution,omitempty"`
 }
 
 // ExtensionAllowlistEntry is a single entry in the enterprise extension
@@ -940,6 +945,21 @@ type LimitsConfig struct {
 	// is enabled. Per-run RunOptions.DisableSkillSystemPrompt overrides this
 	// field; the hook overrides both.
 	DisableSkillSystemPrompt *bool `json:"disableSkillSystemPrompt,omitempty"`
+	// ContextIncludeMaxDepth caps how many @-include hops the engine follows
+	// from one context file (AGENTS.md, ION.md, CLAUDE.md). Nil uses the
+	// built-in default of 5. A reference past the cap is replaced by a
+	// `<!-- max include depth reached: ... -->` marker. The value reaches
+	// every walk: the eager walk and nested loading through
+	// RunOptions.ContextIncludeMaxDepth, and a dispatched child's grounding
+	// through its context policy.
+	ContextIncludeMaxDepth *int `json:"contextIncludeMaxDepth,omitempty"`
+	// DisableSkillShellExecution turns off skill shell injection: each
+	// !`command` placeholder and ```! block in a skill body is replaced by
+	// "[shell command execution disabled by policy]" and nothing runs. Nil or
+	// false runs commands (subject to the permission policy). An enterprise
+	// limits.disableSkillShellExecution=true seals it on. The skill_load
+	// hook is the per-skill seam.
+	DisableSkillShellExecution *bool `json:"disableSkillShellExecution,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.

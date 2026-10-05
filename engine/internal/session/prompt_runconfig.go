@@ -382,6 +382,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	// ctx.model. currentModel is the routed model threaded from buildRunConfig
 	// (opts.Model at the dispatch site, post model_select).
 	ctx.Model = modelRefFor(currentModel)
+	runCfg.Hooks.OnSkillLoad = skillLoadHook(extGroup, ctx)
 	ctx.GetContextUsage = func() *extension.ContextUsage {
 		usage := apiBackend.GetContextUsage(capturedRequestID)
 		if usage == nil {
