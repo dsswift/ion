@@ -81,16 +81,43 @@ func attachStream(sock string, key string, deadline time.Duration) (timedOut boo
 	return false
 }
 
+// streamEnd is how a streamed prompt run ended, as seen from the CLI.
+type streamEnd int
+
+const (
+	// streamIdle: the session reported idle, so the run finished.
+	streamIdle streamEnd = iota
+	// streamFailed: the engine reported an error for the run.
+	streamFailed
+	// streamTimedOut: the caller's deadline fired first.
+	streamTimedOut
+	// streamLost: the connection failed or closed before the run finished.
+	streamLost
+)
+
+// exitCode is the process exit status for a prompt run that ended this way:
+// 0 only for a finished run, 124 for a timeout, 1 for every failure.
+func (e streamEnd) exitCode() int {
+	switch e {
+	case streamIdle:
+		return 0
+	case streamTimedOut:
+		return 124
+	default:
+		return 1
+	}
+}
+
 // streamUntilIdle connects to the engine socket and streams text deltas to
-// stdout until the session emits engine_status with state=idle. When deadline
-// is non-zero, the stream is bounded by that wall-clock timeout — returns true
-// if the deadline fired (caller should abort and exit 124). A zero deadline
-// means "no limit".
-func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
+// stdout until the session emits engine_status with state=idle, the engine
+// reports an error, or the connection ends. When deadline is non-zero, the
+// stream is bounded by that wall-clock timeout. A zero deadline means "no
+// limit".
+func streamUntilIdle(sock, key string, deadline time.Duration) streamEnd {
 	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to stream: %s\n", err)
-		return false
+		return streamLost
 	}
 	defer func() { conn.Close() }() //nolint:errcheck // best-effort IPC conn close during teardown
 
@@ -128,13 +155,13 @@ func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
 			if ok && fields != nil {
 				if state, ok := fields["state"].(string); ok && state == "idle" {
 					fmt.Println()
-					return false
+					return streamIdle
 				}
 			}
 		case "engine_error":
 			if errMsg, ok := event["message"].(string); ok {
 				fmt.Fprintf(os.Stderr, "\nError: %s\n", errMsg)
-				return false
+				return streamFailed
 			}
 		}
 	}
@@ -142,10 +169,11 @@ func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
 	if scanErr := scanner.Err(); scanErr != nil && deadline > 0 {
 		if netErr, ok := scanErr.(net.Error); ok && netErr.Timeout() {
 			fmt.Fprintf(os.Stderr, "\nTimeout: prompt exceeded %s deadline\n", deadline)
-			return true
+			return streamTimedOut
 		}
 	}
-	return false
+	fmt.Fprintf(os.Stderr, "\nError: the engine closed the stream before the prompt finished\n")
+	return streamLost
 }
 
 // connectAndSendTimeout is connectAndSend bounded by a deadline over the dial,
