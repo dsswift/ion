@@ -53,8 +53,13 @@ export interface EnvelopeCarrier {
  * with the relay, so a heartbeat is answered locally -- a dead channel
  * surfaces as `disconnected` instead, and relay latency is never mistaken for
  * a vanished peer.
+ *
+ * On a multi-client channel `peer` is the relay's id for the one client this
+ * carrier serves: it hears only the frames the relay stamped with that id and
+ * names it on every frame it sends. Without `peer` it serves the single
+ * client of a channel that holds one, and hears only unstamped frames.
  */
-export function relayCarrier(relay: RelayClient): EnvelopeCarrier {
+export function relayCarrier(relay: RelayClient, peer?: string): EnvelopeCarrier {
   // The channel outlives this carrier, so what the carrier hung on it has to
   // come off when its socket ends. Left on, the socket of an ended Connection
   // kept opening every frame the channel carried: a hello reached the ended
@@ -71,12 +76,18 @@ export function relayCarrier(relay: RelayClient): EnvelopeCarrier {
     kind: 'relay',
     sendEnvelope(text, cb) {
       try {
-        relay.send(JSON.parse(text) as WireMessage, cb)
+        const message = JSON.parse(text) as WireMessage
+        relay.send(peer === undefined ? message : { ...message, peer }, cb)
       } catch (err) {
         cb?.(err instanceof Error ? err : new Error(String(err)))
       }
     },
-    onEnvelope: (listener) => { attach('message', (message) => listener(JSON.stringify(message))) },
+    onEnvelope: (listener) => {
+      attach('message', (message) => {
+        const { peer: from, ...envelope } = message as WireMessage
+        if (from === peer) listener(JSON.stringify(envelope))
+      })
+    },
     onClosed: (listener) => { attach('disconnected', () => listener(1006, 'relay channel disconnected')) },
     onError: () => { /* the RelayClient logs and reconnects on its own errors */ },
     // The channel belongs to the relay listener, not to this socket: ending

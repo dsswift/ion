@@ -146,7 +146,7 @@ describe('startRelayStudioListeners', () => {
     handle = startRelayStudioListeners({ relays: [{ url: 'wss://relay.example', psk: 'psk-1' }], listener: listenerOptions() })
     expect(handle.channelCount()).toBe(1)
     expect(fakeRelays).toHaveLength(1)
-    expect(fakeRelays[0].options).toEqual({ relayUrl: 'wss://relay.example', apiKey: 'psk-1', channelId: deriveChannelId(secret) })
+    expect(fakeRelays[0].options).toEqual({ relayUrl: 'wss://relay.example', apiKey: 'psk-1', channelId: deriveChannelId(secret), multiClient: true })
     await settle()
 
     const relay = fakeRelays[0]
@@ -161,6 +161,41 @@ describe('startRelayStudioListeners', () => {
     expect((replies[0] as { relays?: unknown }).relays).toEqual([{ url: 'wss://relay.example', auth: { mode: 'psk', key: 'psk-1' } }])
     const conn = connectionRegistry.findByClientId(record.clientId)
     expect(conn?.transport).toBe('relay')
+  })
+
+  it('keeps one connection per client a multi-client relay names, each answered on its own', async () => {
+    const store = credentialsStore()
+    const record = store.add({ clientId: 'client-a', secret, scopes: ['conversations:read'], subject: 'paired:client-a', kind: 'desktop' })
+    handle = startRelayStudioListeners({ relays: [{ url: 'wss://relay.example', psk: 'psk-1' }], listener: listenerOptions() })
+    await settle()
+    const relay = fakeRelays[0]
+    const helloFrom = (clientId: string, peer: string): void => {
+      const hello = encodeFrame({ type: 'studio_hello', protocolVersion: PROTOCOL_VERSION, clientId, clientKind: 'desktop', capabilities: [], credential: { kind: 'paired', clientId: record.clientId, proof: 'channel' } })
+      relay.emit('message', { ...JSON.parse(sealRelayFrame(hello, secret)), peer })
+    }
+    const welcomesTo = (peer: string): unknown[] => (relay.sent as Array<{ peer?: string }>)
+      .filter((m) => m.peer === peer)
+      .map((m) => decodeFrame(openRelayFrame(JSON.stringify(m), secret)!.bytes.toString('utf-8')))
+      .filter((f) => (f as { type: string }).type === 'studio_welcome')
+
+    // Studio and the fleet CLI of one desktop, on the same pairing.
+    relay.emit('control', { type: 'relay:peer-joined', peer: 'p-studio' })
+    relay.emit('control', { type: 'relay:peer-joined', peer: 'p-fleet' })
+    helloFrom('studio-1', 'p-studio')
+    helloFrom('fleet-1', 'p-fleet')
+    await settle()
+
+    expect(welcomesTo('p-studio')).toHaveLength(1)
+    expect(welcomesTo('p-fleet')).toHaveLength(1)
+    const live = connectionRegistry.all().filter((c) => !c.isClosed && c.pairedClientId === record.clientId)
+    expect(live.map((c) => c.clientId).sort()).toEqual(['fleet-1', 'studio-1'])
+    // Every frame the server sends names the client it is for.
+    expect((relay.sent as Array<{ peer?: string }>).every((m) => m.peer === 'p-studio' || m.peer === 'p-fleet')).toBe(true)
+
+    // One client leaving ends only its connection.
+    relay.emit('control', { type: 'relay:peer-left', peer: 'p-fleet' })
+    await settle()
+    expect(connectionRegistry.all().filter((c) => !c.isClosed && c.pairedClientId === record.clientId).map((c) => c.clientId)).toEqual(['studio-1'])
   })
 
   it('joins an OIDC relay with the operator\'s own tenant entry and announces the paired device\'s identity from another tenant', async () => {

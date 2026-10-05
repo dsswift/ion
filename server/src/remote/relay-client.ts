@@ -66,6 +66,14 @@ export interface RelayClientOptions {
    * static apiKey is used.
    */
   getCredential?: () => Promise<string>
+  /**
+   * Join as a multi-client server (`multi=1`): the relay keeps every client
+   * of the channel's pairing connected at once, names each with
+   * `relay:peer-joined` / `relay:peer-left`, and stamps each client frame
+   * with its `peer`. A relay that predates this ignores the flag and keeps
+   * one client.
+   */
+  multiClient?: boolean
   /** A rejected bearer needs one cache-bypassing credential refresh. */
   onCredentialRejected?: () => void
   /**
@@ -226,7 +234,7 @@ export class RelayClient extends EventEmitter {
       // Convert https:// to wss:// or http:// to ws://
       base = base.replace(/^https:\/\//, 'wss://').replace(/^http:\/\//, 'ws://')
     }
-    const url = `${base}/v1/channel/${channelId}?role=ion`
+    const url = `${base}/v1/channel/${channelId}?role=ion${this.options.multiClient ? '&multi=1' : ''}`
 
     log('relay_client: connecting', { url: url.replace(/\/v1\/channel\/.*/, '/v1/channel/***'), auth_mode: getCredential ? 'oidc' : 'psk', generation: gen })
 
