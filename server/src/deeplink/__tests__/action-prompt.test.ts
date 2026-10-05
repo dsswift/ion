@@ -32,7 +32,7 @@ describe('runPromptAction', () => {
   it('creates a fresh conversation then submits requested prompt text', async () => {
     const result = await runPromptAction({ action: 'prompt', dir: '/repo', text: 'inspect failing test', submit: true })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, tabId: 'tab-new' })
     expect(createTabInDirectory).toHaveBeenCalledWith('/repo', undefined, true)
     expect(submit).toHaveBeenCalledWith('tab-new', 'inspect failing test')
     expect(setDraftInput).not.toHaveBeenCalled()
@@ -41,7 +41,7 @@ describe('runPromptAction', () => {
   it('leaves non-submitted prompt text in new conversation draft', async () => {
     const result = await runPromptAction({ action: 'prompt', dir: '/repo', text: 'edit before send', submit: false })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, tabId: 'tab-new' })
     expect(createTabInDirectory).toHaveBeenCalledWith('/repo', undefined, true)
     expect(setDraftInput).toHaveBeenCalledWith('tab-new', 'edit before send')
     expect(submit).not.toHaveBeenCalled()

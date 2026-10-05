@@ -261,7 +261,7 @@ describe('handleDeepLink — trust gate', () => {
 
     await handleDeepLink('ion://terminal?cmd=npm%20start')
 
-    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ action: 'terminal', tabId: '' }), 'overlay', true)
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ action: 'terminal', tabId: '' }), 'overlay', true, null)
     expect(mocks.createInstance).toHaveBeenCalledWith('picked-tab', expect.anything())
   })
 

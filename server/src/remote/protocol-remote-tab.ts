@@ -25,6 +25,12 @@ export interface RemoteTabState {
   executionMachineId?: string
   permissionMode: 'auto' | 'plan'
   /**
+   * The last plan-mode change a before_plan_mode_* handler vetoed on the
+   * active conversation, so a client can say why its toggle reverted.
+   * Omitted when nothing was refused or a later change succeeded.
+   */
+  planModeRejection?: import('@ion/shared/types-engine').PlanModeRejection
+  /**
    * Per-conversation extended-thinking effort (bare conversation / active
    * instance). 'adaptive' | 'low' | 'medium' | 'high' when set; omitted when
    * off. 'adaptive' means the model self-regulates depth. iOS

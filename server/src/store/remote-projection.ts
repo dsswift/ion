@@ -380,6 +380,7 @@ function projectTab(t: TabState, s: ProjectionStoreState, resolvedModels: Record
     // (WI-002). The activeInst resolution above is the single read source —
     // no tab-type fork.
     permissionMode: activeInst?.permissionMode || 'auto',
+    planModeRejection: activeInst?.planModeRejection ?? null,
     permissionQueue: queue,
     elicitationQueue: elicitQueue,
     thinkingEffort,

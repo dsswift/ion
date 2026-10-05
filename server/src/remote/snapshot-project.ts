@@ -27,6 +27,7 @@ export interface RendererTabInput {
   executionHost?: string
   executionMachineId?: string
   permissionMode?: string
+  planModeRejection?: import('@ion/shared/types-engine').PlanModeRejection | null
   thinkingEffort?: string | null
   contextTokens?: number | null
   contextWindow?: number | null
@@ -131,6 +132,7 @@ export function projectRendererTab(
     executionHost: t.executionHost || undefined,
     executionMachineId: t.executionMachineId || undefined,
     permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
+    planModeRejection: t.planModeRejection ?? undefined,
     thinkingEffort: (t.thinkingEffort && t.thinkingEffort !== 'off')
       ? t.thinkingEffort as 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
       : undefined,

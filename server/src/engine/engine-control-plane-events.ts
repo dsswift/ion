@@ -369,6 +369,7 @@ export function handleEngineEvent(
       break;
 
     case "engine_plan_mode_changed":
+    case "engine_plan_mode_change_rejected":
     case "engine_plan_file_written":
     case "engine_plan_mode_auto_exit":
     case "engine_plan_proposal":

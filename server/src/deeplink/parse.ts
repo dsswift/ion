@@ -44,7 +44,21 @@ export const LIMITS = {
   text: 16384,
   /** Capability token is fixed-size hex plus room for versioned formats. */
   token: 256,
+  /** A conversation id. */
+  conversationId: 128,
+  /** A settings page or section id. */
+  panel: 64,
+  /** A file path, absolute or relative to `dir`. */
+  path: 4096,
+  /** An extension route id; it is a URL path segment. */
+  routeId: 64,
+  /** Arguments appended to an extension route's command. */
+  args: 8192,
 } as const
+
+/** Ids that become filenames or path segments are held to this. */
+export const CONVERSATION_ID_PATTERN = /^[A-Za-z0-9._-]+$/
+export const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
 export interface TerminalRequest {
   action: 'terminal'
@@ -74,7 +88,46 @@ export interface PromptRequest {
   submit: boolean
 }
 
-export type DeepLinkPayload = TerminalRequest | PromptRequest
+/** Run an extension's registered link route (`ion://ext/<routeId>`). */
+export interface ExtRequest {
+  action: 'ext'
+  routeId: string
+  /** Text appended to the route's command. */
+  args: string
+  /** Conversation to run in. Empty opens a new conversation in `dir`. */
+  conversation: string
+  /** Directory for a new conversation. */
+  dir: string
+}
+
+/** Open a conversation. */
+export interface ConversationNavRequest {
+  action: 'conversation'
+  id: string
+}
+
+/** Open a settings page or section. */
+export interface SettingsNavRequest {
+  action: 'settings'
+  panel: string
+}
+
+/** Open a file inside `dir`. */
+export interface FileNavRequest {
+  action: 'file'
+  dir: string
+  path: string
+}
+
+/** Requests that run something. Every one passes the trust gate. */
+export type DeepLinkActionPayload = TerminalRequest | PromptRequest | ExtRequest
+/** Requests that only move a view. They run nothing and need no confirmation. */
+export type DeepLinkNavPayload = ConversationNavRequest | SettingsNavRequest | FileNavRequest
+export type DeepLinkPayload = DeepLinkActionPayload | DeepLinkNavPayload
+
+export function isNavigation(payload: DeepLinkPayload): payload is DeepLinkNavPayload {
+  return payload.action === 'conversation' || payload.action === 'settings' || payload.action === 'file'
+}
 
 export interface DeepLinkRequest {
   payload: DeepLinkPayload
@@ -121,8 +174,11 @@ export function parseDeepLink(rawUrl: string): ParseResult {
   }
 
   // `ion://terminal?x=1` puts "terminal" in host; `ion:///terminal` puts it in
-  // pathname. Prefer host, fall back to the first path segment.
-  const action = (url.hostname || url.pathname.replace(/^\/+/, '').split('/')[0] || '').toLowerCase()
+  // pathname. Prefer host, fall back to the first path segment. The segment
+  // after the action (an ext route id) is read the same way.
+  const segments = url.pathname.replace(/^\/+/, '').split('/').filter(Boolean)
+  const action = (url.hostname || segments.shift() || '').toLowerCase()
+  const subject = segments[0] ?? ''
   const params = url.searchParams
 
   // A handoff id is resolved before the action is even considered, because the
@@ -175,7 +231,58 @@ export function parseDeepLink(rawUrl: string): ParseResult {
     }
   }
 
+  if (action === 'ext') {
+    const routeId = decodeSegment(subject)
+    if (routeId === null || !ROUTE_ID_PATTERN.test(routeId)) {
+      return { kind: 'error', reason: 'ext route id rejected' }
+    }
+    const args = field(params, 'args', LIMITS.args)
+    const conversation = field(params, 'conversation', LIMITS.conversationId)
+    const dir = field(params, 'dir', LIMITS.dir)
+    if (args === null || conversation === null || dir === null) {
+      return { kind: 'error', reason: 'ext parameter rejected (too long or illegal characters)' }
+    }
+    if (conversation && !CONVERSATION_ID_PATTERN.test(conversation)) {
+      return { kind: 'error', reason: 'ext conversation id rejected' }
+    }
+    return { kind: 'ok', request: { payload: { action: 'ext', routeId, args, conversation, dir }, token, transport: 'inline' } }
+  }
+
+  if (action === 'conversation') {
+    const id = field(params, 'id', LIMITS.conversationId)
+    if (id === null || !id || !CONVERSATION_ID_PATTERN.test(id)) {
+      return { kind: 'error', reason: 'conversation id rejected' }
+    }
+    return { kind: 'ok', request: { payload: { action: 'conversation', id }, token, transport: 'inline' } }
+  }
+
+  if (action === 'settings') {
+    const panel = field(params, 'panel', LIMITS.panel)
+    if (panel === null || !panel || !/^[A-Za-z0-9_-]+$/.test(panel)) {
+      return { kind: 'error', reason: 'settings panel rejected' }
+    }
+    return { kind: 'ok', request: { payload: { action: 'settings', panel }, token, transport: 'inline' } }
+  }
+
+  if (action === 'file') {
+    const dir = field(params, 'dir', LIMITS.dir)
+    const path = field(params, 'path', LIMITS.path)
+    if (dir === null || path === null || !dir || !path) {
+      return { kind: 'error', reason: 'file link needs dir and path' }
+    }
+    return { kind: 'ok', request: { payload: { action: 'file', dir, path }, token, transport: 'inline' } }
+  }
+
   return { kind: 'error', reason: `unknown action ${action || '(none)'}` }
+}
+
+/** A percent-decoded path segment, or null when it does not decode. */
+function decodeSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return null // silent-ok: the caller refuses the link with a logged reason
+  }
 }
 
 /**
@@ -185,7 +292,7 @@ export function parseDeepLink(rawUrl: string): ParseResult {
  * a malformed or over-long payload is still refused, so the two transports get
  * the same guarantees rather than the file path being a way around the caps.
  */
-export function validateHandoffPayload(raw: unknown): { kind: 'ok'; payload: DeepLinkPayload } | { kind: 'error'; reason: string } {
+export function validateHandoffPayload(raw: unknown): { kind: 'ok'; payload: DeepLinkActionPayload } | { kind: 'error'; reason: string } {
   if (typeof raw !== 'object' || raw === null) {
     return { kind: 'error', reason: 'handoff payload is not an object' }
   }
@@ -230,6 +337,20 @@ export function validateHandoffPayload(raw: unknown): { kind: 'ok'; payload: Dee
     }
     if (!text) return { kind: 'error', reason: 'prompt requires text' }
     return { kind: 'ok', payload: { action: 'prompt', dir, text, submit: o.submit !== false } }
+  }
+
+  if (o.action === 'ext') {
+    const routeId = str(o.routeId, LIMITS.routeId)
+    const args = str(o.args, LIMITS.args)
+    const conversation = str(o.conversation, LIMITS.conversationId)
+    const dir = str(o.dir, LIMITS.dir)
+    if (routeId === null || args === null || conversation === null || dir === null || !ROUTE_ID_PATTERN.test(routeId)) {
+      return { kind: 'error', reason: 'handoff ext payload rejected' }
+    }
+    if (conversation && !CONVERSATION_ID_PATTERN.test(conversation)) {
+      return { kind: 'error', reason: 'handoff ext conversation id rejected' }
+    }
+    return { kind: 'ok', payload: { action: 'ext', routeId, args, conversation, dir } }
   }
 
   return { kind: 'error', reason: `unknown action ${String(o.action ?? '(none)')}` }

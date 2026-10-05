@@ -1,7 +1,8 @@
 import { IPC } from '@ion/shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { broadcast } from '../broadcast'
-import type { DeepLinkPayload } from './parse'
+import type { DeepLinkActionPayload } from './parse'
+import type { ResolvedExt } from './action-ext'
 import type { DeepLinkConfirmOwner, DeepLinkConfirmRequest, DeepLinkConfirmResult } from '@ion/shared/types-ipc'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -58,15 +59,39 @@ export function markDeepLinkConfirmationUnavailable(owner: DeepLinkConfirmOwner,
   }
 }
 
+/**
+ * The request a confirmation surface shows. Every field the operator needs to
+ * decide is present: the real command, the real prompt, the real slash command
+ * an extension route would send.
+ */
+export function buildConfirmRequest(
+  id: string,
+  owner: DeepLinkConfirmOwner,
+  payload: DeepLinkActionPayload,
+  selectTab: boolean,
+  ext: ResolvedExt | null,
+): DeepLinkConfirmRequest {
+  if (payload.action === 'terminal') {
+    return { id, owner, action: 'terminal', selectTab, tabId: payload.tabId, title: payload.title, cmd: payload.cmd, dir: payload.dir, key: payload.key }
+  }
+  if (payload.action === 'prompt') {
+    return { id, owner, action: 'prompt', dir: payload.dir, text: payload.text, submit: payload.submit }
+  }
+  return {
+    id, owner, action: 'ext', routeId: payload.routeId, label: ext?.label, command: ext?.command,
+    ...(payload.conversation ? { conversationId: payload.conversation } : {}),
+    ...(payload.dir ? { dir: payload.dir } : {}),
+  }
+}
+
 export function requestDeepLinkConfirmation(
-  payload: DeepLinkPayload,
+  payload: DeepLinkActionPayload,
   owner: DeepLinkConfirmOwner,
   selectTab = false,
+  ext: ResolvedExt | null = null,
 ): Promise<DeepLinkConfirmation> {
   const id = `dl-${++seq}-${Date.now()}`
-  const request: DeepLinkConfirmRequest = payload.action === 'terminal'
-    ? { id, owner, action: 'terminal', selectTab, tabId: payload.tabId, title: payload.title, cmd: payload.cmd, dir: payload.dir, key: payload.key }
-    : { id, owner, action: 'prompt', dir: payload.dir, text: payload.text, submit: payload.submit }
+  const request = buildConfirmRequest(id, owner, payload, selectTab, ext)
 
   return new Promise<DeepLinkConfirmation>((resolve) => {
     const timer = setTimeout(() => {

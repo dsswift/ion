@@ -38,9 +38,22 @@ export function handlePlanEvent(
           tab.permissionMode = 'plan'
           log('plan_mode_changed: syncing tab.permissionMode to plan', { tab_id: tabId })
         }
+      } else if (event.planModeSource === 'wire' || event.planModeSource === 'extension') {
+        // A client toggle or an extension call is a confirmed change, not
+        // the model's exit proposal, so the snapshot follows it.
+        tab.permissionMode = 'auto'
+        log('plan_mode_changed: confirmed exit, syncing tab.permissionMode to auto', { tab_id: tabId, source: event.planModeSource })
       } else {
         log('plan_mode_changed: disabled, deferred to user approval', { tab_id: tabId })
       }
+      ctx.emit('event', tabId, event as any)
+      return true
+
+    case 'engine_plan_mode_change_rejected':
+      // A handler vetoed the toggle; the engine's mode did not move. Put the
+      // tab back where the engine is and let the reducer keep the reason.
+      tab.permissionMode = event.planModeRequestedEnabled ? 'auto' : 'plan'
+      log('plan_mode_change_rejected', { tab_id: tabId, requested_enabled: event.planModeRequestedEnabled === true, source: event.planModeSource ?? '' })
       ctx.emit('event', tabId, event as any)
       return true
 
