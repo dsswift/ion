@@ -464,6 +464,12 @@ export type EngineEvent =
       };
     }
   | {
+      // switch_branch moved the conversation onto another branch; the model
+      // context now holds that path only. Replace the conversation's view.
+      type: "engine_active_path_changed";
+      activePathChanged?: { conversationId: string; leafId: string; previousLeafId?: string };
+    }
+  | {
       type: "engine_poll_started";
       pollStarted?: PollState;
     }

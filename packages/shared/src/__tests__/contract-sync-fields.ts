@@ -178,6 +178,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   poll_started: ["poll"],
   poll_progress: ["evidence", "poll"],
   poll_terminal: ["result"],
+  active_path_changed: ["conversationId", "leafId", "previousLeafId"],
   dialog: ["defaultValue", "dialogId", "method", "options", "title"],
   extension_died: ["extensionName"],
   extension_respawned: ["attemptNumber", "extensionName"],

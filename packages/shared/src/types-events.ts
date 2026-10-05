@@ -511,6 +511,13 @@ export type NormalizedEvent =
       tail?: string;
     }
   | {
+      // The engine moved the conversation onto another branch (switch_branch).
+      type: "active_path_changed";
+      conversationId: string;
+      leafId: string;
+      previousLeafId?: string;
+    }
+  | {
       type: "session_work_stopped";
       scope: string;
       cancelledRunId?: string;
