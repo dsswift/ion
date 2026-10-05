@@ -50,6 +50,7 @@ struct ConversationView: View {
     @State var pendingClearingCommand: ClearingCommand.Pending?
     @State var showAttachMenu = false
     @State var showAttachments = false
+    @State var showBranches = false
     @State var showFilePicker = false
     @State var showPhotoPicker = false
     @State var showDocumentPicker = false
@@ -131,6 +132,10 @@ struct ConversationView: View {
 
     var engineAttachmentCount: Int {
         viewModel.tabAttachmentCache[tabId]?.count ?? 0
+    }
+
+    var branchCount: Int {
+        viewModel.conversationBranches[tabId]?.branches.count ?? 0
     }
 
     var unifiedTurnView: Bool {

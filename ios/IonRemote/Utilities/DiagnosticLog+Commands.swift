@@ -316,6 +316,10 @@ extension DiagnosticLog {
 
         case .loadAttachments(let tabId):
             log("CMD: loadAttachments tab=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .listBranches(let tabId):
+            log("CMD: listBranches tab=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .switchBranch(let tabId, let leafId):
+            log("CMD: switchBranch tab=\(tabId.prefix(8)) leaf=\(leafId)", tag: "ipc", level: .info)
 
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)", tag: "ipc", level: .info)

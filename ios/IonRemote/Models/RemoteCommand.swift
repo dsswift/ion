@@ -296,6 +296,11 @@ enum RemoteCommand: Sendable {
   case discoverCommands(directory: String)
   case uploadAttachment(dataUrl: String, name: String, correlationId: String)
   case loadAttachments(tabId: String)
+  /// Read a conversation's branches (`engine.listBranches`); answered with `conversationBranches`.
+  case listBranches(tabId: String)
+  /// Make the branch ending at `leafId` the active path (`engine.switchBranch`). The new
+  /// transcript arrives as a transcript replace; a refusal as `branchSwitchResult`.
+  case switchBranch(tabId: String, leafId: String)
   case voiceConfig(enabled: Bool, mode: String, systemPrompt: String?)
   /// Send collected iOS diagnostic logs to the desktop. `pairingId` is the
   /// ECDH channel ID (`activeDeviceId`) that identifies which desktop pairing
@@ -518,6 +523,8 @@ enum RemoteCommand: Sendable {
     case discoverCommands = "desktop_discover_commands"
     case uploadAttachment = "desktop_upload_attachment"
     case loadAttachments = "desktop_load_attachments"
+    case listBranches = "desktop_list_branches"
+    case switchBranch = "desktop_switch_branch"
     case voiceConfig = "desktop_voice_config"
     case diagnosticLogsResponse = "desktop_diagnostic_logs_response"
     case setRemoteDisplay = "desktop_set_remote_display"

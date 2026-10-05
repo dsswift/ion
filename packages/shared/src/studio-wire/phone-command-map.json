@@ -201,6 +201,16 @@
       "args": "[{tabId}]",
       "result": "desktop_tab_attachments{tabId, attachments} from the same fields of value"
     },
+    "desktop_list_branches": {
+      "action": "engine.listBranches",
+      "args": "[{key: tabId}]",
+      "result": "desktop_conversation_branches{tabId, listing: value}"
+    },
+    "desktop_switch_branch": {
+      "action": "engine.switchBranch",
+      "args": "[{key: tabId, leafId}]",
+      "result": "desktop_branch_switch_result{tabId, error?}; the new path arrives as a transcript replace"
+    },
     "desktop_implement_plan": {
       "action": "session.implementPlan",
       "args": "[{tabId, questionId, instanceId, clearContext}]",

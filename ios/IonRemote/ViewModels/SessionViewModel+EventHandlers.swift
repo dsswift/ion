@@ -460,6 +460,12 @@ extension SessionViewModel {
             ])
             tabAttachmentCache[tabId] = attachments
 
+        case .conversationBranches(let tabId, let listing):
+            handleConversationBranches(tabId: tabId, listing: listing)
+
+        case .branchSwitchResult(let tabId, let error):
+            handleBranchSwitchResult(tabId: tabId, error: error)
+
         // Command discovery events
         case .discoverCommandsResponse(let directory, let commands):
             discoveredCommands[directory] = commands

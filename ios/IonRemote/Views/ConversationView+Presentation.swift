@@ -145,6 +145,15 @@ extension ConversationView {
                 ConversationAttachmentsSheet(tabId: tabId, onJumpToRow: requestTranscriptJump)
                     .environment(viewModel)
             }
+            .sheet(isPresented: $showBranches) {
+                ConversationBranchesSheet(tabId: tabId)
+                    .environment(viewModel)
+            }
+            // Re-read the branches once a turn settles: a rewind followed by a
+            // new prompt is what creates one.
+            .task(id: "\(engineMsgs.count):\(orchestratorRunning)") {
+                if !orchestratorRunning { viewModel.requestBranches(tabId: tabId) }
+            }
             .onChange(of: viewModel.pendingUploadResults) { _, results in
                 consumeUploadResults(results)
             }

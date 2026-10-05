@@ -431,6 +431,9 @@ enum RemoteEvent: Sendable {
     /// (keyed by questionId) until hasMore is false, then renders the
     /// full plan body in PlanFullScreenView or copies it to the clipboard.
     case planContent(questionId: String, planFilePath: String, offset: Int, content: String, totalBytes: Int, hasMore: Bool)
+    /// A conversation's branches (`listBranches`), and whether a `switchBranch` was refused.
+    case conversationBranches(tabId: String, listing: ConversationBranches)
+    case branchSwitchResult(tabId: String, error: String?)
 
     /// Desktop-forwarded context breakdown (desktop_context_breakdown). Carries
     /// per-category token counts with provenance tier (exact / local / approximate),
@@ -568,6 +571,8 @@ enum RemoteEvent: Sendable {
         case resourceContent = "desktop_resource_content"
         /// Desktop-forwarded plan content (desktop reads file, sends window to iOS).
         case planContent = "desktop_plan_content"
+        case conversationBranches = "desktop_conversation_branches"
+        case branchSwitchResult = "desktop_branch_switch_result"
         /// Raw engine wire event for engine_plan_content (distinct from desktop_plan_content).
         case enginePlanContent = "engine_plan_content"
         /// Desktop-forwarded context breakdown (desktop_context_breakdown).
@@ -667,6 +672,7 @@ enum RemoteEvent: Sendable {
         case correlationId
         case dataUrl
         case attachments
+        case listing
         case sourceTabId, targetTabId
         case slashModelTierRequested, slashModelTierServing
         case customName, customIcon, updatedAt, remoteDisplayUpdatedAt
