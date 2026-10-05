@@ -110,6 +110,41 @@ export function initAutoUpdater(options: AutoUpdaterOptions = {}): void {
   }, CHECK_INTERVAL_MS)
 }
 
+/** Whether this build has a release feed to update from. A local build has none. */
+export function hasUpdateFeed(): boolean {
+  return app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml'))
+}
+
+/**
+ * Installs the newest release now and restarts into it: the host install a
+ * server asks the desktop that runs it for. Resolves `false` when this build
+ * already is the newest release. `onStage` hears each step before it starts.
+ */
+export async function installLatestReleaseNow(onStage: (stage: 'downloading' | 'installing' | 'restarting') => void): Promise<boolean> {
+  onStage('downloading')
+  const check = await autoUpdater.checkForUpdates()
+  if (!check?.isUpdateAvailable) {
+    info(tag, 'host install: already on the newest release', { version: app.getVersion() })
+    return false
+  }
+  const files = await (check.downloadPromise ?? autoUpdater.downloadUpdate())
+  const archive = downloadedArchive ?? files[0]
+  if (!archive) throw new Error('the release was downloaded but no archive was reported')
+  info(tag, 'host install: release downloaded', { version: check.updateInfo.version, archive })
+  await installArchiveNow(archive, onStage)
+  return true
+}
+
+/** Installs a staged update archive now and restarts into it. */
+export async function installArchiveNow(archive: string, onStage: (stage: 'installing' | 'restarting') => void): Promise<void> {
+  onStage('installing')
+  const workerPid = await dispatchUpdateInstall(archive)
+  installStaged = true
+  info(tag, 'host install: install staged', { worker_pid: workerPid, archive })
+  onStage('restarting')
+  await quitForUpdate()
+}
+
 export function stopAutoUpdater(): void {
   if (intervalId) {
     clearInterval(intervalId)

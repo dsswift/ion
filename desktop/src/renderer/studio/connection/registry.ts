@@ -24,12 +24,12 @@
  *     "second target whose welcome environmentId equals a connected one").
  */
 import { ALL_DEVELOPER_SURFACES_ENABLED } from '@ion/shared/developer-surfaces'
-import type { EnvironmentCatalogEntry, EnvironmentPhase, EnvironmentPhaseState, EnvironmentReasonCode } from '@ion/shared/types-environments'
+import type { EnvironmentCatalogEntry, EnvironmentPhase, EnvironmentPhaseState, EnvironmentReasonCode, EnvironmentTarget } from '@ion/shared/types-environments'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { deriveDesktopEnvironmentPolicy } from '@ion/shared/enterprise-environment-policy'
 import type { ConnectionPhaseSnapshot } from '../../../shared/types-connections'
 import { host } from '../../host/host-instance'
-import { readCatalog } from './catalog'
+import { notifyCatalogChanged, readCatalog } from './catalog'
 import { mapBrokerPhase } from './phases'
 import { policyStore } from './policy-store'
 import { useModelStore } from '@ion/server/store/model-store'
@@ -50,6 +50,7 @@ class Registry {
   private brokerHeld = new Set<string>()
   private unsubscribeConnections: (() => void) | null = null
   private unsubscribeFrame: (() => void) | null = null
+  private unsubscribeCatalog: (() => void) | null = null
   private booted = false
 
   private setPhase(id: string, phase: EnvironmentPhase, reason?: EnvironmentReasonCode, nextAttemptAtMs?: number): void {
@@ -82,8 +83,7 @@ class Registry {
   }
 
   /**
-   * Connects one catalog entry. Marks `hidden` on an assignment refusal so
-   * it stops appearing in pickers/views. Refuses (marks `blocked`) a
+   * Connects one catalog entry. Refuses (marks `blocked`) a
    * non-local target the device's environment policy disallows: `local-only`
    * blocks every non-local target outright, and `allowlist` with `locked`
    * blocks anything outside `allowed[]` — matching spec 14 phase 2's
@@ -170,8 +170,11 @@ class Registry {
    * kept its phase and welcome id, so re-adding the same server read as a
    * duplicate of a ghost.
    */
-  forget(id: string): void {
-    host.disconnectEnvironment(id)
+  forget(id: string, removed?: EnvironmentTarget): void {
+    // `removed` is the catalog entry being removed for good: its stored
+    // secret goes with it. Without it the connection is only closed.
+    if (removed) host.forgetEnvironment(id, removed)
+    else host.disconnectEnvironment(id)
     this.states.delete(id)
     this.welcomedIds.delete(id)
     this.catalogById.delete(id)
@@ -187,6 +190,19 @@ class Registry {
         void this.attempt(entry)
       }
     }
+  }
+
+  /**
+   * Brings the registry in line with a catalog another process changed:
+   * an environment no longer in it is forgotten, and every entry in it
+   * connects.
+   */
+  async followCatalog(): Promise<void> {
+    const ids = new Set((await readCatalog()).map((entry) => entry.id))
+    for (const id of [...this.states.keys()]) {
+      if (id !== LOCAL_ENVIRONMENT_ID && !ids.has(id)) this.forget(id)
+    }
+    await this.connectAll()
   }
 
   /** Boots the registry once: wires the broker phase push and welcome-frame duplicate check, connects everything, arms the hidden-retry interval. */
@@ -207,6 +223,12 @@ class Registry {
         policyStore.setDeveloperSurfaces(localId, frame.developerSurfaces ?? ALL_DEVELOPER_SURFACES_ENABLED)
       }
     })
+    // `ion fleet` edits the same catalog: a server it added connects, and
+    // every list of servers re-reads.
+    this.unsubscribeCatalog = host.onCatalogChangedOnDisk(() => {
+      rInfo('studio.registry', 'catalog changed on disk; re-reading')
+      void this.followCatalog().then(notifyCatalogChanged)
+    })
     void this.connectAll()
     this.stalledRetryTimer = setInterval(() => this.retryStalled(), STALLED_RETRY_INTERVAL_MS)
     rInfo('studio.registry', 'registry booted')
@@ -218,6 +240,8 @@ class Registry {
     this.unsubscribeConnections = null
     this.unsubscribeFrame?.()
     this.unsubscribeFrame = null
+    this.unsubscribeCatalog?.()
+    this.unsubscribeCatalog = null
     if (this.stalledRetryTimer) clearInterval(this.stalledRetryTimer)
     this.stalledRetryTimer = null
     this.states.clear()

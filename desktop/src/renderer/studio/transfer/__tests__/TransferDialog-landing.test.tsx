@@ -33,7 +33,7 @@ const actionMock = vi.fn(async (_env: string, name: string, _args?: unknown[]): 
 vi.mock('../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 vi.mock('../../../components/PopoverLayer', () => ({ usePopoverLayer: () => null }))
 vi.mock('../../connection/tab-environment', () => ({ useTabEnvironmentId: () => 'env-source' }))
-vi.mock('../../connection/catalog', () => ({ readCatalog: async () => [{ id: 'env-source', label: 'Laptop' }, { id: 'env-target', label: 'Studio' }] }))
+vi.mock('../../connection/catalog', () => ({ readConversationCatalog: async () => [{ id: 'env-source', label: 'Laptop' }, { id: 'env-target', label: 'Studio' }] }))
 vi.mock('../../connection/view-filter', () => ({ useEnvironmentViewFilter: () => ['all', vi.fn()] }))
 vi.mock('../../../host/host-instance', () => ({
   host: {

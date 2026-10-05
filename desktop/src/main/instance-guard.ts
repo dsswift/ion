@@ -27,13 +27,55 @@ function isLiveForeignPid(pid: number): boolean {
   }
 }
 
+/**
+ * The executable name of a live process, as the platform's process lister
+ * gives it: tasklist's image name on win32, `ps`'s command path elsewhere.
+ * Null when the lister could not say. Exported for testing.
+ */
+export function processImageName(pid: number, platform: NodeJS.Platform = process.platform): string | null {
+  try {
+    if (platform === 'win32') {
+      const output = execFileSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true })
+      return /^"([^"]+)"/m.exec(output)?.[1] ?? null
+    }
+    return execFileSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8' }).trim() || null
+  } catch (err) {
+    warn('instance guard could not name a process', { pid, error: String(err) })
+    return null
+  }
+}
+
+/** Whether an executable name is Ion's: the packaged app, or Electron running a checkout. */
+export function isIonImage(name: string): boolean {
+  const base = name.split(/[\\/]/).pop()?.replace(/\.exe$/i, '').toLowerCase() ?? ''
+  return base === 'ion' || base === 'electron'
+}
+
+/**
+ * Whether the pid a pid file names is an Ion that is running now. A pid
+ * file outlives the process that wrote it when that Ion did not quit
+ * cleanly or was uninstalled, and the OS hands the number to something
+ * else, so a live pid alone proves nothing. When the lister cannot name the
+ * process, it is taken for an Ion: refusing a launch is recoverable, and
+ * starting a second desktop over a live one is not.
+ */
+function isRunningIon(pid: number, pidPath: string): boolean {
+  if (!isLiveForeignPid(pid)) return false
+  const image = processImageName(pid)
+  if (image !== null && !isIonImage(image)) {
+    log('instance guard ignored a stale pid file: the pid now belongs to another program', { pid, image, pid_path: pidPath })
+    return false
+  }
+  return true
+}
+
 /** Find a live Ion that predates this process, including legacy releases. */
 export function detectRunningIon(): RunningIon | null {
   const pidPath = join(app.getPath('userData'), 'ion.pid')
   try {
     if (existsSync(pidPath)) {
       const pid = Number.parseInt(readFileSync(pidPath, 'utf8').trim(), 10)
-      if (isLiveForeignPid(pid)) {
+      if (isRunningIon(pid, pidPath)) {
         log('instance guard found live Ion from pid file', { pid, pid_path: pidPath })
         return { pid, source: 'pid_file' }
       }

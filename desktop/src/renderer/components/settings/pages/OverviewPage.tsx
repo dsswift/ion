@@ -70,7 +70,9 @@ function ServerFactsGroup({ onRemove }: { onRemove(): void }): React.JSX.Element
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const data = info.data
-  const bundled = !!data?.bundle
+  // A bundle install runs its own command; a server a desktop runs asks that desktop.
+  const selfInstalls = !!data?.bundle || !!data?.hostApp
+  const whyNot = selfInstalls ? undefined : 'This server was started by hand, so nothing here can restart or update it'
 
   const schedule = (label: string, fn: () => Promise<{ scheduled: boolean }>): void => {
     setError(null); setNotice(null)
@@ -106,11 +108,11 @@ function ServerFactsGroup({ onRemove }: { onRemove(): void }): React.JSX.Element
         ]}
       </FormGroup>
       <FormGroup title="Lifecycle" anchor="server-lifecycle">
-        <FormRow label="Restart" description="Restart the Studio Server services on the host.">
-          <Button disabled={!bundled} tooltip={bundled ? undefined : 'Only a server installed from a bundle can be restarted from here'} onClick={() => schedule('Restart scheduled', () => environmentClient.restart(env.id))}>Restart</Button>
+        <FormRow label="Restart" description={data?.hostApp ? 'Restart Ion on the host. Its running conversations stop.' : 'Restart the Studio Server services on the host.'}>
+          <Button disabled={!selfInstalls} tooltip={whyNot} onClick={() => schedule('Restart scheduled', () => environmentClient.restart(env.id))}>Restart</Button>
         </FormRow>
-        <FormRow label="Update" description="Update the Studio Server bundle on the host.">
-          <Button disabled={!bundled} tooltip={bundled ? undefined : 'Only a server installed from a bundle can be updated from here'} onClick={() => schedule('Update scheduled', () => environmentClient.update(env.id))}>Update</Button>
+        <FormRow label="Update" description={data?.hostApp ? 'Install the newest Ion release on the host.' : 'Update the Studio Server bundle on the host.'}>
+          <Button disabled={!selfInstalls} tooltip={whyNot} onClick={() => schedule('Update scheduled', () => environmentClient.update(env.id))}>Update</Button>
         </FormRow>
         {!env.isLocal && (
           <FormRow label="Remove" description="Forget it on this device, or uninstall Ion from the host.">

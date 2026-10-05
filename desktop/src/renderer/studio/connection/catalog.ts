@@ -9,7 +9,7 @@
  * is synthesized by `registry.ts` under the reserved id `LOCAL_ENVIRONMENT_ID`.
  */
 import type { EnvironmentCatalogEntry, EnvironmentTarget } from '@ion/shared/types-environments'
-import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { LOCAL_ENVIRONMENT_ID, isManageOnlyTarget } from '@ion/shared/types-environments'
 import { deriveDesktopEnvironmentPolicy, type DesktopEnvironmentPolicy } from '@ion/shared/enterprise-environment-policy'
 import { host } from '../../host/host-instance'
 import { policyStore } from './policy-store'
@@ -70,7 +70,29 @@ export async function readCatalog(): Promise<EnvironmentCatalogEntry[]> {
   targets.forEach((target, index) => {
     entries.push({ id: catalogEntryId(target, index), label: labelOf(target), target })
   })
+  manageOnlyIds = new Set(entries.filter((entry) => isManageOnlyTarget(entry.target)).map((entry) => entry.id))
   return entries
+}
+
+/** The Manage-Only Servers as of the last catalog read. */
+let manageOnlyIds = new Set<string>()
+
+/**
+ * Whether `environmentId` is a Manage-Only Server, as of the last catalog
+ * read. Synchronous, for the paths that decide per frame whether an
+ * environment's conversations belong in this window.
+ */
+export function isManageOnlyEnvironment(environmentId: string): boolean {
+  return manageOnlyIds.has(environmentId)
+}
+
+/**
+ * The catalog every conversation surface lists: the environments a
+ * conversation can be opened on, moved to, or filtered by. Manage-Only
+ * Servers are left out; they appear only in Fleet and Settings.
+ */
+export async function readConversationCatalog(): Promise<EnvironmentCatalogEntry[]> {
+  return (await readCatalog()).filter((entry) => !isManageOnlyTarget(entry.target))
 }
 
 const catalogListeners = new Set<() => void>()
@@ -85,10 +107,15 @@ export function onCatalogChange(listener: () => void): () => void {
   return () => { catalogListeners.delete(listener) }
 }
 
+/** Tells every catalog listener the catalog changed: after a write here, and when another process changed it on disk. */
+export function notifyCatalogChanged(): void {
+  for (const listener of [...catalogListeners]) listener()
+}
+
 async function writeTargets(targets: EnvironmentTarget[]): Promise<void> {
   await host.setDeviceSetting('environments', targets)
   rDebug('studio.catalog', 'catalog written; notifying listeners', { targets: targets.length, listeners: catalogListeners.size })
-  for (const listener of [...catalogListeners]) listener()
+  notifyCatalogChanged()
 }
 
 /**
@@ -125,6 +152,22 @@ export async function relabelCatalogEntry(index: number, label: string): Promise
   next[index] = { ...target, label }
   await writeTargets(next)
   rDebug('studio.catalog', 'environment relabeled', { index, label })
+  return next
+}
+
+/** Marks a catalog entry a Manage-Only Server, or clears the mark. No-op for a missing or local entry. */
+export async function setCatalogEntryManageOnly(index: number, manageOnly: boolean): Promise<EnvironmentTarget[]> {
+  const settings = await host.deviceSettings()
+  const existing = Array.isArray(settings.environments) ? (settings.environments as EnvironmentTarget[]) : []
+  const target = existing[index]
+  if (!target || target.kind === 'local') {
+    rWarn('studio.catalog', 'manage-only change requested for a missing or local entry', { index })
+    return existing
+  }
+  const next = existing.slice()
+  next[index] = { ...target, manageOnly: manageOnly || undefined }
+  await writeTargets(next)
+  rInfo('studio.catalog', 'environment manage-only changed', { index, manage_only: manageOnly })
   return next
 }
 

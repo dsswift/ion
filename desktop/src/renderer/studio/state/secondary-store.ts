@@ -40,6 +40,7 @@ import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
 import { policyStore } from '../connection/policy-store'
 import { declareMirrorWindow } from '@ion/server/lib/window-role'
 import { host, action } from '../../host/host-instance'
+import { isManageOnlyEnvironment } from '../connection/catalog'
 import { reconcileAttachmentTabs, reconcileForwardedAttachments, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft } from './secondary-store-reconcile'
 
 export { reconcileAttachmentTabs, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft }
@@ -212,13 +213,20 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
  */
 export function initTabsSyncFromWire(): () => void {
   return host.onFrame((environmentId, frame) => {
-    if (frame.type === 'studio_welcome' || frame.type === 'studio_snapshot') {
-      // A welcome starts a fresh session with that server, whose revision
-      // counters may have restarted below the ones we applied last time.
-      if (frame.type === 'studio_welcome') clearEnvironmentSyncCursors(environmentId)
-      hydrateTabsFromSync({ tabs: frame.snapshot.tabs, resolvedModels: frame.snapshot.resolvedModels }, environmentId)
-    } else if (frame.type === 'studio_event' && frame.channel === 'studio:tabs-sync') {
+    const tabsFrame = frame.type === 'studio_welcome' || frame.type === 'studio_snapshot'
+      || (frame.type === 'studio_event' && frame.channel === 'studio:tabs-sync')
+    if (!tabsFrame) return
+    // A welcome starts a fresh session with that server, whose revision
+    // counters may have restarted below the ones we applied last time.
+    if (frame.type === 'studio_welcome') clearEnvironmentSyncCursors(environmentId)
+    if (isManageOnlyEnvironment(environmentId)) {
+      // A Manage-Only Server's conversations stay out of this window: its
+      // share of the union is empty, whatever it publishes.
+      hydrateTabsFromSync({ tabs: [] }, environmentId)
+    } else if (frame.type === 'studio_event') {
       hydrateTabsFromSync(frame.payload, environmentId)
+    } else {
+      hydrateTabsFromSync({ tabs: frame.snapshot.tabs, resolvedModels: frame.snapshot.resolvedModels }, environmentId)
     }
   })
 }

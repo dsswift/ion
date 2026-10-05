@@ -40,7 +40,7 @@ import { connectTcp, connectSealedTcp, serverSealsTcp, fetchAuthConfig, buildPai
 import { connectRelayStudio, type StudioSocketLike } from './transport-relay'
 import { isEnvironmentRelay, type EnvironmentRelay } from '@ion/shared/studio-wire/relay-envelope'
 import { sshTunnels } from './ssh/ssh-tunnel-instance'
-import { loadCredential, saveCredential } from './credentials'
+import { loadCredential, removeCredential, saveCredential } from './credentials'
 import { decodePairedSecret, encodePairedSecret, sanitizeDirectAddresses, type PairedSecret } from './paired-secret'
 import { findDirectUrl } from './direct-route'
 import { requestOidcToken } from './token-source'
@@ -472,6 +472,18 @@ export function disconnectEnvironment(environmentId: string): void {
   // connection; a later connect re-opens it. No-op for every other kind.
   sshTunnels.stop(environmentId)
   log('disconnectEnvironment: broker disconnect requested', { environment_id: environmentId })
+}
+
+/**
+ * The Remove verb's local half: closes the connection and deletes the
+ * secret this device held for the server, so nothing that could open the
+ * pairing again stays on disk.
+ */
+export function forgetEnvironment(environmentId: string, target: EnvironmentTarget): void {
+  disconnectEnvironment(environmentId)
+  if (target.kind === 'local') return
+  removeCredential(credentialKey(environmentId, target))
+  log('forgetEnvironment: connection closed and credential removed', { environment_id: environmentId, kind: target.kind })
 }
 
 export function restartEnvironment(environmentId: string): void {

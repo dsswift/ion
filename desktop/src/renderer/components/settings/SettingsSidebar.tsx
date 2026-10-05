@@ -6,6 +6,7 @@
 import React, { forwardRef } from 'react'
 import { CaretDown, CaretRight, MagnifyingGlass, Plus, X, HardDrives, type Icon } from '@phosphor-icons/react'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
+import { SETTINGS_TAXONOMY_SERVERS_PAGE } from '@ion/shared/settings-taxonomy'
 import { useColors } from '../../theme'
 import { useInteractiveState } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -57,7 +58,7 @@ export const SettingsSidebar = forwardRef<HTMLInputElement, SettingsSidebarProps
               <React.Fragment key={scope}>
                 <Heading label={label} action={canManageServers ? <IconButton icon={Plus} label="Add server" onClick={() => onNavigate({ pageId: SERVERS_PAGE_ID, environmentId: null, anchor: 'add-server' })} /> : undefined} />
                 {canManageServers && (
-                  <NavRow icon={HardDrives} label="All servers" active={location.pageId === SERVERS_PAGE_ID} onClick={() => onNavigate({ pageId: SERVERS_PAGE_ID, environmentId: null, anchor: null })} />
+                  <NavRow icon={HardDrives} label={SETTINGS_TAXONOMY_SERVERS_PAGE.label} active={location.pageId === SERVERS_PAGE_ID} onClick={() => onNavigate({ pageId: SERVERS_PAGE_ID, environmentId: null, anchor: null })} />
                 )}
                 {servers.map((entry) => {
                   const pages = serverPages

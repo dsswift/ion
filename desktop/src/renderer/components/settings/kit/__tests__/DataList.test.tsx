@@ -56,6 +56,21 @@ describe('DataList', () => {
     expect(el.textContent).toContain('500 projects')
   })
 
+  it('sizes the header and every row from one set of column tracks, and puts a row\'s detail inside the row', () => {
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    act(() => root!.render(
+      <DataList label="Servers" items={['a', 'b']} getKey={(i) => i} showHeader columns={[{ id: 'name', header: 'Name', render: (i) => i }, { id: 'size', header: 'Size', render: () => '1' }]} detail={(i) => `facts of ${i}`} />,
+    ))
+    const list = host.querySelector<HTMLElement>('[role="list"]')!
+    expect(list.parentElement!.style.gridTemplateColumns).toBe('minmax(0, 1fr) auto')
+    expect(list.parentElement!.textContent).toContain('Name')
+    const items = [...rows(host)] as HTMLElement[]
+    expect(items.map((r) => r.style.gridTemplateColumns)).toEqual(['subgrid', 'subgrid'])
+    expect(items[1].textContent).toContain('facts of b')
+  })
+
   it('opens an item on click and on Enter', () => {
     const opened: string[] = []
     const el = render(2, (i) => opened.push(i))

@@ -11,7 +11,7 @@ import type { EnvironmentProject } from '@ion/shared/types-environment-admin'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 import { useColors } from '../../../theme'
 import { environmentClient } from '../environment/environment-client'
-import { readCatalog } from '../../../studio/connection/catalog'
+import { readConversationCatalog } from '../../../studio/connection/catalog'
 import { useSettingsEnvironment } from '../settings-servers'
 import { Button, ErrorText, Field, KIT, MonoLine, Muted, Segmented, SidePanel, Stack, TextInput } from '../kit'
 import { DirectoryPicker } from './DirectoryPicker'
@@ -52,7 +52,7 @@ function AddProjectFlow({ baseDir, existing, onDone, onClose }: AddProjectPanelP
     let cancelled = false
     void (async () => {
       try {
-        const catalog = (await readCatalog()).filter((e) => e.id !== env.id)
+        const catalog = (await readConversationCatalog()).filter((e) => e.id !== env.id)
         const lists = await Promise.all(catalog.map(async (from) => {
           try { return (await environmentClient.listProjects(from.id)).map((project) => ({ from, project })) } catch (err) { rWarn('add-project', 'copy source list failed', { environment_id: from.id, error: String(err) }); return [] }
         }))

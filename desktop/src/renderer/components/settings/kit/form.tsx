@@ -25,9 +25,9 @@ export function PageHeader({ title, description, actions }: { title: string; des
   )
 }
 
-/** Stacks a page's groups with the one group gap. */
-export function Page({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <div style={{ maxWidth: KIT.pageMaxWidth, display: 'flex', flexDirection: 'column', gap: KIT.groupGap }}>{children}</div>
+/** Stacks a page's groups with the one group gap. `wide` gives a page of tables the dialog's full width. */
+export function Page({ children, wide }: { children: React.ReactNode; wide?: boolean }): React.JSX.Element {
+  return <div style={{ maxWidth: wide ? undefined : KIT.pageMaxWidth, display: 'flex', flexDirection: 'column', gap: KIT.groupGap }}>{children}</div>
 }
 
 /** The title line above a group or list: title, description, and actions on the right. */

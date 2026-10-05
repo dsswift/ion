@@ -5,8 +5,10 @@ Test session: 450d2d0f-4b03-4761-8ecd-8d179998127d
 
 ## Protocol Finding
 
-`--input-format stream-json` is **completely broken** in CLI 2.1.63 (hangs forever, 0 events).
-The only working mode is one-shot `claude -p` with stdin closed + `--resume` for multi-turn.
+`--input-format stream-json` hung in CLI 2.1.63 (0 events), so this matrix was gathered with
+one-shot `claude -p` with stdin closed, and `--resume` for multi-turn. The finding is about that
+version only: later CLI versions answer on `--input-format stream-json`, and the engine reads
+account usage over it (`engine/internal/cliprobe/usage.go`).
 
 ## Command Matrix
 

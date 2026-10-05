@@ -1,4 +1,5 @@
 import { WIRE_PING_CAPABILITY } from '@ion/shared/studio-wire/types'
+import { HOST_INSTALL_CAPABILITY } from '@ion/shared/host-install'
 
 /**
  * What this desktop advertises in every `studio_hello` (`Broker.sendHello`).
@@ -24,5 +25,9 @@ import { WIRE_PING_CAPABILITY } from '@ion/shared/studio-wire/types'
  * server this client answers `studio_ping`, which is how the server measures
  * the round trip to it. A client that does not advertise it is never probed,
  * because a frame it cannot decode would close its connection.
+ *
+ * `host-install` says this desktop restarts or updates itself when the
+ * server it runs asks it to (`main/host-install.ts`). Only the connection on
+ * the server's own host is ever asked.
  */
-export const DESKTOP_CLIENT_CAPABILITIES: readonly string[] = ['graph', 'browser', WIRE_PING_CAPABILITY]
+export const DESKTOP_CLIENT_CAPABILITIES: readonly string[] = ['graph', 'browser', WIRE_PING_CAPABILITY, HOST_INSTALL_CAPABILITY]

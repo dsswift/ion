@@ -23,7 +23,7 @@ const transferState = {
 
 vi.mock('../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 vi.mock('../../connection/tab-environment', () => ({ useTabEnvironmentId: () => 'env-source' }))
-vi.mock('../../connection/catalog', () => ({ readCatalog: async () => [{ id: 'local', label: 'This Mac' }] }))
+vi.mock('../../connection/catalog', () => ({ readConversationCatalog: async () => [{ id: 'local', label: 'This Mac' }] }))
 vi.mock('../../connection/view-filter', () => ({ useEnvironmentViewFilter: () => [filter.current, setViewFilter] }))
 vi.mock('../../../host/host-instance', () => ({
   host: { connections: async () => [{ environmentId: 'local', phase: { phase: 'connected' } }] },
