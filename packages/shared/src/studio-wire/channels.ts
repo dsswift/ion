@@ -175,6 +175,13 @@ export const EVENT_CHANNELS: readonly EventChannelSpec[] = [
   // every change. Never carries the key. Both views: a phone chooses the
   // subscription too.
   { name: 'ion:provider-subscription-changed', scope: 'environment', views: ['mirror', 'thin'] },
+  // A host installing a release or a sent build on itself: each step, to
+  // every client. Both views: a phone starts an update too.
+  { name: 'ion:host-install-progress', scope: 'environment', views: ['mirror', 'thin'] },
+  // Every deploy `ion fleet deploy` told this server of, newest first,
+  // republished whenever one changes. Mirror only: a deploy from source runs
+  // on a desktop, and a phone has no surface for it.
+  { name: 'ion:fleet-deploys', scope: 'environment', delivery: 'latest' },
   // The Graph View's live corpus (`graph-view/corpus-store.ts`) and resolved
   // configuration (`graph-view/config-store.ts`). Both are published as
   // `broadcast(channel, projectPath, payload)`; the client filters on the

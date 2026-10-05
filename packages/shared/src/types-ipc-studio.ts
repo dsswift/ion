@@ -90,6 +90,17 @@ export const STUDIO_WINDOW_IPC = {
   HOST_BROWSE_NEARBY: "studio:host-browse-nearby",
   HOST_SSH_PROGRESS: "studio:host-ssh-progress",
   HOST_DISCONNECT_ENVIRONMENT: "studio:host-disconnect-environment",
+  HOST_FORGET_ENVIRONMENT: "studio:host-forget-environment",
+  // The Fleet page: run the bundled `ion fleet` on this device (a deploy
+  // from source, the one-time move of an old fleet file's hosts), with each
+  // line it prints pushed on HOST_FLEET_PROGRESS.
+  HOST_FLEET_RUN: "studio:host-fleet-run",
+  HOST_FLEET_CANCEL: "studio:host-fleet-cancel",
+  HOST_FLEET_PROGRESS: "studio:host-fleet-progress",
+  // The deploys this desktop started and still remembers, with their logs.
+  HOST_FLEET_RUNS: "studio:host-fleet-runs",
+  // The Environment catalog changed on disk by another process (`ion fleet`).
+  HOST_CATALOG_CHANGED: "studio:host-catalog-changed",
   HOST_RESTART_ENVIRONMENT: "studio:host-restart-environment",
   // Main-owned env-cache read (spec 13): the last welcome frame verbatim,
   // used to hydrate the mirror read-only when an environment is offline.

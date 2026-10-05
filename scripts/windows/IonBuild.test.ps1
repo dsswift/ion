@@ -765,6 +765,69 @@ $pkgVersion = ([regex]::Match((Get-Content -LiteralPath (Join-Path $PSScriptRoot
 Assert-Equal $false ($ionDesktop -match 'package\.json.*version.*=') `
   "the build never rewrites desktop/package.json (still $pkgVersion, owned by release-please)"
 
+# ── Set-IonExecutionPolicy ───────────────────────────────────────────────────
+# Set-ExecutionPolicy saves the setting and then raises a security error when
+# a narrower scope overrides it, as it does in a run started with
+# -ExecutionPolicy Bypass. That run is how a fleet deploy sets a machine up, so
+# the error must not end setup; a setting that was not saved still must.
+& {
+  $script:policy = 'Undefined'
+  $script:saves = $true
+  function Get-ExecutionPolicy { param($Scope) $script:policy }
+  function Set-ExecutionPolicy {
+    param($Scope, $ExecutionPolicy, [switch] $Force)
+    if ($script:saves) { $script:policy = $ExecutionPolicy }
+    throw 'Security error.'
+  }
+  function Write-IonInfo { param([string] $m) }
+
+  $threw = $false
+  try { Set-IonExecutionPolicy } catch { $threw = $true }
+  Assert-Equal $false $threw 'a security error after the policy was saved does not end setup'
+  Assert-Equal 'RemoteSigned' $script:policy 'the policy is saved for the user'
+
+  $script:policy = 'Restricted'
+  $script:saves = $false
+  $threw = $false
+  try { Set-IonExecutionPolicy } catch { $threw = $true }
+  Assert-Equal $true $threw 'a policy that could not be saved still ends setup'
+
+  $script:policy = 'AllSigned'
+  $script:saves = $true
+  Set-IonExecutionPolicy
+  Assert-Equal 'AllSigned' $script:policy 'a policy the user already chose is left alone'
+}
+
+# ── Wait-IonVisualStudioComponents ───────────────────────────────────────────
+# winget returns minutes before the Visual Studio Installer it started is done.
+# Setup must wait for the components, stop early when the installer is gone
+# without them, and never wait past its timeout.
+& {
+  $script:present = $false
+  $script:slept = 0
+  function Test-IonVSComponent { param($Component) $script:present }
+  function Write-IonInfo { param([string] $m) }
+  function Write-IonWarn { param([string] $m) $script:warned = $m }
+  $sleep = { param($s) $script:slept += $s; if ($script:slept -ge $script:landsAfter) { $script:present = $true } }
+
+  $script:landsAfter = 130
+  Wait-IonVisualStudioComponents -Components @('a', 'b') -InstallerRunning { $true } -Sleep $sleep
+  Assert-Equal 130 $script:slept 'setup waits until the installer has put the components in place'
+
+  $script:present = $false; $script:slept = 0; $script:landsAfter = 999999; $script:warned = ''
+  Wait-IonVisualStudioComponents -Components @('a') -InstallerRunning { $false } -Sleep $sleep
+  Assert-Equal 50 $script:slept 'an installer that is gone without the components ends the wait within a minute'
+  Assert-Equal $true ($script:warned -match 'not running') 'and the log says the installer was not running'
+
+  $script:slept = 0; $script:warned = ''
+  Wait-IonVisualStudioComponents -Components @('a') -TimeoutSeconds 300 -InstallerRunning { $true } -Sleep $sleep
+  Assert-Equal 300 $script:slept 'an installer that never finishes is waited on only until the timeout'
+
+  $script:present = $true; $script:slept = 0
+  Wait-IonVisualStudioComponents -Components @('a') -InstallerRunning { $true } -Sleep $sleep
+  Assert-Equal 0 $script:slept 'components already present are not waited on'
+}
+
 if ($script:failures -gt 0) {
   Write-Host "`n$script:failures failure(s)" -ForegroundColor Red
   exit 1

@@ -65,7 +65,10 @@ const recorded = (entry: SettingRegistryEntry): SettingRegistryEntry => ({ ...en
 export const SETTINGS_REGISTRY = {
   // ── environment ──────────────────────────────────────────────────────
   inboxAutoSettleDays: environment('tabs'),
-  inboxAutoSettleOnMerge: environment('tabs'),
+  usageLimitAutoResume: environment('tabs'),
+  usageLimitResumePrompt: environment('tabs'),
+  quotaExpiryAlertHours: environment('tabs'),
+  quotaExpiryUnusedPercent: environment('tabs'),
   tabRecoveryEnabled: environment('tabs'),
   tabRecoveryTimeoutSec: environment('tabs'),
   engineProfiles: environment('environments'),
@@ -142,6 +145,7 @@ export const SETTINGS_REGISTRY = {
   soundEnabled: device('general'),
   keyboardShortcuts: device('shortcuts'),
   browserPreviewNetworkShield: device('general'),
+  openAtLogin: device('general'),
   gitChangesTreeView: device('git'),
   gitPanelPaneProportions: recorded(device('none')),
   gitPanelHeight: recorded(device('none')),

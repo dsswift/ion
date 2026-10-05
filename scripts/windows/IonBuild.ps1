@@ -550,12 +550,22 @@ function Assert-IonManifestVersion {
 
 function Set-IonExecutionPolicy {
   $current = Get-ExecutionPolicy -Scope CurrentUser
-  if ($current -in @('Restricted', 'Undefined')) {
-    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
-    Write-IonInfo 'execution policy (CurrentUser): RemoteSigned'
-  } else {
+  if ($current -notin @('Restricted', 'Undefined')) {
     Write-IonInfo "execution policy (CurrentUser): $current"
+    return
   }
+  try {
+    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+  } catch {
+    # When a narrower scope overrides CurrentUser (a run started with
+    # -ExecutionPolicy Bypass, or a group policy), Set-ExecutionPolicy saves
+    # the setting and then raises a security error to say it is not the one
+    # in effect. The setting being saved is all this step is for.
+    if ((Get-ExecutionPolicy -Scope CurrentUser) -ne 'RemoteSigned') { throw }
+    Write-IonInfo 'execution policy (CurrentUser): RemoteSigned (a narrower scope overrides it for this run)'
+    return
+  }
+  Write-IonInfo 'execution policy (CurrentUser): RemoteSigned'
 }
 
 <#
@@ -725,6 +735,10 @@ function Install-IonBuildTools {
     Invoke-IonNative 'winget' @('install', '--id', 'Microsoft.VisualStudio.2022.BuildTools', '--exact', '--silent',
                                 '--accept-source-agreements', '--accept-package-agreements',
                                 '--override', $override) -AllowFailure | Out-Null
+    # winget returns when the bootstrapper it launched does, and the
+    # bootstrapper hands the work to the Visual Studio Installer and exits. The
+    # components land minutes later, so wait for the installer, not for winget.
+    Wait-IonVisualStudioComponents -Components $components
   }
 
   $stillMissing = @($components | Where-Object { -not (Test-IonVSComponent -Component $_) })
@@ -732,6 +746,55 @@ function Install-IonBuildTools {
     throw "Visual Studio Build Tools is still missing: $($stillMissing -join ', '). Add them with the Visual Studio Installer (Individual components), then re-run."
   }
   Write-IonInfo "Visual Studio components present: $($components -join ', ')"
+}
+
+<#
+  Whether the Visual Studio Installer is at work: its engine, its shell, or
+  the bootstrapper that starts them.
+#>
+function Test-IonVisualStudioInstallerRunning {
+  $names = @('setup', 'vs_installer', 'vs_installershell', 'vs_installerservice', 'vs_setup_bootstrapper', 'vs_BuildTools')
+  $installerDir = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+  foreach ($p in @(Get-Process -Name $names -ErrorAction SilentlyContinue)) {
+    # `setup` is a common name; only the one under the installer's folder counts.
+    if ($p.Name -ne 'setup' -or ($p.Path -and $p.Path.StartsWith($installerDir, [StringComparison]::OrdinalIgnoreCase))) { return $true }
+  }
+  return $false
+}
+
+<#
+  Wait until every component is installed, the installer has been idle for a
+  minute with some still absent (it failed, or was never started), or the
+  timeout passes. It returns either way: the caller's own check decides.
+  $InstallerRunning and $Sleep are test seams.
+#>
+function Wait-IonVisualStudioComponents {
+  param(
+    [Parameter(Mandatory)][string[]] $Components,
+    [int] $TimeoutSeconds = 5400,
+    [int] $PollSeconds = 10,
+    [int] $IdleSeconds = 60,
+    [scriptblock] $InstallerRunning = { Test-IonVisualStudioInstallerRunning },
+    [scriptblock] $Sleep = { param($s) Start-Sleep -Seconds $s }
+  )
+  $waited = 0
+  $idle = 0
+  while ($waited -lt $TimeoutSeconds) {
+    $missing = @($Components | Where-Object { -not (Test-IonVSComponent -Component $_) })
+    if ($missing.Count -eq 0) {
+      if ($waited -gt 0) { Write-IonInfo "Visual Studio Installer finished after ${waited}s" }
+      return
+    }
+    if (& $InstallerRunning) { $idle = 0 } else { $idle += $PollSeconds }
+    if ($idle -ge $IdleSeconds) {
+      Write-IonWarn "the Visual Studio Installer is not running and $($missing -join ', ') is still absent after ${waited}s"
+      return
+    }
+    if ($waited -gt 0 -and ($waited % 60) -eq 0) { Write-IonInfo "still installing Visual Studio Build Tools (${waited}s)" }
+    & $Sleep $PollSeconds
+    $waited += $PollSeconds
+  }
+  Write-IonWarn "gave up waiting for the Visual Studio Installer after ${TimeoutSeconds}s"
 }
 
 <#

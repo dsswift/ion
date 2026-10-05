@@ -10,6 +10,8 @@
   Targets:
 
     bootstrap   Set up a fresh machine. Delegates to .\bootstrap.ps1.
+    setup       Install whatever toolchain a build needs and this machine
+                lacks, and build nothing.
     engine      Build ion.exe and stage it into desktop\resources\engine.
     installer   engine + renderer build + NSIS installer. Leaves the .exe on
                 disk and installs nothing.
@@ -60,7 +62,7 @@
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('help', 'bootstrap', 'engine', 'installer', 'desktop', 'clean', 'uninstall')]
+  [ValidateSet('help', 'bootstrap', 'setup', 'engine', 'installer', 'desktop', 'clean', 'uninstall')]
   [string] $Target = 'help',
 
   [ValidateSet('auto', 'x64', 'arm64')] [string] $Arch = 'auto',
@@ -100,6 +102,7 @@ Ion on Windows
 
 Partial targets, for when you do not want the whole path:
 
+  .\make.ps1 setup             Install the missing toolchain, build nothing
   .\make.ps1 engine            Build ion.exe into desktop\resources\engine
   .\make.ps1 installer         Build the installer, install nothing
   .\make.ps1 clean             Remove build output
@@ -126,6 +129,10 @@ try {
     'bootstrap' {
       & (Join-Path $Root 'bootstrap.ps1')
       if ($LASTEXITCODE -ne 0) { throw "bootstrap.ps1 exited $LASTEXITCODE" }
+    }
+
+    'setup' {
+      Initialize-IonBuildEnvironment
     }
 
     'clean' {
