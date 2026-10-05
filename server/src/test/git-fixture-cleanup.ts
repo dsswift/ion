@@ -15,3 +15,11 @@ export function removeGitFixture(path: string): void {
     retryDelay: 100,
   })
 }
+
+/**
+ * Per-suite timeout for tests that drive real Git through multi-step
+ * fixtures. A loaded CI runner took several times a case's local run, past
+ * Vitest's 5s default, and the timed-out case's cleanup then raced the Git
+ * process still writing.
+ */
+export const GIT_FIXTURE_TIMEOUT = { timeout: 30_000 }

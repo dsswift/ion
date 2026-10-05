@@ -14,7 +14,7 @@
  *
  * Real repos rather than mocks: the behaviour under test is git's.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { GIT_FIXTURE_TIMEOUT, removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'fs'
@@ -103,11 +103,6 @@ beforeEach(() => {
   process.env.ION_TEST_HOME_BENCH_CONFLICT = join(root, 'home')
   repo = makeRepo()
 })
-
-// Every case drives real git through one or more full assemblies. Under a
-// loaded CI runner one case took several times its local run, past the
-// 5s default.
-const GIT_FIXTURE_TIMEOUT = { timeout: 30_000 }
 
 afterEach(() => {
   delete process.env.ION_TEST_HOME_BENCH_CONFLICT
