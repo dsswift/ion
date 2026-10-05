@@ -168,16 +168,39 @@ func (c *Context) SetRunRecovery(ctx context.Context, config RunRecoveryConfig) 
 	return c.sdk.call(ctx, "ext/set_run_recovery", config, nil)
 }
 
-// EnterPlanMode puts the session into plan mode.
+// EnterPlanMode requests plan mode. before_plan_mode_enter fires with source
+// "extension"; when a handler vetoes, the error is a *PlanModeVetoError with
+// its reason. Already in plan mode is a no-op that returns nil.
 func (c *Context) EnterPlanMode(ctx context.Context) error {
-	return c.sdk.call(ctx, "ext/set_plan_mode",
-		map[string]any{"enabled": true, "source": "extension"}, nil)
+	return c.setPlanMode(ctx, true)
 }
 
-// ExitPlanMode takes the session out of plan mode.
+// ExitPlanMode requests that the session leave plan mode, with the same veto
+// rule as EnterPlanMode.
 func (c *Context) ExitPlanMode(ctx context.Context) error {
-	return c.sdk.call(ctx, "ext/set_plan_mode",
-		map[string]any{"enabled": false, "source": "extension"}, nil)
+	return c.setPlanMode(ctx, false)
+}
+
+// IsInPlanMode reports whether the session is in plan mode.
+func (c *Context) IsInPlanMode(ctx context.Context) (bool, error) {
+	state, err := c.GetPlanMode(ctx)
+	return state.Enabled, err
+}
+
+func (c *Context) setPlanMode(ctx context.Context, enabled bool) error {
+	// An engine older than the veto answers only {"ok":true}, so a missing
+	// "allowed" means the change went through. Only an explicit false is a veto.
+	var out struct {
+		Allowed *bool  `json:"allowed"`
+		Reason  string `json:"reason"`
+	}
+	if err := c.sdk.call(ctx, "ext/set_plan_mode", map[string]any{"enabled": enabled, "source": "extension"}, &out); err != nil {
+		return err
+	}
+	if out.Allowed != nil && !*out.Allowed {
+		return &PlanModeVetoError{Enabled: enabled, Reason: out.Reason}
+	}
+	return nil
 }
 
 // GetPlanMode returns the session's plan-mode state.

@@ -214,6 +214,31 @@ type PlanModeState struct {
 	PlanFilePath string `json:"planFilePath"`
 }
 
+// PlanModeOutcome is the result of ext/set_plan_mode.
+type PlanModeOutcome struct {
+	Allowed bool   `json:"allowed"`
+	Changed bool   `json:"changed"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// PlanModeVetoError reports that a before_plan_mode_* handler refused an
+// EnterPlanMode or ExitPlanMode request.
+type PlanModeVetoError struct {
+	Enabled bool
+	Reason  string
+}
+
+func (e *PlanModeVetoError) Error() string {
+	verb := "exit"
+	if e.Enabled {
+		verb = "enter"
+	}
+	if e.Reason == "" {
+		return "ion: plan mode " + verb + " was vetoed"
+	}
+	return "ion: plan mode " + verb + " was vetoed: " + e.Reason
+}
+
 // SessionListEntry is one session from [Context.Sessions].List. The engine
 // filters this list to sessions sharing the CALLING session's own principal
 // before returning it -- never every session engine-wide -- so

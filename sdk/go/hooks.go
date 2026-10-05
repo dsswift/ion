@@ -125,6 +125,9 @@ const (
 	HookNameBeforePlanModeAutoExit = "before_plan_mode_auto_exit"
 	HookNameSystemInject           = "system_inject"
 
+	// Skills.
+	HookNameSkillLoad = "skill_load"
+
 	// Context injection.
 	HookNameContextInject = "context_inject"
 

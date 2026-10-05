@@ -193,11 +193,16 @@ type SlashModelBoundaryResult struct {
 
 // --- Context discovery ---
 
-// ContextDiscoverInfo is the payload for context_discover. Returning false
-// excludes the file.
+// ContextDiscoverInfo is the payload for context_discover. Returning true
+// excludes the file. The hook fires for duplicates too; a duplicate is skipped
+// whatever the handler returns.
 type ContextDiscoverInfo struct {
 	Path   string `json:"path"`
 	Source string `json:"source"`
+	// DuplicateOf is the already-loaded file this candidate duplicates.
+	DuplicateOf string `json:"duplicateOf,omitempty"`
+	// DuplicateReason is "symlink" or "content" when DuplicateOf is set.
+	DuplicateReason string `json:"duplicateReason,omitempty"`
 }
 
 // ContextLoadInfo is the payload for context_load and instruction_load.
@@ -372,11 +377,40 @@ type ElicitationResultInfo struct {
 	Declined  bool           `json:"declined,omitempty"`
 }
 
+// --- Skills ---
+
+// SkillLoadInfo is the payload for skill_load.
+type SkillLoadInfo struct {
+	Name    string `json:"name"`
+	Source  string `json:"source"`
+	BaseDir string `json:"baseDir"`
+	Args    string `json:"args,omitempty"`
+	// Invocation is "tool" or "slash".
+	Invocation  string         `json:"invocation"`
+	Frontmatter map[string]any `json:"frontmatter,omitempty"`
+	// Commands are the shell commands the body would run, in order.
+	Commands []string `json:"commands,omitempty"`
+}
+
+// SkillLoadResult answers skill_load. Allow is a pointer so nil means "no
+// opinion", distinct from an explicit false.
+type SkillLoadResult struct {
+	Allow         *bool  `json:"allow,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+	Content       string `json:"content,omitempty"`
+	AppendContent string `json:"appendContent,omitempty"`
+}
+
 // --- Plan mode ---
 
 // PlanModeEnterInfo is the payload for before_plan_mode_enter.
 type PlanModeEnterInfo struct {
+	// Source is "model_tool", "wire" (a client's set_plan_mode), or
+	// "extension" (ctx.EnterPlanMode).
 	Source string `json:"source"`
+	// ClientSource is the requester's own label (the set_plan_mode source,
+	// e.g. "plan_approved"). Empty for model_tool.
+	ClientSource string `json:"clientSource,omitempty"`
 }
 
 // BeforePlanModeEnterResult vetoes or permits entering plan mode. Allow is a
@@ -390,6 +424,8 @@ type BeforePlanModeEnterResult struct {
 type BeforePlanModeExitInfo struct {
 	PlanFilePath string `json:"planFilePath"`
 	Source       string `json:"source"`
+	// ClientSource is the requester's own label; see PlanModeEnterInfo.
+	ClientSource string `json:"clientSource,omitempty"`
 }
 
 // BeforePlanModeExitResult vetoes or permits leaving plan mode.

@@ -283,6 +283,12 @@ var HookBeforePlanModeAutoExit = Hook[BeforePlanModeAutoExitInfo, BeforePlanMode
 // a string to replace the engine's text.
 var HookSystemInject = Hook[SystemInjectInfo, StringResult]{Name: HookNameSystemInject}
 
+// --- Skills ---
+
+// HookSkillLoad fires when a skill is invoked, before its shell commands run.
+// Veto with Allow, replace the body with Content, or add AppendContent.
+var HookSkillLoad = Hook[SkillLoadInfo, SkillLoadResult]{Name: HookNameSkillLoad}
+
 // --- Context injection ---
 
 // HookContextInject fires as context is injected. Return a string to
@@ -411,6 +417,8 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookPlanModePrompt), descriptorOf(HookBeforePlanModeEnter),
 		descriptorOf(HookBeforePlanModeExit), descriptorOf(HookBeforePlanModeAutoExit),
 		descriptorOf(HookSystemInject),
+
+		descriptorOf(HookSkillLoad),
 
 		descriptorOf(HookContextInject),
 
