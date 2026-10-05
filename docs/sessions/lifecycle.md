@@ -232,21 +232,23 @@ Consumers should listen for both events with distinct handlers: one updates cach
 
 ### Extension-initiated plan-mode control
 
-Extensions have full imperative control over plan mode via the `Context` object passed to every hook handler:
+Extensions request plan-mode changes through the `Context` object passed to every hook handler. A request takes the same path as a client toggle: `before_plan_mode_enter` / `before_plan_mode_exit` fire with `source: "extension"`, any handler may veto, and a run in flight switches mode in the current turn.
 
 ```typescript
-// Enter plan mode from a slash command or hook handler
-await ctx.enterPlanMode()
+// Enter plan mode from a slash command or hook handler. Resolves false
+// when a handler vetoed it; engine_plan_mode_change_rejected carries why.
+const entered = await ctx.enterPlanMode()
 
-// Exit plan mode programmatically
+// Exit plan mode programmatically (same veto rule)
 await ctx.exitPlanMode()
 
 // Read current state — useful for conditional logic
-const { enabled, planFilePath } = await ctx.getPlanMode()
-if (enabled) {
-  // currently in plan mode; planFilePath is the active plan file
+if (await ctx.isInPlanMode()) {
+  const { planFilePath } = await ctx.getPlanMode()
 }
 ```
+
+A request for the mode the session is already in is a no-op that resolves `true` and fires no hook. A request made from inside a running `before_plan_mode_*` handler goes through without firing the hook again. In Go, `EnterPlanMode` / `ExitPlanMode` return a `*PlanModeVetoError` on a veto, and `IsInPlanMode` reports the mode.
 
 Disabling plan mode via `exitPlanMode()` keeps the `planFilePath` alive so a subsequent `enterPlanMode()` reuses it. The plan ID is only retired when the session is reset.
 

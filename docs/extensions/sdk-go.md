@@ -376,7 +376,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `ScanWikiLinks`, `Suspend`, `SuspendUntilAll` |
-| Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
+| Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`, `IsInPlanMode`                                                                         |
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
 | Conversation records | `Conversations().Read`                                                                                                                |
 | Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
@@ -387,6 +387,15 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 ```go
 res, err := ctx.ProtectedOperation(c, "publish-metric", map[string]any{"value": 42})
+```
+
+`EnterPlanMode` and `ExitPlanMode` take the same path as a client toggle: `before_plan_mode_enter` / `before_plan_mode_exit` fire with source `extension`, and a handler may veto. A veto returns `*PlanModeVetoError` (with the handler's `Reason`); a request for the mode the session is already in returns nil. `IsInPlanMode` reports the mode.
+
+```go
+var veto *ion.PlanModeVetoError
+if err := ctx.EnterPlanMode(c); errors.As(err, &veto) {
+    ctx.Log().Info("plan mode refused", map[string]any{"reason": veto.Reason})
+}
 ```
 
 `DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.

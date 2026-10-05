@@ -7,7 +7,9 @@ sidebar_position: 11
 # Ion Studio SDK
 
 The Ion Studio SDK lets an extension extend **Ion Studio**, the desktop client.
-Today it offers one thing: adding rows to the `+` menu in the composer.
+It offers two things: adding rows to the `+` menu in the composer
+([Composer Actions](#composer-actions)), and naming deep-link routes that run a
+command ([Link Routes](#link-routes)).
 
 It is a **separate SDK from the engine SDK**, on purpose.
 
@@ -43,7 +45,8 @@ resource whose kind starts with `ion-studio.`:
    Composer Action it decides which conversations offer the row and sends each
    client that answer (`studio:composer-actions`, read through
    `studio.composerActions`). The raw resource is never forwarded to a client,
-   so no client decides where an extension's actions apply.
+   so no client decides where an extension's actions apply. Link Routes stop
+   at the server the same way.
 3. Any other client ignores a kind it does not know. Ion's own mobile client is
    never sent these resources, so they do not show up as notifications.
 
@@ -131,6 +134,64 @@ func registerStudioActions(sdk *ion.SDK) error {
 
 Call it before `sdk.Run()`. Use `composer.AddAction` and `composer.RemoveAction`
 once the extension is running.
+
+## Link Routes
+
+A **Link Route** gives one of your extension's slash commands a name that a
+link can point at. A link of this form runs the route:
+
+```text
+ion://ext/<routeId>?args=<text>&conversation=<conversationId>&dir=<absolute dir>
+```
+
+| Part | Meaning |
+|---|---|
+| `<routeId>` | The route's `id`. |
+| `args` | Optional. Text added after the route's command, the same as typing it after the command. |
+| `conversation` | Optional. The conversation to run the command in. |
+| `dir` | Optional. An absolute directory. With no `conversation`, the command runs in a new conversation in this directory. |
+
+A route has these fields:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | Yes | Unique within your extension. It is a path segment of the link, so it may use only letters, digits, `_` and `-`, up to 64 characters. |
+| `label` | Yes | How Studio names the route to the operator. Up to 80 characters. |
+| `command` | Yes | A slash command, such as `/briefing`. Up to 200 characters. Anything that is not a slash command is refused. |
+| `conversationId` | No | Offer the route in one conversation only. Leave it out to offer it wherever a conversation's extension command registry owns `command`. |
+
+Two rules keep a link from doing more than you meant:
+
+- **The server checks ownership.** When the link names a conversation that is
+  open, the Studio server runs a route only if that conversation's extension
+  owns the route's command (or the route was registered for that
+  conversation). A conversation that never loaded your extension cannot run
+  your route. A link that names a saved but closed conversation, or opens a
+  new one in `dir`, can only use a workspace-wide route; the command then goes
+  through the conversation's normal slash-command resolution.
+- **An untrusted link always asks first.** When a link comes from somewhere
+  Studio does not trust, Studio shows the operator what it will run and waits
+  for them to agree.
+
+The API matches Composer Actions: `register` at start-up publishes nothing and
+answers Studio's snapshot query; `addRoute` / `removeRoute` in a running
+extension push the change at once.
+
+```ts
+studio(ion).links.register([
+  { id: 'greet', label: 'Greet someone', command: '/greet' },
+])
+```
+
+```go
+links, err := studio.NewLinks(context.Background(), studio.FromSDK(sdk))
+if err != nil {
+    return err
+}
+return links.Register(studio.LinkRoute{ID: "greet", Label: "Greet someone", Command: "/greet"})
+```
+
+A complete example is in `packages/studio-sdk/ts/examples/link-route/`.
 
 ## Who installs it
 

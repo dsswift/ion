@@ -364,8 +364,8 @@ Last non-nil string return wins. The returned string replaces the tool result co
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `context_discover` | Context file discovered | `ContextDiscoverInfo{Path, Source}` | `bool` | Return `true` to reject the file. |
-| `context_load` | Context file loaded | `ContextLoadInfo{Path, Content, Source}` | `string` or `bool` | String = modified content. `true` = reject file. |
+| `context_discover` | An instruction file (AGENTS.md, ION.md, CLAUDE.md, their nested forms) is found during the root context walk, duplicates included | `ContextDiscoverInfo{Path, Source, DuplicateOf, DuplicateReason}` | `bool` | Return `true` to reject the file. A duplicate is skipped whatever the handler returns. |
+| `context_load` | An accepted instruction file is loaded, after its `@` includes are expanded | `ContextLoadInfo{Path, Content, Source}` | `string` or `bool` | String = replacement content. `true` = reject file. |
 | `instruction_load` | Instruction file loaded | `ContextLoadInfo{Path, Content, Source}` | `string` or `bool` | String = modified content. `true` = reject file. |
 
 ### Payload Types
@@ -373,10 +373,16 @@ Last non-nil string return wins. The returned string replaces the tool result co
 **ContextDiscoverInfo**
 ```go
 type ContextDiscoverInfo struct {
-    Path   string
-    Source string
+    Path            string
+    Source          string // "project", "parent", "global"
+    DuplicateOf     string // the already-loaded file this one duplicates; empty when it is not a duplicate
+    DuplicateReason string // "symlink" (resolves to a loaded file) or "content" (byte-identical to one)
 }
 ```
+
+A file reachable twice (a `CLAUDE.md` symlink to `AGENTS.md`, or two files with the same bytes) is injected once. The hook still fires for the duplicate with `DuplicateOf` set, so a harness can see every skip. A file the hook rejects is still recorded, so a symlink to it cannot bring it back.
+
+`@` includes inside a context file follow at most `limits.contextIncludeMaxDepth` hops (default 5); a reference past the cap is replaced by `<!-- max include depth reached: <ref> -->`.
 
 **ContextLoadInfo**
 ```go
@@ -546,8 +552,8 @@ type ElicitationResultInfo struct {
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `before_plan_mode_enter` | LLM calls `EnterPlanMode` tool requesting mode transition | `PlanModeEnterInfo{Source}` | `*BeforePlanModeEnterResult{Allow, Reason}` | Last non-nil `Allow` across hosts wins. Return `Allow: &false` to deny. Default (nil or no handler): allow. |
-| `before_plan_mode_exit` | LLM calls `ExitPlanMode` tool requesting plan review | `BeforePlanModeExitInfo{PlanFilePath, Source}` | `*BeforePlanModeExitResult{Allow, Reason}` | Last non-nil `Allow` wins. Return `Allow: &false` to send the model back for more planning. Default: allow. |
+| `before_plan_mode_enter` | Before every transition into plan mode: the model calls `EnterPlanMode`, a client sends `set_plan_mode`, or an extension calls `ctx.enterPlanMode()` | `PlanModeEnterInfo{Source}` | `*BeforePlanModeEnterResult{Allow, Reason}` | Last non-nil `Allow` across hosts wins. Return `Allow: &false` to deny, whatever the source. Default (nil or no handler): allow. |
+| `before_plan_mode_exit` | Before every transition out of plan mode: the model calls `ExitPlanMode`, a client sends `set_plan_mode`, or an extension calls `ctx.exitPlanMode()` | `BeforePlanModeExitInfo{PlanFilePath, Source}` | `*BeforePlanModeExitResult{Allow, Reason}` | Last non-nil `Allow` wins. Return `Allow: &false` to keep the session in plan mode, whatever the source. Default: allow. |
 | `before_plan_mode_auto_exit` | Plan-mode run ends with `end_turn` / `stop` but the assistant never invoked `ExitPlanMode` or `AskUserQuestion` (the engine is about to deterministically synthesize the exit — see [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md)) | `BeforePlanModeAutoExitInfo{SessionID, RunID, StopReason, PlanFilePath, AssistantText, EmittedTools}` | `*BeforePlanModeAutoExitResult{Suppress, PlanFilePath, Reason}` | Last writer wins per field across handlers. Return `Suppress: true` to block synthesis (the conversation stays parked in plan mode). Override `PlanFilePath` for stage-then-promote workflows; override `Reason` to localize or rephrase the human-readable string surfaced on the approval card. |
 | `plan_mode_prompt` | Once per API-backend run, the first time the run is planning | `string` (plan file path) | `PlanModePromptResult{Prompt, Tools, SparseReminder}` or `string` | Last non-nil wins. `Prompt` replaces the plan-mode instructions, delivered as the `plan_mode_enter` notice. `Tools` replaces the read-only tool set the plan policy allows. `SparseReminder` replaces the reminder text. See [ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md). |
 
@@ -556,7 +562,8 @@ type ElicitationResultInfo struct {
 **PlanModeEnterInfo**
 ```go
 type PlanModeEnterInfo struct {
-    Source string // "model_tool" when the LLM called EnterPlanMode
+    Source       string // "model_tool", "wire" (a client's set_plan_mode), or "extension" (ctx.enterPlanMode)
+    ClientSource string // the requester's own label: set_plan_mode's source, or the extension's label; empty for model_tool
 }
 ```
 
@@ -564,15 +571,16 @@ type PlanModeEnterInfo struct {
 ```go
 type BeforePlanModeEnterResult struct {
     Allow  *bool  // nil = no opinion (allow); &false = deny; &true = explicit allow
-    Reason string // returned to the LLM in the tool result when Allow is &false
+    Reason string // explains a denial; see below for where it goes
 }
 ```
 
 **BeforePlanModeExitInfo**
 ```go
 type BeforePlanModeExitInfo struct {
-    PlanFilePath string // path of the plan file being submitted for review
-    Source       string // "model_tool" when the LLM called ExitPlanMode
+    PlanFilePath string // path of the session's plan file
+    Source       string // "model_tool", "wire", or "extension"
+    ClientSource string // the requester's own label; see PlanModeEnterInfo
 }
 ```
 
@@ -580,11 +588,17 @@ type BeforePlanModeExitInfo struct {
 ```go
 type BeforePlanModeExitResult struct {
     Allow  *bool  // nil = no opinion (allow); &false = deny; &true = explicit allow
-    Reason string // returned to the LLM in the tool result when Allow is &false
+    Reason string // explains a denial; see below for where it goes
 }
 ```
 
 Merge semantics: last handler that returns a non-nil `Allow` wins, matching `before_early_stop_decision`. A handler that returns `Allow: nil` (or returns `nil` entirely) abstains.
+
+A veto binds every source, a user's own toggle included. Where the reason goes depends on the source: for `model_tool` it is the tool result the model reads; for `wire` and `extension` the engine emits `engine_plan_mode_change_rejected` with the reason, and an extension's `enterPlanMode()` / `exitPlanMode()` resolves `false`. An allowed `wire` or `extension` change emits `engine_plan_mode_changed` with `planModeSource`, and a run already in flight switches mode in the current turn.
+
+A client sends `set_plan_mode` for more than a user's toggle. Approving a plan turns plan mode off, and starting or restoring a session can turn it on. All of these arrive as `source: "wire"`. `clientSource` carries the label the client attached (for example `plan_approved` or `session_start`), so a handler can veto a user's toggle without blocking plan approval.
+
+Two guards keep the hooks from looping. A request for the mode the session is already in fires nothing. A change requested from inside a running `before_plan_mode_*` handler (a handler that calls `ctx.enterPlanMode()`) is made without firing the hook again.
 
 **BeforePlanModeAutoExitInfo**
 ```go
@@ -629,6 +643,39 @@ type PlanModePromptResult struct {
     SparseReminder string   // custom per-turn sparse reminder; empty = use engine default buildPlanModeSparseReminder
 }
 ```
+
+## Skills
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `skill_load` | A skill is invoked (the Skill tool or a user-typed `/<skill>`), before its shell commands run | `SkillLoadInfo{Name, Source, BaseDir, Args, Invocation, Frontmatter, Commands}` | `*SkillLoadResult{Allow, Reason, Content, AppendContent}` | `Allow: &false` blocks the skill before anything runs. `Content` replaces the body (its commands are then the ones that run). `AppendContent` is added after the rendered body. Last non-nil `Allow` and last non-empty `Content` win; `AppendContent` accumulates. |
+
+### Payload Types
+
+**SkillLoadInfo**
+```go
+type SkillLoadInfo struct {
+    Name        string
+    Source      string         // path of the SKILL.md
+    BaseDir     string         // directory holding the SKILL.md
+    Args        string
+    Invocation  string         // "tool" or "slash"
+    Frontmatter map[string]any // the full frontmatter
+    Commands    []string       // the shell commands the body would run, in order
+}
+```
+
+**SkillLoadResult**
+```go
+type SkillLoadResult struct {
+    Allow         *bool
+    Reason        string
+    Content       string
+    AppendContent string
+}
+```
+
+A skill body may carry shell commands: `` !`cmd` `` (the `!` at line start or after whitespace) or a block opened by a ```` ```! ```` line. The engine runs each in the skill's directory and replaces the placeholder with the output, so the model sees the data, not the command. Output is never scanned again. A non-zero exit or a timeout aborts the skill. Each command passes the permission policy as a `Bash` call, and `limits.disableSkillShellExecution` turns execution off. See [Skill](../tools/reference.md#skill).
 
 ## System Message Injection
 

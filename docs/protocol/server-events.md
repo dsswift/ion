@@ -623,12 +623,14 @@ mode change is deferred to the user-approval chokepoint. See
 the state-vs-workflow split and [`engine_plan_proposal`](#engine_plan_proposal)
 for the workflow signal that fires when the model proposes an exit.
 
-Triggers:
+Triggers, each with its `planModeSource`:
 
-- The harness calls `SetPlanMode(true)` or `SetPlanMode(false)`.
-- A run starts with `PlanMode: true` in `RunOptions`.
-- Plan mode is aborted (engine-internal failure path).
-- The user-approval chokepoint approves the exit and calls `SetPlanMode(false)`.
+- The model calls `EnterPlanMode` and no handler vetoes it (`model_tool`).
+- A client sends `set_plan_mode` that changes the mode and no handler vetoes it (`wire`). This includes the user-approval chokepoint disabling plan mode after a plan is approved.
+- An extension calls `ctx.enterPlanMode()` / `ctx.exitPlanMode()` and no handler vetoes it (`extension`).
+- A run starts with `PlanMode: true` in `RunOptions` (no source: it restates existing state).
+
+A `wire` or `extension` change made while a run is in flight applies to that run in the current turn; the event then comes from the run.
 
 | Field              | Type    | Description                       |
 |--------------------|---------|-----------------------------------|
@@ -636,6 +638,21 @@ Triggers:
 | `planModeEnabled`  | boolean | Whether plan mode is now active   |
 | `planFilePath`     | string  | Path to the plan file (omitempty) |
 | `planSlug`         | string  | Human-readable basename of the plan file with `.md` stripped (omitempty) |
+| `planModeSource`   | string  | `model_tool`, `wire`, or `extension` (omitempty) |
+
+#### engine_plan_mode_change_rejected
+
+A `before_plan_mode_enter` or `before_plan_mode_exit` handler vetoed a `wire`
+or `extension` plan-mode change. The session's mode did not move. A client
+that toggled optimistically should revert and may show the reason. A vetoed
+`model_tool` request is reported to the model in its tool result instead.
+
+| Field                      | Type    | Description |
+|----------------------------|---------|-------------|
+| `type`                     | `"engine_plan_mode_change_rejected"` | Event type |
+| `planModeRequestedEnabled` | boolean | The mode that was asked for (omitempty: absent means `false`) |
+| `planModeSource`           | string  | `wire` or `extension` |
+| `planModeRejectReason`     | string  | The handler's reason (omitempty) |
 
 #### engine_plan_proposal
 

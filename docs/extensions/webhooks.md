@@ -266,15 +266,14 @@ If a session is in plan mode when a webhook fires, the handler runs
 normally. Plan mode is an agent-loop constraint, not a session-wide
 quiet mode — webhooks and schedules still dispatch, and the agents
 they spawn observe the session's plan-mode state through
-`ctx.getPlanMode()` and choose their own behavior.
+`ctx.isInPlanMode()` (or `ctx.getPlanMode()` for the plan file path too) and choose their own behavior.
 
 If you want a webhook to defer-fire while in plan mode, check at
 handler entry and return early:
 
 ```ts
 handler: async (ctx, req) => {
-  const [planMode] = ctx.getPlanMode()
-  if (planMode) return { status: 503, body: 'session in plan mode' }
+  if (await ctx.isInPlanMode()) return { status: 503, body: 'session in plan mode' }
   // ... normal dispatch
 }
 ```
