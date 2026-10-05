@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.9.1](https://github.com/dsswift/ion/compare/desktop-v2.9.0...desktop-v2.9.1) (2026-10-05)
+
+### Bug Fixes
+
+* **desktop:** restore list markers in markdown prose ([00fcfd1](https://github.com/dsswift/ion/commit/00fcfd1ebb78ba971915c25f3c8ae5f559c15597))
+
 ## [2.9.0](https://github.com/dsswift/ion/compare/desktop-v2.8.2...desktop-v2.9.0) (2026-10-05)
 
 ### Features
