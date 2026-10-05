@@ -90,6 +90,13 @@ export interface RemoteWorktree {
   /** Operator-facing reason when `provisionState` is `failed`. */
   provisionError?: string
   /**
+   * True while the worktree is ephemeral: removed when the conversation it was
+   * cut for closes with nothing unlanded. Absent on an ordinary worktree.
+   */
+  ephemeral?: true
+  /** Why that close kept a once-ephemeral worktree as an ordinary one. */
+  ephemeralKeptReason?: string
+  /**
    * Set while a rebase/merge/cherry-pick is in progress in this worktree — the
    * state a conflicted sync leaves behind. The appraisal fields above are
    * conservative defaults in that state, not live answers, so clients must not

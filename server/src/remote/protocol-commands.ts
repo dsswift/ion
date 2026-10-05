@@ -29,6 +29,8 @@ export type RemoteCommand =
       clientCmdId?: string;
       useWorktree?: boolean;
       sourceBranch?: string;
+      /** With `useWorktree`: make it ephemeral. Absent means the project's `ephemeralDefault`. */
+      ephemeralWorktree?: boolean;
     }
   | { type: "desktop_git_branches"; directory: string }
   | {

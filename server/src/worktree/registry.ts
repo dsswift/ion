@@ -171,6 +171,19 @@ export interface RegistryEntry {
    * Set once this worktree's tab has been sealed to another environment.
    * See `registry-transfer.ts#setWorktreeTransferredTo`.
    */
+  /**
+   * Present while this worktree is ephemeral: cut for one conversation and
+   * removed when that conversation closes with nothing unlanded.
+   * `ownerTabId` names the conversation; it is absent until the creating path
+   * knows the id, and an ephemeral worktree with no owner is never removed.
+   * See `registry-ephemeral.ts`.
+   */
+  ephemeral?: { ownerTabId?: string };
+  /**
+   * Why closing its conversation kept an ephemeral worktree. Written when the
+   * close turns it into an ordinary worktree instead of removing it.
+   */
+  ephemeralKept?: { at: number; reason: string };
 }
 
 interface RegistryFile {
@@ -256,6 +269,8 @@ export function registerWorktree(args: {
    * plain-rebase fallback and backfills on its first success.
    */
   baseSha?: string;
+  /** Mark the worktree ephemeral. See the `ephemeral` field comment. */
+  ephemeral?: { ownerTabId?: string };
 }): boolean {
   const previous = loadRegistry().find(
     (e) => e.worktreePath === args.worktreePath,
@@ -283,6 +298,8 @@ export function registerWorktree(args: {
         : true,
     landedAt: previous?.landedAt,
     stage: previous?.stage,
+    ephemeral: args.ephemeral ?? previous?.ephemeral,
+    ephemeralKept: previous?.ephemeralKept,
     createdAt: Date.now(),
   });
   const saved = saveRegistry(entries);
@@ -295,6 +312,7 @@ export function registerWorktree(args: {
       base_sha: (args.baseSha ?? previous?.baseSha ?? "").slice(0, 7),
       retained_title: previous?.title ?? "",
       seeded_title: previous?.title ? "" : (seeded ?? ""),
+      ephemeral: !!(args.ephemeral ?? previous?.ephemeral),
     });
   }
   return saved;
@@ -537,51 +555,10 @@ export function migrateWorktreeStageOnPinAdvance(
   return saved;
 }
 
-/**
- * Every registered worktree's checkout path.
- *
- * Used by the git watcher's exemption list (git/watcher-exempt.ts): a worktree
- * lives under `~/.ion/worktrees/`, which the default ignore rule covers, and
- * without knowing these paths the watcher treats a real source checkout as
- * Ion's own data and never fires for it.
- *
- * Landed worktrees are included. The checkout stays on disk as a read-only
- * review record, and a reviewer reading its diff needs the panel to reflect
- * the file they are looking at.
- */
-export function registeredWorktreePaths(): string[] {
-  return loadRegistry().map((entry) => entry.worktreePath).filter(Boolean)
-}
-
-/**
- * Every distinct repo that has at least one registered worktree.
- *
- * The freshness poll (worktree/freshness-poll.ts) needs to know WHICH repos to
- * crawl without a renderer telling it, because the renderer telling it is
- * exactly the coupling that let the Inbox go stale: the only refresh trigger
- * was a component effect keyed on a token that almost never changed, so after
- * first mount nothing re-read git for hours.
- *
- * The registry is the right source because it is the durable record of what
- * Ion manages, it is already the thing the crawl joins against, and it is
- * readable from main with no window open. Entries whose `repoPath` was never
- * recorded (a hand-created worktree that was only ever titled — see
- * `setWorktreeTitle`, which writes `repoPath: ''`) are skipped: an empty path
- * is not a repo, and handing it to the crawl would spawn git in the wrong cwd.
- *
- * Landed worktrees still count. Their repo may hold other active worktrees,
- * and the landed row itself remains visible as a review record until retired.
- */
-export function registeredRepoPaths(): string[] {
-  const seen = new Set<string>()
-  for (const entry of loadRegistry()) {
-    if (entry.repoPath) seen.add(entry.repoPath)
-  }
-  return [...seen]
-}
-
 export {
   closeWorktreeTitleSeed,
+  registeredRepoPaths,
+  registeredWorktreePaths,
   lookupSourceBranch,
   lookupWorktreeBase,
   lookupWorktreeLandedAt,

@@ -156,6 +156,8 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     stage: w.stage,
     provisionState: w.provisionState,
     provisionError: w.provisionError,
+    ephemeral: w.ephemeral,
+    ephemeralKeptReason: w.ephemeralKeptReason,
     operationState: w.operationState,
     conflictedCount: w.conflictedPaths?.length,
     openConversations: openIn(w.worktreePath),

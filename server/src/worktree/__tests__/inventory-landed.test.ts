@@ -15,6 +15,9 @@ vi.mock('../provision-state', () => ({ getProvisionState: vi.fn(() => undefined)
 vi.mock('../../git/operation-state', () => ({
   probeOperationState: vi.fn(async () => ({ state: undefined, branch: undefined, conflictedPaths: [] })),
 }))
+vi.mock('../registry-ephemeral', () => ({
+  lookupEphemeralState: vi.fn(() => ({ ephemeral: false })),
+}))
 vi.mock('../registry', () => ({
   lookupSourceBranch: vi.fn(),
   lookupWorktreeTitle: vi.fn(),

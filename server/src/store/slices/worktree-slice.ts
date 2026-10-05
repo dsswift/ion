@@ -27,7 +27,7 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       return { ok: true, worktreePath: result.worktree.worktreePath }
     },
 
-    setupWorktree: async (tabId, sourceBranch, setAsDefault) => {
+    setupWorktree: async (tabId, sourceBranch, setAsDefault, ephemeral) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
       const repoPath = tab.workingDirectory
@@ -36,7 +36,7 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
         usePreferencesStore.getState().setWorktreeBranchDefault(repoPath, sourceBranch)
       }
 
-      const result = await gitWorktreeAdd(repoPath, sourceBranch)
+      const result = await gitWorktreeAdd(repoPath, sourceBranch, { ephemeral, ownerTabId: tabId })
       if (result.ok && result.worktree) {
         // Carry this conversation's name onto the worktree it was just cut for.
         seedWorktreeFromTab(tab, result.worktree.worktreePath)
@@ -73,11 +73,11 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
 
       const defaultBranch = usePreferencesStore.getState().worktreeBranchDefaults[tab.workingDirectory]
       if (defaultBranch) {
-        const result = await gitWorktreeAdd(tab.workingDirectory, defaultBranch)
+        const result = await gitWorktreeAdd(tab.workingDirectory, defaultBranch, { ownerTabId: tabId })
         if (result.ok && result.worktree) {
           rInfo('worktree', 'converting tab to a worktree', {
             tab_id: tabId.slice(0, 8), from: tab.workingDirectory, to: result.worktree.worktreePath,
-            branch: result.worktree.branchName, source_branch: defaultBranch,
+            branch: result.worktree.branchName, source_branch: defaultBranch, ephemeral: !!result.ephemeral,
           })
           seedWorktreeFromTab(tab, result.worktree.worktreePath)
           await setTabWorkingDirectory(set, get, tabId, result.worktree.worktreePath, {

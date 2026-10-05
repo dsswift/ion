@@ -171,7 +171,7 @@ describe('convertToWorktree — still converts when idle', () => {
 
     await state.convertToWorktree('tab-1')
 
-    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main')
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main', { ownerTabId: 'tab-1' })
     expect(mockIon.relocateTabSession).toHaveBeenCalledWith('tab-1', WORKTREE)
     expect(state.tabs[0].workingDirectory).toBe(WORKTREE)
   })
@@ -181,7 +181,7 @@ describe('convertToWorktree — still converts when idle', () => {
 
     await state.convertToWorktree('tab-1')
 
-    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main')
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main', { ownerTabId: 'tab-1' })
     expect(state.tabs[0].workingDirectory).toBe(WORKTREE)
   })
 

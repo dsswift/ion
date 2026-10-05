@@ -13,7 +13,8 @@
  * new code path.
  *
  * Worktree removal lives behind the explicit Retire verb
- * (`main/worktree/relocate.ts`), which appraises what would be lost first.
+ * (`server/src/worktree/relocate.ts`), which appraises what would be lost
+ * first. Closing an ephemeral worktree's conversation reuses that verb.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -55,12 +56,14 @@ describe('renderer never force-removes a worktree', () => {
     expect(offenders).toEqual([])
   })
 
-  // The preserved-worktree decision must be logged: an operator who closed a
-  // tab needs to be able to find where the worktree went from the logs alone.
-  it('logs that the worktree was preserved on close', () => {
+  // The close must be logged with its worktree, and an ephemeral worktree's
+  // fate logged by the release that decides it: an operator who closed a tab
+  // needs to be able to find where the worktree went from the logs alone.
+  it('logs the worktree on close and hands it to the ephemeral release', () => {
     const s = source('tab-slice.ts')
-    expect(s).toContain('worktree preserved')
+    expect(s).toContain('closing worktree conversation')
     expect(s).toMatch(/worktree_path/)
+    expect(s).toContain('releaseEphemeralWorktreeOnClose')
   })
 
   it('logs that the worktree was preserved on a base-directory change', () => {
@@ -71,6 +74,6 @@ describe('renderer never force-removes a worktree', () => {
   // Pins the reasoning, so a future reader does not "restore" the cleanup as an
   // apparent oversight.
   it('records why close no longer removes the worktree', () => {
-    expect(source('tab-slice.ts')).toMatch(/never removes its worktree/i)
+    expect(source('tab-slice.ts')).toMatch(/never removes an ordinary worktree/i)
   })
 })

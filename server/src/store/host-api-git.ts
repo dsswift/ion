@@ -22,6 +22,8 @@ import { startWorktreeProvisioning } from '../worktree/provision-start'
 import { announceWorktreeTitle } from '../worktree/title-announce'
 import { syncAllWorktrees } from '../worktree/sync-all'
 import { discardWorktree } from '../worktree/relocate'
+import { readEphemeralPolicy } from '../worktree/ephemeral-policy'
+import { keepEphemeralWorktree, setEphemeralWorktreeOwner } from '../worktree/registry-ephemeral'
 import {
   listWorkspaces,
   addMember,
@@ -51,8 +53,11 @@ import { dataDir } from '../paths'
 import { mkdirSync } from 'fs'
 import { deriveEnvironmentDeveloperSurfaces } from '@ion/shared/developer-surfaces'
 import { enterprisePolicyCache } from '../enterprise-policy-state'
-import { warn as _warn } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
 
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('host-api-git', msg, fields)
+}
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('host-api-git', msg, fields)
 }
@@ -128,7 +133,19 @@ export async function worktreesOffered(): Promise<boolean> {
   return deriveEnvironmentDeveloperSurfaces(enterprisePolicyCache.policy).worktrees
 }
 
-export async function gitWorktreeAdd(repoPath: string, sourceBranch: string) {
+/**
+ * What a worktree cut for a conversation asks for. `ephemeral` absent means the
+ * project's `ephemeralDefault`. A worktree cut with no conversation (the
+ * panel's New worktree) passes nothing and is never ephemeral, because nothing
+ * could ever close it.
+ */
+export interface WorktreeAddConversation {
+  ephemeral?: boolean
+  /** The conversation's id when it already exists; bind it later otherwise. */
+  ownerTabId?: string
+}
+
+export async function gitWorktreeAdd(repoPath: string, sourceBranch: string, conversation?: WorktreeAddConversation) {
   if (!(await worktreesOffered())) {
     warn('worktree add refused: worktrees are not offered on this server', { repo_path: repoPath, source_branch: sourceBranch })
     return { ok: false as const, error: 'worktrees are not available on this server' }
@@ -142,9 +159,20 @@ export async function gitWorktreeAdd(repoPath: string, sourceBranch: string) {
     await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
     let baseSha: string | undefined
     try { baseSha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim() } catch { /* best-effort */ }
-    registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, baseSha })
+    const ephemeral = conversation
+      ? conversation.ephemeral ?? readEphemeralPolicy(repoPath).ephemeralDefault
+      : false
+    registerWorktree({
+      worktreePath, repoPath, branchName, sourceBranch, baseSha,
+      ...(ephemeral ? { ephemeral: { ownerTabId: conversation?.ownerTabId } } : {}),
+    })
+    log('worktree added', {
+      repo_path: repoPath, worktree_path: worktreePath, source_branch: sourceBranch,
+      for_conversation: !!conversation, ephemeral, ephemeral_requested: conversation?.ephemeral ?? 'default',
+      owner_tab_id: conversation?.ownerTabId ?? '',
+    })
     void startWorktreeProvisioning(repoPath, worktreePath)
-    return { ok: true, worktree: { worktreePath, branchName, sourceBranch, repoPath } }
+    return { ok: true, worktree: { worktreePath, branchName, sourceBranch, repoPath }, ephemeral }
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
@@ -248,8 +276,20 @@ export function gitWorktreeLandAndRetire(args: { repoPath: string; worktreePath:
   return landAndRetireWorktree({ ...args, branchName: resolvedBranch })
 }
 
-export function gitWorktreeDiscard(args: { worktreePath: string; repoPath: string; branchName: string; sourceBranch: string }) {
+export function gitWorktreeDiscard(args: { worktreePath: string; repoPath: string; branchName: string; sourceBranch: string; onlyIfSafe?: boolean }) {
   return discardWorktree(args)
+}
+
+export function gitWorktreeSetEphemeralOwner(worktreePath: string, ownerTabId: string) {
+  return Promise.resolve({ ok: setEphemeralWorktreeOwner(worktreePath, ownerTabId) })
+}
+
+export function gitWorktreeKeepEphemeral(worktreePath: string, reason: string) {
+  return Promise.resolve({ ok: keepEphemeralWorktree(worktreePath, reason) })
+}
+
+export function gitWorktreeEphemeralPolicy(repoPath: string) {
+  return Promise.resolve(readEphemeralPolicy(repoPath))
 }
 
 export function gitWorktreeAppraise(worktreePath: string, sourceBranch: string) {

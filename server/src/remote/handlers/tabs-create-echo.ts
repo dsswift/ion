@@ -170,13 +170,20 @@ async function withPreservedActiveTab<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function createTabFromCommand(
-  cmd: { workingDirectory?: string; useWorktree?: boolean; sourceBranch?: string },
+  cmd: { workingDirectory?: string; useWorktree?: boolean; sourceBranch?: string; ephemeralWorktree?: boolean },
 ): Promise<string | null> {
   const dir = resolveCreateDir(cmd)
   if (!dir) return null
   try {
+    // createTabInDirectory with its duplicate check skipped, plus the
+    // ephemeral request that entry point has no argument for.
     const tabId = await withPreservedActiveTab(() =>
-      useSessionStore.getState().createTabInDirectory(dir, cmd.useWorktree, true, cmd.sourceBranch),
+      useSessionStore.getState().createConversationTab(dir, {
+        setActive: true,
+        useWorktree: cmd.useWorktree,
+        sourceBranch: cmd.sourceBranch,
+        ephemeralWorktree: cmd.ephemeralWorktree,
+      }),
     )
     return tabId || null
   } catch (err) {
@@ -239,6 +246,8 @@ export interface ClientCreateTab {
   profileId?: string
   useWorktree?: boolean
   sourceBranch?: string
+  /** With `useWorktree`: make it ephemeral. Absent means the project's `ephemeralDefault`. */
+  ephemeralWorktree?: boolean
   /** The client's own id for this create. A repeat of one already served answers the tab it made. */
   clientCmdId?: string
 }
@@ -266,7 +275,7 @@ export async function createTabForClient(cmd: ClientCreateTab): Promise<string |
       tabId = (await withPreservedActiveTab(() =>
         useSessionStore.getState().createConversationTab(dir, {
           profileId: cmd.profileId,
-          ...(cmd.useWorktree ? { useWorktree: true, sourceBranch: cmd.sourceBranch } : {}),
+          ...(cmd.useWorktree ? { useWorktree: true, sourceBranch: cmd.sourceBranch, ephemeralWorktree: cmd.ephemeralWorktree } : {}),
         }),
       )) || null
     } catch (err) {

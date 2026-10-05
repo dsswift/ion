@@ -12,6 +12,7 @@ import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-bu
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
+import { releaseEphemeralWorktreeOnClose } from './ephemeral-worktree-close'
 import { rInfo, rDebug, rWarn } from '../rendererLogger'
 import { isPersistedSettled } from '@ion/shared/tab-predicates'
 import { setWorktreeUncommittedAction, addSystemMessageAction } from './tab-slice-misc-actions'
@@ -94,7 +95,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // correctly on its own — routing it through the resolver means there is
       // ONE implementation of "where does a worktree conversation live" rather
       // than two that happen to agree.
-      const resolved = await resolveWorktreeForNewTab(startDir, useWorktree)
+      const resolved = await resolveWorktreeForNewTab(startDir, useWorktree, undefined, { ownerTabId: tabId })
 
       const tab: TabState = {
         ...makeLocalTab(),
@@ -232,7 +233,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const mainAlreadyClosed = origin === 'remote' || origin === 'remote-delete'
       if (!permanentDelete && !closingTab.isTerminalOnly && closingTab.conversationId && !emptyConversation) {
         rInfo('tab.close', 'non-empty conversation routed to settled history', { tab_id: tabId, origin })
-        void get().settleTab(tabId)
+        void get().settleTab(tabId).then(() => releaseEphemeralWorktreeOnClose(set, get, closingTab))
         return
       }
       if (!permanentDelete && !mainAlreadyClosed && emptyConversation) {
@@ -244,7 +245,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         void get().deleteConversationTab(tabId)
         return
       }
-      // Closing a conversation NEVER removes its worktree.
+      // Closing a conversation NEVER removes an ordinary worktree. An ephemeral
+      // one, cut for this conversation, goes through Retire's appraisal once the
+      // tab is gone (ephemeral-worktree-close.ts).
       //
       // This used to call gitWorktreeRemove(..., force = true), and the remove
       // handler then ran `git branch -D`. A stray Cmd+W therefore destroyed
@@ -259,11 +262,12 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // and the Worktrees list in the git panel offers a one-click path back
       // into it with a fresh conversation.
       if (closingTab?.worktree) {
-        rInfo('tabs', 'closing worktree conversation; worktree preserved', {
+        rInfo('tabs', 'closing worktree conversation', {
           tab_id: tabId,
           worktree_path: closingTab.worktree.worktreePath,
           branch: closingTab.worktree.branchName,
         })
+        void releaseEphemeralWorktreeOnClose(set, get, closingTab)
       }
       if (!mainAlreadyClosed) {
         closeTab(tabId).catch((err) => rWarn('tabs', 'closeTab IPC failed', { tab_id: tabId, error: String(err) }))

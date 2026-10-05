@@ -122,15 +122,19 @@ describe('PARITY_ACTIONS', () => {
 
   it('tabs.create answers the new tab and passes only what the client named', async () => {
     expect(await run('tabs.create', { workingDirectory: '/repo', profileId: 'example-profile', useWorktree: true, sourceBranch: 'main', clientCmdId: 'cmd-1' })).toEqual({ ok: true, value: { tabId: 't-new' } })
-    expect(deps.createTabForClient).toHaveBeenCalledWith({ workingDirectory: '/repo', profileId: 'example-profile', useWorktree: true, sourceBranch: 'main', clientCmdId: 'cmd-1' })
+    expect(deps.createTabForClient).toHaveBeenCalledWith({ workingDirectory: '/repo', profileId: 'example-profile', useWorktree: true, sourceBranch: 'main', ephemeralWorktree: undefined, clientCmdId: 'cmd-1' })
     await run('tabs.create', {})
-    expect(deps.createTabForClient).toHaveBeenLastCalledWith({ workingDirectory: undefined, profileId: undefined, useWorktree: undefined, sourceBranch: undefined, clientCmdId: undefined })
+    expect(deps.createTabForClient).toHaveBeenLastCalledWith({ workingDirectory: undefined, profileId: undefined, useWorktree: undefined, sourceBranch: undefined, ephemeralWorktree: undefined, clientCmdId: undefined })
+    await run('tabs.create', { workingDirectory: '/repo', useWorktree: true, ephemeralWorktree: true })
+    expect(deps.createTabForClient).toHaveBeenLastCalledWith(expect.objectContaining({ useWorktree: true, ephemeralWorktree: true }))
+    await run('tabs.create', { workingDirectory: '/repo', useWorktree: true, ephemeralWorktree: 'yes' })
+    expect(deps.createTabForClient).toHaveBeenLastCalledWith(expect.objectContaining({ ephemeralWorktree: undefined }))
     deps.createTabForClient.mockResolvedValueOnce(null)
     expect(await run('tabs.create', { workingDirectory: '/gone' })).toEqual({ ok: true, value: { tabId: null } })
     // Every other client renders the new conversation from the echo, and the
     // caller's confirm-or-resend loop waits for it, so a create made through
     // the action announces itself exactly as one made through the command.
-    expect(deps.notifyTabCreated.mock.calls).toEqual([['t-new', 'cmd-1'], ['t-new', undefined]])
+    expect(deps.notifyTabCreated.mock.calls).toEqual([['t-new', 'cmd-1'], ['t-new', undefined], ['t-new', undefined], ['t-new', undefined]])
     expect(await run('tabs.createTerminal', { workingDirectory: '/repo' })).toEqual({ ok: true, value: { tabId: 't-term' } })
     expect(deps.notifyTabCreated).toHaveBeenLastCalledWith('t-term', undefined)
     expect(deps.createTerminalTabForClient).toHaveBeenCalledWith({ workingDirectory: '/repo', clientCmdId: undefined })

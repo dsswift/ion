@@ -60,6 +60,12 @@ export interface DiscardOptions {
   worktreePath: string;
   branchName: string;
   sourceBranch: string;
+  /**
+   * Refuse instead of preserving and removing when the appraisal finds work
+   * that would be lost. The refusal sets `refusedUnlanded`. Checked inside the
+   * same mutation slot as the removal, so no work can appear in between.
+   */
+  onlyIfSafe?: boolean;
 }
 
 /**
@@ -79,6 +85,7 @@ export async function discardWorktree(
       worktree_path: opts.worktreePath,
       branch: opts.branchName,
       source_branch: opts.sourceBranch,
+      only_if_safe: !!opts.onlyIfSafe,
     });
 
     const appraisal = await appraiseWorktree(
@@ -95,6 +102,19 @@ export async function discardWorktree(
         error:
           appraisal.reason ??
           "Could not determine what this worktree contains.",
+      };
+    }
+
+    if (!appraisal.safeToDiscard && opts.onlyIfSafe) {
+      log("discard: refused, worktree holds unlanded work", {
+        worktree_path: opts.worktreePath,
+        uncommitted: appraisal.uncommittedPaths.length,
+        unlanded: appraisal.unlandedCommitCount,
+      });
+      return {
+        ok: false,
+        refusedUnlanded: true,
+        error: appraisal.reason ?? "This worktree holds work that has not landed.",
       };
     }
 

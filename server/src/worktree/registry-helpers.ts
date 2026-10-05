@@ -54,6 +54,7 @@ export function lookupWorktreeRegistration(worktreePath: string): {
   title: string | null;
   awaitingFirstPrompt: boolean;
   landedAt?: number;
+  ephemeral?: { ownerTabId?: string };
 } | null {
   const entry = loadRegistry().find(
     (candidate) => candidate.worktreePath === worktreePath,
@@ -66,6 +67,7 @@ export function lookupWorktreeRegistration(worktreePath: string): {
     title: entry.title ?? null,
     awaitingFirstPrompt: entry.awaitingFirstPrompt === true,
     landedAt: entry.landedAt,
+    ephemeral: entry.ephemeral,
   };
 }
 
@@ -169,4 +171,47 @@ export function setWorktreeBase(
     });
   }
   return saved;
+}
+
+/**
+ * Every registered worktree's checkout path.
+ *
+ * Used by the git watcher's exemption list (git/watcher-exempt.ts): a worktree
+ * lives under `~/.ion/worktrees/`, which the default ignore rule covers, and
+ * without knowing these paths the watcher treats a real source checkout as
+ * Ion's own data and never fires for it.
+ *
+ * Landed worktrees are included. The checkout stays on disk as a read-only
+ * review record, and a reviewer reading its diff needs the panel to reflect
+ * the file they are looking at.
+ */
+export function registeredWorktreePaths(): string[] {
+  return loadRegistry().map((entry) => entry.worktreePath).filter(Boolean)
+}
+
+/**
+ * Every distinct repo that has at least one registered worktree.
+ *
+ * The freshness poll (worktree/freshness-poll.ts) needs to know WHICH repos to
+ * crawl without a renderer telling it, because the renderer telling it is
+ * exactly the coupling that let the Inbox go stale: the only refresh trigger
+ * was a component effect keyed on a token that almost never changed, so after
+ * first mount nothing re-read git for hours.
+ *
+ * The registry is the right source because it is the durable record of what
+ * Ion manages, it is already the thing the crawl joins against, and it is
+ * readable from main with no window open. Entries whose `repoPath` was never
+ * recorded (a hand-created worktree that was only ever titled — see
+ * `setWorktreeTitle`, which writes `repoPath: ''`) are skipped: an empty path
+ * is not a repo, and handing it to the crawl would spawn git in the wrong cwd.
+ *
+ * Landed worktrees still count. Their repo may hold other active worktrees,
+ * and the landed row itself remains visible as a review record until retired.
+ */
+export function registeredRepoPaths(): string[] {
+  const seen = new Set<string>()
+  for (const entry of loadRegistry()) {
+    if (entry.repoPath) seen.add(entry.repoPath)
+  }
+  return [...seen]
 }
