@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.8.0](https://github.com/dsswift/ion/compare/ios-v2.7.2...ios-v2.8.0) (2026-10-05)
+
+### Features
+
+* **ios:** track provider accounts and show their quota in the fleet ([1f8b33a](https://github.com/dsswift/ion/commit/1f8b33a0028855e129397b5dce329568e6f7ed63))
+* **ios:** run the fleet on studio's pairings and unify its page ([3dfafed](https://github.com/dsswift/ion/commit/3dfafed179a7a6088a17c4beda86cdd25c85c165))
+* **ios:** place and queue conversations by provider quota ([80ee197](https://github.com/dsswift/ion/commit/80ee1971fdf7c3ff018fc86ddb577f1e2e60b24c))
+* **ios:** switch, sign in, and remove provider accounts from the fleet ([1af7b6f](https://github.com/dsswift/ion/commit/1af7b6fcfcc92715ed3e7b66f6ccdef5a471b798))
+* **ios:** add the fleet hub ([54c51e9](https://github.com/dsswift/ion/commit/54c51e9d756a58368d8e45c49c8b30d6e059f4c7))
+
 ## [2.7.2](https://github.com/dsswift/ion/compare/ios-v2.7.1...ios-v2.7.2) (2026-10-04)
 
 ## [2.7.1](https://github.com/dsswift/ion/compare/ios-v2.7.0...ios-v2.7.1) (2026-10-03)

@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.9.0](https://github.com/dsswift/ion/compare/desktop-v2.8.2...desktop-v2.9.0) (2026-10-05)
+
+### Features
+
+* **desktop:** track provider accounts and show their quota in the fleet ([ca71984](https://github.com/dsswift/ion/commit/ca71984554e7955cc33a767fd9dbef72c913b74e))
+* **desktop:** run the fleet on studio's pairings and unify its page ([b84cb1a](https://github.com/dsswift/ion/commit/b84cb1a54b910348ad387432eb40e4d58a62e9be))
+* **desktop:** place and queue conversations by provider quota ([037523c](https://github.com/dsswift/ion/commit/037523c0b6846593234daceff50b0822be1764d8))
+* **desktop:** switch, sign in, and remove provider accounts from the fleet ([daab3c6](https://github.com/dsswift/ion/commit/daab3c644112512953dae0796a75aba0f8768d38))
+* **desktop:** deploy releases and builds across fleet hosts ([808b10e](https://github.com/dsswift/ion/commit/808b10e19bed14341fcd46b9e1e06212820aabc0))
+* **desktop:** add the fleet hub ([01c4323](https://github.com/dsswift/ion/commit/01c432331755b86706304cd73643118060116e1d))
+
 ## [2.8.2](https://github.com/dsswift/ion/compare/desktop-v2.8.1...desktop-v2.8.2) (2026-10-04)
 
 ## [2.8.1](https://github.com/dsswift/ion/compare/desktop-v2.8.0...desktop-v2.8.1) (2026-10-03)

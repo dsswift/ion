@@ -8,6 +8,21 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.10.0](https://github.com/dsswift/ion/compare/server-v1.9.2...server-v1.10.0) (2026-10-05)
+
+### Features
+
+* **server:** track provider accounts and show their quota in the fleet ([8973bac](https://github.com/dsswift/ion/commit/8973bac6bc780358482013b1dedfdc71a9df2114))
+* **server:** run the fleet on studio's pairings and unify its page ([159fbe1](https://github.com/dsswift/ion/commit/159fbe1fdf1ad36c595dab35d79d788e054bc058))
+* **server:** place and queue conversations by provider quota ([9c5b46f](https://github.com/dsswift/ion/commit/9c5b46f1ce9a0be2e452801503ebbbef1cec1d18))
+* **server:** switch, sign in, and remove provider accounts from the fleet ([6c97e51](https://github.com/dsswift/ion/commit/6c97e51f3d3d10d30cfd2918ec6bda830a009ec0))
+* **server:** deploy releases and builds across fleet hosts ([e79bfcb](https://github.com/dsswift/ion/commit/e79bfcb93be71c4a88d1f0ee10ffac45d10a3247))
+* **server:** add the fleet hub ([f163603](https://github.com/dsswift/ion/commit/f16360331177a7b4cf5ca39ef5e11cf8860a55d4))
+
+### Bug Fixes
+
+* **server:** keep tab saves flowing while conversations stream ([01e4585](https://github.com/dsswift/ion/commit/01e4585288cfa12da2c097d84c6700f0b46f1f93))
+
 ## [1.9.2](https://github.com/dsswift/ion/compare/server-v1.9.1...server-v1.9.2) (2026-10-03)
 
 ### Bug Fixes

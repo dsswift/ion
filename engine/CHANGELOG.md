@@ -18,6 +18,15 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.98.0](https://github.com/dsswift/ion/compare/engine-v1.97.5...engine-v1.98.0) (2026-10-05)
+
+### Features
+
+* **engine:** track provider accounts and show their quota in the fleet ([23e6944](https://github.com/dsswift/ion/commit/23e6944a13ea12f6005ee3b54297a4bdf8431234))
+* **engine:** run the fleet on studio's pairings and unify its page ([ee0cdb4](https://github.com/dsswift/ion/commit/ee0cdb49277940e17eb22c85220dc90d07cbce8a))
+* **engine:** switch, sign in, and remove provider accounts from the fleet ([3b9e884](https://github.com/dsswift/ion/commit/3b9e8849c0b5aba9540cbd8ee378486124f397af))
+* **engine:** deploy releases and builds across fleet hosts ([c35622c](https://github.com/dsswift/ion/commit/c35622cbd7576e39fecc108290b6283196f9a3bd))
+
 ## [1.97.5](https://github.com/dsswift/ion/compare/engine-v1.97.4...engine-v1.97.5) (2026-10-04)
 
 ### Bug Fixes

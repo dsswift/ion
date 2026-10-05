@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.10.0](https://github.com/dsswift/ion/compare/relay-v1.9.1...relay-v1.10.0) (2026-10-05)
+
+### Features
+
+* **relay:** run the fleet on studio's pairings and unify its page ([7f0850b](https://github.com/dsswift/ion/commit/7f0850b5b462f2b3d79760cbe5d669af84f1fd80))
+
 ## [1.9.1](https://github.com/dsswift/ion/compare/relay-v1.9.0...relay-v1.9.1) (2026-10-04)
 
 ### Bug Fixes
