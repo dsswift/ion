@@ -64,6 +64,7 @@ const mocks = {
   stalenessRepoPaths: [] as string[],
   sourceTipRepoPaths: [] as string[],
   branchDefaults: {} as Record<string, string>,
+  ephemeralDefaults: {} as Record<string, boolean>,
 }
 
 async function loadBuilder() {
@@ -107,6 +108,12 @@ async function loadBuilder() {
   vi.doMock('../../../persistence/settings-store', () => ({
     readWorktreeBranchDefault: vi.fn((repoPath: string) => mocks.branchDefaults[repoPath]),
   }))
+  vi.doMock('../../../worktree/worktree-choice', () => ({
+    worktreeEphemeralDefault: vi.fn((repoPath: string) => ({
+      ephemeral: mocks.ephemeralDefaults[repoPath] ?? false,
+      source: repoPath in mocks.ephemeralDefaults ? 'project' : 'manifest',
+    })),
+  }))
   const mod = await import('../worktree')
   return mod
 }
@@ -119,6 +126,7 @@ beforeEach(() => {
   mocks.stalenessRepoPaths = []
   mocks.sourceTipRepoPaths = []
   mocks.branchDefaults = {}
+  mocks.ephemeralDefaults = {}
   remoteWorktreeStates.clear()
   sendRemoteEvent.mockClear()
 })
@@ -226,6 +234,13 @@ describe('buildWorktreeState — worktrees', () => {
     expect((await build(REPO)).defaultSourceBranch).toBeUndefined()
   })
 
+  it('projects the ephemeral default under the CANONICAL source repo so iOS can preselect it', async () => {
+    mocks.ephemeralDefaults = { [REPO]: true }
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    expect((await build(REPO_ALIAS)).ephemeralDefault).toBe(true)
+  })
+
   it('caches and pushes one canonical state after alias refreshes', async () => {
     remoteWorktreeStates.set('/stale-worktree-alias', {
       repoPath: REPO,
@@ -241,7 +256,7 @@ describe('buildWorktreeState — worktrees', () => {
     expect(remoteWorktreeStates.get(REPO)?.repoPath).toBe(REPO)
     expect(sendRemoteEvent).toHaveBeenCalledWith({
       type: 'desktop_worktree_state',
-      states: [{ repoPath: REPO, worktrees: [], benches: [] }],
+      states: [{ repoPath: REPO, worktrees: [], benches: [], ephemeralDefault: false }],
     })
   })
 
