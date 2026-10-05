@@ -23,6 +23,9 @@ func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, push
 	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
 		type capabilitiesBlock struct {
 			MobileForwardAck bool `json:"mobileForwardAck"`
+			// MultiClient: a server that joins with multi=1 keeps every
+			// client of its pairing on the channel at once.
+			MultiClient bool `json:"multiClient"`
 		}
 		type authConfigResponse struct {
 			OIDC          bool   `json:"oidc"`
@@ -39,7 +42,7 @@ func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, push
 		}
 		resp := authConfigResponse{
 			PSK:          len(auth.apiKey) > 0,
-			Capabilities: capabilitiesBlock{MobileForwardAck: true},
+			Capabilities: capabilitiesBlock{MobileForwardAck: true, MultiClient: true},
 		}
 		if auth.oidc != nil {
 			resp.OIDC = true

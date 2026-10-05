@@ -12,16 +12,19 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Channel holds the two sides of a relay channel.
+// Channel holds the two sides of a relay channel: the one server (ion) and
+// the clients (mobile) of its pairing.
 type Channel struct {
-	mu     sync.Mutex
-	ion    *websocket.Conn
-	mobile *websocket.Conn
-	// mobileOwnerKey is the identity the mobile peer joined with, for an
-	// OIDC join validated against the relay's own issuers. Empty for a PSK
-	// join and for a server-announced-trust join, which the channel's own
-	// server already vouched for. See Hub.EvictForeignMobile.
-	mobileOwnerKey string
+	mu  sync.Mutex
+	ion *websocket.Conn
+	// multi is whether the server on the channel joined as multi-client. It
+	// then keeps one connection per client: the relay admits several
+	// clients, names each to the server, and routes each server frame to
+	// the client it names. Otherwise the channel holds one client and a
+	// second join replaces the first.
+	multi bool
+	// mobiles are the clients on the channel, oldest first.
+	mobiles []*mobilePeer
 }
 
 // Hub manages all active channels.
@@ -83,7 +86,7 @@ func (h *Hub) removeIfEmpty(id string) {
 		return
 	}
 	ch.mu.Lock()
-	empty := ch.ion == nil && ch.mobile == nil
+	empty := ch.ion == nil && len(ch.mobiles) == 0
 	ch.mu.Unlock()
 	if empty {
 		delete(h.channels, id)
@@ -98,8 +101,8 @@ func (h *Hub) CloseAll() {
 		if ch.ion != nil {
 			ch.ion.CloseNow() //nolint:errcheck // connection teardown
 		}
-		if ch.mobile != nil {
-			ch.mobile.CloseNow() //nolint:errcheck // connection teardown
+		for _, p := range ch.mobiles {
+			p.conn.CloseNow() //nolint:errcheck // connection teardown
 		}
 		ch.mu.Unlock()
 	}
@@ -128,17 +131,22 @@ func (h *Hub) EvictForeignMobile(channelID, owner string) bool {
 	}
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	if ch.mobile == nil || ch.mobileOwnerKey == "" || ch.mobileOwnerKey == owner {
-		return false
+	kept := ch.mobiles[:0]
+	evicted := false
+	for _, p := range ch.mobiles {
+		if p.ownerKey == "" || p.ownerKey == owner {
+			kept = append(kept, p)
+			continue
+		}
+		logger.Warn("oidc: closing a peer that is not the channel's owner",
+			"tag", "relay.channel.evicted", "channel_id", channelID, "owner", owner)
+		// CloseNow, not Close: a graceful close waits for the peer's close frame,
+		// and this runs inside the claiming server's own upgrade request.
+		p.conn.CloseNow() //nolint:errcheck // closing an evicted connection
+		evicted = true
 	}
-	logger.Warn("oidc: closing a peer that is not the channel's owner",
-		"tag", "relay.channel.evicted", "channel_id", channelID, "owner", owner)
-	// CloseNow, not Close: a graceful close waits for the peer's close frame,
-	// and this runs inside the claiming server's own upgrade request.
-	ch.mobile.CloseNow() //nolint:errcheck // closing an evicted connection
-	ch.mobile = nil
-	ch.mobileOwnerKey = ""
-	return true
+	ch.mobiles = kept
+	return evicted
 }
 
 // ChannelStatus returns whether the ion and mobile roles are connected for a channel.
@@ -151,7 +159,7 @@ func (h *Hub) ChannelStatus(channelID string) (ionConnected, mobileConnected boo
 	}
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	return ch.ion != nil, ch.mobile != nil
+	return ch.ion != nil, len(ch.mobiles) > 0
 }
 
 // controlMessage is a relay-originated control frame.
@@ -272,29 +280,50 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 	ch.mu.Lock()
 
-	// Store connection by role, closing any previous connection for the same role.
+	// Store the connection by role. A server replaces the server before it.
+	// A client joins beside the others when the server is multi-client, and
+	// replaces the one before it otherwise.
+	var self *mobilePeer
 	switch role {
 	case "ion":
 		if ch.ion != nil {
 			ch.ion.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.ion = conn
+		ch.multi = r.URL.Query().Get("multi") == "1"
+		if !ch.multi && len(ch.mobiles) > 1 {
+			// This server keeps one client: the newest stays.
+			connLog.Info("server is not multi-client; keeping only the newest client",
+				"tag", "relay.connect", "closed", len(ch.mobiles)-1)
+			ch.closeMobilesLocked(ch.mobiles[len(ch.mobiles)-1])
+		}
+		// Tell every client the server is here, and a multi-client server
+		// which clients are.
+		for _, p := range ch.mobiles {
+			sendControl(p.conn, "relay:peer-reconnected", h.WriteTimeout, connLog)
+			if ch.multi {
+				sendControlPayload(conn, peerControl{Type: controlPeerJoined, Peer: p.id}, h.WriteTimeout, connLog)
+			}
+		}
 	case "mobile":
-		if ch.mobile != nil {
-			ch.mobile.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
+		if !ch.multi {
+			ch.closeMobilesLocked(nil)
 		}
-		ch.mobile = conn
-		ch.mobileOwnerKey = ""
+		self = &mobilePeer{id: newPeerID(), conn: conn}
 		if identity != nil {
-			ch.mobileOwnerKey = identity.OwnerKey
+			self.ownerKey = identity.OwnerKey
+		}
+		ch.mobiles = append(ch.mobiles, self)
+		connLog = connLog.With("peer", self.id)
+		if ch.ion != nil {
+			if ch.multi {
+				sendControlPayload(ch.ion, peerControl{Type: controlPeerJoined, Peer: self.id}, h.WriteTimeout, connLog)
+			} else {
+				sendControl(ch.ion, "relay:peer-reconnected", h.WriteTimeout, connLog)
+			}
 		}
 	}
-
-	// Notify peer that the other side connected.
-	peer := ch.getPeerLocked(role)
-	if peer != nil {
-		sendControl(peer, "relay:peer-reconnected", h.WriteTimeout, connLog)
-	}
+	multi := ch.multi
 
 	ch.mu.Unlock()
 
@@ -303,11 +332,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// a new mobile relay socket would otherwise remain silent until its deadline.
 	// Do not send this to the ion role: existing desktop clients treat control
 	// frames as peer-state signals and do not need an upgrade confirmation.
-	if role == "mobile" {
-		sendControl(conn, "relay:connected", h.WriteTimeout, connLog)
+	if self != nil {
+		sendControlPayload(conn, peerControl{Type: "relay:connected", Peer: self.id}, h.WriteTimeout, connLog)
 	}
 
-	connLog.Info("client connected", "tag", "relay.connect")
+	connLog.Info("client connected", "tag", "relay.connect", "multi", multi)
 
 	// Start keepalive pings. Essential for public internet deployments where
 	// NAT timeouts, load balancer idle limits, and mobile network switches
@@ -372,8 +401,35 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			}
 		}
 
+		// Who the frame goes to. A client's frame goes to the server,
+		// stamped with the client's id when the server is multi-client. A
+		// server's frame goes to the client it names, or to every client
+		// when it names none.
 		ch.mu.Lock()
-		peer := ch.getPeerLocked(role)
+		var peers []*websocket.Conn
+		named := false
+		if role == "mobile" {
+			if ch.ion != nil {
+				peers = append(peers, ch.ion)
+			}
+			if ch.multi && self != nil {
+				if stamped, ok := stampPeer(data, self.id); ok {
+					data = stamped
+				} else {
+					connLog.Warn("client frame is not a JSON object; forwarded unstamped", "tag", "relay.forward_error")
+				}
+			}
+		} else {
+			var to peerEnvelope
+			if ch.multi && json.Unmarshal(data, &to) == nil && to.Peer != "" {
+				named = true
+				if p := ch.mobileLocked(to.Peer); p != nil {
+					peers = append(peers, p.conn)
+				}
+			} else {
+				peers = ch.mobileConnsLocked()
+			}
+		}
 		ch.mu.Unlock()
 
 		// One read of the outer envelope serves both the mobile ACK and the
@@ -384,12 +440,18 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			envOK = json.Unmarshal(data, &env) == nil
 		}
 
-		if peer != nil {
-			writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
-			writeErr := peer.Write(writeCtx, msgType, data)
-			writeCancel()
-			if writeErr != nil {
-				connLog.Warn("forward error", "tag", "relay.forward_error", "err", writeErr)
+		if len(peers) > 0 {
+			var writeErr error
+			for _, peer := range peers {
+				writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
+				err := peer.Write(writeCtx, msgType, data)
+				writeCancel()
+				if err != nil {
+					connLog.Warn("forward error", "tag", "relay.forward_error", "err", err)
+					if writeErr == nil {
+						writeErr = err
+					}
+				}
 			}
 
 			if envOK && env.Traceparent != "" && h.otlp.tracing() {
@@ -451,6 +513,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 					Reason: "no_peer",
 				}, h.WriteTimeout, connLog)
 			}
+		} else if named {
+			// The client this frame names has left; the server hears so in
+			// its own relay:peer-left.
+			connLog.Debug("frame for a client that left; dropped", "tag", "relay.forward_error")
 		} else if role == "ion" && pusher != nil {
 			// Mobile peer not connected; check if this message requests a push.
 			var msg relayMessage
@@ -538,19 +604,26 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		}
 	}
 
-	// Cleanup on disconnect.
+	// Cleanup on disconnect. A connection that was replaced is already off
+	// the channel, and its leaving is not news to the other side.
 	ch.mu.Lock()
 	switch role {
 	case "ion":
 		if ch.ion == conn {
 			ch.ion = nil
+			for _, p := range ch.mobiles {
+				sendControl(p.conn, "relay:peer-disconnected", h.WriteTimeout, connLog)
+			}
 		}
 	case "mobile":
-		if ch.mobile == conn {
-			ch.mobile = nil
+		if ch.removeMobileLocked(conn) && ch.ion != nil {
+			if ch.multi {
+				sendControlPayload(ch.ion, peerControl{Type: controlPeerLeft, Peer: self.id}, h.WriteTimeout, connLog)
+			} else {
+				sendControl(ch.ion, "relay:peer-disconnected", h.WriteTimeout, connLog)
+			}
 		}
 	}
-	peer = ch.getPeerLocked(role)
 	ch.mu.Unlock()
 
 	// Server-announced trust (manifest C7) is scoped to the ion peer that
@@ -562,21 +635,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		h.trust.Clear(channelID)
 	}
 
-	if peer != nil {
-		sendControl(peer, "relay:peer-disconnected", h.WriteTimeout, connLog)
-	}
-
 	connLog.Info("client disconnected", "tag", "relay.disconnect")
 	h.removeIfEmpty(channelID)
 	close(done)
 	conn.CloseNow() //nolint:errcheck // connection teardown
-}
-
-func (ch *Channel) getPeerLocked(myRole string) *websocket.Conn {
-	if myRole == "ion" {
-		return ch.mobile
-	}
-	return ch.ion
 }
 
 // ping sends WebSocket pings at the configured interval to detect dead connections.
