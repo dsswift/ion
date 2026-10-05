@@ -466,6 +466,7 @@ function buildContext(ctxData: any): IonContext {
         includeGlobal: opts?.includeGlobal,
         includeProject: opts?.includeProject,
         claudeCompat: opts?.claudeCompat,
+        includeMaxDepth: opts?.includeMaxDepth,
       });
       return Array.isArray(result) ? (result as DiscoveredContext[]) : [];
     },
@@ -1087,17 +1088,25 @@ function buildContext(ctxData: any): IonContext {
     ): Promise<void> {
       await request("ext/set_run_recovery", config);
     },
-    async enterPlanMode(): Promise<void> {
-      await request("ext/set_plan_mode", {
+    async enterPlanMode(): Promise<boolean> {
+      const r = (await request("ext/set_plan_mode", {
         enabled: true,
         source: "extension",
-      });
+      })) as import("./types").PlanModeOutcome | undefined;
+      return r?.allowed !== false;
     },
-    async exitPlanMode(): Promise<void> {
-      await request("ext/set_plan_mode", {
+    async exitPlanMode(): Promise<boolean> {
+      const r = (await request("ext/set_plan_mode", {
         enabled: false,
         source: "extension",
-      });
+      })) as import("./types").PlanModeOutcome | undefined;
+      return r?.allowed !== false;
+    },
+    async isInPlanMode(): Promise<boolean> {
+      const r = (await request("ext/get_plan_mode", {})) as
+        | import("./types").PlanModeState
+        | undefined;
+      return r?.enabled === true;
     },
     async getPlanMode(): Promise<import("./types").PlanModeState> {
       const r = await request("ext/get_plan_mode", {});

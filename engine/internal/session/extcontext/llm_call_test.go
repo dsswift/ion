@@ -108,7 +108,9 @@ func (a *llmCallTestAccessor) SetSessionMemory(_ string)                        
 func (a *llmCallTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *llmCallTestAccessor) SetPlanMode(_ bool, _ string)                                   {}
+func (a *llmCallTestAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *llmCallTestAccessor) GetPlanModeState() (bool, string)                               { return false, "" }
 func (a *llmCallTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string       { return "" }
 func (a *llmCallTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {}

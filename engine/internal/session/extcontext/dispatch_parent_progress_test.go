@@ -105,7 +105,9 @@ func (a *bumpCountingAccessor) SetSessionMemory(_ string)                       
 func (a *bumpCountingAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *bumpCountingAccessor) SetPlanMode(_ bool, _ string)     {}
+func (a *bumpCountingAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *bumpCountingAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *bumpCountingAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string {
 	return ""

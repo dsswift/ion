@@ -373,6 +373,7 @@ func enterPlanModeToolHandler(m *Manager, key string) backend.ToolHandler {
 				Enabled:      true,
 				PlanFilePath: planFilePath,
 				PlanSlug:     types.PlanSlugFromPath(planFilePath),
+				Source:       backend.PlanModeSourceModelTool,
 			},
 		}, 0))
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "EnterPlanMode allowed for claude-code model", map[string]any{"key": key, "plan_file_path": planFilePath})

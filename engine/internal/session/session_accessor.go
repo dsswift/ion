@@ -556,14 +556,17 @@ func (a *sessionAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow
 	return translateToEngineEvent(ev, contextWindow)
 }
 
-// SetPlanMode imperatively flips plan mode for this session. Used by
-// extensions via ctx.SetPlanMode. Delegates to Manager.SetPlanMode so all
-// the planFilePath-preservation and hasExitedPlanMode logic applies.
-func (a *sessionAccessor) SetPlanMode(enabled bool, source string) {
-	// Extensions do not supply a plan-file path; pass "" so the manager's
-	// restore branch is a no-op and existing planFilePath-preservation logic
-	// applies unchanged.
-	a.m.SetPlanMode(a.key, enabled, nil, source, "")
+// SetPlanMode routes an extension's plan-mode request through the shared
+// transition, so the hooks fire with source "extension", a veto holds, and a
+// live run switches mid-turn. Extensions do not supply a plan-file path, so
+// existing planFilePath preservation applies unchanged.
+func (a *sessionAccessor) SetPlanMode(enabled bool, source string) extension.PlanModeOutcome {
+	res := a.m.TransitionPlanMode(a.key, PlanModeTransitionRequest{
+		Enabled:      enabled,
+		Source:       backend.PlanModeSourceExtension,
+		ClientSource: source,
+	})
+	return extension.PlanModeOutcome{Allowed: res.Allowed, Changed: res.Changed, Reason: res.Reason}
 }
 
 func (a *sessionAccessor) SetRunRecovery(config *types.RunRecoveryConfig) {

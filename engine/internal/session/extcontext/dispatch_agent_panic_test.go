@@ -94,7 +94,9 @@ func (p *panicTestAccessor) SetSessionMemory(_ string)                          
 func (p *panicTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (p *panicTestAccessor) SetPlanMode(_ bool, _ string)     {}
+func (p *panicTestAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (p *panicTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (p *panicTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string {
 	return ""

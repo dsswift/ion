@@ -184,7 +184,9 @@ func (a *convIDRecordingAccessor) SetSessionMemory(_ string)                    
 func (a *convIDRecordingAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *convIDRecordingAccessor) SetPlanMode(_ bool, _ string)                  {}
+func (a *convIDRecordingAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *convIDRecordingAccessor) GetPlanModeState() (bool, string)              { return false, "" }
 func (a *convIDRecordingAccessor) ResourceBroker() *resource.Broker              { return nil }
 func (a *convIDRecordingAccessor) GlobalResourceBroker() *resource.Broker        { return nil }

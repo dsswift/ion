@@ -243,6 +243,15 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			PlanModeEnabled:  e.Enabled,
 			PlanModeFilePath: e.PlanFilePath,
 			PlanModeSlug:     slug,
+			PlanModeSource:   e.Source,
+		}
+
+	case *types.PlanModeChangeRejectedEvent:
+		return types.EngineEvent{
+			Type:                     "engine_plan_mode_change_rejected",
+			PlanModeRequestedEnabled: e.RequestedEnabled,
+			PlanModeSource:           e.Source,
+			PlanModeRejectReason:     e.Reason,
 		}
 
 	case *types.NativeCompactionEvent:

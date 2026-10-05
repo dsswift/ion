@@ -89,7 +89,9 @@ func (a *agentDiscoveryTestAccessor) SetSessionMemory(_ string) {}
 func (a *agentDiscoveryTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *agentDiscoveryTestAccessor) SetPlanMode(_ bool, _ string)     {}
+func (a *agentDiscoveryTestAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *agentDiscoveryTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *agentDiscoveryTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string {
 	return ""

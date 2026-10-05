@@ -84,6 +84,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &PermissionRequestEvent{}
 	case EventPlanModeChanged:
 		target = &PlanModeChangedEvent{}
+	case EventPlanModeChangeRejected:
+		target = &PlanModeChangeRejectedEvent{}
 	case EventPlanProposal:
 		target = &PlanProposalEvent{}
 	case EventPlanModeAutoExit:
@@ -450,6 +452,11 @@ type PlanModeChangedEvent struct {
 	// the raw hex string, so consumers should treat it as opaque.
 	// Empty whenever PlanFilePath is empty.
 	PlanSlug string `json:"planSlug,omitempty"`
+	// Source names what caused the change: "model_tool" (the model called
+	// EnterPlanMode), "wire" (a client sent set_plan_mode), or "extension"
+	// (an extension called ctx.enterPlanMode / exitPlanMode). Empty when the
+	// event restates existing state, such as a run that starts in plan mode.
+	Source string `json:"source,omitempty"`
 }
 
 func (PlanModeChangedEvent) eventType() string { return EventPlanModeChanged }
