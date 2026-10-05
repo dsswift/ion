@@ -20,6 +20,8 @@ import { saveStudioTerminals } from './persistence/studio-terminal-persistence'
 import { terminalManager } from './terminal/terminal-manager-instance'
 import { stopTabSnapshotPolling } from './remote/snapshot-polling'
 import { stopWorktreeFreshnessPoll } from './worktree/freshness-poll'
+import { stopAccountPoll } from './fleet/account-poll'
+import { announceHostInstallRestart } from './environment/host-install'
 import { stopGitWatcherBridge } from './remote/git-watcher-bridge'
 import { stopStructuralSnapshotFeed } from './remote/structural-poll'
 import { stopWatchdog } from './watchdog'
@@ -90,6 +92,8 @@ export function runServerShutdown(request: ShutdownRequest): Promise<void> {
   }
   inFlight = (async () => {
     log('shutdown starting', { reason: request.reason, stop_sessions: request.stopSessions })
+    // First, while the client and hub sockets are still open.
+    step('announce a host install restart', announceHostInstallRestart)
     // Persist first: tabs.json carries every open conversation, and the
     // surface-terminal scrollback is what a relaunch restores.
     step('flush tabs', forceFlushTabs)
@@ -98,6 +102,7 @@ export function runServerShutdown(request: ShutdownRequest): Promise<void> {
     step('stop snapshot polling', stopTabSnapshotPolling)
     step('stop snapshot feed', stopStructuralSnapshotFeed)
     step('stop worktree freshness poll', stopWorktreeFreshnessPoll)
+    step('stop account poll', stopAccountPoll)
     step('stop git watcher bridge', stopGitWatcherBridge)
     step('stop watchdog', stopWatchdog)
     step('stop wire latency', stopWireLatency)

@@ -6,11 +6,12 @@
  * consults it after those.
  *
  * Scopes: reading facts needs `conversations:read`; changing the host's
- * projects or git identity needs `git:write`; restarting, updating, log
- * access, and purging need `admin`, because they act on the server itself.
+ * projects or git identity needs `git:write`; restarting, updating,
+ * installing a sent build, log access, and purging need `admin`, because
+ * they act on the server itself.
  */
-import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { createHash } from 'crypto'
+import { createReadStream, rmSync } from 'fs'
 import { join } from 'path'
 import type { Scope } from '@ion/shared/studio-wire/types'
 import type { EnvironmentPurgeLevels } from '@ion/shared/types-environment-admin'
@@ -18,14 +19,17 @@ import type { EnvironmentSystemMetricsLatest } from '@ion/shared/types-system-me
 import type { Connection } from '../protocol/connection'
 import { listProjects, addProject, removeProject, appraiseRemoval, relocateProject, startSetup, trustProject, ProjectUntrustedError } from './projects'
 import { browseDirectory } from './fs-browse'
-import { probeToolchains, serverInfo, tailLog, studioBundleRoot } from './host-info'
+import { probeToolchains, tailLog } from './host-info'
+import { hostInstallArtifactDir, noteExternalHostInstall, publishHostInstallProgress, requestHostInstall, serverInfoWithInstall } from './host-install'
+import { registerInboundTransfer } from '../transfer/inbound-transfer'
+import { connectionOnHost } from '../protocol/hello'
+import type { HostInstallProgress, HostInstallRequest } from '@ion/shared/host-install'
 import { readEngineRuntime } from '../compat/runtime'
 import { engineBridge } from '../state'
 import { testRemote, readAuthor, writeAuthor, listHostSshKeys } from './git-access'
 import { startClone } from './clone'
 import { listJobs, cancelJob } from './jobs'
 import { appraisePurge, runPurge } from './purge'
-import { dataDir } from '../paths'
 import { discovery } from '../discovery/runtime'
 import { systemMetricsPublisher } from '../system-metrics/runtime'
 import { telemetryHealthState } from '../engine/telemetry-health'
@@ -64,30 +68,61 @@ function failed(code: string, err: unknown): EnvironmentActionOutcome {
   return { ok: false, error: { code, message: err instanceof Error ? err.message : String(err) } }
 }
 
+const REPORT_STAGES: ReadonlyArray<HostInstallProgress['stage']> = ['refused', 'downloading', 'installing', 'restarting', 'failed']
+function isReportStage(v: string): v is HostInstallProgress['stage'] { return (REPORT_STAGES as readonly string[]).includes(v) }
+function isRequestKind(v: string): v is HostInstallRequest['kind'] { return v === 'restart' || v === 'release' || v === 'artifact' }
+
 /** The server version the listener was booted with; set once by `main.ts`. */
 let bootedServerVersion = '0.0.0'
 export function setEnvironmentServerVersion(v: string): void { bootedServerVersion = v }
+export function bootedEnvironmentServerVersion(): string { return bootedServerVersion }
+
+/** Where a build a client sends lands before the host installs it. */
+function incomingArtifactPath(transferId: string, name: string): string {
+  const safe = name.replace(/[^A-Za-z0-9._-]/g, '_').slice(-80) || 'artifact'
+  return join(hostInstallArtifactDir(), `${transferId.replace(/[^A-Za-z0-9-]/g, '')}-${safe}`)
+}
+
+function sha256File(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256')
+    createReadStream(path).on('data', (chunk) => hash.update(chunk)).on('end', () => resolve(hash.digest('hex'))).on('error', reject)
+  })
+}
 
 /**
- * `ion studio restart`/`update` stop this very process, so they are spawned
- * detached and the reply goes out before they act. Refused when this server
- * was not installed from a bundle (a desktop-launched or checkout server has
- * no services to restart).
+ * `environment.server.installArtifact`: receives a build as `FILE_CHUNK`
+ * frames keyed by `transferId`, checks it against the SHA-256 the request
+ * named, and has the host install it. Registered before the first `await`,
+ * so a chunk on the very next frame finds its transfer.
  */
-function scheduleStudioCommand(args: string[]): EnvironmentActionOutcome {
-  const root = studioBundleRoot()
-  if (!root) return { ok: false, refusal: { code: 'no_bundle', message: 'this server is not installed from a Studio Server bundle; restart it the way it was started' } }
-  const bin = join(root, 'current', 'bin', 'ion')
-  if (!existsSync(bin)) return failed('bundle_incomplete', `${bin} is missing`)
+async function installArtifact(conn: Connection, args: unknown[]): Promise<EnvironmentActionOutcome> {
+  const a = firstArgObject(args)
+  const transferId = str(a, 'transferId')
+  const sha256 = str(a, 'sha256').toLowerCase()
+  const totalBytes = typeof a.totalBytes === 'number' && Number.isFinite(a.totalBytes) ? a.totalBytes : 0
+  if (!transferId || totalBytes <= 0 || !/^[0-9a-f]{64}$/.test(sha256)) return invalid('transferId, a positive totalBytes, and a sha256 are required')
+  const dest = incomingArtifactPath(transferId, str(a, 'name'))
+  let received: string
   try {
-    const child = spawn(bin, ['studio', ...args], { detached: true, stdio: 'ignore', env: { ...process.env, ION_DATA_DIR: dataDir() } })
-    child.unref()
-    log('studio command scheduled', { args, pid: child.pid ?? 0 })
-    return { ok: true, value: { scheduled: true } }
+    received = await registerInboundTransfer(transferId, dest, totalBytes, conn.id)
   } catch (err) {
-    warn('studio command could not be scheduled', { args, error: String(err) })
-    return failed('spawn_failed', err)
+    warn('artifact transfer aborted before completion', { transfer_id: transferId, error: String(err) })
+    rmSync(dest, { force: true })
+    return failed('transfer_aborted', err)
   }
+  const actual = await sha256File(received)
+  if (actual !== sha256) {
+    rmSync(received, { force: true })
+    warn('artifact refused: checksum mismatch', { transfer_id: transferId, expected: sha256, actual })
+    publishHostInstallProgress({ stage: 'refused', kind: 'artifact', code: 'checksum_mismatch', message: 'the build that arrived is not the build that was sent' })
+    return { ok: false, refusal: { code: 'checksum_mismatch', message: 'the build that arrived is not the build that was sent; nothing was installed' } }
+  }
+  log('artifact received and verified', { transfer_id: transferId, bytes: totalBytes, path: received })
+  const outcome = requestHostInstall({ kind: 'artifact', path: received })
+  // A build the host will not install has nobody left to read it.
+  if (!outcome.ok) rmSync(received, { force: true })
+  return outcome
 }
 
 export const ENVIRONMENT_ACTIONS: Record<string, EnvironmentActionSpec> = {
@@ -193,7 +228,7 @@ export const ENVIRONMENT_ACTIONS: Record<string, EnvironmentActionSpec> = {
   },
   'environment.server.info': {
     requiredScope: 'conversations:read',
-    handler: async () => ({ ok: true, value: serverInfo(bootedServerVersion, await readEngineRuntime(engineBridge)) }),
+    handler: async () => ({ ok: true, value: serverInfoWithInstall(bootedServerVersion, await readEngineRuntime(engineBridge)) }),
   },
   // System Metrics: `watch` starts or stops this connection's live samples
   // (`ion:system-metrics`, or `desktop_system_metrics` for a thin client) and
@@ -239,13 +274,43 @@ export const ENVIRONMENT_ACTIONS: Record<string, EnvironmentActionSpec> = {
       try { return { ok: true, value: tailLog(file, lines) } } catch (err) { return failed('log_read_failed', err) }
     },
   },
+  // The host installs on itself (`host-install.ts`): a bundle server runs
+  // its own `ion studio` command, a desktop-run server asks its desktop.
   'environment.server.restart': {
     requiredScope: 'admin',
-    handler: async () => scheduleStudioCommand(['restart']),
+    handler: async () => requestHostInstall({ kind: 'restart' }),
   },
   'environment.server.update': {
     requiredScope: 'admin',
-    handler: async () => scheduleStudioCommand(['update', '--yes']),
+    handler: async (_conn, args) => requestHostInstall({ kind: 'release', version: str(firstArgObject(args), 'version') || undefined }),
+  },
+  'environment.server.installArtifact': {
+    requiredScope: 'admin',
+    handler: installArtifact,
+  },
+  // The desktop that runs this server says how a host install it was handed
+  // is going. Only that desktop may: it is the connection on the host.
+  'environment.server.reportInstall': {
+    requiredScope: 'admin',
+    handler: async (conn, args) => {
+      if (!connectionOnHost(conn)) return { ok: false, refusal: { code: 'not_on_host', message: 'only the desktop that runs this server reports its installs' } }
+      const a = firstArgObject(args)
+      const stage = str(a, 'stage')
+      const kind = str(a, 'kind')
+      if (!isReportStage(stage) || !isRequestKind(kind)) return invalid('stage and kind are required')
+      publishHostInstallProgress({ stage, kind, code: str(a, 'code') || undefined, message: str(a, 'message') || undefined })
+      return { ok: true, value: null }
+    },
+  },
+  // A fleet deploy says it is about to install on this host over SSH, which
+  // this server takes no part in.
+  'environment.server.installNotice': {
+    requiredScope: 'admin',
+    handler: async (conn, args) => {
+      log('host install notice received', { connection_id: conn.id, deploy_id: str(firstArgObject(args), 'deployId') })
+      noteExternalHostInstall()
+      return { ok: true, value: null }
+    },
   },
   'environment.git.test': {
     requiredScope: 'git:write',
