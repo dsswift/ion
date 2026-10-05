@@ -269,6 +269,23 @@ export interface IonServerPolicyFields {
    * is offered.
    */
   developerSurfaces?: import("./developer-surfaces").DeveloperSurfacesConfig;
+  /**
+   * The Fleet Hubs this server reports to. `hubs` are joined by every
+   * server the policy governs and cannot be removed there. `allowedUrls`,
+   * when present, is the only list a server's admins may add a hub from; an
+   * empty list means none beyond `hubs`. Absent means the server's admins
+   * join any hub they like.
+   */
+  fleetHubs?: {
+    allowedUrls?: string[];
+    hubs?: Array<{
+      url: string;
+      /** The hub's enrollment token, or a `secretstore:` reference to it. */
+      enrollmentToken: string;
+      /** Whether the hub may run its actions on the server. Default true. */
+      manage?: boolean;
+    }>;
+  };
 }
 
 /**
