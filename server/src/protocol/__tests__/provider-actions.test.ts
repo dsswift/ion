@@ -15,6 +15,8 @@ const bridge = vi.hoisted(() => ({
   storeCredential: vi.fn(async () => ({ ok: true })),
   setModelTier: vi.fn(async () => ({ ok: true })),
   providerLogin: vi.fn(async () => ({ ok: true })),
+  connect: vi.fn(async () => {}),
+  _sendWithResult: vi.fn(async () => ({ ok: true })),
   on: vi.fn(),
 }))
 vi.mock('../../state', () => ({ engineBridge: bridge, deviceFocusMap: new Map(), state: { remoteTransport: null } }))
@@ -48,7 +50,7 @@ describe('PROVIDER_ACTIONS scopes', () => {
       'model.setTier', 'model.removeTier', 'model.refresh',
       'provider.setDefault', 'provider.storeCredential',
       'provider.login', 'provider.loginCancel', 'provider.loginCode', 'provider.logout',
-      'provider.selectSubscription', 'provider.refreshSubscription',
+      'provider.remove', 'provider.selectSubscription', 'provider.refreshSubscription',
     ]) {
       expect(PROVIDER_ACTIONS[name].requiredScope, name).toBe('admin')
     }
@@ -56,6 +58,20 @@ describe('PROVIDER_ACTIONS scopes', () => {
 })
 
 describe('PROVIDER_ACTIONS dispatch', () => {
+  it('removes a provider through the engine provider_remove command', async () => {
+    bridge._sendWithResult.mockClear()
+    const outcome = await PROVIDER_ACTIONS['provider.remove'].handler(conn, [{ provider: 'corp-gateway' }])
+    expect(outcome).toEqual({ ok: true, value: { ok: true } })
+    expect(bridge._sendWithResult).toHaveBeenCalledWith({ cmd: 'provider_remove', provider: 'corp-gateway' })
+  })
+
+  it('refuses a removal with no provider instead of forwarding it', async () => {
+    bridge._sendWithResult.mockClear()
+    const outcome = await PROVIDER_ACTIONS['provider.remove'].handler(conn, [{}])
+    expect(outcome).toEqual({ ok: true, value: { ok: false, error: 'provider is required' } })
+    expect(bridge._sendWithResult).not.toHaveBeenCalled()
+  })
+
   it('stores a credential with the same payload shape the preload sends', async () => {
     const outcome = await PROVIDER_ACTIONS['provider.storeCredential'].handler(conn, [
       { provider: 'anthropic', credential: 'sk-test' },

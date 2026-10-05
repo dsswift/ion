@@ -27,6 +27,7 @@ const LOCKABLE_ACTION_GROUP: Record<string, string> = {
   'provider.loginCancel': 'ai',
   'provider.loginCode': 'ai',
   'provider.logout': 'ai',
+  'provider.remove': 'ai',
   'mcp.add': 'mcp',
   'mcp.update': 'mcp',
   'mcp.remove': 'mcp',

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { ProviderLoginUpdate } from '@ion/shared/types-engine-event'
 
-type LoginHandler = (u: ProviderLoginUpdate) => void
+type LoginHandler = (u: ProviderLoginUpdate, environmentId?: string) => void
 
 const openExternal = vi.fn(async (..._a: any[]) => true)
 const providerLoginCancel = vi.fn(async (..._a: any[]) => ({ ok: true }))
@@ -80,6 +80,24 @@ describe('provider login stage machine', () => {
     vi.advanceTimersByTime(10 * 60_000)
     expect(useModelStore.getState().loginStates.local?.anthropic?.phase).toBe('error')
     expect(providerLoginCancel).toHaveBeenCalledWith('anthropic', 'local')
+  })
+
+  it('keeps the sign-in page for the pasted code when only the browser stage named it, and leaves the host\'s own tab alone', () => {
+    emitLogin(stage({ stage: 'started' }))
+    emitLogin(stage({ stage: 'await_browser', authUrl: 'https://claude.com/cai/oauth/authorize?x=1' }))
+    emitLogin(stage({ stage: 'await_auth_code' }))
+
+    expect(useModelStore.getState().loginStates.local?.anthropic).toEqual({ phase: 'await_code', url: 'https://claude.com/cai/oauth/authorize?x=1' })
+    expect(openExternal).not.toHaveBeenCalled()
+  })
+
+  it('opens the sign-in page here when the server is another machine, whose own tab this person cannot see', () => {
+    emitLogin(stage({ stage: 'started' }), 'devbox')
+    emitLogin(stage({ stage: 'await_auth_code', authUrl: 'https://claude.com/cai/oauth/authorize?x=2' }), 'devbox')
+
+    expect(useModelStore.getState().loginStates.devbox?.anthropic).toEqual({ phase: 'await_code', url: 'https://claude.com/cai/oauth/authorize?x=2' })
+    expect(openExternal).toHaveBeenCalledTimes(1)
+    expect(openExternal).toHaveBeenCalledWith('https://claude.com/cai/oauth/authorize?x=2')
   })
 
   it('times out a login abandoned at the started stage', () => {

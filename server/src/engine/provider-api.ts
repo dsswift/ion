@@ -20,7 +20,7 @@
 import type { ModelTier } from '@ion/shared/types-model-tiers'
 import { loginFlowIsHostOnly, HOST_ONLY_LOGIN_REFUSAL, type ProviderEntry } from '@ion/shared/types-models'
 import { engineBridge } from '../state'
-import { getDefaultProvider as bridgeGetDefaultProvider, setDefaultProvider as bridgeSetDefaultProvider } from './engine-bridge-providers'
+import { getDefaultProvider as bridgeGetDefaultProvider, setDefaultProvider as bridgeSetDefaultProvider, removeProvider as bridgeRemoveProvider } from './engine-bridge-providers'
 import { updateCache, refreshModelCache } from './ipc/models'
 import { wireProviderSubscriptionEvents } from './provider-subscription-api'
 import { log as _log, debug as _debug } from '../logger'
@@ -210,6 +210,27 @@ export async function providerLogout(payload: unknown): Promise<unknown> {
   if (!nonEmptyString(provider)) return { ok: false, error: 'provider is required' }
   log('provider_logout', { provider })
   return engineBridge.providerLogout(provider)
+}
+
+/**
+ * Remove a custom provider from this server: the engine deletes its config
+ * entry, its stored key, and its models. The engine refuses a built-in
+ * provider, and one the default model or a model tier still uses.
+ */
+export async function removeProvider(payload: unknown): Promise<MutationResult> {
+  const provider = (payload as { provider?: unknown } | null)?.provider
+  if (!nonEmptyString(provider)) {
+    log('provider_remove rejected: malformed input')
+    return { ok: false, error: 'provider is required' }
+  }
+  const result = await bridgeRemoveProvider(engineBridge, provider)
+  if (!result.ok) {
+    log('provider_remove failed', { provider, error: result.error ?? 'unknown' })
+    return result
+  }
+  log('provider_remove', { provider })
+  await refreshModelCache()
+  return result
 }
 
 /**

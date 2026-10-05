@@ -70,6 +70,12 @@ export async function providerLogout(bridge: EngineBridge, provider: string): Pr
   return bridge._sendWithResult({ cmd: 'provider_logout', provider })
 }
 
+// Delete a custom provider from the engine's config, with its stored key and models.
+export async function removeProvider(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string }> {
+  await bridge.connect()
+  return bridge._sendWithResult({ cmd: 'provider_remove', provider })
+}
+
 
 export async function listModelTiers(bridge: EngineBridge): Promise<ModelTier[]> {
   await bridge.connect()
