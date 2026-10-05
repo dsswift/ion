@@ -56,9 +56,31 @@ export type ProvisionProgress = (state: WorktreeProvisionState, detail?: string)
  */
 const repoQueues = new Map<string, Promise<unknown>>()
 
+/**
+ * Every queued or running provisioning run, by worktree path, so removing a
+ * worktree can stop the run that is still writing into it. A removal that
+ * raced a running `npm ci` used to delete the checkout while the install kept
+ * creating files, leaving a half-removed directory git no longer knew.
+ */
+const inflight = new Map<string, { controller: AbortController; run: Promise<ProvisionOutcome> }>()
+
 /** Test seam: clear queued work between cases. */
 export function _resetProvisionQueuesForTests(): void {
   repoQueues.clear()
+  inflight.clear()
+}
+
+/**
+ * Stop any provisioning run for this worktree and wait until it has
+ * finished. Resolves at once when nothing is queued or running.
+ */
+export async function cancelWorktreeProvisioning(worktreePath: string): Promise<void> {
+  const entry = inflight.get(worktreePath)
+  if (!entry) return
+  log('cancelling provisioning', { worktree_path: worktreePath })
+  entry.controller.abort()
+  await entry.run.catch(() => undefined) // silent-ok: the run reports its own outcome
+  log('provisioning cancelled', { worktree_path: worktreePath })
 }
 
 /**
@@ -74,25 +96,39 @@ export function provisionWorktree(
   onProgress?: ProvisionProgress,
 ): Promise<ProvisionOutcome> {
   const prior = repoQueues.get(repoPath) ?? Promise.resolve()
+  const controller = new AbortController()
   const run = prior
     // The previous run already reported its own outcome (provisionState plus its
     // own log lines). Rethrowing here would make one worktree's failure block
     // the next worktree's provisioning entirely.
     .catch(() => undefined) // silent-ok: prior run already logged its own failure
-    .then(() => provisionNow(repoPath, worktreePath, onProgress))
+    .then(() => provisionNow(repoPath, worktreePath, controller.signal, onProgress))
+    .finally(() => {
+      if (inflight.get(worktreePath)?.controller === controller) inflight.delete(worktreePath)
+    })
+  inflight.set(worktreePath, { controller, run })
   repoQueues.set(repoPath, run)
   return run
 }
 
+const CANCELLED = 'cancelled: the worktree is being removed'
+
 async function provisionNow(
   repoPath: string,
   worktreePath: string,
+  signal: AbortSignal,
   onProgress?: ProvisionProgress,
 ): Promise<ProvisionOutcome> {
   const startedAt = Date.now()
   const emit = (state: WorktreeProvisionState, detail?: string): void => {
     onProgress?.(state, detail)
   }
+  const cancelled = (results: SeedResult[]): ProvisionOutcome => {
+    log('provisioning stopped, run cancelled', { repo_path: repoPath, worktree_path: worktreePath, elapsed_ms: Date.now() - startedAt })
+    emit('failed', CANCELLED)
+    return { state: 'failed', results, error: CANCELLED }
+  }
+  if (signal.aborted) return cancelled([])
 
   const plan = readProvisionManifest(repoPath)
   if (plan.seed.length === 0 && !plan.setup) {
@@ -122,7 +158,8 @@ async function provisionNow(
   const failures: string[] = []
 
   for (const entry of plan.seed) {
-    const result = await seedEntry(repoPath, worktreePath, entry)
+    if (signal.aborted) return cancelled(results)
+    const result = await seedEntry(repoPath, worktreePath, entry, signal)
     results.push(result)
     if (result.strategy === 'failed') {
       failures.push(`${entry.path}: ${result.reason ?? 'unknown'}`)
@@ -134,13 +171,15 @@ async function provisionNow(
     // those rungs can be stale — a `build` just reconciled by construction.
     if (result.strategy === 'clone' || result.strategy === 'copy') {
       emit('building', entry.path)
-      await reconcileStale(repoPath, worktreePath, entry)
+      await reconcileStale(repoPath, worktreePath, entry, signal)
     }
   }
 
+  if (signal.aborted) return cancelled(results)
   if (plan.setup) {
     emit('building', 'setup')
-    const setupResult = await runProvisionCommand(plan.setup, worktreePath)
+    const setupResult = await runProvisionCommand(plan.setup, worktreePath, undefined, signal)
+    if (setupResult.cancelled) return cancelled(results)
     if (!setupResult.ok) {
       failures.push(`setup: ${setupResult.error ?? 'unknown'}`)
     }

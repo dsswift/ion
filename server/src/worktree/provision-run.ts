@@ -45,7 +45,31 @@ export interface RunResult {
   output: string
   /** Set when the command was killed for exceeding its timeout. */
   timedOut?: boolean
+  /** Set when the command was killed because its run was cancelled. */
+  cancelled?: boolean
   error?: string
+}
+
+/**
+ * Kill the command and everything it started. The shell is only the parent:
+ * `npm ci` and its compilers are its children, and killing the shell alone
+ * leaves them writing into a worktree that is being removed. On POSIX the
+ * shell leads its own process group (`detached`), so the group is signalled;
+ * Windows has no groups, and `taskkill /T` walks the tree instead.
+ */
+function killTree(child: ReturnType<typeof spawn>, command: string): void {
+  const pid = child.pid
+  if (pid === undefined) return
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' })
+        .on('error', (err) => warn('taskkill failed', { command, pid, error: String(err) }))
+    } else {
+      process.kill(-pid, 'SIGKILL')
+    }
+  } catch (err) {
+    warn('kill failed', { command, pid, error: String(err) })
+  }
 }
 
 /**
@@ -64,9 +88,15 @@ export function runProvisionCommand(
   command: string,
   cwd: string,
   timeoutMs: number = DEFAULT_COMMAND_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<RunResult> {
   return new Promise<RunResult>((resolve) => {
     const startedAt = Date.now()
+    if (signal?.aborted) {
+      log('provisioning command skipped, run cancelled', { command, cwd })
+      resolve({ ok: false, exitCode: null, output: '', cancelled: true, error: 'cancelled' })
+      return
+    }
     log('running provisioning command', { command, cwd, timeout_ms: timeoutMs })
 
     let child: ReturnType<typeof spawn>
@@ -76,6 +106,8 @@ export function runProvisionCommand(
         shell: true,
         env: getCliEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
+        // Its own process group, so killTree reaches every descendant.
+        detached: process.platform !== 'win32',
       })
     } catch (err) {
       warn('provisioning command failed to spawn', { command, cwd, error: String(err) })
@@ -85,6 +117,13 @@ export function runProvisionCommand(
 
     let output = ''
     let timedOut = false
+    let cancelled = false
+    const onAbort = (): void => {
+      cancelled = true
+      warn('provisioning command cancelled; killing', { command, cwd })
+      killTree(child, command)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
     const append = (chunk: Buffer | string): void => {
       output += String(chunk)
       // Keep only the tail: a verbose install can emit megabytes, and only the
@@ -97,24 +136,26 @@ export function runProvisionCommand(
     const timer = setTimeout(() => {
       timedOut = true
       warn('provisioning command timed out; killing', { command, cwd, timeout_ms: timeoutMs })
-      try { child.kill('SIGKILL') } catch (err) { warn('kill failed', { command, error: String(err) }) }
+      killTree(child, command)
     }, timeoutMs)
 
     child.on('error', (err) => {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
       warn('provisioning command errored', { command, cwd, error: String(err) })
       resolve({ ok: false, exitCode: null, output, error: String(err) })
     })
 
     child.on('close', (code) => {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
       const elapsedMs = Date.now() - startedAt
-      const ok = code === 0 && !timedOut
+      const ok = code === 0 && !timedOut && !cancelled
       if (ok) {
         log('provisioning command succeeded', { command, cwd, elapsed_ms: elapsedMs })
       } else {
         warn('provisioning command failed', {
-          command, cwd, exit_code: code, timed_out: timedOut, elapsed_ms: elapsedMs,
+          command, cwd, exit_code: code, timed_out: timedOut, cancelled, elapsed_ms: elapsedMs,
           output_tail: output.slice(-1200),
         })
       }
@@ -123,7 +164,8 @@ export function runProvisionCommand(
         exitCode: code,
         output,
         timedOut: timedOut || undefined,
-        error: ok ? undefined : (timedOut ? `timed out after ${timeoutMs}ms` : `exited ${code}`),
+        cancelled: cancelled || undefined,
+        error: ok ? undefined : cancelled ? 'cancelled' : timedOut ? `timed out after ${timeoutMs}ms` : `exited ${code}`,
       })
     })
   })

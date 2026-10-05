@@ -100,6 +100,7 @@ export async function seedEntry(
   repoPath: string,
   worktreePath: string,
   entry: SeedEntry,
+  signal?: AbortSignal,
 ): Promise<SeedResult> {
   const startedAt = Date.now()
   const done = (strategy: SeedStrategy, reason?: string): SeedResult => {
@@ -158,7 +159,7 @@ export async function seedEntry(
   // Rung 2 — build. Preferred over copy whenever the project declared a command.
   if (entry.build) {
     const cwd = entry.cwd ? join(worktreePath, entry.cwd) : worktreePath
-    const result = await runProvisionCommand(entry.build, cwd)
+    const result = await runProvisionCommand(entry.build, cwd, undefined, signal)
     if (result.ok) return done('build')
     return done('failed', `build command failed: ${result.error ?? 'unknown'}`)
   }
@@ -233,6 +234,7 @@ export async function reconcileStale(
   repoPath: string,
   worktreePath: string,
   entry: SeedEntry,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   if (!entry.build || !entry.staleWhen?.length) return false
 
@@ -257,7 +259,7 @@ export async function reconcileStale(
 
   log('seed is stale; rebuilding', { path: entry.path, diverged, worktree_path: worktreePath })
   const cwd = entry.cwd ? join(worktreePath, entry.cwd) : worktreePath
-  const result = await runProvisionCommand(entry.build, cwd)
+  const result = await runProvisionCommand(entry.build, cwd, undefined, signal)
   if (!result.ok) {
     warn('stale rebuild failed; the seeded tree may not match this worktree', {
       path: entry.path, error: result.error ?? 'unknown',
