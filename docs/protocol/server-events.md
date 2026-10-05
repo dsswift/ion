@@ -221,6 +221,8 @@ Signals a rate limit hit from the API provider.
 | `status`        | string | Rate limit status                      |
 | `resetsAt`      | number | Unix timestamp when limit resets       |
 | `rateLimitType` | string | Type of rate limit                     |
+| `utilization`   | number | Fraction (0..1) of the window used (optional) |
+| `unifiedWindows`| object | Every window the CLI reported, keyed by name; each is `{ utilization, resetsAt }` (optional) |
 
 #### PermissionEvent
 
@@ -1283,6 +1285,19 @@ Broadcast to all clients on every state transition — `mcp_add`, `mcp_update`, 
 
 **`connected` and `authenticated` are independent — do not collapse them.** A server can be connected without authentication (it requires none), or authenticated but not connected, which means a stored token is being refused. That second combination is precisely the state an operator must act on, and a single derived "ok" indicator would hide it. `lastError` is what makes a failing server diagnosable from a client with no access to the engine host's log file.
 
+#### engine_rate_limit
+
+A backend's report of the signed-in account's usage limits, sent during a run. The Claude Code CLI backend emits one per run. **Incremental:** each event is one report and stands alone.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_rate_limit"` | Event type |
+| `rateLimit.status` | string | The backend's verdict for the next request: `allowed`, `allowed_warning`, `rejected` |
+| `rateLimit.resetsAt` | int | Unix second the `rateLimitType` window resets |
+| `rateLimit.rateLimitType` | string | The window the status is about: `five_hour`, `seven_day` |
+| `rateLimit.utilization` | number | Fraction (0..1) of the `rateLimitType` window used (optional) |
+| `rateLimit.windows` | object | Every usage window reported with the event, keyed by window name. Each is `{ utilization, resetsAt }` (optional) |
+
 #### engine_provider_subscription
 
 Complete Provider Subscription state: the provider key the engine resolved from `subscriptionLookup` for the signed-in identity. **Snapshot-replace semantics:** consumers replace their view with the payload. Broadcast to all clients on every state change (sign-in, a lookup settling, a selection, sign-out) and delivered requester-scoped for each `provider_subscription_*` command. The snapshot never carries a key. See [Subscription Lookup](../configuration/subscription-lookup.md).
@@ -1313,7 +1328,7 @@ Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI)
 | `providerLogin.provider` | string | Provider whose CLI is authenticating (e.g. `openai`) |
 | `providerLogin.backend` | string | CLI backend kind driving the login (e.g. `codex`) |
 | `providerLogin.stage` | string | `started` \| `await_browser` \| `await_device_code` \| `await_auth_code` \| `completed` \| `failed` \| `cancelled` |
-| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional). For a CLI that opens its own browser (claude-code), this is the CLI's printed *fallback* URL — it carries a different `redirect_uri` and cannot self-complete, so a consumer should offer it on demand rather than auto-open it |
+| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional), repeated on `await_auth_code` as the page that issues the code. For a CLI that opens its own browser (claude-code), this is the CLI's printed *fallback* URL — it carries a different `redirect_uri` and cannot self-complete, so a consumer should offer it on demand rather than auto-open it |
 | `providerLogin.userCode` | string | Device code the user enters (`await_device_code`, optional) |
 | `providerLogin.verificationUrl` | string | Where the user enters the device code (`await_device_code`, optional) |
 | `providerLogin.loginError` | string | Failure reason (`failed`, optional) |

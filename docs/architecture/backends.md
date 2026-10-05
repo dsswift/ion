@@ -139,11 +139,13 @@ on a login that has already ended.
 - **claude-code**: `claude auth login --claudeai`. The CLI starts a loopback
   callback server and opens that tab itself, then prints a separate fallback URL
   whose `redirect_uri` points at the provider. The engine scrapes that URL, emits
-  `await_browser`, then emits `await_auth_code`. It waits for either valid ending:
+  `await_browser`, then emits `await_auth_code`, each carrying the URL. It waits for either valid ending:
   the loopback browser callback makes the child exit successfully, or the
   consumer returns the fallback code through `provider_login_code` and the
-  engine writes it to the CLI's stdin. Because the CLI already opened a tab,
-  consumers should surface the fallback URL on demand rather than auto-open it.
+  engine writes it to the CLI's stdin. Because the CLI already opened a tab on
+  the engine's host, a consumer on that host should surface the fallback URL on
+  demand rather than auto-open it. A consumer on another machine has no tab, and
+  the fallback URL is its only way to the code.
 
 `provider_login_cancel` aborts the in-flight login (and sends `account/login/cancel`
 for codex). `provider_logout` clears the credential for the CLIs that expose a

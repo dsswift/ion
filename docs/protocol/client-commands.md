@@ -1233,6 +1233,33 @@ After an issuer-side revocation, request one cache-bypassing refresh:
 
 ---
 
+### provider_account_usage
+
+Read the account each delegated provider CLI is signed in to, and the usage limits that CLI reports for it. The engine asks the CLIs themselves (the Claude Code CLI's usage request, the Codex app-server's `account/rateLimits/read`); it never handles an account's credential. The CLIs that report usage are re-probed first, so the account named is the one signed in now.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_account_usage"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_account_usage","requestId":"r49"}
+```
+
+**Response:** answered once the CLIs have, on its own goroutine. `ServerResult` with `data: { accounts: ProviderAccountUsage[] }`, one entry per installed CLI backend:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `backend` | string | The CLI backend: `claude-code`, `codex`, `grok`, `cursor` |
+| `account` | object | `{ provider, email, orgId, orgName, planType, authMethod, label }`. Absent when the CLI is signed out |
+| `limits` | object[] | `{ kind, label, percent, resetsAt }`. `kind` is `session` (the short rolling window), `weekly`, `weekly_model` (`label` names the model), or `spend`. `percent` is 0..100. Empty for an API-key login or a CLI that reports no limits |
+| `fetchedAt` | string | RFC3339 time of the read |
+| `error` | string | Why the limits could not be read; `account` is still reported (optional) |
+
+A sign-in that changed since the last probe also triggers `engine_providers_updated`.
+
+---
+
 ### provider_subscription_status
 
 Read the Provider Subscription state: the provider key the engine resolved from `subscriptionLookup` for the signed-in identity. See [Subscription Lookup](../configuration/subscription-lookup.md).
@@ -1412,6 +1439,24 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 ```
 
 **Response:** `ServerResult` with `data: { ok: true }`. The logout itself runs in the background and is bounded, so the result acknowledges dispatch rather than completion. A completed logout emits no login-stage event — `engine_providers_updated` is the only signal, so consumers must handle it to notice.
+
+---
+
+### provider_remove
+
+Delete a custom provider: its entry in `~/.ion/engine.json`, its stored API key, and its registration and models in the running engine. A custom provider is one that exists only because the config defines it; `list_models` marks it with `custom: true` on its `ProviderEntry`. A built-in provider can be reconfigured but not removed.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_remove"` | yes | Command discriminator |
+| `provider` | string | yes | Provider to remove |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_remove","provider":"corp-gateway","requestId":"r52"}
+```
+
+**Response:** `ServerResult` with `data: { provider, keyCleared, clearedFallbackModel }`, then an `engine_providers_updated` broadcast. `keyCleared` is false when the stored key could not be deleted; the provider is removed either way. `engine.json`'s `defaultModel` is the model the engine falls back to when a requested one does not resolve; when it is one of the provider's provider-qualified models it is deleted too and named in `clearedFallbackModel` (empty otherwise). The command is an error, and nothing changes, when the provider is built in, when `engine.json` does not define it, when enterprise policy defines it, when a managed file owns the engine configuration, or when `models.json` still selects one of its provider-qualified models as the default model or as a tier's model or fallback.
 
 ---
 
