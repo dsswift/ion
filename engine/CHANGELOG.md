@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.1](https://github.com/dsswift/ion/compare/engine-v1.100.0...engine-v1.100.1) (2026-10-05)
+
+### Bug Fixes
+
+* **engine:** pass engine tests on windows (#486) ([b4ee2c6](https://github.com/dsswift/ion/commit/b4ee2c66237325da62992532f900a4113d3515b5))
+
 ## [1.100.0](https://github.com/dsswift/ion/compare/engine-v1.99.0...engine-v1.100.0) (2026-10-05)
 
 ### Features
