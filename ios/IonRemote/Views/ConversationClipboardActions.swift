@@ -26,6 +26,19 @@ struct ConversationClipboardActions: View {
                     Label("Copy Session ID", systemImage: "doc.on.doc")
                 }
             }
+
+            if let conversationId = tab.conversationId, !conversationId.isEmpty {
+                Button {
+                    UIPasteboard.general.string = DeepLinkURL.conversation(conversationId)
+                    DiagnosticLog.log("conversation link copied", tag: "deeplink", fields: [
+                        "tab_id": tab.id,
+                        "conversation_id": String(conversationId.prefix(8)),
+                    ])
+                    viewModel.showToast(ToastMessage(style: .success, title: "Link copied"))
+                } label: {
+                    Label("Copy Link", systemImage: "link")
+                }
+            }
         }
     }
 

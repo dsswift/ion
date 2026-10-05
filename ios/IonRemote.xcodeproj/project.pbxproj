@@ -26,6 +26,11 @@
 		A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */; };
 		3D99A4BE7F7C40F5930BB856 /* RemoteFileData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31992A053F8C4C9C90460683 /* RemoteFileData.swift */; };
 		84BDEDDF9A0D451A8D48D422 /* FileLinkTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B052455F4C43481FACC61C10 /* FileLinkTarget.swift */; };
+		6DE5980178EB47A0ABBC794A /* DeepLinkActionOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 231C5FCFFD294BA99BBBEDC6 /* DeepLinkActionOutcome.swift */; };
+		F52BA0EA204D4E76A5181D22 /* DeepLinkOpenResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = D47FAA62C33E4657AAF232F7 /* DeepLinkOpenResult.swift */; };
+		CBBB0AB0CFE946CA8320BE49 /* DeepLinkConfirmRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA14E29860D410A9CA16328 /* DeepLinkConfirmRequest.swift */; };
+		70CE0CD53A9C41ADA8005781 /* DeepLinkNavigateTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */; };
+		DB845B37C1964F16A5F1BB84 /* PlanModeRejection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */; };
 		FF64CF47FB2743BDA6AA1D0A /* FileLinkOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */; };
 		F62B6FEA30484E489AD07E10 /* FileLinkRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13184725F6AE4C22A28E116D /* FileLinkRequest.swift */; };
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
@@ -156,6 +161,9 @@
 		A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */; };
 		A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */; };
 		3F2DF03CC10F409F9B2370DF /* FileLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6D8A2AACF44D9B881E1A49 /* FileLinkSheet.swift */; };
+		E302206EC95847F98FFDBC51 /* DeepLinkSettingsPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D319874CAEC4847A5ABBC47 /* DeepLinkSettingsPageView.swift */; };
+		2DFC75D7CE194F0DBB7D8DC6 /* DeepLinkPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D7A04ABABD49D2AA5E4BE0 /* DeepLinkPresenter.swift */; };
+		41E8D411316D46E494828412 /* DeepLinkConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC2D06498B645DDA23D2D4A /* DeepLinkConfirmSheet.swift */; };
 		D7A6BB8CA6144EA6A9459BF9 /* ConversationView+FileLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EA230A6ECA437B8E7C350E /* ConversationView+FileLinks.swift */; };
 		E6E82C430112469BAF0DA05A /* DocumentExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFCFA87543704BD59454021F /* DocumentExporter.swift */; };
 		F2394B02808F46ABBFB02831 /* QuickLookPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A86FD46A1F11402ABE8F2704 /* QuickLookPreview.swift */; };
@@ -546,12 +554,15 @@
 		C70D0F362C6243EFBFBCDE4A /* MarkdownFormatter+Links.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606BBE0C808C47BD9A508ADB /* MarkdownFormatter+Links.swift */; };
 		121FBBC74A224A92B769783B /* RemoteFileCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587FF514AF7145509E05B9FC /* RemoteFileCopy.swift */; };
 		B78E007A0350494186AD0B67 /* FileLinkKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8705DC7C9641D3A9722C36 /* FileLinkKind.swift */; };
+		792D2622B3454C61AE845501 /* DeepLinkURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1BE08F2A03F45909CF772CD /* DeepLinkURL.swift */; };
 		C0DEC0DE000000000005 /* IonCodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000004 /* IonCodeTheme.swift */; };
 		C0DEC0DE000000000007 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000006 /* CodeHighlighter.swift */; };
 		C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000008 /* HighlightedCodeView.swift */; };
 		C0DEC0DE000000000011 /* CollapsibleUserText.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000010 /* CollapsibleUserText.swift */; };
 		C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000012 /* FilePathDetectorTests.swift */; };
 		C9B2F57F8D8B4B7DA5C85747 /* FileLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB05C6F0DA245F580773778 /* FileLinkTests.swift */; };
+		7D6862952FEC42D49C278CDD /* PlanModeRejectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F22E0971848199E01D498 /* PlanModeRejectionTests.swift */; };
+		9479C50F9C214CD29670253D /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF2BBD0ADA142AF99D65761 /* DeepLinkTests.swift */; };
 		C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000014 /* CodeHighlighterTests.swift */; };
 		C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */; };
 		C0DEC0DE000000000101 /* EngineMessageRow+UserBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000100 /* EngineMessageRow+UserBubble.swift */; };
@@ -637,6 +648,8 @@
 		C3864FBC0E9635C9CEABB480 /* SessionViewModel+ServerAdmin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */; };
 		F57EDBC02EAFA9CEA67CB15A /* SubscriptionPromptModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */; };
 		53A704EC3B524576BC5B6AD8 /* SessionViewModel+FileLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */; };
+		E9E56C7499C14309ABF19337 /* SessionViewModel+DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEDEA8EF1E74019B99B0C54 /* SessionViewModel+DeepLink.swift */; };
+		9EB4597FCF1A443AACF6BB79 /* DeepLinkPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C198BF16CD9420FA292B513 /* DeepLinkPresentation.swift */; };
 		4B9588B9862EA9200D750B11 /* PhoneActionTableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D39A84873C22A7B3EDC9703 /* PhoneActionTableTests.swift */; };
 		53F7E6FF78438CE3A92639A6 /* ServerAdminAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C613F75DF1F0ABBE5615522 /* ServerAdminAccessTests.swift */; };
 		D3906F2A8BF2B97C5D7E4BB7 /* FakeActionCaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B66B7ED0EC4FC2A2AFBD953 /* FakeActionCaller.swift */; };
@@ -716,6 +729,7 @@
 		59C3361518DB2090D0C16EF5 /* ServerAdminClient+Fleet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9045C82126490115E22C180C /* ServerAdminClient+Fleet.swift */; };
 		748EBDA9BB6C04F3D31F159B /* ServerAdminClient+Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = 529A68F3AC1005453268A054 /* ServerAdminClient+Health.swift */; };
 		1C2DB44414354A6DB1406BAC /* ServerAdminClient+Files.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C19C045CB244DE8B15FEC6C /* ServerAdminClient+Files.swift */; };
+		2C74D62457714803BF144A6B /* ServerAdminClient+DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F417165CB284874A264660C /* ServerAdminClient+DeepLink.swift */; };
 		6693545AC610503C8A28D829 /* ServerOverviewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100F2147C8E24EA1C0DA31BD /* ServerOverviewModel.swift */; };
 		85B85E18DC3CD52FA69D9B8A /* FleetModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC45ED050D15541E3D52D066 /* FleetModel.swift */; };
 		3ACE6A2665ABC3013ADECB2E /* ServerPurgeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76BF59F8358D8D74ACDE60D9 /* ServerPurgeModel.swift */; };
@@ -997,6 +1011,11 @@
 		A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommand.swift; sourceTree = "<group>"; };
 		31992A053F8C4C9C90460683 /* RemoteFileData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileData.swift; sourceTree = "<group>"; };
 		B052455F4C43481FACC61C10 /* FileLinkTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkTarget.swift; sourceTree = "<group>"; };
+		231C5FCFFD294BA99BBBEDC6 /* DeepLinkActionOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkActionOutcome.swift; sourceTree = "<group>"; };
+		D47FAA62C33E4657AAF232F7 /* DeepLinkOpenResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkOpenResult.swift; sourceTree = "<group>"; };
+		0DA14E29860D410A9CA16328 /* DeepLinkConfirmRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkConfirmRequest.swift; sourceTree = "<group>"; };
+		10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkNavigateTarget.swift; sourceTree = "<group>"; };
+		0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanModeRejection.swift; sourceTree = "<group>"; };
 		F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkOutcome.swift; sourceTree = "<group>"; };
 		13184725F6AE4C22A28E116D /* FileLinkRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkRequest.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
@@ -1130,6 +1149,9 @@
 		A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFullScreenView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
 		1D6D8A2AACF44D9B881E1A49 /* FileLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkSheet.swift; sourceTree = "<group>"; };
+		5D319874CAEC4847A5ABBC47 /* DeepLinkSettingsPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkSettingsPageView.swift; sourceTree = "<group>"; };
+		D5D7A04ABABD49D2AA5E4BE0 /* DeepLinkPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkPresenter.swift; sourceTree = "<group>"; };
+		CBC2D06498B645DDA23D2D4A /* DeepLinkConfirmSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkConfirmSheet.swift; sourceTree = "<group>"; };
 		B4EA230A6ECA437B8E7C350E /* ConversationView+FileLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+FileLinks.swift"; sourceTree = "<group>"; };
 		EFCFA87543704BD59454021F /* DocumentExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentExporter.swift; sourceTree = "<group>"; };
 		A86FD46A1F11402ABE8F2704 /* QuickLookPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookPreview.swift; sourceTree = "<group>"; };
@@ -1526,12 +1548,15 @@
 		606BBE0C808C47BD9A508ADB /* MarkdownFormatter+Links.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownFormatter+Links.swift"; sourceTree = "<group>"; };
 		587FF514AF7145509E05B9FC /* RemoteFileCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileCopy.swift; sourceTree = "<group>"; };
 		BA8705DC7C9641D3A9722C36 /* FileLinkKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkKind.swift; sourceTree = "<group>"; };
+		B1BE08F2A03F45909CF772CD /* DeepLinkURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkURL.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000004 /* IonCodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonCodeTheme.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000006 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000008 /* HighlightedCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightedCodeView.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000010 /* CollapsibleUserText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleUserText.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000012 /* FilePathDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePathDetectorTests.swift; sourceTree = "<group>"; };
 		6FB05C6F0DA245F580773778 /* FileLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkTests.swift; sourceTree = "<group>"; };
+		4F3F22E0971848199E01D498 /* PlanModeRejectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanModeRejectionTests.swift; sourceTree = "<group>"; };
+		2AF2BBD0ADA142AF99D65761 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000014 /* CodeHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighterTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleUserTextTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000100 /* EngineMessageRow+UserBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+UserBubble.swift"; sourceTree = "<group>"; };
@@ -1617,6 +1642,8 @@
 		7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ServerAdmin.swift"; sourceTree = "<group>"; };
 		72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SubscriptionPromptModel.swift"; sourceTree = "<group>"; };
 		2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FileLinks.swift"; sourceTree = "<group>"; };
+		CDEDEA8EF1E74019B99B0C54 /* SessionViewModel+DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DeepLink.swift"; sourceTree = "<group>"; };
+		1C198BF16CD9420FA292B513 /* DeepLinkPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkPresentation.swift; sourceTree = "<group>"; };
 		5D39A84873C22A7B3EDC9703 /* PhoneActionTableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PhoneActionTableTests.swift"; sourceTree = "<group>"; };
 		2C613F75DF1F0ABBE5615522 /* ServerAdminAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminAccessTests.swift"; sourceTree = "<group>"; };
 		4B66B7ED0EC4FC2A2AFBD953 /* FakeActionCaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FakeActionCaller.swift"; sourceTree = "<group>"; };
@@ -1696,6 +1723,7 @@
 		9045C82126490115E22C180C /* ServerAdminClient+Fleet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Fleet.swift"; sourceTree = "<group>"; };
 		529A68F3AC1005453268A054 /* ServerAdminClient+Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Health.swift"; sourceTree = "<group>"; };
 		6C19C045CB244DE8B15FEC6C /* ServerAdminClient+Files.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Files.swift"; sourceTree = "<group>"; };
+		4F417165CB284874A264660C /* ServerAdminClient+DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+DeepLink.swift"; sourceTree = "<group>"; };
 		100F2147C8E24EA1C0DA31BD /* ServerOverviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerOverviewModel.swift"; sourceTree = "<group>"; };
 		AC45ED050D15541E3D52D066 /* FleetModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FleetModel.swift"; sourceTree = "<group>"; };
 		76BF59F8358D8D74ACDE60D9 /* ServerPurgeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerPurgeModel.swift"; sourceTree = "<group>"; };
@@ -2056,6 +2084,11 @@
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				31992A053F8C4C9C90460683 /* RemoteFileData.swift */,
 				B052455F4C43481FACC61C10 /* FileLinkTarget.swift */,
+				231C5FCFFD294BA99BBBEDC6 /* DeepLinkActionOutcome.swift */,
+				D47FAA62C33E4657AAF232F7 /* DeepLinkOpenResult.swift */,
+				0DA14E29860D410A9CA16328 /* DeepLinkConfirmRequest.swift */,
+				10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */,
+				0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */,
 				F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */,
 				13184725F6AE4C22A28E116D /* FileLinkRequest.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
@@ -2182,6 +2215,9 @@
 				A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */,
 				A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */,
 				1D6D8A2AACF44D9B881E1A49 /* FileLinkSheet.swift */,
+				5D319874CAEC4847A5ABBC47 /* DeepLinkSettingsPageView.swift */,
+				D5D7A04ABABD49D2AA5E4BE0 /* DeepLinkPresenter.swift */,
+				CBC2D06498B645DDA23D2D4A /* DeepLinkConfirmSheet.swift */,
 				B4EA230A6ECA437B8E7C350E /* ConversationView+FileLinks.swift */,
 				EFCFA87543704BD59454021F /* DocumentExporter.swift */,
 				A86FD46A1F11402ABE8F2704 /* QuickLookPreview.swift */,
@@ -2364,6 +2400,8 @@
 				7823436B4FCB7B308BF4A037 /* SessionViewModel+ServerAdmin.swift */,
 				72DE7353A9F4CD11D8DEEFD4 /* SubscriptionPromptModel.swift */,
 				2D0E92EC374B472DA233E444 /* SessionViewModel+FileLinks.swift */,
+				CDEDEA8EF1E74019B99B0C54 /* SessionViewModel+DeepLink.swift */,
+				1C198BF16CD9420FA292B513 /* DeepLinkPresentation.swift */,
 				1F373EC4262380484715E17F /* Admin */,
 				DCDCD43D9ECF4F8288F8CDA1 /* Settings */,
 				7C003A23ADC92793D91D0B95 /* SessionViewModel+ServerLookup.swift */,
@@ -2521,6 +2559,8 @@
 				A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */,
 				C0DEC0DE000000000012 /* FilePathDetectorTests.swift */,
 				6FB05C6F0DA245F580773778 /* FileLinkTests.swift */,
+				4F3F22E0971848199E01D498 /* PlanModeRejectionTests.swift */,
+				2AF2BBD0ADA142AF99D65761 /* DeepLinkTests.swift */,
 				C0DEC0DE000000000014 /* CodeHighlighterTests.swift */,
 				C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */,
 				A1B2C3D4E5F60001FF00FB02 /* MarkdownFormatterVerbatimTests.swift */,
@@ -2623,6 +2663,7 @@
 				606BBE0C808C47BD9A508ADB /* MarkdownFormatter+Links.swift */,
 				587FF514AF7145509E05B9FC /* RemoteFileCopy.swift */,
 				BA8705DC7C9641D3A9722C36 /* FileLinkKind.swift */,
+				B1BE08F2A03F45909CF772CD /* DeepLinkURL.swift */,
 				C0DEC0DE000000000004 /* IonCodeTheme.swift */,
 				C0DEC0DE000000000006 /* CodeHighlighter.swift */,
 				A1B2C3D4E5F600010000FB01 /* VerbatimContext.swift */,
@@ -2797,6 +2838,7 @@
 				9045C82126490115E22C180C /* ServerAdminClient+Fleet.swift */,
 				529A68F3AC1005453268A054 /* ServerAdminClient+Health.swift */,
 				6C19C045CB244DE8B15FEC6C /* ServerAdminClient+Files.swift */,
+				4F417165CB284874A264660C /* ServerAdminClient+DeepLink.swift */,
 				A4D38CC25618C718132D7DCA /* ServerAdminClient+Projects.swift */,
 				C42578C741333DE0409FA9ED /* ServerAdminClient+GitAccess.swift */,
 				2C37613AD9E4E26297C071E1 /* ServerAdminClient+Models.swift */,
@@ -3456,6 +3498,11 @@
 				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
 				3D99A4BE7F7C40F5930BB856 /* RemoteFileData.swift in Sources */,
 				84BDEDDF9A0D451A8D48D422 /* FileLinkTarget.swift in Sources */,
+				6DE5980178EB47A0ABBC794A /* DeepLinkActionOutcome.swift in Sources */,
+				F52BA0EA204D4E76A5181D22 /* DeepLinkOpenResult.swift in Sources */,
+				CBBB0AB0CFE946CA8320BE49 /* DeepLinkConfirmRequest.swift in Sources */,
+				70CE0CD53A9C41ADA8005781 /* DeepLinkNavigateTarget.swift in Sources */,
+				DB845B37C1964F16A5F1BB84 /* PlanModeRejection.swift in Sources */,
 				FF64CF47FB2743BDA6AA1D0A /* FileLinkOutcome.swift in Sources */,
 				F62B6FEA30484E489AD07E10 /* FileLinkRequest.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
@@ -3704,6 +3751,7 @@
 				C70D0F362C6243EFBFBCDE4A /* MarkdownFormatter+Links.swift in Sources */,
 				121FBBC74A224A92B769783B /* RemoteFileCopy.swift in Sources */,
 				B78E007A0350494186AD0B67 /* FileLinkKind.swift in Sources */,
+				792D2622B3454C61AE845501 /* DeepLinkURL.swift in Sources */,
 				C0DEC0DE000000000005 /* IonCodeTheme.swift in Sources */,
 				C0DEC0DE000000000007 /* CodeHighlighter.swift in Sources */,
 				C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */,
@@ -3715,6 +3763,9 @@
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
 				3F2DF03CC10F409F9B2370DF /* FileLinkSheet.swift in Sources */,
+				E302206EC95847F98FFDBC51 /* DeepLinkSettingsPageView.swift in Sources */,
+				2DFC75D7CE194F0DBB7D8DC6 /* DeepLinkPresenter.swift in Sources */,
+				41E8D411316D46E494828412 /* DeepLinkConfirmSheet.swift in Sources */,
 				D7A6BB8CA6144EA6A9459BF9 /* ConversationView+FileLinks.swift in Sources */,
 				E6E82C430112469BAF0DA05A /* DocumentExporter.swift in Sources */,
 				F2394B02808F46ABBFB02831 /* QuickLookPreview.swift in Sources */,
@@ -3826,6 +3877,8 @@
 				C3864FBC0E9635C9CEABB480 /* SessionViewModel+ServerAdmin.swift in Sources */,
 				F57EDBC02EAFA9CEA67CB15A /* SubscriptionPromptModel.swift in Sources */,
 				53A704EC3B524576BC5B6AD8 /* SessionViewModel+FileLinks.swift in Sources */,
+				E9E56C7499C14309ABF19337 /* SessionViewModel+DeepLink.swift in Sources */,
+				9EB4597FCF1A443AACF6BB79 /* DeepLinkPresentation.swift in Sources */,
 				4B716CBD5CF7277EF9E3C1AB /* ProjectedSettingsSource.swift in Sources */,
 				CB1D6FEB2F62CAEBDC6EC1EC /* ProjectedSettingRow.swift in Sources */,
 				6295D005AC8D6C279189459F /* ServerPagesView.swift in Sources */,
@@ -3898,6 +3951,7 @@
 				59C3361518DB2090D0C16EF5 /* ServerAdminClient+Fleet.swift in Sources */,
 				748EBDA9BB6C04F3D31F159B /* ServerAdminClient+Health.swift in Sources */,
 				1C2DB44414354A6DB1406BAC /* ServerAdminClient+Files.swift in Sources */,
+				2C74D62457714803BF144A6B /* ServerAdminClient+DeepLink.swift in Sources */,
 				6693545AC610503C8A28D829 /* ServerOverviewModel.swift in Sources */,
 				85B85E18DC3CD52FA69D9B8A /* FleetModel.swift in Sources */,
 				3ACE6A2665ABC3013ADECB2E /* ServerPurgeModel.swift in Sources */,
@@ -4285,6 +4339,8 @@
 				A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */,
 				C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */,
 				C9B2F57F8D8B4B7DA5C85747 /* FileLinkTests.swift in Sources */,
+				7D6862952FEC42D49C278CDD /* PlanModeRejectionTests.swift in Sources */,
+				9479C50F9C214CD29670253D /* DeepLinkTests.swift in Sources */,
 				C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */,
 				C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */,
 				A1B2C3D4E5F60001FF00FA02 /* MarkdownFormatterVerbatimTests.swift in Sources */,

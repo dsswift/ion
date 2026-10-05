@@ -313,6 +313,9 @@ final class SessionViewModel {
     var pendingExternalNavigation: (deviceId: String, tabId: String)?
     /// Tab ID to auto-navigate to after remote creation.
     var pendingNavigationTabId: String? = nil
+    /// The screen an `ion://` link opened, presented at the app root. Set and
+    /// cleared by SessionViewModel+DeepLink.swift.
+    var deepLinkPresentation: DeepLinkPresentation? = nil
     /// Tab ID to auto-open the Git pane for (set by tapping the branch badge in tab list).
     /// Observed by ConversationView; cleared after the pane is presented.
     var pendingGitPaneTabId: String? = nil

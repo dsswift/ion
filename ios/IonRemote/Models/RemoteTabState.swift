@@ -9,6 +9,10 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var status: TabStatus
     var workingDirectory: String
     var permissionMode: PermissionMode
+    /// The last plan-mode change the engine refused on this conversation.
+    /// `permissionMode` already carries the mode that stands; this says why a
+    /// toggle reverted. Nil when nothing was refused.
+    var planModeRejection: PlanModeRejection?
     /// Per-conversation extended-thinking effort ("low"|"medium"|"high"), or
     /// nil/absent when off. Drives the iOS thinking control. Mirrors the
     /// desktop snapshot's RemoteTabState.thinkingEffort.

@@ -74,6 +74,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>ion-studio</string>
+				<string>ion</string>
 			</array>
 		</dict>
 	</array>

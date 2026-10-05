@@ -19,6 +19,8 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case automationListing = "automation.listing"
     case automationSetProjectEnabled = "automation.setProjectEnabled"
     case automationUpsert = "automation.upsert"
+    case deeplinkConfirmResult = "deeplink.confirmResult"
+    case deeplinkOpen = "deeplink.open"
     case entraIdentity = "entra.identity"
     case entraSignIn = "entra.signIn"
     case entraSignOut = "entra.signOut"
@@ -113,7 +115,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
              .remoteGetDisplay, .settingsLoad, .settingsSave:
             return .conversationsRead
         case .automationDelete, .automationDuplicate, .automationSetProjectEnabled, .automationUpsert,
-             .remoteSetDisplay, .settingsSetProjectable:
+             .deeplinkConfirmResult, .deeplinkOpen, .remoteSetDisplay, .settingsSetProjectable:
             return .conversationsOperate
         case .environmentGitAuthorSet, .environmentGitTest, .environmentJobsCancel, .environmentProjectsAdd,
              .environmentProjectsClone, .environmentProjectsRelocate, .environmentProjectsRemove, .environmentProjectsSetup,

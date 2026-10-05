@@ -44,6 +44,10 @@ struct ConversationStatusBar: View {
     /// drives the conversation may be steering the mode itself.
     var hasEngineExtension: Bool = false
 
+    /// The engine's last refusal of a plan-mode change. While present, a line
+    /// under the controls says why the mode control did not switch.
+    var planModeRejection: PlanModeRejection? = nil
+
     // Extended-thinking (per-conversation). The Think control always renders
     // beside the mode control. It disables when the active model has no
     // selectable effort levels, preserving layout and explaining unavailable
@@ -196,23 +200,25 @@ struct ConversationStatusBar: View {
         thinkingState.enabled && resolvedThinkingEffort != thinkingOptions.first?.value
     }
 
+    /// The line shown under the controls for a refused plan-mode change, or
+    /// nil when nothing was refused.
+    static func planModeRefusalText(_ rejection: PlanModeRejection?) -> String? {
+        guard let rejection else { return nil }
+        let reason = rejection.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mode = rejection.requestedEnabled ? "Plan" : "Auto"
+        return reason.isEmpty ? "\(mode) mode was refused." : "\(mode) mode was refused: \(reason)"
+    }
+
     var body: some View {
-        HStack(spacing: IonSpace.compactGap) {
-            modelControl
-            if permissionMode != nil {
-                modeControl
+        VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
+            controlsRow
+            if let refusal = Self.planModeRefusalText(planModeRejection) {
+                Text(refusal)
+                    .font(IonType.microLabel)
+                    .foregroundStyle(theme.statusWarning)
+                    .lineLimit(2)
+                    .accessibilityLabel(refusal)
             }
-            thinkingControl
-            Spacer(minLength: 0)
-            // Context usage stays mounted through every conversation lifecycle
-            // state. When occupancy has not arrived, its neutral ring shows 0%.
-            Button(action: onTapContextIndicator) {
-                ContextUsageRing(percent: radialContextPercent, color: contextColor)
-                    .frame(minWidth: IonSpace.screenInset, minHeight: IonSpace.screenInset)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(contextAccessibilityLabel(pct: radialContextPercent))
         }
         .font(IonType.metadata)
         .confirmationDialog(
@@ -308,6 +314,27 @@ struct ConversationStatusBar: View {
         // width to the fixed controls before they are forced to wrap.
         .layoutPriority(-1)
         .accessibilityLabel("Model, \(displayLabel)")
+    }
+
+    /// The model, mode, and thinking controls with the context ring.
+    private var controlsRow: some View {
+        HStack(spacing: IonSpace.compactGap) {
+            modelControl
+            if permissionMode != nil {
+                modeControl
+            }
+            thinkingControl
+            Spacer(minLength: 0)
+            // Context usage stays mounted through every conversation lifecycle
+            // state. When occupancy has not arrived, its neutral ring shows 0%.
+            Button(action: onTapContextIndicator) {
+                ContextUsageRing(percent: radialContextPercent, color: contextColor)
+                    .frame(minWidth: IonSpace.screenInset, minHeight: IonSpace.screenInset)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(contextAccessibilityLabel(pct: radialContextPercent))
+        }
     }
 
     /// Permission mode. A plain conversation toggles on tap; an engine
