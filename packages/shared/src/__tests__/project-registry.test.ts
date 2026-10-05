@@ -23,6 +23,11 @@ describe('controlled Project registry', () => {
     })
   })
 
+  it('keeps every persisted project field through a load', () => {
+    const cloned = { addedManually: true, lastUsedAt: 0, repoRemote: 'github.com/acme/app', clonedByIon: true, cloneUrl: 'https://github.com/acme/app.git', trusted: false }
+    expect(sanitizeProjectRegistry({ '/cloned': cloned })).toEqual({ '/cloned': cloned })
+  })
+
   it('orders alphabetically and disambiguates duplicate names', () => {
     const registry: ProjectRegistry = {
       '/zeta/api': { addedManually: true, lastUsedAt: 100 },

@@ -115,6 +115,10 @@ export function sanitizeProjectRegistry(raw: unknown, onReject?: (entry: string)
       lastUsedAt: typeof entry.lastUsedAt === 'number' && Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : 0,
       ...(profileOverride ? { profileOverride } : {}),
       ...(entry.isDefault === true ? { isDefault: true } : {}),
+      ...(typeof entry.repoRemote === 'string' && entry.repoRemote ? { repoRemote: entry.repoRemote } : {}),
+      ...(entry.clonedByIon === true ? { clonedByIon: true } : {}),
+      ...(typeof entry.cloneUrl === 'string' && entry.cloneUrl ? { cloneUrl: entry.cloneUrl } : {}),
+      ...(typeof entry.trusted === 'boolean' ? { trusted: entry.trusted } : {}),
     }
   }
   return normalizeProjectDefaults(out)
