@@ -32,8 +32,9 @@ import (
 //   - The include directive (cfg.IncludeDirective) is honored per file.
 //   - Discovered files carry Source "nested".
 //
-// The seen map dedups within a single call (the same directory reached by two
-// targets in one drain). Cross-turn / conversation-lifetime dedup is the
+// The dedup index dedups within a single call (the same directory reached by
+// two targets in one drain, a symlinked instruction file, or byte-identical
+// content). Cross-turn / conversation-lifetime dedup is the
 // caller's responsibility (it tracks already-injected paths).
 func WalkNestedContextDirs(cwd, targetPath string, cfg WalkerConfig) []DiscoveredContext {
 	absCwd, err := filepath.Abs(cwd)
@@ -63,23 +64,22 @@ func WalkNestedContextDirs(cwd, targetPath string, cfg WalkerConfig) []Discovere
 	}
 
 	patterns := cfg.resolvePatterns()
-	seen := make(map[string]bool)
+	idx := newDedupIndex()
 	var results []DiscoveredContext
 
 	for _, dir := range chain {
 		for _, pattern := range patterns {
 			fp := filepath.Join(dir, pattern)
-			if seen[fp] {
+			if idx.seenPath(fp) {
 				continue
 			}
 			data, readErr := os.ReadFile(fp)
 			if readErr != nil {
 				continue
 			}
-			seen[fp] = true
-			content := string(data)
-			if cfg.IncludeDirective != "" {
-				content = ProcessIncludes(content, filepath.Dir(fp), cfg.IncludeDirective, nil)
+			content, ok := acceptCandidate(cfg, idx, fp, "nested", data)
+			if !ok {
+				continue
 			}
 			results = append(results, DiscoveredContext{
 				Path:    fp,

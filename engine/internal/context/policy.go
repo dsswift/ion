@@ -17,6 +17,11 @@ type ResolvedPolicy struct {
 	// MaxContextBytes caps the total content bytes injected. Zero or negative
 	// means unlimited. See types.DispatchContextConfig.MaxContextBytes.
 	MaxContextBytes int
+	// IncludeMaxDepth caps include hops per file. Zero means
+	// DefaultIncludeMaxDepth. See WalkerConfig.IncludeMaxDepth.
+	IncludeMaxDepth int
+	// Hooks are optional per-file seams passed through to the walker.
+	Hooks WalkHooks
 }
 
 // ResolvePolicy merges the four cascade levels into a concrete policy.
@@ -96,6 +101,8 @@ func BuildContextPrompt(cwd, agentName string, policy ResolvedPolicy) (string, [
 	cfg := IonPreset()
 	cfg.ClaudeCompat = policy.ClaudeCompat
 	cfg.IncludeHomeRoots = policy.IncludeGlobalContext
+	cfg.IncludeMaxDepth = policy.IncludeMaxDepth
+	cfg.Hooks = policy.Hooks
 
 	if !policy.IncludeProjectContext {
 		// Suppress the project walk: no ancestor recursion and no project root

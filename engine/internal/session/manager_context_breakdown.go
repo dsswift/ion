@@ -162,9 +162,11 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	}
 
 	// Inject context (context files, extension context, memory) using the same
-	// helpers prompt_dispatch uses before every prompt. injectContextFiles only
-	// reads s.config (WorkingDirectory, ClaudeCompat) and does no locking
-	// itself, so using the snapshotted s is safe.
+	// helpers prompt_dispatch uses before every prompt. injectContextFiles
+	// reads s.config and takes m.mu only briefly (to read s.extGroup for the
+	// context_discover / context_load hooks), so it must run with m.mu
+	// released, as it does here. The hooks fire here too, so the breakdown
+	// reflects what a handler would reject or rewrite.
 	m.mu.RLock()
 	s, ok = m.sessions[key]
 	if !ok {
@@ -175,9 +177,9 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	sForInject := s
 	m.mu.RUnlock()
 
-	injectContextFiles(sForInject, &opts)
+	ctxFiles := m.injectContextFiles(sForInject, key, &opts)
 	workspaceContext := m.injectWorkspaceContext(sForInject, key, &opts, sForInject.config.ClientWorkspaceContext)
-	m.injectExtensionContext(sForInject, key, &opts, workspaceContext)
+	m.injectExtensionContext(sForInject, key, &opts, workspaceContext, ctxFiles)
 	injectPluginContext(sForInject, &opts)
 	if snap.sessionMemory != nil {
 		snap.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)

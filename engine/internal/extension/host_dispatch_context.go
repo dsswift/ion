@@ -19,6 +19,9 @@ type WalkContextFilesRequest struct {
 	IncludeGlobal  *bool  `json:"includeGlobal,omitempty"`
 	IncludeProject *bool  `json:"includeProject,omitempty"`
 	ClaudeCompat   *bool  `json:"claudeCompat,omitempty"`
+	// IncludeMaxDepth caps @-include hops per file. Zero or absent uses the
+	// engine default (5).
+	IncludeMaxDepth int `json:"includeMaxDepth,omitempty"`
 }
 
 // walkContextFilesForExtension runs the pure context walker with the request's
@@ -47,6 +50,7 @@ func walkContextFilesForExtension(req WalkContextFilesRequest) []ioncontext.Disc
 		IncludeGlobalContext:  includeGlobal,
 		IncludeProjectContext: includeProject,
 		ClaudeCompat:          compat,
+		IncludeMaxDepth:       req.IncludeMaxDepth,
 	}
 	_, files := ioncontext.BuildContextPrompt(req.Cwd, "ext-walk", policy)
 	return files

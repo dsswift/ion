@@ -31,7 +31,15 @@ type WalkerConfig struct {
 	RecurseParents   bool     // walk upward from cwd toward root
 	MaxDepth         int      // max upward levels (0 = unlimited)
 	IncludeDirective string   // prefix for inline includes (e.g., "@")
-	Deduplication    bool     // skip files already seen by absolute path
+	// IncludeMaxDepth caps how many include hops are followed from a context
+	// file. Zero means DefaultIncludeMaxDepth. This is unrelated to MaxDepth,
+	// which bounds the upward directory walk.
+	IncludeMaxDepth int
+	// Deduplication skips a file already loaded: the same path, a symlink to
+	// a loaded file, or a file with byte-identical content.
+	Deduplication bool
+	// Hooks are optional per-file observation and override seams.
+	Hooks WalkHooks
 	// SuppressProjectRoots, when true, skips the project (cwd-derived) walk
 	// entirely — including the implicit cwd fallback that WalkContextFiles
 	// applies when Roots is empty. Home roots (when IncludeHomeRoots is set)
@@ -123,12 +131,13 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 		}
 	}
 
-	seen := make(map[string]bool)
+	idx := newDedupIndex()
 	var results []DiscoveredContext
 
 	// Walk the recursive (cwd-derived) roots first, then the non-recursive
-	// home roots. Dedup via the shared seen map means a file reachable from
-	// both (e.g. cwd is itself under ~/.ion) is loaded exactly once.
+	// home roots. The shared dedup index means a file reachable from both
+	// (e.g. cwd is itself under ~/.ion), or reachable through a symlink, is
+	// loaded exactly once.
 	for _, root := range roots {
 		absRoot, err := filepath.Abs(root)
 		if err != nil {
@@ -147,7 +156,7 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 
 			for _, pattern := range patterns {
 				fp := filepath.Join(dir, pattern)
-				if config.Deduplication && seen[fp] {
+				if config.Deduplication && idx.seenPath(fp) {
 					continue
 				}
 
@@ -156,13 +165,11 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 					continue
 				}
 
-				seen[fp] = true
-				content := string(data)
-				if config.IncludeDirective != "" {
-					content = ProcessIncludes(content, filepath.Dir(fp), config.IncludeDirective, nil)
-				}
-
 				source := classifySource(level, homeRootSet[dir])
+				content, ok := acceptCandidate(config, idx, fp, source, data)
+				if !ok {
+					continue
+				}
 				results = append(results, DiscoveredContext{
 					Path:    fp,
 					Content: content,
@@ -193,17 +200,16 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 		}
 		for _, pattern := range patterns {
 			fp := filepath.Join(absHome, pattern)
-			if config.Deduplication && seen[fp] {
+			if config.Deduplication && idx.seenPath(fp) {
 				continue
 			}
 			data, err := os.ReadFile(fp)
 			if err != nil {
 				continue
 			}
-			seen[fp] = true
-			content := string(data)
-			if config.IncludeDirective != "" {
-				content = ProcessIncludes(content, filepath.Dir(fp), config.IncludeDirective, nil)
+			content, ok := acceptCandidate(config, idx, fp, "global", data)
+			if !ok {
+				continue
 			}
 			results = append(results, DiscoveredContext{
 				Path:    fp,
@@ -217,10 +223,23 @@ func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 	return results
 }
 
+// DefaultIncludeMaxDepth is the include-hop cap applied when a caller passes
+// zero. A context file's own includes are hop 1.
+const DefaultIncludeMaxDepth = 5
+
 // ProcessIncludes scans content for lines beginning with the given directive
 // prefix followed by a file path. Each referenced file is read and inlined.
-// The seen map tracks absolute paths to prevent circular includes.
-func ProcessIncludes(content, basePath, directive string, seen map[string]bool) string {
+// The seen map tracks absolute paths to prevent circular includes. maxDepth
+// caps the include hops followed (zero means DefaultIncludeMaxDepth); a
+// reference past the cap is replaced by a marker comment and not read.
+func ProcessIncludes(content, basePath, directive string, seen map[string]bool, maxDepth int) string {
+	if maxDepth <= 0 {
+		maxDepth = DefaultIncludeMaxDepth
+	}
+	return processIncludes(content, basePath, directive, seen, 1, maxDepth)
+}
+
+func processIncludes(content, basePath, directive string, seen map[string]bool, depth, maxDepth int) string {
 	if directive == "" {
 		return content
 	}
@@ -244,6 +263,12 @@ func ProcessIncludes(content, basePath, directive string, seen map[string]bool) 
 			continue
 		}
 
+		if depth > maxDepth {
+			utils.LogWithFields(utils.LevelInfo, "context", "include skipped: max depth reached", map[string]any{"ref": ref, "base": basePath, "max_depth": maxDepth})
+			result = append(result, "<!-- max include depth reached: "+ref+" -->")
+			continue
+		}
+
 		var absRef string
 		if filepath.IsAbs(ref) {
 			absRef = ref
@@ -264,7 +289,7 @@ func ProcessIncludes(content, basePath, directive string, seen map[string]bool) 
 			continue
 		}
 
-		included := ProcessIncludes(string(data), filepath.Dir(absRef), directive, seen)
+		included := processIncludes(string(data), filepath.Dir(absRef), directive, seen, depth+1, maxDepth)
 		result = append(result, included)
 	}
 
@@ -288,7 +313,8 @@ func classifySource(level int, isHome bool) string {
 // --- Presets ---
 
 // IonPreset returns a walker config for Ion projects. Ion-native instruction
-// files (AGENTS.md, ION.md, and their .ion/ variants) are always discovered;
+// files (AGENTS.md, ION.md, their .ion/ variants, and .agents/AGENTS.md) are
+// always discovered;
 // Claude-compat files (CLAUDE.md, .claude/CLAUDE.md) are discovered only when
 // the caller sets ClaudeCompat on the returned config. The user's home Ion
 // root (~/.ion) is always probed; ~/.claude is probed only when ClaudeCompat.
@@ -300,7 +326,7 @@ func classifySource(level int, isHome bool) string {
 //	cfg.ClaudeCompat = s.config.ClaudeCompat
 func IonPreset() WalkerConfig {
 	return WalkerConfig{
-		AlwaysPatterns:   []string{"AGENTS.md", "ION.md", ".ion/ION.md", ".ion/AGENTS.md"},
+		AlwaysPatterns:   []string{"AGENTS.md", "ION.md", ".ion/ION.md", ".ion/AGENTS.md", ".agents/AGENTS.md"},
 		CompatPatterns:   []string{"CLAUDE.md", ".claude/CLAUDE.md"},
 		IncludeHomeRoots: true,
 		RecurseParents:   true,
@@ -343,5 +369,9 @@ func CreatePreset(overrides WalkerConfig) WalkerConfig {
 	if overrides.IncludeDirective != "" {
 		cfg.IncludeDirective = overrides.IncludeDirective
 	}
+	if overrides.IncludeMaxDepth > 0 {
+		cfg.IncludeMaxDepth = overrides.IncludeMaxDepth
+	}
+	cfg.Hooks = overrides.Hooks
 	return cfg
 }

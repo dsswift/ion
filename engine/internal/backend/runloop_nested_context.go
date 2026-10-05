@@ -61,6 +61,7 @@ func (b *ApiBackend) drainNestedContext(
 	// walk, home roots off (nested loading only descends under cwd), includes
 	// processed via the @ directive.
 	cfg := ioncontextPreset(opts.ClaudeCompat)
+	cfg.IncludeMaxDepth = opts.ContextIncludeMaxDepth
 
 	// Collect new (not-yet-injected) files across all touched paths, in
 	// discovery order, deduped within this drain via a local set layered on

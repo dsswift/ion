@@ -61,6 +61,9 @@ func injectDispatchContext(
 
 	// Resolve the effective policy across all four levels.
 	policy := ioncontext.ResolvePolicy(perDispatchCfg, sessionDefaultCfg, engineDispatchCfg, engineCompatDefault)
+	if cfg := sa.EngineConfig(); cfg != nil && cfg.Limits.ContextIncludeMaxDepth != nil {
+		policy.IncludeMaxDepth = *cfg.Limits.ContextIncludeMaxDepth
+	}
 
 	utils.LogWithFields(utils.LevelInfo, "server", "dispatch context policy resolved", map[string]any{"agent_name": agentName, "session_key": sa.SessionKey(), "include_global_context": policy.IncludeGlobalContext, "include_project_context": policy.IncludeProjectContext, "claude_compat": policy.ClaudeCompat, "max_context_bytes": policy.MaxContextBytes, "project_path": projectPath})
 

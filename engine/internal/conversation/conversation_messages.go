@@ -27,12 +27,6 @@ type ToolResultEntry struct {
 	SkillInvocation *types.SkillInvocation `json:"-"`
 }
 
-// ContextFile is a discovered context file on disk.
-type ContextFile struct {
-	Path    string
-	Content string
-}
-
 // GenEntryID generates an 8-character hex ID from crypto/rand.
 func GenEntryID() string {
 	b := make([]byte, 4)

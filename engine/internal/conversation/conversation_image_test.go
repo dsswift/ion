@@ -54,36 +54,6 @@ func TestEncodeImageNotFound(t *testing.T) {
 	}
 }
 
-// --- Deep branching ---
-
-func TestDiscoverContextFiles_FindsInCwd(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# test context"), 0o644)
-
-	results := DiscoverContextFiles(dir, nil)
-	found := false
-	for _, r := range results {
-		if r.Path == filepath.Join(dir, "AGENTS.md") {
-			found = true
-			if r.Content != "# test context" {
-				t.Errorf("unexpected content: %q", r.Content)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("expected to find AGENTS.md in cwd")
-	}
-}
-
-func TestDiscoverContextFiles_EmptyDir(t *testing.T) {
-	dir := t.TempDir()
-
-	results := DiscoverContextFiles(dir, []string{"NONEXISTENT.md"})
-	if len(results) != 0 {
-		t.Fatalf("expected 0 results, got %d", len(results))
-	}
-}
-
 // --- Encode image: oversized file ---
 
 func TestEncodeImage_OversizedFile(t *testing.T) {

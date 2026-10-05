@@ -30,49 +30,6 @@ func DefaultConversationsDir() string {
 	return filepath.Join(dir, "conversations")
 }
 
-// DiscoverContextFiles walks parent directories looking for context files.
-// Deprecated: use WalkContextFiles from the context package instead, which
-// applies the ClaudeCompat gate (Ion-native files always; Claude files only
-// when enabled). This helper takes an explicit name list and does NOT gate;
-// the zero-arg default is Ion-first to match the engine's default behavior.
-func DiscoverContextFiles(cwd string, names []string) []ContextFile {
-	if len(names) == 0 {
-		names = []string{"AGENTS.md", "ION.md", ".ion/ION.md", ".ion/AGENTS.md"}
-	}
-
-	var results []ContextFile
-	seen := make(map[string]bool)
-
-	dir, err := filepath.Abs(cwd)
-	if err != nil {
-		return nil
-	}
-
-	for {
-		for _, name := range names {
-			fp := filepath.Join(dir, name)
-			if seen[fp] {
-				continue
-			}
-			seen[fp] = true
-
-			data, err := os.ReadFile(fp)
-			if err != nil {
-				continue
-			}
-			results = append(results, ContextFile{Path: fp, Content: string(data)})
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-
-	return results
-}
-
 // supportedImageMime maps file extensions to MIME types for images the engine
 // supports as inline content blocks. Used both as a format-gate (reject unknown
 // extensions early) and as an allowlist for the content-sniff result.
