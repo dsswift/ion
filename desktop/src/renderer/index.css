@@ -152,14 +152,44 @@ input::placeholder {
 .prose-cloud a:hover {
   text-decoration: underline;
 }
+/* Tailwind's preflight sets `list-style: none` on every ul/ol, so markdown
+   lists must restore their markers here or they render as bare indented text.
+   The padding leaves room for two-digit ordered markers. */
 .prose-cloud ul, .prose-cloud ol {
-  padding-left: 1.2em;
+  padding-left: 1.6em;
   margin: 0.25em 0;
 }
+.prose-cloud ul { list-style-type: disc; }
+.prose-cloud ul ul { list-style-type: circle; }
+.prose-cloud ul ul ul { list-style-type: square; }
+.prose-cloud ol { list-style-type: decimal; }
+.prose-cloud ol ol { list-style-type: lower-alpha; }
+.prose-cloud ol ol ol { list-style-type: lower-roman; }
 .prose-cloud li {
   margin: 0.1em 0;
 }
-.prose-cloud h1, .prose-cloud h2, .prose-cloud h3, .prose-cloud h4 {
+.prose-cloud li::marker {
+  color: var(--ion-text-secondary);
+}
+/* GFM task lists draw a checkbox in place of the bullet. */
+.prose-cloud ul.contains-task-list {
+  list-style-type: none;
+  padding-left: 0.4em;
+}
+/* GFM footnotes label their section with a visually hidden heading. */
+.prose-cloud .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.prose-cloud h1, .prose-cloud h2, .prose-cloud h3,
+.prose-cloud h4, .prose-cloud h5, .prose-cloud h6 {
   margin: 0.5em 0 0.25em;
   font-weight: 600;
   color: var(--ion-text-primary);
@@ -168,6 +198,8 @@ input::placeholder {
 .prose-cloud h2 { font-size: 1.3em; }
 .prose-cloud h3 { font-size: 1.15em; }
 .prose-cloud h4 { font-size: 1em; }
+.prose-cloud h5 { font-size: 0.925em; }
+.prose-cloud h6 { font-size: 0.85em; color: var(--ion-text-secondary); }
 .prose-cloud hr {
   border: none;
   border-top: 1px solid var(--ion-container-border);
