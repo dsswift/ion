@@ -68,7 +68,7 @@ final class SettingsThisPhoneSectionTests: XCTestCase {
         }
         let state = ServerSettingsState(
             settings: [:],
-            schema: [entry("streamThinkingToRemote", "environment"), entry("aiGeneratedTitles", "personal"), entry("showTodoList", "device"), entry("inboxAutoSettleOnMerge", "account")],
+            schema: [entry("streamThinkingToRemote", "environment"), entry("aiGeneratedTitles", "personal"), entry("showTodoList", "device"), entry("usageLimitAutoResume", "account")],
             groups: [ServerSettingGroupDescriptor(groupId: "general", label: "General")]
         )
         XCTAssertEqual(state.clientOwnedEntries().map(\.key), ["aiGeneratedTitles", "showTodoList"])

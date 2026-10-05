@@ -57,6 +57,8 @@ struct TabListView: View {
     @State var settledShown = 15
     @State var inboxProjectFilter = UserDefaults.standard.string(forKey: "inboxProjectFilter") ?? "all"
     @State var inboxSort = InboxNavigator.Sort(rawValue: UserDefaults.standard.string(forKey: "inboxSort") ?? "recent") ?? .recent
+    /// Conversations still working sit below the rest of the Active list.
+    @State var inboxWorkingLast = UserDefaults.standard.bool(forKey: "inboxWorkingLast")
     @State var showSettledHistory = false
     /// Inbox conversation awaiting the settle/delete/cancel safety choice.
     @State var pendingInboxDeleteTab: RemoteTabState?

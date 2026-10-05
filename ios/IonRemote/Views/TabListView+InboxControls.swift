@@ -32,6 +32,12 @@ extension TabListView {
                         }
                     }
                 }
+                Divider()
+                Toggle("Working last", isOn: Binding(get: { inboxWorkingLast }, set: { enabled in
+                    inboxWorkingLast = enabled
+                    UserDefaults.standard.set(enabled, forKey: "inboxWorkingLast")
+                    DiagnosticLog.log("inbox working-last changed", tag: "view.inbox", fields: ["enabled": String(enabled)])
+                }))
             } label: {
                 inboxControlChip(inboxSort.label, systemImage: "arrow.up.arrow.down")
             }

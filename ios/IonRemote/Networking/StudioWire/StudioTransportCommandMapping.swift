@@ -171,6 +171,16 @@ struct StudioTransportCommandMapping: StudioCommandMapping {
             return .action(.positional("snoozeTab", .string(tabId), .double(untilMs)))
         case .tabUnsnooze(let tabId):
             return .action(.positional("unsnoozeTab", .string(tabId)))
+        case .tabResumeAtReset(let tabId):
+            return .action(.positional("resumeAtLimitReset", .string(tabId)))
+        case .tabSnoozeUntilReset(let tabId):
+            return .action(.positional("snoozeUntilLimitReset", .string(tabId)))
+        case .tabQueueSpareQuota(let tabId, let text):
+            return .action(.positional("deferSend", .string(tabId), .string(text), .string("spare-quota")))
+        case .tabCancelHeldPrompt(let tabId):
+            return .action(.positional("cancelDeferredSend", .string(tabId)))
+        case .tabSendHeldPrompt(let tabId):
+            return .action(.positional("releaseDeferredSend", .string(tabId)))
         case .tabMarkUnread(let tabId):
             return .action(.positional("markTabUnread", .string(tabId)))
         case .tabPin(let tabId):

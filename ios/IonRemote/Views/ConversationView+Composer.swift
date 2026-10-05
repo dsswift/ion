@@ -200,6 +200,19 @@ extension ConversationView {
         .buttonStyle(.plain)
         .disabled(cannotSend)
         .accessibilityLabel("Send")
+        // Touch and hold for the two sends that are not "send and watch".
+        .contextMenu {
+            Button {
+                submitPrompt(thenNew: true)
+            } label: {
+                Label("Send and start a new conversation", systemImage: "plus.bubble")
+            }
+            Button {
+                queueDraftForSpareQuota()
+            } label: {
+                Label("Send when quota is spare", systemImage: "hourglass")
+            }
+        }
     }
 
     /// A Menu rather than a plain Button: stopping the orchestrator and

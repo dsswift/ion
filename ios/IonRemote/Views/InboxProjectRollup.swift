@@ -26,6 +26,9 @@ struct InboxProjectRollup: View {
             case .approval, .input: counts.needsYou += 1
             case .failed: counts.failed += 1
             case .working, .connecting: counts.working += 1
+            // Limited with nothing queued to resume it waits on a choice; with
+            // a resume queued it needs nothing.
+            case .limited: if tab.deferredRelease == nil { counts.needsYou += 1 }
             case .done, nil: break
             }
         }

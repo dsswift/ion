@@ -100,6 +100,13 @@ enum RemoteCommand: Sendable {
   case tabUnsettle(tabId: String)
   case tabSnooze(tabId: String, untilMs: Double)
   case tabUnsnooze(tabId: String)
+  /// Hold the server's resume prompt until the usage limit that stopped this conversation resets.
+  case tabResumeAtReset(tabId: String)
+  case tabSnoozeUntilReset(tabId: String)
+  /// Hold `text` until the conversation's account has weekly quota about to reset unused.
+  case tabQueueSpareQuota(tabId: String, text: String)
+  case tabCancelHeldPrompt(tabId: String)
+  case tabSendHeldPrompt(tabId: String)
   case tabMarkUnread(tabId: String)
   case tabPin(tabId: String)
   case tabUnpin(tabId: String)
@@ -419,6 +426,11 @@ enum RemoteCommand: Sendable {
     case tabUnsettle = "desktop_tab_unsettle"
     case tabSnooze = "desktop_tab_snooze"
     case tabUnsnooze = "desktop_tab_unsnooze"
+    case tabResumeAtReset = "desktop_tab_resume_at_reset"
+    case tabSnoozeUntilReset = "desktop_tab_snooze_until_reset"
+    case tabQueueSpareQuota = "desktop_tab_queue_spare_quota"
+    case tabCancelHeldPrompt = "desktop_tab_cancel_held_prompt"
+    case tabSendHeldPrompt = "desktop_tab_send_held_prompt"
     case tabMarkUnread = "desktop_tab_mark_unread"
     case tabPin = "desktop_tab_pin"
     case tabUnpin = "desktop_tab_unpin"

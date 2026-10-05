@@ -88,6 +88,35 @@ extension SessionViewModel {
         send(.tabUnsnooze(tabId: tabId), intent: .userInitiated)
     }
 
+    /// Has the server hold its resume prompt until the usage limit that
+    /// stopped this conversation resets, then send it by itself.
+    @MainActor
+    func resumeAtLimitReset(tabId: String) {
+        send(.tabResumeAtReset(tabId: tabId), intent: .userInitiated)
+    }
+
+    @MainActor
+    func snoozeUntilLimitReset(tabId: String) {
+        send(.tabSnoozeUntilReset(tabId: tabId), intent: .userInitiated)
+    }
+
+    /// Has the server hold `text` until the conversation's account has weekly
+    /// quota about to reset unused.
+    @MainActor
+    func queueForSpareQuota(tabId: String, text: String) {
+        send(.tabQueueSpareQuota(tabId: tabId, text: text), intent: .userInitiated)
+    }
+
+    @MainActor
+    func cancelHeldPrompt(tabId: String) {
+        send(.tabCancelHeldPrompt(tabId: tabId), intent: .userInitiated)
+    }
+
+    @MainActor
+    func sendHeldPromptNow(tabId: String) {
+        send(.tabSendHeldPrompt(tabId: tabId), intent: .userInitiated)
+    }
+
     @MainActor
     func markTabUnread(tabId: String) {
         send(.tabMarkUnread(tabId: tabId), intent: .userInitiated)

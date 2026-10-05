@@ -351,7 +351,10 @@ extension ConversationView {
         forceScrollCounter += 1
     }
 
-    func submitPrompt(skipClearConfirm: Bool = false) {
+    /// `thenNew` is a background send: once sent, the phone opens a fresh
+    /// conversation like this one (same project, profile, and worktree
+    /// choice), so the next task can be typed while this one runs.
+    func submitPrompt(skipClearConfirm: Bool = false, thenNew: Bool = false) {
         // Sending while dictating: finish the session first so the recognizer
         // commits the words it is still holding, then send what the draft
         // actually says. Sending the field at the instant of the tap shipped
@@ -362,7 +365,7 @@ extension ConversationView {
             ])
             Task {
                 await viewModel.finishDictation(tabId: tabId)
-                submitPrompt(skipClearConfirm: skipClearConfirm)
+                submitPrompt(skipClearConfirm: skipClearConfirm, thenNew: thenNew)
             }
             return
         }
@@ -405,6 +408,35 @@ extension ConversationView {
         isInputFocused = false
         viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "")
         pendingAttachments = []
+        if thenNew { openSiblingConversation() }
+    }
+
+    /// Opens a fresh conversation in the same project as this one, with the
+    /// same profile, cutting a new worktree from the same branch when this
+    /// one lives in a worktree.
+    func openSiblingConversation() {
+        guard let tab = viewModel.tab(for: tabId) else { return }
+        let directory = tab.worktree?.repoPath ?? tab.workingDirectory
+        DiagnosticLog.log("background send: opening a fresh conversation", tag: "view.inputbar", fields: [
+            "tab_id": String(tabId.prefix(8)), "in_worktree": String(tab.worktree != nil)
+        ])
+        viewModel.createTab(
+            workingDirectory: directory,
+            profileId: tab.engineProfileId,
+            useWorktree: tab.worktree != nil ? true : nil,
+            sourceBranch: tab.worktree?.sourceBranch
+        )
+    }
+
+    /// Hands the draft to the server to hold until the conversation's account
+    /// has weekly quota about to reset unused. The server sends it by itself.
+    func queueDraftForSpareQuota() {
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Haptic.light()
+        viewModel.queueForSpareQuota(tabId: tabId, text: trimmed)
+        isInputFocused = false
+        viewModel.setEngineDraft(tabId: tabId, instanceId: activeInstanceId, "")
     }
 
 }

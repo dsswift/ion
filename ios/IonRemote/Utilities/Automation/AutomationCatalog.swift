@@ -103,6 +103,16 @@ enum AutomationCatalog {
         trigger("bench:member-removed", "A worktree leaves an integration bench", worktree: true, conversation: false, [
             worktreePath, text("payload.sourceBranch", "Source branch", stringOps),
         ]),
+        trigger("usage:limit-reached", "A usage limit stops a conversation", worktree: true, conversation: true, [
+            text("payload.limitType", "Limit", equalityOps), worktreePath,
+        ]),
+        trigger("usage:limit-reset", "A conversation's usage limit resets", worktree: true, conversation: true, [
+            text("payload.limitType", "Limit", equalityOps), worktreePath,
+        ]),
+        trigger("usage:quota-expiring", "Weekly quota is about to reset unused", worktree: false, conversation: false, [
+            text("payload.provider", "Provider", stringOps),
+            text("payload.limitLabel", "Model", stringOps),
+        ]),
     ]
 
     // MARK: Actions
@@ -113,6 +123,7 @@ enum AutomationCatalog {
             AutomationActionConfigField(key: "stage", label: "New stage", type: .enumType, required: true, values: stageChoices),
             AutomationActionConfigField(key: "onlyIfStage", label: "Only if current stage is", type: .enumType, required: false, values: stageChoices),
         ]),
+        AutomationActionSpec(kind: "bench:join", label: "Put the worktree on its integration bench", target: .worktree, config: []),
         AutomationActionSpec(kind: "desktop:notification", label: "Show a desktop notification", target: .none, config: [
             AutomationActionConfigField(key: "title", label: "Title", type: .string, required: true),
             AutomationActionConfigField(key: "body", label: "Body", type: .string, required: false),

@@ -23,12 +23,20 @@ struct InboxRowView: View {
     var showsProject: Bool = true
 
     enum Pill: Equatable {
-        case approval, input, connecting, working, done, failed
+        case approval, input, connecting, working, done, failed, limited
     }
 
     /// Pill from the SAME rollup the status dots use (cascade priorities
-    /// pinned by status-cascade.json + StatusCascadeParityTests).
-    static func pill(for tab: RemoteTabState) -> Pill? {
+    /// pinned by status-cascade.json + StatusCascadeParityTests). A usage
+    /// limit that still holds the conversation outranks everything but a
+    /// decision the person owes: its failed run is the limit, not news.
+    static func pill(for tab: RemoteTabState, now: Date = .now) -> Pill? {
+        let pill = statusPill(for: tab)
+        guard limitedUntil(tab, now: now) != nil, pill != .approval, pill != .input else { return pill }
+        return .limited
+    }
+
+    private static func statusPill(for tab: RemoteTabState) -> Pill? {
         switch TabStatusRollup.classify(tab).state {
         case .permission: return .approval
         case .planReady, .question: return .input
@@ -37,6 +45,25 @@ struct InboxRowView: View {
         case .error: return .failed
         case .unread: return .done
         case .idle: return nil
+        }
+    }
+
+    /// When the usage limit holding this conversation resets, while it holds.
+    static func limitedUntil(_ tab: RemoteTabState, now: Date = .now) -> Date? {
+        guard let ms = tab.limitedUntil else { return nil }
+        let reset = Date(timeIntervalSince1970: ms / 1000)
+        return reset > now ? reset : nil
+    }
+
+    /// What the row says about the prompt the server holds for it: when it
+    /// resumes, or that it waits for spare quota. Nil when nothing is held.
+    static func heldLabel(for tab: RemoteTabState, now: Date = .now) -> String? {
+        switch tab.deferredRelease {
+        case "spare-quota": return "Queued for spare quota"
+        case "limit-reset":
+            guard let reset = limitedUntil(tab, now: now) else { return "Resumes at reset" }
+            return "Resumes \(reset.formatted(date: .omitted, time: .shortened))"
+        default: return nil
         }
     }
 
@@ -73,7 +100,10 @@ struct InboxRowView: View {
     private var pill: Pill? { Self.pill(for: tab) }
     private var unread: Bool { tab.unread ?? false }
     private var woke: Bool { tab.wokeAt != nil }
-    private var quiet: Bool { !unread && pill == nil }
+    /// Receded rows ask nothing of the person. The server says which those
+    /// are; a server that predates the flag leaves the old read-and-idle rule.
+    private var quiet: Bool { tab.quiet ?? (!unread && pill == nil) }
+    private var heldLabel: String? { Self.heldLabel(for: tab) }
     private var backgroundLabel: String? {
         tab.backgroundLiveness == "monitoring" ? "Monitoring" : nil
     }
@@ -100,6 +130,7 @@ struct InboxRowView: View {
         }
         .padding(.vertical, IonSpace.hairlineGap)
         .contentShape(Rectangle())
+        .opacity(quiet ? 0.62 : 1)
     }
 
     @ViewBuilder
@@ -158,6 +189,17 @@ struct InboxRowView: View {
             if woke {
                 capsule("Woke", color: theme.accent)
             }
+            if let heldLabel {
+                Label(heldLabel, systemImage: "hourglass")
+                    .labelStyle(.titleAndIcon)
+                    .font(IonType.microLabel)
+                    .foregroundStyle(theme.textSecondary)
+                    .lineLimit(1)
+            } else if pill == .limited, let reset = Self.limitedUntil(tab) {
+                Text("resets \(reset.formatted(date: .omitted, time: .shortened))")
+                    .font(IonType.microLabel)
+                    .foregroundStyle(theme.textTertiary)
+            }
             if let pill {
                 pillView(pill)
             } else if let backgroundLabel {
@@ -181,6 +223,7 @@ struct InboxRowView: View {
             case .working: return ("Working", theme.statusRunning)
             case .done: return ("Done", theme.statusDone)
             case .failed: return ("Failed", theme.statusError)
+            case .limited: return ("Limited", theme.statusWarning)
             }
         }()
         return capsule(label, color: color)
