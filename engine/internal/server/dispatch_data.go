@@ -178,11 +178,9 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 	// user-configured models or live-discovered models — the hardcoded
 	// catalog doesn't apply to private gateways.
 	customGatewayProviders := make(map[string]bool)
-	if s.config != nil {
-		for pid, pc := range s.config.Providers {
-			if pc.BaseURL != "" {
-				customGatewayProviders[pid] = true
-			}
+	for pid, pc := range s.providerConfigs() {
+		if pc.BaseURL != "" {
+			customGatewayProviders[pid] = true
 		}
 	}
 	if len(customGatewayProviders) > 0 {
@@ -196,7 +194,7 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 	}
 	if subject != "" && s.authResolver != nil {
 		cc = auth.NewCredentialContext(cmd.Principal, s.authResolver, auth.NewTenancyFallThroughPolicy(s.config))
-		providers.WireEntitlement(cc, s.providerConfigsForEntitlement())
+		providers.WireEntitlement(cc, s.providerConfigs())
 		models = filterModelsByEntitlement(models, cc)
 	}
 	providerEntries := s.buildProviderEntries(cc)
@@ -246,15 +244,6 @@ func filterModelsByEntitlement(models []types.ModelEntry, cc *auth.CredentialCon
 	return out
 }
 
-// providerConfigsForEntitlement returns the provider configs entitlement
-// discovery needs to resolve a base URL, or nil when no config is loaded.
-func (s *Server) providerConfigsForEntitlement() map[string]types.ProviderConfig {
-	if s.config == nil {
-		return nil
-	}
-	return s.config.Providers
-}
-
 // buildProviderEntries assembles a ProviderEntry for each known provider,
 // filling in auth status from the resolver and applying special-case rules
 // for ollama (no auth needed) and CLI-capable anthropic fallback. Extracted
@@ -266,6 +255,7 @@ func (s *Server) providerConfigsForEntitlement() map[string]types.ProviderConfig
 // so listing agrees with what that principal's next run will actually pick.
 func (s *Server) buildProviderEntries(cc *auth.CredentialContext) []types.ProviderEntry {
 	providerEntries := make([]types.ProviderEntry, 0)
+	configured := s.providerConfigs()
 	for _, pid := range providerEntryIDs() {
 		entry := types.ProviderEntry{ID: pid}
 		if cc != nil {
@@ -318,18 +308,17 @@ func (s *Server) buildProviderEntries(cc *auth.CredentialContext) []types.Provid
 		}
 
 		// Populate config details (gateway URL, API key reference, display name)
-		if s.config != nil {
-			if pc, ok := s.config.Providers[pid]; ok {
-				entry.BaseURL = pc.BaseURL
-				entry.DisplayName = pc.DisplayName
-				// Show the API key reference if it looks like an env var
-				// (starts with $), otherwise just indicate it's set.
-				if pc.APIKey != "" {
-					if len(pc.APIKey) > 0 && pc.APIKey[0] == '$' {
-						entry.APIKeyRef = pc.APIKey
-					} else {
-						entry.APIKeyRef = "configured"
-					}
+		if pc, ok := configured[pid]; ok {
+			entry.BaseURL = pc.BaseURL
+			entry.DisplayName = pc.DisplayName
+			entry.Custom = isCustomProvider(pid)
+			// Show the API key reference if it looks like an env var
+			// (starts with $), otherwise just indicate it's set.
+			if pc.APIKey != "" {
+				if len(pc.APIKey) > 0 && pc.APIKey[0] == '$' {
+					entry.APIKeyRef = pc.APIKey
+				} else {
+					entry.APIKeyRef = "configured"
 				}
 			}
 		}

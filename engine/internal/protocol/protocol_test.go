@@ -194,6 +194,11 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "provider_logout",
 		},
 		{
+			name: "provider_remove",
+			line: `{"cmd":"provider_remove","provider":"corp-gateway","requestId":"r1"}`,
+			cmd:  "provider_remove",
+		},
+		{
 			// resolve_permission_denials releases the engine's retention of an
 			// unresolved AskUserQuestion / ExitPlanMode when the consumer
 			// resolved it without sending a prompt or a /clear. It must be in
@@ -228,6 +233,10 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		{
 			name: "provider_logout missing provider",
 			line: `{"cmd":"provider_logout","requestId":"r1"}`,
+		},
+		{
+			name: "provider_remove missing provider",
+			line: `{"cmd":"provider_remove","requestId":"r1"}`,
 		},
 		{
 			name: "start_session missing key",

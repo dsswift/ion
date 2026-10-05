@@ -171,7 +171,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "text")
 	case "set_model_tier":
 		return hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "model") && (!hasField(raw, "fallbacks") || hasArray(raw, "fallbacks"))
-	case "get_default_provider", "provider_subscription_status", "provider_subscription_refresh":
+	case "get_default_provider", "provider_subscription_status", "provider_subscription_refresh", "provider_account_usage":
 		return true
 	case "provider_subscription_select":
 		return hasNonEmptyString(raw, "subscriptionId")
@@ -181,7 +181,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasString(raw, "text")
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
-	case "provider_login", "provider_login_cancel", "provider_logout":
+	case "provider_login", "provider_login_cancel", "provider_logout", "provider_remove":
 		return hasNonEmptyString(raw, "provider")
 	case "provider_login_code":
 		return hasNonEmptyString(raw, "provider") && hasNonEmptyString(raw, "text")

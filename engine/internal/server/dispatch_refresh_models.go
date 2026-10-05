@@ -6,7 +6,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
-	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -15,10 +14,7 @@ import (
 // under "results". The result is an error only when discovery failed for every
 // provider it targeted, so a partial failure is ok with the failures listed.
 func (s *Server) dispatchRefreshModels(conn net.Conn, cmd *protocol.ClientCommand) {
-	providerConfigs := make(map[string]types.ProviderConfig)
-	if s.config != nil {
-		providerConfigs = s.config.Providers
-	}
+	providerConfigs := s.providerConfigs()
 	var resolveKey func(string) (string, error)
 	if s.authResolver != nil {
 		resolveKey = s.authResolver.ResolveKey

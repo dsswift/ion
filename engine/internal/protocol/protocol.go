@@ -578,6 +578,9 @@ var validCommands = map[string]bool{
 	"set_default_provider": true,
 	"store_credential":     true,
 	"refresh_models":       true,
+	// provider_remove: delete a custom provider from engine.json, its stored
+	// key, and its models. Dispatched in server/dispatch_provider_remove.go.
+	"provider_remove": true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
 	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
 	// drives the CLI login/logout and broadcasts engine_provider_login stage
@@ -620,6 +623,11 @@ var validCommands = map[string]bool{
 	"provider_subscription_status":  true,
 	"provider_subscription_select":  true,
 	"provider_subscription_refresh": true,
+	// provider_account_usage: the account each delegated provider CLI is
+	// signed in to and the usage limits that CLI reports for it. The engine
+	// asks the CLIs themselves and answers once they have, never blocking
+	// the read loop.
+	"provider_account_usage": true,
 	// mcp_list / mcp_add / mcp_update / mcp_remove / mcp_login / mcp_logout:
 	// MCP server administration. The engine owns the mechanism — engine.json
 	// CRUD, OAuth metadata discovery, dynamic client registration, the PKCE

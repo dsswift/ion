@@ -28,9 +28,11 @@ func TestLoginClaudeCodeCompletesFromBrowserCallback(t *testing.T) {
 	defer cancel()
 	ctx = WithAuthCodeChannel(ctx, make(chan string))
 	var stages []string
+	urls := map[string]string{}
 
 	if err := loginClaudeCode(ctx, func(stage LoginStage) {
 		stages = append(stages, stage.Stage)
+		urls[stage.Stage] = stage.AuthURL
 	}); err != nil {
 		t.Fatalf("loginClaudeCode() error = %v", err)
 	}
@@ -38,6 +40,13 @@ func TestLoginClaudeCodeCompletesFromBrowserCallback(t *testing.T) {
 	want := []string{"started", "await_browser", "await_auth_code", "completed"}
 	if !slices.Equal(stages, want) {
 		t.Fatalf("stages = %v, want %v", stages, want)
+	}
+	// The code comes from this page, so both stages that wait on it name it.
+	const page = "https://claude.com/cai/oauth/authorize?flow=test"
+	for _, stage := range []string{"await_browser", "await_auth_code"} {
+		if urls[stage] != page {
+			t.Fatalf("%s AuthURL = %q, want %q", stage, urls[stage], page)
+		}
 	}
 }
 

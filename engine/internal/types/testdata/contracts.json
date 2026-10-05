@@ -192,7 +192,9 @@
     "rate_limit": [
       "rateLimitType",
       "resetsAt",
-      "status"
+      "status",
+      "utilization",
+      "windows"
     ],
     "run_recovery": [
       "attempt",
@@ -512,6 +514,7 @@
     "pushBody",
     "pushTitle",
     "questionId",
+    "rateLimit",
     "requestId",
     "resourceDelta",
     "resourceItem",
@@ -804,6 +807,22 @@
       "reason",
       "userValue"
     ],
+    "ProviderAccount": [
+      "authMethod",
+      "email",
+      "label",
+      "orgId",
+      "orgName",
+      "planType",
+      "provider"
+    ],
+    "ProviderAccountUsage": [
+      "account",
+      "backend",
+      "error",
+      "fetchedAt",
+      "limits"
+    ],
     "ProviderCliStatus": [
       "authMethod",
       "authenticated",
@@ -812,6 +831,8 @@
       "email",
       "installed",
       "label",
+      "orgId",
+      "orgName",
       "planType",
       "probedAt",
       "version"
@@ -822,6 +843,7 @@
       "backend",
       "baseURL",
       "cli",
+      "custom",
       "displayName",
       "hasAuth",
       "id",
@@ -848,6 +870,23 @@
       "selected",
       "source",
       "state"
+    ],
+    "ProviderUsageLimit": [
+      "kind",
+      "label",
+      "percent",
+      "resetsAt"
+    ],
+    "RateLimitPayload": [
+      "rateLimitType",
+      "resetsAt",
+      "status",
+      "utilization",
+      "windows"
+    ],
+    "RateLimitWindow": [
+      "resetsAt",
+      "utilization"
     ],
     "ResourceFilter": [
       "conversationId",

@@ -597,6 +597,7 @@ func ResetRegistries() {
 	providerRegistry = make(map[string]LlmProvider)
 	imageProviderRegistry = make(map[string]ImageProvider)
 	modelRegistry = make(map[string]types.ModelInfo)
+	builtinProviderIDs = map[string]bool{}
 }
 
 func init() {
@@ -637,4 +638,6 @@ func restoreInitRegistries() {
 
 	// Register the OpenAI image provider.
 	RegisterImageProvider(NewOpenAIImageProvider(nil))
+
+	recordBuiltinProviders()
 }

@@ -167,9 +167,10 @@ func loginClaudeCode(ctx context.Context, emit LoginEmit) error {
 		close(urlSeen)
 	}()
 
-	if u, ok := <-urlSeen; ok && u != "" {
+	authURL, ok := <-urlSeen
+	if ok && authURL != "" {
 		utils.LogWithFields(utils.LevelInfo, "cliprobe", "claude-code login awaiting browser (CLI opened its own tab; surfacing fallback URL)", nil)
-		emit(LoginStage{Stage: "await_browser", AuthURL: u})
+		emit(LoginStage{Stage: "await_browser", AuthURL: authURL})
 	} else {
 		// The CLI exited (or printed no URL) before reaching the browser step.
 		err := <-waitErr
@@ -186,7 +187,9 @@ func loginClaudeCode(ctx context.Context, emit LoginEmit) error {
 	// callback can complete first. Observe both paths so a successful browser
 	// callback is not left parked while the engine waits for a code that will
 	// never arrive.
-	emit(LoginStage{Stage: "await_auth_code"})
+	// The stage names the URL again: it is where the code comes from, so a
+	// consumer reading only this stage has everything the step needs.
+	emit(LoginStage{Stage: "await_auth_code", AuthURL: authURL})
 	code, childExited, err := waitForClaudeLoginInput(ctx, waitErr)
 	if childExited {
 		if err != nil {
