@@ -244,7 +244,7 @@ func (a *Artifacts) existingBuild(checkout string, t Target, key string) artifac
 		pkg, err := a.NewestDesktopPkg(checkout)
 		return artifact{path: pkg, archs: a.PackageArchs(checkout, pkg), err: err}
 	}
-	files, err := filepath.Glob(filepath.Join(a.artifactsDir(), strings.ReplaceAll(key, "/", "-"), "*"))
+	files, err := filepath.Glob(filepath.Join(a.artifactsDir(), logName(key), "*"))
 	if err != nil || len(files) == 0 {
 		return artifact{err: fmt.Errorf("no %s build has been fetched yet (deploy without --no-build)", key)}
 	}
@@ -387,6 +387,46 @@ func (a *Artifacts) DesktopReleaseApp(ctx context.Context, latest Latest) (strin
 		return "", fmt.Errorf("no Ion.app inside %s", filepath.Base(pkg))
 	}
 	return app, nil
+}
+
+// UpdateArchive packs the app of a Mac desktop build into the archive the
+// app's own updater installs: a zip holding Ion.app. The app is the one the
+// checkout built beside pkg, else the one inside pkg.
+func (a *Artifacts) UpdateArchive(ctx context.Context, checkout, pkg string, log io.Writer) (string, error) {
+	app := ""
+	if checkout != "" && filepath.Dir(pkg) == filepath.Join(checkout, "desktop", "release") {
+		if apps, err := filepath.Glob(filepath.Join(checkout, "desktop", "release", "mac*", "Ion.app")); err == nil && len(apps) > 0 {
+			sort.Slice(apps, func(i, j int) bool { return modTime(apps[i]).After(modTime(apps[j])) })
+			app = apps[0]
+		}
+	}
+	if app == "" {
+		dir := strings.TrimSuffix(pkg, ".pkg") + "-expanded"
+		if err := os.RemoveAll(dir); err != nil {
+			return "", err
+		}
+		if err := a.exec(ctx, ExecSpec{Name: "pkgutil", Args: []string{"--expand-full", pkg, dir}, Stdout: log, Stderr: log}); err != nil {
+			return "", fmt.Errorf("expand %s: %w", filepath.Base(pkg), err)
+		}
+		walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() && d.Name() == "Ion.app" {
+				app = path
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if walkErr != nil || app == "" {
+			return "", fmt.Errorf("no Ion.app inside %s", filepath.Base(pkg))
+		}
+	}
+	zip := strings.TrimSuffix(pkg, ".pkg") + "-update.zip"
+	if err := os.Remove(zip); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if err := a.exec(ctx, ExecSpec{Name: "ditto", Args: []string{"-c", "-k", "--keepParent", app, zip}, Stdout: log, Stderr: log}); err != nil {
+		return "", fmt.Errorf("pack %s: %w", filepath.Base(app), err)
+	}
+	return zip, nil
 }
 
 func findAsset(assets []ReleaseAsset, name string) (ReleaseAsset, bool) {

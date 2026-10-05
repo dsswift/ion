@@ -19,6 +19,7 @@ import { useSessionStore } from '../store/sessionStore'
 import { AUTH_ACTIONS } from '../auth/actions'
 import { TRANSFER_ACTIONS } from '../transfer/actions'
 import { ENVIRONMENT_ACTIONS } from '../environment/actions'
+import { FLEET_ACTIONS } from '../fleet/actions'
 import { PROVIDER_ACTIONS } from './provider-actions'
 import { SESSION_ACTIONS } from './session-actions'
 import { MISC_ACTIONS } from './misc-actions'
@@ -60,7 +61,7 @@ export function registeredActionNames(): Set<string> {
     ...Object.keys(FORWARDED_ACTIONS),
     ...[
       AUTH_ACTIONS, TERMINAL_ACTIONS, PORT_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
-      STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS,
+      STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS, FLEET_ACTIONS,
     ].flatMap((map) => Object.keys(map)),
   ])
 }
@@ -73,7 +74,7 @@ export function registeredActionNames(): Set<string> {
 export function registeredActionSpec(action: string): { requiredScope: Scope; localOnly: boolean } | undefined {
   const maps: ReadonlyArray<Record<string, { requiredScope: Scope; localOnly?: true }>> = [
     AUTH_ACTIONS, TERMINAL_ACTIONS, PORT_ACTIONS, GIT_IDENTITY_ACTIONS, SETTINGS_ACTIONS, GIT_ACTIONS, FILE_ACTIONS, PROVIDER_ACTIONS,
-    STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS,
+    STUDIO_SETTINGS_ACTIONS, AUTH_FLOW_ACTIONS, MISC_ACTIONS, SESSION_ACTIONS, TRANSFER_ACTIONS, ENVIRONMENT_ACTIONS, FLEET_ACTIONS,
   ]
   for (const map of maps) {
     const spec = map[action]
@@ -379,7 +380,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
     return
   }
 
-  const environmentSpec = ENVIRONMENT_ACTIONS[frame.action]
+  const environmentSpec = ENVIRONMENT_ACTIONS[frame.action] ?? FLEET_ACTIONS[frame.action]
   if (environmentSpec) {
     if (!scopeSatisfies(conn.scopes, environmentSpec.requiredScope)) {
       log('environment action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: environmentSpec.requiredScope, granted_scopes: conn.scopes })

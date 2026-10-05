@@ -8,7 +8,9 @@
 // ─── Relay control frames (injected by relay, not by Ion) ───
 
 export interface RelayControlMessage {
-  type: 'relay:connected' | 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
+  type: 'relay:connected' | 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:peer-joined' | 'relay:peer-left' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
+  /** The relay's id for one client on the channel. Present on `relay:peer-joined` and `relay:peer-left`, which a multi-client relay sends in place of the two frames before them. */
+  peer?: string
   /** Failure reason (no_token | push_unavailable | queue_full | invalid_token | transient | token | marshal | request | transport). Present when type === 'relay:push-failed'. */
   reason?: string
   /** Resource ID from the originating push message. Present when type === 'relay:push-failed'. */
@@ -61,6 +63,12 @@ export interface WireMessage {
   nonce?: string           // base64 12-byte nonce (present when encrypted)
   ciphertext?: string      // base64 encrypted payload (replaces `payload` when encrypted)
   deviceId?: string        // identifies the sending device (set by transport)
+  /**
+   * On a multi-client relay channel: the relay's id for the client the frame
+   * came from (stamped by the relay) or is for (set by the server). Absent
+   * on every other transport, and on a frame for every client.
+   */
+  peer?: string
 }
 
 export interface PayloadChunkEnvelope {

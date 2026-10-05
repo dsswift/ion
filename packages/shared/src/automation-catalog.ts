@@ -285,6 +285,33 @@ export const AUTOMATION_TRIGGERS: readonly AutomationTriggerSpec[] = [
       { path: "payload.sourceBranch", label: "Source branch", type: "string", operators: STRING_OPS },
     ],
   },
+  {
+    event: "usage:limit-reached",
+    label: "A usage limit stops a conversation",
+    provides: { worktree: true, conversation: true },
+    fields: [
+      { path: "payload.limitType", label: "Limit", type: "string", operators: EQUALITY_OPS },
+      WORKTREE_PATH_FIELD,
+    ],
+  },
+  {
+    event: "usage:limit-reset",
+    label: "A conversation's usage limit resets",
+    provides: { worktree: true, conversation: true },
+    fields: [
+      { path: "payload.limitType", label: "Limit", type: "string", operators: EQUALITY_OPS },
+      WORKTREE_PATH_FIELD,
+    ],
+  },
+  {
+    event: "usage:quota-expiring",
+    label: "Weekly quota is about to reset unused",
+    provides: { worktree: false, conversation: false },
+    fields: [
+      { path: "payload.provider", label: "Provider", type: "string", operators: STRING_OPS },
+      { path: "payload.limitLabel", label: "Model", type: "string", operators: STRING_OPS },
+    ],
+  },
 ];
 
 // ── Action catalog ─────────────────────────────────────────────────────────
@@ -298,6 +325,12 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionSpec[] = [
       { key: "stage", label: "New stage", type: "enum", required: true, values: STAGE_CHOICES },
       { key: "onlyIfStage", label: "Only if current stage is", type: "enum", required: false, values: STAGE_CHOICES },
     ],
+  },
+  {
+    kind: "bench:join",
+    label: "Put the worktree on its integration bench",
+    target: "worktree",
+    config: [],
   },
   {
     kind: "desktop:notification",

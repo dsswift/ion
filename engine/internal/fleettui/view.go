@@ -122,6 +122,9 @@ func (m Model) tableView() string {
 			b.WriteString(styleWarn.Render(st.Host.Name+": "+f) + "\n")
 		}
 	}
+	if accounts := accountsSection(m.statuses, m.now()); accounts != "" {
+		b.WriteString("\n" + accounts)
+	}
 	b.WriteString("\n" + styleDim.Render("↑↓ move · space select · a all · enter host · c compatibility · d deploy · R restart · L relay · r read now · q quit"))
 	return b.String()
 }
@@ -136,10 +139,18 @@ func (m Model) detailView() string {
 	var b strings.Builder
 	b.WriteString(m.header())
 	target, keys := h.SSH, "d deploy this host · R restart · L relay · esc back"
-	if h.External() {
-		target, keys = h.URL+" · deployed outside the fleet, read only", "esc back"
+	switch {
+	case h.External() && h.Paired():
+		// The device talks to it only over its Studio connection: the host
+		// installs and restarts itself, and a relay change needs SSH.
+		target, keys = dashIf(h.URL)+" · no SSH target", "d deploy this host · R restart · esc back"
+	case h.External():
+		target, keys = dashIf(h.URL)+" · no SSH target and no pairing, read only", "esc back"
 	}
-	b.WriteString(styleTitle.Render(h.Name) + styleDim.Render(fmt.Sprintf("  %s · %s host · profile %s · read over %s", target, h.Kind, dashIf(h.Profile), st.Via)) + "\n\n")
+	if h.ManageOnly {
+		target += " · manage-only"
+	}
+	b.WriteString(styleTitle.Render(h.Name) + styleDim.Render(fmt.Sprintf("  %s · %s host · profile %s · read over %s", target, fleet.KindCell(st), dashIf(h.Profile), st.Via)) + "\n\n")
 	if r == nil {
 		b.WriteString(styleBad.Render(dashIf(st.Error)) + "\n")
 		b.WriteString("\n" + styleDim.Render("d deploy · R restart · L relay · esc back"))
@@ -160,6 +171,8 @@ func (m Model) detailView() string {
 		fleet.CPUCell(metrics(r)), fleet.MemCell(metrics(r)), fleet.RunningCell(r), fleet.RelaysCell(r))
 	b.WriteString("\n" + styleTitle.Render("Devices") + "\n")
 	b.WriteString(devicesSection(r))
+	b.WriteString("\n" + styleTitle.Render("Accounts") + "\n")
+	b.WriteString(hostAccountsSection(r, m.now()))
 	b.WriteString("\n" + styleTitle.Render("Formats") + "\n")
 	if len(r.Formats) == 0 {
 		b.WriteString(styleDim.Render("this host reports no formats (its Ion predates format reporting)") + "\n")
@@ -280,6 +293,11 @@ func (m Model) deployView() string {
 	}
 	for _, r := range m.results {
 		b.WriteString(styleDim.Render(fmt.Sprintf("%s log: %s", r.Host, r.LogPath)) + "\n")
+		for _, note := range []string{r.FellBack, r.Tidy} {
+			if note != "" {
+				b.WriteString(styleDim.Render(fmt.Sprintf("%s: %s", r.Host, note)) + "\n")
+			}
+		}
 	}
 	switch {
 	case m.deploying:

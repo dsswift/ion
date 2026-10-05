@@ -15,6 +15,8 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 const { onFrame } = vi.hoisted(() => ({ onFrame: vi.fn() }))
 vi.mock('../../../host/host-instance', () => ({ host: { onFrame } }))
+const { manageOnly } = vi.hoisted(() => ({ manageOnly: new Set<string>() }))
+vi.mock('../../connection/catalog', () => ({ isManageOnlyEnvironment: (id: string) => manageOnly.has(id) }))
 
 import { initTabsSyncFromWire } from '../secondary-store'
 
@@ -30,6 +32,7 @@ let frameHandler: ((environmentId: string, frame: StudioFrame) => void) | undefi
 beforeEach(() => {
   useSessionStore.setState({ tabs: [], settledHistory: [], activeTabId: undefined, conversationPanes: new Map(), tabsReady: false })
   onFrame.mockClear()
+  manageOnly.clear()
   onFrame.mockImplementation((cb: typeof frameHandler) => {
     frameHandler = cb
     return vi.fn()
@@ -54,6 +57,20 @@ describe('initTabsSyncFromWire', () => {
     // And devbox closing its tab removes only that one.
     frameHandler?.('devbox', { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [] } })
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'b'])
+  })
+
+  it('keeps a Manage-Only Server\'s conversations out of the store, and drops them when it becomes one', () => {
+    initTabsSyncFromWire()
+    const snapshot = (id: string) => ({ tabs: [tab(id)], settings: {} as never, worktrees: {} as never, terminals: { revision: 0, panes: [], openTabIds: [] } as never, automations: [], engine: {} as never, presence: { entries: [], driving: {} } })
+    frameHandler?.(LOCAL_ENVIRONMENT_ID, { type: 'studio_snapshot', snapshot: snapshot('a') })
+    frameHandler?.('test-vm', { type: 'studio_snapshot', snapshot: snapshot('z') })
+    expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'z'])
+
+    manageOnly.add('test-vm')
+    frameHandler?.('test-vm', { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [tab('z'), tab('y')] } })
+    expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a'])
+    frameHandler?.('test-vm', { type: 'studio_snapshot', snapshot: snapshot('z') })
+    expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a'])
   })
 
   it('hydrates tabs and sets tabsReady from a studio_welcome frame', () => {

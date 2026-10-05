@@ -34,7 +34,7 @@ export function SettingsPageView({ page, sections, environment, anchor }: Settin
 
   return (
     <div ref={root}>
-      <Page>
+      <Page wide={page.wide}>
         <div>
           <PageHeader title={page.label} description={environment ? (page.description ? `${environment.label} · ${page.description}` : environment.label) : page.description} />
           {environment && known && !canManage && (

@@ -114,6 +114,7 @@ vi.mock('../startup-coordinator', () => ({
 }))
 
 import { setupAppLifecycle } from '../app-lifecycle'
+import { flushLogs } from '../logger'
 
 describe('setupAppLifecycle — a current Ion is already running', () => {
   beforeEach(() => {
@@ -132,6 +133,22 @@ describe('setupAppLifecycle — a current Ion is already running', () => {
     expect(appQuit).toHaveBeenCalled()
     expect(showMessageBoxSync).not.toHaveBeenCalled()
     expect(detectRunningIonMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('setupAppLifecycle — leaving before startup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    claimSingleInstanceMock.mockReturnValue(false)
+  })
+
+  // The quit handlers that drain the log are not installed yet, so without
+  // this the reason for the exit never reaches desktop.jsonl.
+  it('writes out the buffered log before quitting', () => {
+    setupAppLifecycle()
+
+    expect(flushLogs).toHaveBeenCalledOnce()
+    expect(vi.mocked(flushLogs).mock.invocationCallOrder[0]).toBeLessThan(appQuit.mock.invocationCallOrder[0])
   })
 })
 

@@ -135,6 +135,11 @@ func buildManifest() contractManifest {
 		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
 		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
 		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
+		// provider_account_usage result rows: a delegated CLI's signed-in
+		// account and its usage limits.
+		"ProviderAccountUsage": reflect.TypeOf(ProviderAccountUsage{}),
+		"ProviderAccount":      reflect.TypeOf(ProviderAccount{}),
+		"ProviderUsageLimit":   reflect.TypeOf(ProviderUsageLimit{}),
 		// ModelTierEntry is carried in engine_model_tiers snapshots.
 		"ModelTierEntry": reflect.TypeOf(ModelTierEntry{}),
 		// MCP server administration. Carried inside engine_mcp_servers events
@@ -146,7 +151,11 @@ func buildManifest() contractManifest {
 		// Provider Subscription state. Carried by engine_provider_subscription
 		// as a complete snapshot; consumers render the state and options.
 		"ProviderSubscriptionStatus": reflect.TypeOf(ProviderSubscriptionStatus{}),
-		"SubscriptionOption":         reflect.TypeOf(SubscriptionOption{}),
+		// Usage limit report. Carried by engine_rate_limit; RateLimitWindow
+		// is a nested row.
+		"RateLimitPayload":   reflect.TypeOf(RateLimitPayload{}),
+		"RateLimitWindow":    reflect.TypeOf(RateLimitWindow{}),
+		"SubscriptionOption": reflect.TypeOf(SubscriptionOption{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.

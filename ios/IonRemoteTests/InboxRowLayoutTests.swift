@@ -198,4 +198,38 @@ final class InboxRowLayoutTests: XCTestCase {
     func testIdleReadRowHasNoPill() throws {
         XCTAssertNil(InboxRowView.pill(for: try tab()))
     }
+
+    // MARK: - Usage limits
+
+    /// The snapshot fields as `projectTab` sends them (`server/src/store/remote-projection.ts`).
+    func testAConversationItsAccountStoppedReadsLimitedUntilTheReset() throws {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        let row = try tab(extra: #", "status":"failed", "limitedUntil":1800000000000, "limitType":"five_hour""#)
+
+        XCTAssertEqual(InboxRowView.pill(for: row, now: reset.addingTimeInterval(-60)), .limited)
+        XCTAssertNotEqual(InboxRowView.pill(for: row, now: reset.addingTimeInterval(60)), .limited)
+        XCTAssertNil(InboxRowView.heldLabel(for: row))
+    }
+
+    func testAHeldPromptSaysWhenTheServerWillSendIt() throws {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        let resuming = try tab(extra: #", "limitedUntil":1800000000000, "deferredRelease":"limit-reset", "quiet":true"#)
+        let queued = try tab(extra: #", "deferredRelease":"spare-quota""#)
+
+        XCTAssertEqual(InboxRowView.heldLabel(for: resuming, now: reset.addingTimeInterval(-60)), "Resumes \(reset.formatted(date: .omitted, time: .shortened))")
+        XCTAssertEqual(InboxRowView.heldLabel(for: queued), "Queued for spare quota")
+        XCTAssertEqual(resuming.quiet, true)
+    }
+
+    func testWorkingLastPutsWorkingConversationsBelowTheRestInTheChosenOrder() throws {
+        func row(_ id: String, status: String, at: Int) throws -> RemoteTabState {
+            let json = #"{"id":"\#(id)","title":"\#(id)","status":"\#(status)","workingDirectory":"/w","permissionMode":"auto","permissionQueue":[],"lastActivityAt":\#(at)}"#
+            return try JSONDecoder().decode(RemoteTabState.self, from: Data(json.utf8))
+        }
+        let rows = [try row("working-new", status: "running", at: 40), try row("idle-old", status: "idle", at: 10),
+                    try row("working-old", status: "running", at: 20), try row("idle-new", status: "idle", at: 30)]
+
+        XCTAssertEqual(InboxNavigator.sorted(rows, by: .recent, workingLast: true).map(\.id), ["idle-new", "idle-old", "working-new", "working-old"])
+        XCTAssertEqual(InboxNavigator.sorted(rows, by: .recent, workingLast: false).map(\.id), ["working-new", "idle-new", "working-old", "idle-old"])
+    }
 }

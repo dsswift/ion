@@ -10,6 +10,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case aiAssistWorkflows = "aiAssist.workflows"
     case authCompleteSignIn = "auth.completeSignIn"
     case authCreatePairingLink = "auth.createPairingLink"
+    case authForgetSelf = "auth.forgetSelf"
     case authListClients = "auth.listClients"
     case authRevokeClient = "auth.revokeClient"
     case automationDelete = "automation.delete"
@@ -50,6 +51,11 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case environmentSystemMetricsHistory = "environment.systemMetrics.history"
     case environmentSystemMetricsLatest = "environment.systemMetrics.latest"
     case environmentSystemMetricsWatch = "environment.systemMetrics.watch"
+    case fleetHubsAdd = "fleet.hubs.add"
+    case fleetHubsList = "fleet.hubs.list"
+    case fleetHubsRemove = "fleet.hubs.remove"
+    case fleetRefreshAccounts = "fleet.refreshAccounts"
+    case fleetReport = "fleet.report"
     case fsReadFileData = "fs.readFileData"
     case fsResolveLink = "fs.resolveLink"
     case gitIdentityAuthorize = "gitIdentity.authorize"
@@ -82,6 +88,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case providerLoginCode = "provider.loginCode"
     case providerLogout = "provider.logout"
     case providerRefreshSubscription = "provider.refreshSubscription"
+    case providerRemove = "provider.remove"
     case providerSelectSubscription = "provider.selectSubscription"
     case providerSetDefault = "provider.setDefault"
     case providerStoreCredential = "provider.storeCredential"
@@ -98,8 +105,8 @@ enum PhoneAction: String, CaseIterable, Sendable {
 
     var requiredScope: StudioScope {
         switch self {
-        case .aiAssistWorkflows, .automationHistory, .automationListing, .entraIdentity, .environmentDiscoveryStatus,
-             .environmentFsBrowse, .fsReadFileData, .fsResolveLink, .environmentGitAuthorGet, .environmentGitHostKeys, .environmentHostToolchains,
+        case .aiAssistWorkflows, .authForgetSelf, .automationHistory, .automationListing, .entraIdentity, .environmentDiscoveryStatus,
+             .environmentFsBrowse, .fleetHubsList, .fleetRefreshAccounts, .fleetReport, .fsReadFileData, .fsResolveLink, .environmentGitAuthorGet, .environmentGitHostKeys, .environmentHostToolchains,
              .environmentJobsList, .environmentProjectsAppraiseRemoval, .environmentProjectsList, .environmentServerInfo,
              .environmentSystemMetricsHistory, .environmentSystemMetricsLatest, .environmentSystemMetricsWatch, .mcpList, .modelList,
              .modelListTiers, .planBashAllowlistGet, .policyGetFull, .providerGetDefault, .providerSubscription,
@@ -116,11 +123,11 @@ enum PhoneAction: String, CaseIterable, Sendable {
         case .authCompleteSignIn, .authCreatePairingLink, .authListClients, .authRevokeClient,
              .entraSignIn, .entraSignOut, .environmentDiscoveryClose, .environmentDiscoveryMintCode,
              .environmentDiscoveryOpen, .environmentPurgeAppraise, .environmentPurgeRun, .environmentServerLogTail,
-             .environmentServerRestart, .environmentServerUpdate, .mcpAdd, .mcpLogin,
+             .environmentServerRestart, .environmentServerUpdate, .fleetHubsAdd, .fleetHubsRemove, .mcpAdd, .mcpLogin,
              .mcpLogout, .mcpRemove, .mcpUpdate, .modelRefresh, .modelRemoveTier,
              .modelSetTier, .oauthDeviceCode, .oauthDevicePoll, .oauthLogout, .oauthStart,
              .planBashAllowlistSet, .providerLogin, .providerLoginCancel, .providerLoginCode,
-             .providerLogout, .providerRefreshSubscription, .providerSelectSubscription, .providerSetDefault,
+             .providerLogout, .providerRefreshSubscription, .providerRemove, .providerSelectSubscription, .providerSetDefault,
              .providerStoreCredential, .remoteDiscoverRelays,
              .remoteRelayAuthConfig, .remoteStopDiscovery, .remoteTestRelay:
             return .admin

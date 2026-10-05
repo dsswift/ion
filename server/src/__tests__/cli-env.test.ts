@@ -304,6 +304,27 @@ describe('getCliEnv', () => {
     }
   })
 
+  it('never hands a spawned shell the switch that runs Electron apps as Node', () => {
+    // The desktop runs this server with ELECTRON_RUN_AS_NODE=1. A shell that
+    // inherits it starts Ion (or any Electron app) as a bare Node that exits
+    // at once, so a `make desktop` relaunch from an Ion terminal never opened.
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+    process.env.ELECTRON_RUN_AS_NODE = '1'
+
+    try {
+      expect(getCliEnv().ELECTRON_RUN_AS_NODE).toBeUndefined()
+      expect(getCliEnv({ ION_DESKTOP_TAB_ID: 'tab-a' }).ELECTRON_RUN_AS_NODE).toBeUndefined()
+    } finally {
+      delete process.env.ELECTRON_RUN_AS_NODE
+    }
+  })
+
+  it('keeps the run-as-node switch when the caller sets it on purpose', () => {
+    mocks.execFileSync.mockReturnValue(REAL_PATH)
+
+    expect(getCliEnv({ ELECTRON_RUN_AS_NODE: '1' }).ELECTRON_RUN_AS_NODE).toBe('1')
+  })
+
   it('leaves the overlay untouched when there is no marker to strip', () => {
     mocks.execFileSync.mockReturnValue(REAL_PATH)
 

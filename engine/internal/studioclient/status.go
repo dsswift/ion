@@ -37,6 +37,12 @@ type ServerInfo struct {
 		Version string `json:"version"`
 	} `json:"hostApp"`
 	Formats []compat.Format `json:"formats"`
+	// HostInstall is whether the host can install on itself now, and the
+	// refusal code when it cannot. Nil from a server that predates it.
+	HostInstall *struct {
+		Available bool   `json:"available"`
+		Code      string `json:"code"`
+	} `json:"hostInstall"`
 }
 
 // Status is one read of a server through the relay.
@@ -48,6 +54,9 @@ type Status struct {
 	// Devices are the pairing owner's devices; nil when the server predates
 	// environment.devices or refused it.
 	Devices []studiostatus.PairedDevice
+	// Accounts is the server's Provider Account Ledger; nil when the server
+	// predates fleet.report.
+	Accounts []studiostatus.Account
 }
 
 // ReadStatus connects over `relay`, reads the server info and the latest
@@ -60,12 +69,12 @@ func ReadStatus(ctx context.Context, relay Relay, bearer string, p Pairing) (Sta
 		return Status{}, err
 	}
 	defer s.Close()
-	return readStatus(ctx, s, relay.URL)
+	return ReadSession(ctx, s, relay.URL)
 }
 
-// readStatus reads the server info, the latest metrics sample, and the
-// devices over an open session.
-func readStatus(ctx context.Context, s *Session, where string) (Status, error) {
+// ReadSession reads the server info, the latest metrics sample, the devices,
+// and the provider accounts over an open session.
+func ReadSession(ctx context.Context, s *Session, where string) (Status, error) {
 	out := Status{Welcome: s.Welcome}
 	raw, err := s.Action(ctx, "environment.server.info")
 	if err != nil {
@@ -94,6 +103,18 @@ func readStatus(ctx context.Context, s *Session, where string) (Status, error) {
 		}
 	} else {
 		utils.LogWithFields(utils.LevelWarn, logTag, "relay status: no devices", map[string]any{"where": where, "error": err.Error()})
+	}
+	if raw, err := s.Action(ctx, "fleet.report"); err == nil {
+		var report struct {
+			Accounts []studiostatus.Account `json:"accounts"`
+		}
+		if err := json.Unmarshal(raw, &report); err == nil {
+			out.Accounts = append([]studiostatus.Account{}, report.Accounts...)
+		} else {
+			utils.LogWithFields(utils.LevelWarn, logTag, "studio status: accounts undecodable", map[string]any{"where": where, "error": err.Error()})
+		}
+	} else {
+		utils.LogWithFields(utils.LevelInfo, logTag, "studio status: no provider accounts", map[string]any{"where": where, "error": err.Error()})
 	}
 	return out, nil
 }
@@ -143,6 +164,7 @@ func (s Status) Report() studiostatus.Report {
 	r.Formats = studiostatus.MergeFormats(nil, i.Formats)
 	r.Metrics = studiostatus.ReduceMetrics(s.Metrics)
 	r.Devices = s.Devices
+	r.Accounts = s.Accounts
 	if s.Devices == nil {
 		r.Problems = append(r.Problems, "devices: the server predates environment.devices")
 	}

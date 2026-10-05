@@ -128,7 +128,7 @@ export const SETTINGS_TAXONOMY_PAGES: readonly SettingsTaxonomyPage[] = [
 ]
 
 export const SETTINGS_TAXONOMY_SERVERS_PAGE: SettingsTaxonomyPage = {
-  id: SERVERS_PAGE_ID, label: 'All servers', scope: 'server', description: 'Every Ion Studio Server this device can reach. The local server is always here.', sections: [
+  id: SERVERS_PAGE_ID, label: 'Fleet', scope: 'server', description: 'Every Ion Studio Server this device is paired with: its accounts, usage, and health. The local server is always here.', sections: [
     section('servers', 'Servers', 'environments'),
   ],
 }
@@ -148,7 +148,7 @@ export interface SettingsPlacement {
 /** The settings each section shows, by section. A key appears in one section only. */
 const KEYS_BY_SECTION: ReadonlyArray<SettingsPlacement & { keys: readonly SettingKey[] }> = [
   { page: 'appearance', section: 'appearance', keys: ['selectedTheme', 'expandToolResults', 'unifiedTurnView', 'openMarkdownInPreview', 'editorWordWrap', 'editorFontSize', 'dataViewFontSize', 'uiZoom', 'terminalFontFamily', 'terminalFontSize'] },
-  { page: 'behavior', section: 'device-behavior', keys: ['studioSurfaceSwitchMode', 'showTodoList', 'agentPanelDefaultOpen', 'soundEnabled', 'browserPreviewNetworkShield', 'showImplementClearContext'] },
+  { page: 'behavior', section: 'device-behavior', keys: ['studioSurfaceSwitchMode', 'showTodoList', 'agentPanelDefaultOpen', 'soundEnabled', 'browserPreviewNetworkShield', 'showImplementClearContext', 'openAtLogin'] },
   { page: 'behavior', section: 'device-git', keys: ['gitChangesTreeView'] },
   { page: 'keyboard', section: 'shortcuts', keys: ['keyboardShortcuts'] },
   { page: 'defaults', section: 'defaults-conversation', keys: ['defaultPermissionMode', 'aiGeneratedTitles', 'bashCommandEntry', 'enableClaudeCompat', 'enableEarlyStopContinuation'] },
@@ -166,7 +166,7 @@ const KEYS_BY_SECTION: ReadonlyArray<SettingsPlacement & { keys: readonly Settin
   { page: 'workflow', section: 'git', keys: ['gitOpsMode', 'worktreeCompletionStrategy', 'worktreeSkipPrTitle', 'commitCommand', 'worktreeBranchDefaults', 'gitWatcherIgnoredDirectories'] },
   // tabRecoveryEnabled has no Studio row (the server reads it); it sits with
   // the other conversation-lifecycle setting.
-  { page: 'workflow', section: 'tabs', keys: ['inboxAutoSettleDays', 'inboxAutoSettleOnMerge', 'tabRecoveryEnabled'] },
+  { page: 'workflow', section: 'tabs', keys: ['inboxAutoSettleDays', 'usageLimitAutoResume', 'usageLimitResumePrompt', 'quotaExpiryAlertHours', 'quotaExpiryUnusedPercent', 'tabRecoveryEnabled'] },
   { page: 'workflow', section: 'quicktools', keys: ['quickTools'] },
   { page: 'access', section: 'remote', keys: ['remoteDisplay', 'relayUrl', 'relayApiKey', 'streamThinkingToRemote', 'pushConversationTitles'] },
 ]

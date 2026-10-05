@@ -1,6 +1,7 @@
 /**
  * ProviderPanel — one provider on one server: how it is signed in, its
- * browser or CLI sign-in, its API key, and a model refresh. Every shell verb
+ * browser or CLI sign-in, its API key, a model refresh, and, for a custom
+ * provider, its removal. Every shell verb
  * runs inside that server's target scope, so the bridged studio_action goes
  * to it and not to this device.
  */
@@ -17,15 +18,17 @@ import { API_KEY_PROVIDERS, OAUTH_BUTTON_LABELS, OAUTH_PROVIDERS, authSourceTool
 import { Button, Chip, ErrorText, FormGroup, FormRow, Inline, MonoLine, Muted, Notice, SidePanel, Stack, TextInput } from '../../kit'
 import { ProviderCliSignIn, Wide } from './ProviderCliSignIn'
 import { describeProviderActionError } from './provider-action-error'
+import { RemoveProviderRow } from './RemoveProviderRow'
 
 interface DeviceCodeState { userCode: string; verificationUri: string; deviceCode: string; interval: number; expiresIn: number }
 
 const MANAGED_KEY_SOURCES = ['filestore', 'programmatic', 'keychain', 'credentials.json']
 const CLI_AUTH_SOURCES = ['claude-code', 'codex', 'grok', 'cursor']
 
-export function ProviderPanel({ provider, environmentId, onClose, onCredentialSaved }: {
+export function ProviderPanel({ provider, environmentId, serverLabel, onClose, onCredentialSaved }: {
   provider: ProviderEntry
   environmentId: string
+  serverLabel: string
   onClose(): void
   onCredentialSaved(): void
 }): React.JSX.Element {
@@ -211,6 +214,12 @@ export function ProviderPanel({ provider, environmentId, onClose, onCredentialSa
             ) : (
               <FormRow label="API key" description={authSourceTooltip(provider.authSource)} />
             )}
+          </FormGroup>
+        )}
+
+        {provider.custom && (
+          <FormGroup title="Provider">
+            <RemoveProviderRow provider={provider} name={name} environmentId={environmentId} serverLabel={serverLabel} onRemoved={() => { onCredentialSaved(); onClose() }} />
           </FormGroup>
         )}
 

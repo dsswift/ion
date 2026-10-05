@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({ action: vi.fn(), readCatalog: vi.fn(async () =
 
 vi.mock('../../../../host/host-instance', () => ({ host: { onFrame: () => () => {}, capabilities: () => [], shell: {} }, action: (...args: unknown[]) => mocks.action(...args) }))
 vi.mock('../../../../studio/connection/catalog', () => ({
-  readCatalog: mocks.readCatalog, addToCatalog: vi.fn(), relabelCatalogEntry: vi.fn(), removeFromCatalog: vi.fn(), onCatalogChange: () => () => {},
+  readCatalog: mocks.readCatalog, readConversationCatalog: mocks.readCatalog, addToCatalog: vi.fn(), relabelCatalogEntry: vi.fn(), removeFromCatalog: vi.fn(), onCatalogChange: () => () => {},
 }))
 vi.mock('../../../../studio/connection/registry', () => ({ registry: { connectAll: vi.fn(), forget: vi.fn() } }))
 vi.mock('../../../../theme', () => ({ useColors: () => new Proxy({}, { get: (_t, key) => `var(--${String(key)})` }) }))

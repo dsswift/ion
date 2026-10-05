@@ -36,6 +36,25 @@ struct ServerAccountSection: View {
                     mismatchRow
                 }
                 accountRow
+                    // One row carries this, so it attaches once rather than once per row of the section.
+                    .alert("Couldn't Switch Account", isPresented: $showError, presenting: errorMessage) { _ in
+                        Button("OK", role: .cancel) { }
+                    } message: { message in
+                        Text(message)
+                    }
+                    .confirmationDialog(
+                        "Sign out of this server?",
+                        isPresented: $confirmSignOut,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Sign Out", role: .destructive) {
+                            viewModel.signOutOIDC(device: current)
+                            Haptic.success()
+                        }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("The saved credential for this server is deleted from this iPhone. The pairing itself is kept, and you'll be asked to sign in again on the next connection.")
+                    }
                 if let host = current.oidcIssuerHost {
                     LabeledContent("Directory", value: host)
                         .font(.subheadline)
@@ -54,24 +73,6 @@ struct ServerAccountSection: View {
                 Text(isMismatch
                      ? "The relay refused this account for this server. Sign in with the account that owns this server's channel."
                      : "This server authenticates with its own account. Other paired servers can use different accounts.")
-            }
-            .alert("Couldn't Switch Account", isPresented: $showError, presenting: errorMessage) { _ in
-                Button("OK", role: .cancel) { }
-            } message: { message in
-                Text(message)
-            }
-            .confirmationDialog(
-                "Sign out of this server?",
-                isPresented: $confirmSignOut,
-                titleVisibility: .visible
-            ) {
-                Button("Sign Out", role: .destructive) {
-                    viewModel.signOutOIDC(device: current)
-                    Haptic.success()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("The saved credential for this server is deleted from this iPhone. The pairing itself is kept, and you'll be asked to sign in again on the next connection.")
             }
         }
     }

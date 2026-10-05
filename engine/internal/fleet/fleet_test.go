@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/compat"
 	"github.com/dsswift/ion/engine/internal/studioclient"
@@ -25,19 +27,25 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "fleet.json")
 	empty, err := Load(path)
-	if err != nil || len(empty.Hosts) != 0 {
+	if err != nil || len(empty.Hosts) != 0 || len(empty.LegacyHosts) != 0 {
 		t.Fatalf("a missing fleet file is an empty fleet: %+v %v", empty, err)
 	}
+	// The file holds how deploys run, and hosts an earlier fleet file listed.
 	c := Config{
-		Hosts:    []Host{{Name: "devbox", SSH: "user@devbox.local", Kind: KindServer, Profile: "home"}, {Name: "mac", SSH: "local", Kind: KindDesktop}},
-		Profiles: map[string]Profile{"home": {Relay: "wss://relay.example.org", RelayKeyCommand: "echo k"}},
+		Checkout:    "/src/ion",
+		Hosts:       []Host{{Name: "from-the-catalog", SSH: "user@devbox.local"}},
+		LegacyHosts: []Host{{Name: "devbox", SSH: "user@devbox.local", Kind: KindServer, Profile: "home"}},
+		Profiles:    map[string]Profile{"home": {Relay: "wss://relay.example.org", RelayKeyCommand: "echo k"}},
 	}
 	if err := Save(path, c); err != nil {
 		t.Fatal(err)
 	}
 	back, err := Load(path)
-	if err != nil || len(back.Hosts) != 2 || back.Hosts[0].Name != "devbox" || back.ProfileOf(back.Hosts[0]).Relay != "wss://relay.example.org" {
+	if err != nil || back.Checkout != "/src/ion" || len(back.LegacyHosts) != 1 || back.LegacyHosts[0].Name != "devbox" || back.ProfileOf(back.LegacyHosts[0]).Relay != "wss://relay.example.org" {
 		t.Fatalf("round trip = %+v %v", back, err)
+	}
+	if len(back.Hosts) != 0 {
+		t.Errorf("the catalog's hosts were written to the fleet file: %+v", back.Hosts)
 	}
 	// Windows file modes carry only read-only; the profile's ACL keeps it private.
 	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
@@ -46,7 +54,6 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 	bad := []Config{
 		{Hosts: []Host{{Name: "a b", SSH: "x", Kind: KindServer}}},
 		{Hosts: []Host{{Name: "a", SSH: "x", Kind: KindServer}, {Name: "a", SSH: "y", Kind: KindServer}}},
-		{Hosts: []Host{{Name: "a", Kind: KindServer}}},
 		{Hosts: []Host{{Name: "a", SSH: "x", Kind: "laptop"}}},
 		{Hosts: []Host{{Name: "a", SSH: "x", Kind: KindServer, Profile: "nope"}}},
 		{Profiles: map[string]Profile{"p": {Relay: "wss://r", RelayOIDC: true, RelayKeyCommand: "x"}}},
@@ -57,8 +64,51 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 			t.Errorf("config %d must not validate: %+v", i, b)
 		}
 	}
+	// A host the device only talks to over its Studio connection has no SSH
+	// target, and one whose kind the catalog does not say has none.
+	if err := (Config{Hosts: []Host{{Name: "relay-only"}}}).Validate(); err != nil {
+		t.Errorf("a host with no ssh target or kind must validate: %v", err)
+	}
+	back.Hosts = []Host{{Name: "devbox"}}
 	if _, err := back.Select([]string{"nope"}); err == nil {
 		t.Error("an unknown host name must be an error")
+	}
+}
+
+// The fleet's hosts are this machine and every server in Studio's catalog.
+func TestUseCatalog(t *testing.T) {
+	c := testCatalog(t, `{"environments": [
+	  {"kind": "paired", "label": "devbox", "url": "http://devbox.example:7331", "credentialRef": "env-1", "via": "lan", "environmentId": "env-1",
+	   "deploy": {"ssh": "user@devbox.example", "kind": "server", "askSudo": true}},
+	  {"kind": "paired", "label": "oscar", "url": "http://127.0.0.1:7331", "credentialRef": "env-2", "via": "ssh", "environmentId": "env-2", "ssh": {"destination": "user@oscar.example", "remotePort": 7331}},
+	  {"kind": "bearer", "label": "Team Beta (shared)", "url": "https://ion.example.org", "environmentId": "env-3", "manageOnly": true},
+	  {"kind": "paired", "label": "Team Beta shared", "url": "http://other.example:7331", "credentialRef": "env-4", "via": "relay", "environmentId": "env-4"}
+	]}`)
+	var cfg Config
+	if err := cfg.UseCatalog(c); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Hosts) != 5 || cfg.Hosts[0].SSH != LocalSSH || cfg.Hosts[0].Entry != nil {
+		t.Fatalf("hosts = %+v", cfg.Hosts)
+	}
+	devbox, oscar, team, twin := cfg.Hosts[1], cfg.Hosts[2], cfg.Hosts[3], cfg.Hosts[4]
+	if devbox.Name != "devbox" || devbox.SSH != "user@devbox.example" || devbox.Kind != KindServer || !devbox.AskSudo || devbox.URL != "http://devbox.example:7331" || !devbox.Paired() || devbox.External() {
+		t.Errorf("devbox = %+v", devbox)
+	}
+	// An ssh-reached server deploys over the same SSH target, and its url is
+	// its own loopback, which does not answer from here.
+	if oscar.SSH != "user@oscar.example" || oscar.URL != "" || oscar.Kind != "" {
+		t.Errorf("oscar = %+v", oscar)
+	}
+	if team.Name != "Team-Beta-shared" || team.Label != "Team Beta (shared)" || !team.ManageOnly || !team.External() || !team.Paired() {
+		t.Errorf("team = %+v", team)
+	}
+	if twin.Name != "Team-Beta-shared-2" {
+		t.Errorf("two labels that make one name: second = %q", twin.Name)
+	}
+	// A server answers to its environment id too.
+	if picked, err := cfg.Select([]string{"env-3", "oscar"}); err != nil || len(picked) != 2 || picked[0].Name != "Team-Beta-shared" || picked[1].Name != "oscar" {
+		t.Errorf("select by environment id = %+v %v", picked, err)
 	}
 }
 
@@ -176,13 +226,6 @@ func sshExit255(t *testing.T) error {
 	return err
 }
 
-type memPairings map[string]studioclient.Pairing
-
-func (m memPairings) Get(host string) (studioclient.Pairing, bool, error) {
-	p, ok := m[host]
-	return p, ok, nil
-}
-
 func reportJSON(t *testing.T, transfer string) []byte {
 	t.Helper()
 	r := studiostatus.Report{SchemaVersion: 1, Kind: studiostatus.KindServer, Formats: studiostatus.MergeFormats(nil, []compat.Format{{ID: "transfer-archive", Owner: "server", Version: transfer, Rule: compat.RuleExact}})}
@@ -193,7 +236,17 @@ func reportJSON(t *testing.T, transfer string) []byte {
 	return data
 }
 
-func TestCollect_SSHThenRelayThenDown(t *testing.T) {
+func studioStatus(hostname, transfer string) studioclient.Status {
+	return studioclient.Status{
+		Info:     studioclient.ServerInfo{Hostname: hostname, Formats: []compat.Format{{ID: "transfer-archive", Owner: "server", Version: transfer, Rule: compat.RuleExact}}},
+		Accounts: []studiostatus.Account{{Provider: "anthropic", Backend: "claude-code", Email: "a@example.com", SignedIn: true, LastSeen: 5}},
+	}
+}
+
+// A host is read over SSH when it has an SSH target; over its Studio
+// connection when SSH gives nothing, or it has no SSH target; and is down
+// when neither answers.
+func TestCollect_SSHThenStudioThenDown(t *testing.T) {
 	unreachable := sshExit255(t)
 	runner := &fakeRunner{answer: func(h Host, _ string, _ string) ([]byte, []byte, error) {
 		if h.Name == "a" {
@@ -201,27 +254,68 @@ func TestCollect_SSHThenRelayThenDown(t *testing.T) {
 		}
 		return nil, []byte("ssh: connect to host: Operation timed out"), unreachable
 	}}
-	var relayed []string
+	paired := &Entry{Kind: EntryPaired, Label: "x", CredentialRef: "env-x", EnvironmentID: "env-x"}
+	var readMu sync.Mutex
+	var read []string
 	c := Collector{
-		Runner:   runner,
-		Pairings: memPairings{"b": {ClientID: "c", Relays: []studioclient.Relay{{URL: "wss://r", Auth: studioclient.RelayAuth{Mode: "psk", Key: "k"}}}}},
-		ReadRelay: func(_ context.Context, relay studioclient.Relay, bearer string, _ studioclient.Pairing) (studioclient.Status, error) {
-			relayed = append(relayed, relay.URL+" "+bearer)
-			return studioclient.Status{Info: studioclient.ServerInfo{Hostname: "b-host", Formats: []compat.Format{{ID: "transfer-archive", Owner: "server", Version: "2", Rule: compat.RuleExact}}}}, nil
+		Runner: runner,
+		ReadStudio: func(_ context.Context, h Host) (studioclient.Status, string, error) {
+			readMu.Lock()
+			read = append(read, h.Name)
+			readMu.Unlock()
+			if h.Name == "c" {
+				return studioclient.Status{}, "", errors.New("no address, SSH target, or relay answered")
+			}
+			return studioStatus(h.Name+"-host", "2"), ViaRelay, nil
 		},
 	}
-	got := c.Collect(context.Background(), []Host{{Name: "a", SSH: "a", Kind: KindServer}, {Name: "b", SSH: "b", Kind: KindServer}, {Name: "c", SSH: "c", Kind: KindServer}})
+	got := c.Collect(context.Background(), []Host{
+		{Name: "a", SSH: "a", Kind: KindServer, Entry: paired},
+		{Name: "b", SSH: "b", Kind: KindServer, Entry: paired},
+		{Name: "c", SSH: "c", Kind: KindServer, Entry: paired},
+		{Name: "d", Entry: paired},
+		{Name: "e", SSH: "e"},
+	})
 	if got[0].Via != ViaSSH || got[0].Report == nil {
 		t.Errorf("a = %+v", got[0])
 	}
-	if got[1].Via != ViaRelay || got[1].Report == nil || got[1].Report.Hostname != "b-host" || len(relayed) != 1 || relayed[0] != "wss://r k" {
-		t.Errorf("b = %+v relayed=%v", got[1], relayed)
+	if got[1].Via != ViaRelay || got[1].Report == nil || got[1].Report.Hostname != "b-host" || len(got[1].Report.Accounts) != 1 {
+		t.Errorf("b = %+v", got[1])
 	}
-	if got[2].Via != ViaNone || got[2].Report != nil || !strings.Contains(got[2].Error, "not paired") || !strings.Contains(got[2].Error, "unreachable") {
+	if got[2].Via != ViaNone || got[2].Report != nil || !strings.Contains(got[2].Error, "ssh: unreachable") || !strings.Contains(got[2].Error, "studio: no address") {
 		t.Errorf("c = %+v", got[2])
+	}
+	// No SSH target: the Studio connection is the only way in, and SSH is never tried.
+	if got[3].Via != ViaRelay || got[3].Report == nil {
+		t.Errorf("d = %+v", got[3])
+	}
+	// No pairing: SSH is the only way in.
+	if got[4].Via != ViaNone || !strings.Contains(got[4].Error, "ssh: unreachable") || strings.Contains(got[4].Error, "studio") {
+		t.Errorf("e = %+v", got[4])
+	}
+	sort.Strings(read)
+	if strings.Join(read, ",") != "b,c,d" {
+		t.Errorf("hosts read over a Studio connection = %v", read)
 	}
 	if !strings.Contains(runner.scripts[0], `"$ION" 'studio' 'status' '--json' '--no-latest'`) {
 		t.Errorf("probe script = %s", runner.scripts[0])
+	}
+}
+
+// A server reached only at its own address still answers anyone with its
+// versions and formats when the device's sign-in to it does not work.
+func TestCollect_PublicReadWhenTheSignInFails(t *testing.T) {
+	c := Collector{
+		ReadStudio: func(context.Context, Host) (studioclient.Status, string, error) {
+			return studioclient.Status{}, "", errors.New("not signed in")
+		},
+		Public: func(_ context.Context, base string) (studioclient.Public, error) {
+			return studioclient.Public{Ready: true, Auth: studioclient.AuthConfig{Label: "Atlas Beta"}, Versionz: studioclient.Versionz{ServerVersion: "0.1.0"}}, nil
+		},
+	}
+	st := c.One(context.Background(), Host{Name: "atlas", URL: "https://atlas.example.org", Entry: &Entry{Kind: EntryBearer, Label: "atlas", URL: "https://atlas.example.org"}})
+	if st.Via != ViaHTTPS || st.Report == nil || st.Report.Hostname != "Atlas Beta" || len(st.Report.Problems) != 1 || !strings.Contains(st.Report.Problems[0], "not signed in") {
+		t.Fatalf("status = %+v report = %+v", st, st.Report)
 	}
 }
 
@@ -411,32 +505,36 @@ func TestSetRelay_KeyTravelsOnStdinOnly(t *testing.T) {
 
 func TestRestart_PerKind(t *testing.T) {
 	runner := &fakeRunner{answer: func(Host, string, string) ([]byte, []byte, error) { return nil, nil, nil }}
-	if err := Restart(context.Background(), runner, Host{Name: "s", SSH: "s", Kind: KindServer}); err != nil {
+	if err := (Ops{Runner: runner}).Restart(context.Background(), Host{Name: "s", SSH: "s", Kind: KindServer}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Restart(context.Background(), runner, Host{Name: "d", SSH: "d", Kind: KindDesktop}); err != nil {
+	if err := (Ops{Runner: runner}).Restart(context.Background(), Host{Name: "d", SSH: "d", Kind: KindDesktop}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(runner.scripts[0], `"$ION" 'studio' 'restart'`) || !strings.Contains(runner.scripts[1], "pkill -USR2") || !strings.Contains(runner.scripts[1], "open -a") {
 		t.Errorf("scripts = %v", runner.scripts)
 	}
 	failing := &fakeRunner{answer: func(Host, string, string) ([]byte, []byte, error) { return nil, []byte("boom"), errors.New("exit 1") }}
-	if err := Restart(context.Background(), failing, Host{Name: "d", SSH: "d", Kind: KindDesktop}); err == nil || !strings.Contains(err.Error(), "boom") {
+	if err := (Ops{Runner: failing}).Restart(context.Background(), Host{Name: "d", SSH: "d", Kind: KindDesktop}); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("a failed restart must carry the host's stderr: %v", err)
 	}
 }
 
-// Over SSH a host lists every device of its owner, the fleet's own pairing
-// included; the collector marks it so counts match a relay read.
-func TestCollect_MarksTheFleetsOwnPairing(t *testing.T) {
+// Over SSH a host lists every device of its owner, this device's own pairing
+// included; the collector marks it so counts match a Studio read.
+func TestCollect_MarksThisDevicesOwnPairing(t *testing.T) {
+	catalog := testCatalog(t, "")
+	if err := catalog.PutPairing("env-m", StoredPairing{Pairing: studioclient.Pairing{ClientID: "fleet-client", SharedSecret: bytes.Repeat([]byte{7}, 32)}}); err != nil {
+		t.Fatal(err)
+	}
 	report := studiostatus.Report{SchemaVersion: 1, Kind: studiostatus.KindDesktop, Devices: []studiostatus.PairedDevice{{ClientID: "fleet-client", Connected: true}, {ClientID: "phone", Kind: "mobile"}}}
 	data, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{answer: func(Host, string, string) ([]byte, []byte, error) { return data, nil, nil }}
-	c := Collector{Runner: runner, Pairings: memPairings{"m": {ClientID: "fleet-client"}}}
-	st := c.One(context.Background(), Host{Name: "m", SSH: "m", Kind: KindDesktop})
+	c := Collector{Runner: runner, Studio: Studio{Catalog: catalog}}
+	st := c.One(context.Background(), Host{Name: "m", SSH: "m", Kind: KindDesktop, Entry: &Entry{Kind: EntryPaired, CredentialRef: "env-m"}})
 	if st.Report == nil || !st.Report.Devices[0].Self || st.Report.Devices[1].Self {
 		t.Fatalf("devices = %+v", st.Report)
 	}
@@ -445,5 +543,39 @@ func TestCollect_MarksTheFleetsOwnPairing(t *testing.T) {
 	}
 	if got := DevicesCell(&studiostatus.Report{}); got != "-" {
 		t.Errorf("an unread host = %q", got)
+	}
+}
+
+func TestAccountCells(t *testing.T) {
+	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	a := studiostatus.Account{Limits: []studiostatus.AccountLimit{
+		{Kind: "session", Percent: 16.4, ResetsAt: "2026-10-03T15:30:00Z", FetchedAt: now.UnixMilli()},
+		{Kind: "weekly", Percent: 63, ResetsAt: "2026-10-05T21:00:00Z", FetchedAt: now.UnixMilli()},
+		{Kind: "weekly_model", Label: "Example Model", Percent: 91, ResetsAt: "2026-10-03T11:00:00Z", FetchedAt: now.Add(-3 * time.Hour).UnixMilli()},
+	}}
+	if got := LimitCell(a, "session", now); got != "16% (resets in 3h)" {
+		t.Errorf("session = %q", got)
+	}
+	if got := LimitCell(a, "weekly", now); got != "63% (resets in 2d)" {
+		t.Errorf("weekly = %q", got)
+	}
+	// Read before a reset that has since passed: the number is no longer true.
+	if got := LimitCell(a, "weekly_model", now); got != "Example Model reset since last read" {
+		t.Errorf("model = %q", got)
+	}
+	if got := LimitCell(a, "spend", now); got != "-" {
+		t.Errorf("a limit the account lacks = %q", got)
+	}
+	if got := AgoCell(now.Add(-50*time.Hour).UnixMilli(), now); got != "2d ago" {
+		t.Errorf("ago = %q", got)
+	}
+	statuses := []HostStatus{
+		{Host: Host{Name: "a"}, Report: &studiostatus.Report{Accounts: []studiostatus.Account{{Provider: "anthropic", Email: "x@example.com", SignedIn: true, LastSeen: 2}}}},
+		{Host: Host{Name: "b"}},
+		{Host: Host{Name: "c"}, Report: &studiostatus.Report{Accounts: []studiostatus.Account{{Provider: "anthropic", Email: "x@example.com", LastSeen: 1}}}},
+	}
+	rows := Accounts(statuses)
+	if len(rows) != 1 || len(rows[0].Machines) != 2 || !rows[0].SignedIn {
+		t.Errorf("accounts = %+v", rows)
 	}
 }

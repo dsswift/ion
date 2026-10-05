@@ -15,9 +15,11 @@ class MockWebSocket extends EventEmitter {
   static readonly OPEN = 1
   readyState = MockWebSocket.OPEN
   headers: Record<string, string> = {}
+  url: string
 
-  constructor(_url: string, opts?: { headers?: Record<string, string> }) {
+  constructor(url: string, opts?: { headers?: Record<string, string> }) {
     super()
+    this.url = url
     if (opts?.headers) this.headers = opts.headers
   }
 
@@ -473,5 +475,20 @@ describe('token-expired escalation', () => {
     expect((client as any).tokenExpiredCount).toBe(0)
 
     client.disconnect()
+  })
+})
+
+describe('RelayClient multi-client join', () => {
+  it('asks the relay for multi-client only when told to', async () => {
+    const single = new RelayClient({ relayUrl: 'wss://relay.example', apiKey: 'k', channelId: 'chan-1' })
+    single.connect()
+    await Promise.resolve()
+    const multi = new RelayClient({ relayUrl: 'wss://relay.example', apiKey: 'k', channelId: 'chan-1', multiClient: true })
+    multi.connect()
+    await Promise.resolve()
+    const urls = mockInstances.slice(-2).map((ws) => ws.url)
+    expect(urls).toEqual(['wss://relay.example/v1/channel/chan-1?role=ion', 'wss://relay.example/v1/channel/chan-1?role=ion&multi=1'])
+    single.disconnect()
+    multi.disconnect()
   })
 })

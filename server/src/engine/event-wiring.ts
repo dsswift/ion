@@ -203,6 +203,17 @@ export function wireEngineBridgeEvents(): void {
     handleResourceEngineEvent(key, event, broadcastNormalized);
     handleNotificationOrDispatchEvent(key, event, broadcastNormalized);
 
+    // engine_rate_limit: the backend's usage limit report for this run.
+    if (event.type === "engine_rate_limit" && event.rateLimit) {
+      broadcastNormalized(tabIdFromKey(key), { type: "rate_limit", ...event.rateLimit });
+      log("engine_rate_limit: forwarded", {
+        key,
+        status: event.rateLimit.status,
+        rate_limit_type: event.rateLimit.rateLimitType,
+        window_count: Object.keys(event.rateLimit.windows ?? {}).length,
+      });
+    }
+
     // engine_context_breakdown: per-category token breakdown built during
     // prompt assembly. Broadcast to the renderer as a normalized event so
     // store slices can cache the latest breakdown per instance, and forward

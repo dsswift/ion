@@ -7,7 +7,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
-	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -53,11 +52,7 @@ func (s *Server) dispatchStoreCredential(conn net.Conn, cmd *protocol.ClientComm
 		// 05) rather than eagerly here, since DiscoverProvider has no
 		// per-principal authenticator seam of its own.
 		if subject == "" {
-			providerConfigs := make(map[string]types.ProviderConfig)
-			if s.config != nil {
-				providerConfigs = s.config.Providers
-			}
-			providers.DiscoverProvider(cmd.Provider, cmd.Credential, providerConfigs)
+			providers.DiscoverProvider(cmd.Provider, cmd.Credential, s.providerConfigs())
 		}
 	}
 	s.sendResult(conn, cmd, nil, nil)

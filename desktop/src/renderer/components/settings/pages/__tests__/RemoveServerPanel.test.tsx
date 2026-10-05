@@ -32,7 +32,7 @@ let h: Harness
 
 async function mount(): Promise<void> {
   await h.render(
-    <SettingsServersProvider value={{ entries: [entry], justAddedId: null, add: vi.fn(), relabel: vi.fn(), forget }}>
+    <SettingsServersProvider value={{ entries: [entry], justAddedId: null, add: vi.fn(), relabel: vi.fn(), forget, setManageOnly: vi.fn() }}>
       <SettingsNavProvider value={{ location: { pageId: 'overview', environmentId: 'env-g', anchor: null }, navigate }}>
         <RemoveServerPanel entry={entry} onClose={onClose} />
       </SettingsNavProvider>

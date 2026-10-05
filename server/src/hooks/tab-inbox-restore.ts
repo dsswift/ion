@@ -8,12 +8,16 @@ export function restoredInboxTabFields(tab: PersistedTab): {
   lastFailureAt: number | null
   pinnedAt: number | null
   pinOrderKey: string | null
+  usageLimit: TabState['usageLimit']
+  deferredSend: TabState['deferredSend']
 } {
   return {
     createdAt: tab.createdAt ?? 0,
     lastFailureAt: tab.lastFailureAt ?? null,
     pinnedAt: tab.pinnedAt ?? null,
     pinOrderKey: tab.pinOrderKey ?? null,
+    usageLimit: tab.usageLimit ?? null,
+    deferredSend: tab.deferredSend ?? null,
   }
 }
 

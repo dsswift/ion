@@ -1047,6 +1047,104 @@
           ]
         }
       ]
+    },
+    {
+      "event": "usage:limit-reached",
+      "label": "A usage limit stops a conversation",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.limitType",
+          "label": "Limit",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "usage:limit-reset",
+      "label": "A conversation's usage limit resets",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.limitType",
+          "label": "Limit",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "usage:quota-expiring",
+      "label": "Weekly quota is about to reset unused",
+      "provides": {
+        "worktree": false,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.provider",
+          "label": "Provider",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.limitLabel",
+          "label": "Model",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
     }
   ],
   "actions": [
@@ -1134,6 +1232,12 @@
           ]
         }
       ]
+    },
+    {
+      "kind": "bench:join",
+      "label": "Put the worktree on its integration bench",
+      "target": "worktree",
+      "config": []
     },
     {
       "kind": "desktop:notification",

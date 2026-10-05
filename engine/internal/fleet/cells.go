@@ -3,6 +3,7 @@ package fleet
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/studiostatus"
 )
@@ -142,4 +143,64 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// Accounts is one row per provider account across the hosts that reported
+// any, in host order.
+func Accounts(statuses []HostStatus) []studiostatus.FleetAccount {
+	byHost := map[string][]studiostatus.Account{}
+	var order []string
+	for _, st := range statuses {
+		if st.Report == nil || len(st.Report.Accounts) == 0 {
+			continue
+		}
+		byHost[st.Host.Name] = st.Report.Accounts
+		order = append(order, st.Host.Name)
+	}
+	return studiostatus.MergeAccounts(byHost, order)
+}
+
+// AgoCell is how long ago a Unix-millisecond time was, in its largest
+// whole unit.
+func AgoCell(ms int64, now time.Time) string {
+	d := now.Sub(time.UnixMilli(ms))
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
+// LimitCell is one of an account's usage limits: the percent used and when
+// it resets. A limit read before a reset that has since passed says so,
+// because its number is no longer true. A weekly_model limit names its model.
+func LimitCell(a studiostatus.Account, kind string, now time.Time) string {
+	l, ok := a.Limit(kind, "")
+	if !ok {
+		return "-"
+	}
+	name := ""
+	if kind == "weekly_model" && l.Label != "" {
+		name = l.Label + " "
+	}
+	resets, err := time.Parse(time.RFC3339, l.ResetsAt)
+	if err != nil {
+		return fmt.Sprintf("%s%.0f%%", name, l.Percent)
+	}
+	if !resets.After(now) && time.UnixMilli(l.FetchedAt).Before(resets) {
+		return name + "reset since last read"
+	}
+	left := resets.Sub(now)
+	in := fmt.Sprintf("%dm", int(left.Minutes()))
+	switch {
+	case left >= 24*time.Hour:
+		in = fmt.Sprintf("%dd", int(left.Hours()/24))
+	case left >= time.Hour:
+		in = fmt.Sprintf("%dh", int(left.Hours()))
+	}
+	return fmt.Sprintf("%s%.0f%% (resets in %s)", name, l.Percent, in)
 }

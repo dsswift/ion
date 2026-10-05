@@ -28,14 +28,20 @@ make desktop
 bash commands/install-bg.command
 ```
 
-`make desktop` builds a development-stamped `.pkg`, asks the running Ion to
-finish active work and quit, then opens macOS Installer. The package is the
-only component that writes `/Applications/Ion.app`, and it launches Ion after
-a successful install for the active macOS user. Output logs to
-`/tmp/ion-package-coordinator.log`.
+`make desktop` builds a development-stamped `Ion.app`, asks the running Ion to
+finish active work and quit, then swaps the new build into
+`/Applications/Ion.app` with the in-app updater's install worker
+(`scripts/install-worker.sh`) and reopens it. Nothing prompts, so it runs
+unattended. The install runs as you: an admin user can rename
+entries in `/Applications`, so a root-owned bundle a package left there is set
+aside as `.Ion.app.previous`, not deleted, and macOS is told to forget it as
+an app. Ion reopens only when you are the
+user signed in on the Mac's screen. Logs: `~/.ion/dev-install-coordinator.log`
+and `~/.ion/install-worker.jsonl`.
 
-If you open a package manually while Ion is running, Installer refuses before
-it changes the application bundle. Quit Ion, then retry the package.
+`make desktop-pkg` builds the `.pkg` instead, without installing it. If you open
+a package manually while Ion is running, Installer refuses before it changes
+the application bundle. Quit Ion, then retry the package.
 
 Never kill Ion processes directly or copy the app bundle manually.
 

@@ -2,7 +2,9 @@
  * ProviderCliSignIn — the delegated-CLI sign-in of a provider that has one
  * (Claude Code, Codex, Grok, Cursor): still checking, install guidance, the
  * sign-in button with its live login state, the pasted authorization code,
- * or the signed-in account with Sign out.
+ * or the signed-in account with Switch account and Sign out. Switch account
+ * runs the same sign-in over the account that is there, which stays signed
+ * in until the new sign-in finishes.
  *
  * Shown for every provider with a CLI option whatever backend is winning
  * now: signing in is how the CLI routing path is enabled, and Sign out must
@@ -18,7 +20,7 @@ import { rError, rWarn } from '../../../../rendererLogger'
 import { CLI_INSTALL_GUIDANCE, providerCliBackend } from '../../provider-auth-labels'
 import { Button, ErrorText, FormGroup, FormRow, IconButton, Inline, MonoLine, Stack, TextInput } from '../../kit'
 
-export function ProviderCliSignIn({ provider, environmentId }: { provider: ProviderEntry; environmentId: string }): React.JSX.Element | null {
+export function ProviderCliSignIn({ provider, environmentId, title = 'CLI sign-in' }: { provider: ProviderEntry; environmentId: string; title?: string }): React.JSX.Element | null {
   const loginState = useModelStore((s) => s.loginStates[environmentId]?.[provider.id])
   const onHost = useModelStore((s) => s.onHost[environmentId] === true)
   const loginPossibleHere = canStartProviderLogin(onHost, provider)
@@ -64,16 +66,16 @@ export function ProviderCliSignIn({ provider, environmentId }: { provider: Provi
   // An in-flight login waiting for its pasted code outranks cached probe state.
   if (loginState?.phase === 'await_code') {
     body = (
-      <FormRow label="Authorization code" description="Approve the sign-in in your browser, then paste the authorization code here." stacked>
+      <FormRow label="Authorization code" description="Sign in to the account you want on the sign-in page and approve it. The page then shows a code: copy it and paste the authorization code here." stacked>
         <Wide>
+        {loginState.url && (
+          <Button onClick={() => run('open sign-in page', () => host.openExternal(loginState.url!))}>Open sign-in page</Button>
+        )}
         <Inline>
           <TextInput aria-label="Authorization code" placeholder="Authorization code" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit() }} />
           <Button variant="primary" disabled={submitting || !code.trim()} onClick={submit}>{submitting ? 'Submitting…' : 'Submit'}</Button>
           <Button onClick={cancel}>Cancel</Button>
         </Inline>
-        {loginState.url && (
-          <Button variant="ghost" onClick={() => run('open sign-in page', () => host.openExternal(loginState.url!))}>Browser didn’t open? Open sign-in page</Button>
-        )}
         <ErrorText>{codeError}</ErrorText>
         </Wide>
       </FormRow>
@@ -94,16 +96,19 @@ export function ProviderCliSignIn({ provider, environmentId }: { provider: Provi
         )}
       </FormRow>
     )
-  } else if (cli.authenticated) {
-    body = (
-      <FormRow label={`${cliName} CLI`} description={`${cli.label || 'Signed in'}${cli.email ? ` · ${cli.email}` : ''}`}>
-        <Button onClick={() => run('logout', () => host.shell.providerLogout(provider.id))}>Sign out</Button>
-      </FormRow>
-    )
   } else if (loginState?.phase === 'waiting') {
     body = (
       <FormRow label={`${cliName} CLI`} description={loginState.userCode ? `Enter code ${loginState.userCode} in your browser…` : 'Waiting for browser sign-in…'}>
         <Button onClick={cancel}>Cancel</Button>
+      </FormRow>
+    )
+  } else if (cli.authenticated) {
+    body = (
+      <FormRow label={`${cliName} CLI`} description={`${cli.label || 'Signed in'}${cli.email ? ` · ${cli.email}` : ''}`} warning={loginState?.phase === 'error' ? loginState.error : undefined}>
+        <Inline>
+          {loginPossibleHere && <Button onClick={() => run('switch account', () => host.shell.providerLogin(provider.id))}>Switch account</Button>}
+          <Button onClick={() => run('logout', () => host.shell.providerLogout(provider.id))}>Sign out</Button>
+        </Inline>
       </FormRow>
     )
   } else if (!loginPossibleHere) {
@@ -117,7 +122,7 @@ export function ProviderCliSignIn({ provider, environmentId }: { provider: Provi
     )
   }
 
-  return <FormGroup title="CLI sign-in">{body}</FormGroup>
+  return <FormGroup title={title}>{body}</FormGroup>
 }
 
 /** The full-width body of a stacked row. */

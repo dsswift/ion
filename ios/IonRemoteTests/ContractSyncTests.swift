@@ -866,33 +866,16 @@ final class ContractSyncTests: XCTestCase {
       "authSource": "env",
     ]
 
-    let _ = try JSONSerialization.data(withJSONObject: json)
-    // ProviderEntry is a Go contract type. iOS doesn't decode it directly
-    // (it uses RemoteModelEntry, onto which the desktop flattens hasAuth
-    // and the resolved provider display name per model), but we verify
-    // awareness of all Go fields.
+    let data = try JSONSerialization.data(withJSONObject: json)
+    // iOS decodes ProviderEntry as ServerProviderEntry for a server's
+    // Providers screens. Every Go field must be decoded or named here.
+    let decoded = try JSONDecoder().decode(ServerProviderEntry.self, from: data)
+    XCTAssertEqual(decoded.id, "anthropic")
+    XCTAssertFalse(decoded.custom, "an absent custom flag reads as a built-in provider")
 
     let swiftHandled: Set<String> = [
-      "id", "hasAuth", "authSource",
-      "baseURL", "apiKeyRef",
-      // Delegated-CLI backend selection + install/auth status. iOS does
-      // not run CLIs, so it does not act on these, but the contract test
-      // tracks awareness of every Go field (see testProviderCliStatus).
-      "backend", "cli",
-      // Operator-configured human-friendly provider name (engine.json
-      // provider displayName). iOS does not decode ProviderEntry — the
-      // desktop flattens per-provider data onto each model, so this
-      // resolved name arrives as RemoteModelEntry.providerLabel (see
-      // desktop/src/main/ipc/models.ts updateCache) and is rendered as
-      // the section header in the provider-grouped model picker
-      // (ModelPickerGrouping.providerLabel / ModelPickerSheet).
-      "displayName",
-      // Which sign-in dance this provider's CLI performs, and so whether it
-      // can be finished from a machine other than the engine's host
-      // (engine/internal/types/llm.go, LoginFlow*). iOS neither runs a CLI
-      // nor offers provider sign-in, so it takes no action on this; the
-      // contract test tracks awareness of every Go field.
-      "loginFlow",
+      "id", "hasAuth", "authSource", "baseURL", "apiKeyRef", "displayName",
+      "custom", "backend", "cli", "loginFlow",
     ]
     let goSet = Set(goFields)
     let unhandled = goSet.subtracting(swiftHandled)
@@ -917,6 +900,7 @@ final class ContractSyncTests: XCTestCase {
     let swiftHandled: Set<String> = [
       "backend", "installed", "binaryPath", "version",
       "authenticated", "authMethod", "planType", "email", "label", "probedAt",
+      "orgId", "orgName",
     ]
     let unhandled = Set(goFields).subtracting(swiftHandled)
     XCTAssert(

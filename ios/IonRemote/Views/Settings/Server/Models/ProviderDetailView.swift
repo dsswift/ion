@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// One provider on one server: its status, its sign-ins, its API key, and a
-/// model refresh.
+/// One provider on one server: its status, its sign-ins, its API key, a
+/// model refresh, and, for a custom provider, its removal.
 struct ProviderDetailView: View {
     let session: ServerAdminSession
     let catalog: ProvidersAdminModel
@@ -31,6 +31,9 @@ struct ProviderDetailView: View {
                 }
                 if provider.takesAPIKey {
                     ProviderAPIKeySection(session: session, model: model, provider: provider)
+                }
+                if provider.custom {
+                    ProviderRemoveSection(session: session, model: model, provider: provider)
                 }
             } else {
                 Section {

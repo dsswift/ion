@@ -36,6 +36,20 @@ struct ModelTiersAdminSection: View {
                     Label("Add Tier", systemImage: "plus")
                 }
                 .disabled(!session.allows(.modelSetTier))
+                // One row carries this, so it attaches once rather than once per row of the section.
+                .sheet(isPresented: $adding) { AddModelTierSheet(model: model) }
+                .confirmationDialog(
+                    "Remove the \(removing ?? "") tier?",
+                    isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                    titleVisibility: .visible
+                ) {
+                    Button("Remove Tier", role: .destructive) {
+                        guard let name = removing else { return }
+                        Task { await model.remove(name) }
+                    }
+                } message: {
+                    Text("Anything on \(session.serverLabel) that asks for this tier stops resolving it.")
+                }
                 if let reason = session.denialReason(.modelSetTier) {
                     Text(reason).font(.footnote).foregroundStyle(.secondary)
                 }
@@ -48,19 +62,6 @@ struct ModelTiersAdminSection: View {
         }
         .task { await model.follow() }
         .reloadsWithServerPage("model-tiers") { [model] in await model.load() }
-        .sheet(isPresented: $adding) { AddModelTierSheet(model: model) }
-        .confirmationDialog(
-            "Remove the \(removing ?? "") tier?",
-            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Remove Tier", role: .destructive) {
-                guard let name = removing else { return }
-                Task { await model.remove(name) }
-            }
-        } message: {
-            Text("Anything on \(session.serverLabel) that asks for this tier stops resolving it.")
-        }
     }
 
     private func defaultProviderRow(_ provider: String) -> some View {

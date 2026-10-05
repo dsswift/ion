@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/coder/websocket"
@@ -127,10 +126,9 @@ func ConnectDirect(ctx context.Context, base, bearer string) (*Session, error) {
 		return nil, fmt.Errorf("connect to %s: %w", wsURL, err)
 	}
 	conn.SetReadLimit(16 << 20)
-	host, _ := os.Hostname() //nolint:errcheck // an unknown hostname names the client less precisely
 	s := &Session{conn: conn}
 	hello := map[string]any{
-		"type": "studio_hello", "protocolVersion": studioProtocolVersion, "clientId": "ion-fleet-" + host,
+		"type": "studio_hello", "protocolVersion": studioProtocolVersion, "clientId": helloClientID(),
 		"clientKind": "desktop", "capabilities": []string{}, "view": "thin",
 		"credential": map[string]any{"kind": "bearer", "token": bearer},
 	}
@@ -150,7 +148,7 @@ func ReadDirectStatus(ctx context.Context, base, bearer string) (Status, error) 
 		return Status{}, err
 	}
 	defer s.Close()
-	return readStatus(ctx, s, base)
+	return ReadSession(ctx, s, base)
 }
 
 // Report is a public read as the report `ion studio status` prints: the

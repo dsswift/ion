@@ -55,6 +55,25 @@ struct EngineProfilesAdminSection: View {
                     Label("Add Profile", systemImage: "plus")
                 }
                 .disabled(!canEdit)
+                // One row carries this, so it attaches once rather than once per row of the section.
+                .sheet(item: $editing) { which in
+                    switch which {
+                    case .new: EngineProfileEditSheet(session: session, model: model, existing: nil)
+                    case .existing(let profile): EngineProfileEditSheet(session: session, model: model, existing: profile)
+                    }
+                }
+                .confirmationDialog(
+                    "Delete \(deleting?.name ?? "this profile")?",
+                    isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Profile", role: .destructive) {
+                        guard let profile = deleting else { return }
+                        Task { await model.remove(id: profile.id) }
+                    }
+                } message: {
+                    Text("Removes the profile from \(session.serverLabel). Its extension files stay where they are.")
+                }
                 if let reason = session.denialReason(scope: .admin) {
                     Text(reason).font(.footnote).foregroundStyle(.secondary)
                 }
@@ -67,24 +86,6 @@ struct EngineProfilesAdminSection: View {
         }
         .task { await model.load() }
         .reloadsWithServerPage("engine-profiles") { [model] in await model.load() }
-        .sheet(item: $editing) { which in
-            switch which {
-            case .new: EngineProfileEditSheet(session: session, model: model, existing: nil)
-            case .existing(let profile): EngineProfileEditSheet(session: session, model: model, existing: profile)
-            }
-        }
-        .confirmationDialog(
-            "Delete \(deleting?.name ?? "this profile")?",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete Profile", role: .destructive) {
-                guard let profile = deleting else { return }
-                Task { await model.remove(id: profile.id) }
-            }
-        } message: {
-            Text("Removes the profile from \(session.serverLabel). Its extension files stay where they are.")
-        }
     }
 
     private func row(_ profile: EngineProfile) -> some View {

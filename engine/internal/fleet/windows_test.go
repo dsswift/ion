@@ -128,7 +128,7 @@ func TestRunIon_Windows(t *testing.T) {
 
 func TestRestart_WindowsDesktop(t *testing.T) {
 	r := windowsRunner(func(string, string) ([]byte, []byte, error) { return nil, nil, nil })
-	if err := Restart(context.Background(), r, Host{Name: "w", SSH: "w", Kind: KindDesktop}); err != nil {
+	if err := (Ops{Runner: r}).Restart(context.Background(), Host{Name: "w", SSH: "w", Kind: KindDesktop}); err != nil {
 		t.Fatal(err)
 	}
 	script := r.scripts[0]
@@ -161,5 +161,28 @@ func TestSetRelay_WindowsDesktopRestartsARunningIon(t *testing.T) {
 	}
 	if r.stdins[0] != "the-key\n" || strings.Contains(strings.Join(r.scripts, " "), "the-key") {
 		t.Errorf("the key must travel on stdin only: stdin %q", r.stdins[0])
+	}
+}
+
+// A launch task with the default settings stays Queued on a laptop running on
+// battery and never starts Ion, and the launch used to report success anyway.
+func TestStartDesktop_RunsOnBatteryAndWaitsForIon(t *testing.T) {
+	for _, want := range []string{
+		"New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
+		"-Settings $settings",
+		"(Get-ScheduledTask -TaskName $name).State -eq 'Queued'",
+		"throw \"Windows did not start $program",
+	} {
+		if !strings.Contains(psStartInUserSession, want) {
+			t.Errorf("Start-InUserSession lacks %q", want)
+		}
+	}
+	for name, script := range map[string]string{"start": psStartDesktop, "restart": psRestartDesktop} {
+		if !strings.HasSuffix(script, psAwaitDesktop) {
+			t.Errorf("the %s script does not wait for Ion to be running", name)
+		}
+	}
+	if !strings.Contains(psAwaitDesktop, "if (-not (Get-Ion))") || !strings.Contains(psAwaitDesktop, "exit 9") {
+		t.Errorf("the wait does not fail when Ion is not running:\n%s", psAwaitDesktop)
 	}
 }

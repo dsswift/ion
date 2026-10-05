@@ -1,4 +1,5 @@
 import type { AssistantMessagePayload, UsageData } from "./types-cli-events";
+import type { RateLimitWindow } from "./types-engine-event-model";
 export * from "./types-cli-events";
 
 // ─── Canonical Events (normalized from raw stream) ───
@@ -94,8 +95,13 @@ export type NormalizedEvent =
   | {
       type: "rate_limit";
       status: string;
+      /** Unix second the rateLimitType window resets. */
       resetsAt: number;
       rateLimitType: string;
+      /** Fraction (0..1) of the rateLimitType window used. */
+      utilization?: number;
+      /** Every usage window reported with this event, keyed by window name. */
+      windows?: Record<string, RateLimitWindow>;
     }
   | { type: "usage"; usage: UsageData }
   | {

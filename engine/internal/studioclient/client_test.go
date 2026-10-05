@@ -177,7 +177,10 @@ func TestPairOverRelay_ThenReadStatus(t *testing.T) {
 	hello := f.hello
 	f.mu.Unlock()
 	cred, _ := hello["credential"].(map[string]any) //nolint:errcheck // asserted below
-	if hello["view"] != "thin" || hello["clientId"] != "client-1" || cred["kind"] != "paired" || cred["proof"] != RelayProof(p.SharedSecret) {
+	// The hello names this program, not the pairing: a pairing shared with
+	// Studio must not displace Studio's own connection.
+	helloID, _ := hello["clientId"].(string) //nolint:errcheck // asserted below
+	if hello["view"] != "thin" || !strings.HasPrefix(helloID, "ion-fleet-") || cred["clientId"] != "client-1" || cred["kind"] != "paired" || cred["proof"] != RelayProof(p.SharedSecret) {
 		t.Errorf("hello = %v", hello)
 	}
 	r := st.Report()

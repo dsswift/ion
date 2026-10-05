@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -175,7 +176,12 @@ func (s *Server) providerCliStatus(providerID string, cc *auth.CredentialContext
 		AuthMethod:    p.AuthMethod,
 		PlanType:      p.PlanType,
 		Email:         p.Email,
+		OrgID:         p.OrgID,
+		OrgName:       p.OrgName,
 		Label:         p.Label,
+	}
+	if !p.ProbedAt.IsZero() {
+		status.ProbedAt = p.ProbedAt.UTC().Format(time.RFC3339)
 	}
 	return status, effective
 }

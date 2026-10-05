@@ -65,10 +65,18 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // Auto-settle persists and stops an engine session, so it is owner-only just
   // like manual settlement. The mirror only renders the resulting snapshot.
   autoSettleTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  settleLandedTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   unsettleTab: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   restoreSettledHistoryTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   snoozeTab: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   unsnoozeTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  // A held prompt and the usage-limit state it waits on are owner-durable
+  // tab state; the owner releases the prompt with every client closed.
+  deferSend: { minArgs: 3, maxArgs: 3, tabIdAt: 0 },
+  resumeAtLimitReset: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  cancelDeferredSend: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  releaseDeferredSend: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  snoozeUntilLimitReset: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   markTabUnread: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   markTabRead: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   pinTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },

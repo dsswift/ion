@@ -90,6 +90,13 @@ export interface EnvironmentServerInfo {
   runningConversations?: number | null
   /** The server's Format Versions, then the running engine's. */
   formats?: FormatVersion[]
+  /**
+   * Whether the host can restart, update, or install a sent build on
+   * itself right now, and the refusal code when it cannot (`no_bundle`,
+   * `host_app_unreachable`, `needs_sudo`). Absent from a server that
+   * predates installing on itself: such a host is deployed over SSH.
+   */
+  hostInstall?: { available: boolean; code?: string }
 }
 
 export type EnvironmentLogFile = 'engine' | 'server'

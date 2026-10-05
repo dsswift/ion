@@ -14,6 +14,12 @@
  * set to the client the channel belongs to, and `hello.ts` admits that
  * client's `paired` credential without the nonce HMAC a TCP client needs.
  *
+ * A pairing can have several clients on its channel at once (a desktop's
+ * Studio window and its `ion fleet`, a phone's live session and an admin
+ * session). The channel joins as multi-client; a relay that supports it
+ * names each client, and each gets its own `RelayConnectionSocket` and
+ * `Connection`. A relay that does not keeps one client, as before.
+ *
  * Channels open at boot and again after every pairing completes
  * (`refreshRelayStudioClients()`), and close when a client is revoked.
  */
@@ -50,10 +56,17 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
  * `sealed-socket.ts`, shared with the TCP listener.
  */
 export class RelayConnectionSocket extends SealedSocket {
-  constructor(relay: RelayClient, sharedSecret: Buffer, clientId: string) {
-    super(relayCarrier(relay), sharedSecret, clientId)
+  constructor(relay: RelayClient, sharedSecret: Buffer, clientId: string, peer?: string) {
+    super(relayCarrier(relay, peer), sharedSecret, clientId)
   }
 }
+
+/**
+ * The key of the one connection a channel holds when its relay keeps a
+ * single client per pairing. A multi-client relay names each client, and the
+ * channel then holds one connection per name.
+ */
+const SOLE_PEER = ''
 
 interface RelayChannelEntry {
   key: string
@@ -62,7 +75,8 @@ interface RelayChannelEntry {
   /** The pairing secret the channel is sealed with; also seals a push doorbell sent outside any connection. */
   secret: Buffer
   client: RelayClient
-  socket: RelayConnectionSocket | null
+  /** One connection per client on the channel, keyed by the relay's id for it (`SOLE_PEER` on a relay that keeps one client). */
+  sockets: Map<string, RelayConnectionSocket>
 }
 
 export interface RelayStudioListenerOptions {
@@ -110,43 +124,55 @@ export function startRelayStudioListeners(options: RelayStudioListenerOptions): 
   let retryTimer: ReturnType<typeof setTimeout> | null = null
 
   const start = (key: string, relay: ServerRelayConfig, record: CredentialClientRecord, secret: Buffer, client: RelayClient): void => {
-    const entry: RelayChannelEntry = { key, relayUrl: relay.url, clientId: record.clientId, secret, client, socket: null }
+    const entry: RelayChannelEntry = { key, relayUrl: relay.url, clientId: record.clientId, secret, client, sockets: new Map() }
     // A Connection lasts exactly as long as the CLIENT's presence on the
     // channel, not this server's. The client re-sends its hello every time it
     // joins, and a hello arriving on a Connection that was already welcomed
     // displaces that Connection against itself. A Connection left standing
     // after the client went away also reads as "attached", which is what
     // decides whether a phone is rung for a push.
-    const drop = (reason: string): void => {
-      if (!entry.socket) return
-      entry.socket.terminate()
-      entry.socket = null
-      log('relay connection dropped', { client_id: record.clientId, relay_url: relay.url, reason })
+    const drop = (peer: string, reason: string): void => {
+      const socket = entry.sockets.get(peer)
+      if (!socket) return
+      socket.terminate()
+      entry.sockets.delete(peer)
+      log('relay connection dropped', { client_id: record.clientId, relay_url: relay.url, peer, reason })
     }
-    const fresh = (reason: string): void => {
-      drop(reason)
-      const socket = new RelayConnectionSocket(client, secret, record.clientId)
-      entry.socket = socket
+    const dropAll = (reason: string): void => {
+      for (const peer of [...entry.sockets.keys()]) drop(peer, reason)
+    }
+    const fresh = (peer: string, reason: string): void => {
+      drop(peer, reason)
+      const socket = new RelayConnectionSocket(client, secret, record.clientId, peer === SOLE_PEER ? undefined : peer)
+      entry.sockets.set(peer, socket)
       attachConnection(socket, 'relay', options.listener, { preVerifiedClientId: record.clientId })
-      log('relay connection ready; awaiting hello', { client_id: record.clientId, relay_url: relay.url, subject: record.subject, reason })
+      log('relay connection ready; awaiting hello', { client_id: record.clientId, relay_url: relay.url, subject: record.subject, peer, reason })
     }
-    client.on('connected', () => fresh('channel connected'))
+    // Until the relay names a client, the channel is taken to hold one: a
+    // relay that predates multi-client never names any.
+    client.on('connected', () => fresh(SOLE_PEER, 'channel connected'))
     client.on('control', (msg: RelayControlMessage) => {
       if (msg.type === 'relay:push-failed') {
         // The relay could not deliver a push this server rang: no push
         // address for the phone yet (no_token), push not configured on the
         // relay (push_unavailable), or Apple refused it.
         warn('relay push failed', { client_id: record.clientId, relay_url: relay.url, reason: msg.reason ?? 'unknown', resource_id: msg.resourceId ?? '' })
-      } else if (msg.type === 'relay:peer-reconnected') fresh('client joined the channel')
+      } else if (msg.type === 'relay:peer-joined' && msg.peer) {
+        // A multi-client relay: every client is named, so the unnamed
+        // connection has nobody to serve.
+        drop(SOLE_PEER, 'the relay names its clients')
+        fresh(msg.peer, 'client joined the channel')
+      } else if (msg.type === 'relay:peer-left' && msg.peer) drop(msg.peer, 'client left the channel')
+      else if (msg.type === 'relay:peer-reconnected') fresh(SOLE_PEER, 'client joined the channel')
       else if (msg.type === 'relay:peer-disconnected') {
-        drop('client left the channel')
+        drop(SOLE_PEER, 'client left the channel')
         // Ready for the next join even if the relay's join notice is missed.
-        fresh('awaiting the next join')
+        fresh(SOLE_PEER, 'awaiting the next join')
       }
     })
     client.on('disconnected', () => {
       log('relay channel disconnected', { client_id: record.clientId, relay_url: relay.url })
-      drop('channel disconnected')
+      dropAll('channel disconnected')
     })
     client.connect()
     entries.set(key, entry)
@@ -163,7 +189,7 @@ export function startRelayStudioListeners(options: RelayStudioListenerOptions): 
     }
     const channelId = deriveChannelId(secret)
     if (!relay.oidc) {
-      start(key, relay, record, secret, new RelayClient({ relayUrl: relay.url, apiKey: relay.psk, channelId }))
+      start(key, relay, record, secret, new RelayClient({ relayUrl: relay.url, apiKey: relay.psk, channelId, multiClient: true }))
       return
     }
 
@@ -190,14 +216,15 @@ export function startRelayStudioListeners(options: RelayStudioListenerOptions): 
           return
         }
         const announceTrust = announceForDevice(config, record.relayIdentity, relay.url)
-        start(key, relay, record, secret, new RelayClient({ relayUrl: relay.url, apiKey: '', channelId, ...joinFor(relay.url, deps), announceTrust }))
+        start(key, relay, record, secret, new RelayClient({ relayUrl: relay.url, apiKey: '', channelId, multiClient: true, ...joinFor(relay.url, deps), announceTrust }))
       })
       .catch((err: unknown) => warn('relay channel open failed', { client_id: record.clientId, relay_url: relay.url, error: String(err) }))
       .finally(() => opening.delete(key))
   }
 
   const closeEntry = (entry: RelayChannelEntry, reason: string): void => {
-    entry.socket?.close(1000, reason)
+    for (const socket of entry.sockets.values()) socket.close(1000, reason)
+    entry.sockets.clear()
     entry.client.disconnect()
     entries.delete(entry.key)
     log('relay channel closed', { client_id: entry.clientId, relay_url: entry.relayUrl, reason })

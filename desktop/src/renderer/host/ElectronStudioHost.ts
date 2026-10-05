@@ -29,6 +29,7 @@ import type { IonAPI } from '../../preload/ionapi'
 import type { ShellApi } from './shell-api'
 import type { ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
+import type { FleetRunProgress, FleetRunRequest, FleetRunSnapshot, FleetRunStart } from '@ion/shared/types-fleet-run'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { Capability, PortForwardHost, StudioHost, FileDialogFilter } from './StudioHost'
@@ -246,6 +247,30 @@ export class ElectronStudioHost implements StudioHost {
 
   disconnectEnvironment(environmentId: string): void {
     this.preload.hostDisconnectEnvironment(environmentId)
+  }
+
+  forgetEnvironment(environmentId: string, target: EnvironmentTarget): void {
+    this.preload.hostForgetEnvironment(environmentId, target)
+  }
+
+  fleetRun(request: FleetRunRequest): Promise<FleetRunStart> {
+    return this.preload.hostFleetRun(request)
+  }
+
+  cancelFleetRun(runId: string): void {
+    this.preload.hostFleetCancel(runId)
+  }
+
+  fleetRuns(): Promise<FleetRunSnapshot[]> {
+    return this.preload.hostFleetRuns()
+  }
+
+  onFleetProgress(cb: (progress: FleetRunProgress) => void): () => void {
+    return this.preload.onHostFleetProgress(cb)
+  }
+
+  onCatalogChangedOnDisk(cb: () => void): () => void {
+    return this.preload.onHostCatalogChanged(cb)
   }
 
   restartEnvironment(environmentId: string): void {

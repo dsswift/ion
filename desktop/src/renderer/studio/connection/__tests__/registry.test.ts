@@ -10,10 +10,13 @@ import type { EnterprisePolicy } from '@ion/shared/types-engine'
 
 const hostMock = {
   disconnectEnvironment: vi.fn(),
+  forgetEnvironment: vi.fn(),
   connectEnvironment: vi.fn(async (_id: string, _label?: string, _target?: unknown): Promise<{ ok: boolean; error?: string }> => ({ ok: true })),
   onConnections: vi.fn((_cb: (snapshot: ConnectionPhaseSnapshot[]) => void) => () => undefined),
   onFrame: vi.fn((_cb: (environmentId: string, frame: StudioFrame) => void) => () => undefined),
+  onCatalogChangedOnDisk: vi.fn((cb: () => void) => { catalogChangedOnDisk = cb; return () => undefined }),
 }
+let catalogChangedOnDisk: (() => void) | null = null
 let connectionsCallback: ((snapshot: ConnectionPhaseSnapshot[]) => void) | null = null
 let frameCallback: ((environmentId: string, frame: StudioFrame) => void) | null = null
 let devicePolicyValue: EnterprisePolicy | null = null
@@ -37,11 +40,16 @@ vi.mock('@ion/server/store/model-store', () => ({
   useModelStore: { getState: () => ({ setEnvironmentOnHost }) },
 }))
 
+const catalog = vi.hoisted(() => ({
+  entries: [] as Array<{ id: string; label: string; target: Record<string, unknown> }>,
+  notify: vi.fn(),
+}))
+const TEAM = { id: 'catalog-0', label: 'Team Server', target: { kind: 'bearer', label: 'Team Server', url: 'wss://team.example' } }
+const LOCAL = { id: 'local', label: 'This Mac', target: { kind: 'local' } }
+catalog.entries = [LOCAL, TEAM]
 vi.mock('../catalog', () => ({
-  readCatalog: vi.fn(async () => [
-    { id: 'local', label: 'This Mac', target: { kind: 'local' } },
-    { id: 'catalog-0', label: 'Team Server', target: { kind: 'bearer', label: 'Team Server', url: 'wss://team.example' } },
-  ]),
+  readCatalog: vi.fn(async () => catalog.entries),
+  notifyCatalogChanged: catalog.notify,
 }))
 
 function welcome(environmentId: string): StudioFrame {
@@ -128,6 +136,40 @@ describe('registry', () => {
     await vi.runOnlyPendingTimersAsync()
     expect(hostMock.connectEnvironment).not.toHaveBeenCalled()
     hostMock.connectEnvironment.mockImplementation(async () => ({ ok: true }))
+  })
+
+  it('follows a catalog another process changed: a removed server is forgotten, an added one connects, and the lists re-read', async () => {
+    const { registry } = await import('../registry')
+    registry.boot()
+    await vi.runOnlyPendingTimersAsync()
+    connectionsCallback?.([{ environmentId: 'catalog-0', label: 'Team Server', phase: { phase: 'connected', transport: 'tcp' } }])
+    hostMock.connectEnvironment.mockClear()
+    hostMock.disconnectEnvironment.mockClear()
+    catalog.notify.mockClear()
+
+    const added = { id: 'env-vm', label: 'test-vm', target: { kind: 'paired', label: 'test-vm', url: 'http://vm.example:7331', credentialRef: 'env-vm', via: 'lan', manageOnly: true } }
+    catalog.entries = [LOCAL, added]
+    try {
+      catalogChangedOnDisk?.()
+      await vi.runOnlyPendingTimersAsync()
+      expect(hostMock.disconnectEnvironment).toHaveBeenCalledWith('catalog-0')
+      expect(registry.phaseStates().has('catalog-0')).toBe(false)
+      expect(hostMock.connectEnvironment.mock.calls.map((c) => c[0])).toContain('env-vm')
+      expect(catalog.notify).toHaveBeenCalled()
+    } finally {
+      catalog.entries = [LOCAL, TEAM]
+    }
+  })
+
+  it('forget of a removed entry has the host delete its secret, not just disconnect', async () => {
+    const { registry } = await import('../registry')
+    registry.boot()
+    await vi.runOnlyPendingTimersAsync()
+    const target = { kind: 'paired' as const, label: 'Team Server', url: 'http://team.example:7331', credentialRef: 'c', via: 'lan' as const }
+    hostMock.disconnectEnvironment.mockClear()
+    registry.forget('catalog-0', target)
+    expect(hostMock.forgetEnvironment).toHaveBeenCalledWith('catalog-0', target)
+    expect(hostMock.disconnectEnvironment).not.toHaveBeenCalled()
   })
 
   it('forget drops the entry\'s phase and welcome id and disconnects its transport', async () => {

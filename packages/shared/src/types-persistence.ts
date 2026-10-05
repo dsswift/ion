@@ -423,6 +423,10 @@ export interface PersistedTab {
   snoozedAt?: number | null;
   lastVisitedAt?: number | null;
   manualUnread?: boolean;
+  /** The usage limit that refused the last run, while it has not been lifted. */
+  usageLimit?: import("./usage-limit").TabUsageLimit | null;
+  /** A prompt held for the server to send by itself. */
+  deferredSend?: import("./usage-limit").TabDeferredSend | null;
   /** Short single-line preview of the last visible message (~80 chars). */
   lastMessagePreview?: string | null;
   /** Persisted message count for blank-tab detection when messages are lazily loaded. */

@@ -153,6 +153,24 @@ func TestCodex_AccountRead_ChatGPT(t *testing.T) {
 	}
 }
 
+func TestCodex_AccountRateLimitsRead(t *testing.T) {
+	c, peer := newFakeCodex(t, Handlers{})
+	peer.on("account/rateLimits/read", func(json.RawMessage) any {
+		return json.RawMessage(`{"rateLimits":{"primary":{"usedPercent":17,"resetsAt":1791048000,"windowDurationMins":300},"secondary":{"usedPercent":42,"resetsAt":1791234000,"windowDurationMins":10080},"planType":"pro","credits":null},"rateLimitsByLimitId":null}`)
+	})
+	res, err := c.AccountRateLimitsRead(context.Background())
+	if err != nil {
+		t.Fatalf("account/rateLimits/read: %v", err)
+	}
+	p, s := res.RateLimits.Primary, res.RateLimits.Secondary
+	if p == nil || p.UsedPercent != 17 || p.ResetsAt == nil || *p.ResetsAt != 1791048000 || *p.WindowDurationMins != 300 {
+		t.Fatalf("primary = %+v", p)
+	}
+	if s == nil || s.UsedPercent != 42 || *s.WindowDurationMins != 10080 {
+		t.Fatalf("secondary = %+v", s)
+	}
+}
+
 func TestCodex_AccountRead_RequiresAuth(t *testing.T) {
 	c, peer := newFakeCodex(t, Handlers{})
 	peer.on("account/read", func(json.RawMessage) any {

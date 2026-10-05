@@ -1,13 +1,10 @@
 /**
  * Per-environment credential storage for outbound Studio connections (spec
  * 12): a `bearer` refresh/access token, or a `paired` shared secret,
- * encrypted at rest via the SAME `encryptForDisk`/`decryptFromDisk` helpers
- * `@ion/server/utils/secretStore` already uses for `relayApiKey` and
- * `pairedDevices[].sharedSecret` — Tier 1 (Electron safeStorage) when the app
- * is packaged and signed, Tier 2 (keyfile AES-GCM) otherwise. No second
- * encryption scheme: reusing the existing store keeps exactly one
- * implementation of the tier fallback, as `@ion/server`'s own doc comment
- * requires ("Both tiers protect the same fields").
+ * encrypted at rest with the SAME `encryptForDisk`/`decryptFromDisk` helpers
+ * `@ion/server/utils/secretStore` uses for `relayApiKey` and
+ * `pairedDevices[].sharedSecret`, so there is one encryption scheme and one
+ * key for every secret Ion keeps on disk.
  *
  * Stored at `~/.ion/desktop-connections.json`, main-process only — the
  * renderer never receives a credential (nonfunctional requirement: "paired

@@ -131,6 +131,16 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var canRestoreSettled: Bool?
     /// Woke-pill moment (expired snooze not yet visited).
     var wokeAt: Double?
+    /// Unix ms the usage limit holding this conversation resets. Nil when none holds.
+    var limitedUntil: Double?
+    /// The window that ran out ("five_hour", "seven_day"), while one holds.
+    var limitType: String?
+    /// How the prompt the server holds for this conversation is released
+    /// ("limit-reset" or "spare-quota"), when it holds one.
+    var deferredRelease: String?
+    /// The row asks nothing of the person now, so it is drawn receded.
+    /// Server-derived; iOS never re-derives it.
+    var quiet: Bool?
     /// Inbox pin timestamp and fractional ordering key from desktop.
     var pinnedAt: Double?
     var pinOrderKey: String?

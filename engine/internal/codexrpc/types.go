@@ -24,6 +24,8 @@ const (
 	MethodLoginStart    = "account/login/start"
 	MethodLoginCancel   = "account/login/cancel"
 	MethodLogout        = "account/logout"
+	// MethodAccountRateLimitsRead reads the signed-in account's usage limits.
+	MethodAccountRateLimitsRead = "account/rateLimits/read"
 )
 
 // --- Notification methods (client → server) ---
@@ -99,6 +101,30 @@ type InitializeResult struct {
 	PlatformFamily string `json:"platformFamily"`
 	PlatformOs     string `json:"platformOs"`
 	UserAgent      string `json:"userAgent"`
+}
+
+// --- account/rateLimits/read ---
+
+// RateLimitWindow is one usage window of a codex account.
+type RateLimitWindow struct {
+	UsedPercent float64 `json:"usedPercent"`
+	// ResetsAt is the unix second the window resets; nil when unknown.
+	ResetsAt *int64 `json:"resetsAt,omitempty"`
+	// WindowDurationMins is the window's length; nil when unknown.
+	WindowDurationMins *int64 `json:"windowDurationMins,omitempty"`
+}
+
+// RateLimitSnapshot is the account's usage windows. Primary is the short
+// window and Secondary the long one; either is nil when the account has none.
+type RateLimitSnapshot struct {
+	Primary   *RateLimitWindow `json:"primary,omitempty"`
+	Secondary *RateLimitWindow `json:"secondary,omitempty"`
+	PlanType  string           `json:"planType,omitempty"`
+}
+
+// AccountRateLimitsResult is the "account/rateLimits/read" response payload.
+type AccountRateLimitsResult struct {
+	RateLimits RateLimitSnapshot `json:"rateLimits"`
 }
 
 // --- account/read ---

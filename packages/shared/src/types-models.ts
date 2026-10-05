@@ -99,8 +99,49 @@ export interface ProviderCliStatus {
   authMethod?: string
   planType?: string
   email?: string
+  /** The signed-in account's organization, when the CLI reports one. */
+  orgId?: string
+  orgName?: string
   label?: string
   probedAt?: string
+}
+
+/** A usage limit kind a delegated CLI reports. Mirrors Go's UsageLimit* constants. */
+export type ProviderUsageLimitKind = 'session' | 'weekly' | 'weekly_model' | 'spend'
+
+/** The account a delegated CLI is signed in to. Mirrors Go ProviderAccount. */
+export interface ProviderAccount {
+  /** The provider id the CLI serves (e.g. "anthropic"). */
+  provider: string
+  email?: string
+  orgId?: string
+  orgName?: string
+  planType?: string
+  authMethod?: string
+  label?: string
+}
+
+/** One usage limit of an account, as its CLI reported it. Mirrors Go ProviderUsageLimit. */
+export interface ProviderUsageLimit {
+  kind: ProviderUsageLimitKind
+  /** What the limit covers when the kind alone does not say (a weekly_model limit's model). */
+  label?: string
+  /** How much of the limit is used, 0..100 (above 100 once exceeded). */
+  percent: number
+  /** RFC3339 time the limit resets; absent when unknown. */
+  resetsAt?: string
+}
+
+/** One delegated CLI's account and usage limits. Element of the provider_account_usage result. */
+export interface ProviderAccountUsage {
+  backend: string
+  /** Absent when the CLI is signed out. */
+  account?: ProviderAccount
+  limits: ProviderUsageLimit[]
+  /** RFC3339 time this entry was read. */
+  fetchedAt: string
+  /** Why the limits could not be read; the account is still reported. */
+  error?: string
 }
 
 /** Wire-format provider information returned by the engine's list_models command. */
@@ -117,6 +158,12 @@ export interface ProviderEntry {
    * Absent means clients fall back to the built-in name map / capitalized id.
    */
   displayName?: string
+  /**
+   * True for a provider that exists only because the engine's config defines
+   * it (mirrors Go ProviderEntry.Custom). Only a custom provider can be
+   * removed.
+   */
+  custom?: boolean
   /** Run backend currently selected for this provider (api | claude-code | codex | grok | cursor). */
   backend?: string
   /** Delegated-CLI install/auth status; present only for providers with a CLI backend option. */

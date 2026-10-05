@@ -151,7 +151,9 @@ export async function verifyBearer(credential: BearerCredential, oidc: ServerOid
     return { ok: false, reason: 'scope' }
   }
 
-  if (oidc.allowedSubjects.length > 0 && !oidc.allowedSubjects.includes(sub)) {
+  // Entra's `sub` differs per app registration, so an operator who lists a person lists the directory object id.
+  const oid = typeof payload.oid === 'string' ? payload.oid : ''
+  if (oidc.allowedSubjects.length > 0 && !oidc.allowedSubjects.includes(sub) && !(oid && oidc.allowedSubjects.includes(oid))) {
     warn('bearer auth refused: subject not in allowedSubjects', { subject: sub, token_len: tokenLen, reason: 'unlisted_subject' })
     return { ok: false, reason: 'unlisted_subject' }
   }

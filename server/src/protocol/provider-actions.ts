@@ -94,6 +94,7 @@ export const PROVIDER_ACTIONS: Record<string, ProviderActionSpec> = {
   'provider.loginCancel': wrap('provider.loginCancel', 'admin', (args) => providerApi.providerLoginCancel(args[0])),
   'provider.loginCode': wrap('provider.loginCode', 'admin', (args) => providerApi.providerLoginCode(args[0])),
   'provider.logout': wrap('provider.logout', 'admin', (args) => providerApi.providerLogout(args[0])),
+  'provider.remove': wrap('provider.remove', 'admin', (args) => providerApi.removeProvider(args[0])),
 
   // The plan-mode Bash allowlist. Server-owned engine configuration like the
   // rest of this table, and it rides here rather than in SETTINGS_ACTIONS

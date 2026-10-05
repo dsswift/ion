@@ -21,7 +21,7 @@ vi.mock('../../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
 vi.mock('../../connection/tab-environment', () => ({ useTabEnvironmentId: () => 'env-source' }))
-vi.mock('../../connection/catalog', () => ({ readCatalog: async () => [{ id: 'env-target', label: 'This Mac' }] }))
+vi.mock('../../connection/catalog', () => ({ readConversationCatalog: async () => [{ id: 'env-target', label: 'This Mac' }] }))
 vi.mock('../../connection/view-filter', () => ({ useEnvironmentViewFilter: () => ['all', vi.fn()] }))
 vi.mock('../../../host/host-instance', () => ({
   host: { connections: async () => [{ environmentId: 'env-target', phase: { phase: 'connected' } }] },

@@ -43,11 +43,8 @@ export function findBundledHost(): string | null {
 }
 
 /**
- * Locate the bundled engine binary. Checked in order:
- *   1. Packaged app: Contents/Resources/engine/<name> (darwin) or
- *      resources/engine/<name> (win32)
- *   2. Dev monorepo: <repo>/engine/bin/<name>
- *   3. Globally installed: ~/.ion/bin/<name> (already at destination)
+ * Locate the bundled engine binary: the first of `binaryCandidates` that
+ * exists, or null when none does.
  */
 export function findBundledBinary(): string | null {
   for (const c of binaryCandidates(binaryName())) {
@@ -58,7 +55,9 @@ export function findBundledBinary(): string | null {
 
 /**
  * The places a bundled executable of the given name may live, in precedence
- * order. Shared by the engine binary and the Windows host launcher so the
+ * order: a packaged app's resources folder (`<resources>/engine/<name>`),
+ * then `engine/bin/<name>` three and four folders above this module, which
+ * is where a checkout's build puts it. Shared by the engine binary and the Windows host launcher so the
  * two can never drift into searching different trees.
  */
 function binaryCandidates(name: string): string[] {

@@ -14,6 +14,10 @@
       "scope": "admin"
     },
     {
+      "action": "auth.forgetSelf",
+      "scope": "conversations:read"
+    },
+    {
       "action": "auth.listClients",
       "scope": "admin"
     },
@@ -174,6 +178,26 @@
       "scope": "conversations:read"
     },
     {
+      "action": "fleet.hubs.add",
+      "scope": "admin"
+    },
+    {
+      "action": "fleet.hubs.list",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "fleet.hubs.remove",
+      "scope": "admin"
+    },
+    {
+      "action": "fleet.refreshAccounts",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "fleet.report",
+      "scope": "conversations:read"
+    },
+    {
       "action": "fs.readFileData",
       "scope": "conversations:read"
     },
@@ -299,6 +323,10 @@
     },
     {
       "action": "provider.refreshSubscription",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.remove",
       "scope": "admin"
     },
     {

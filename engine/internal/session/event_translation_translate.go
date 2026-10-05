@@ -484,6 +484,18 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			},
 		}
 
+	case *types.RateLimitNormalizedEvent:
+		return types.EngineEvent{
+			Type: "engine_rate_limit",
+			RateLimit: &types.RateLimitPayload{
+				Status:        e.Status,
+				ResetsAt:      e.ResetsAt,
+				RateLimitType: e.RateLimitType,
+				Utilization:   e.Utilization,
+				Windows:       e.Windows,
+			},
+		}
+
 	default:
 		return types.EngineEvent{}
 	}

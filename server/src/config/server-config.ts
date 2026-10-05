@@ -53,7 +53,7 @@ export interface ServerOidcConfig {
   rolesToScopes: Record<string, Scope[]>
   /** Scopes granted when the token's `roles` claim maps to none of `rolesToScopes`' keys. */
   defaultScopes: Scope[]
-  /** Non-empty: `sub` must be one of these. Empty (default): every subject the issuer vouches for is allowed. */
+  /** Non-empty: `sub`, or the `oid` claim, must be one of these. Empty (default): every subject the issuer vouches for is allowed. */
   allowedSubjects: string[]
   /**
    * The server's own confidential-client secret, resolved past any
@@ -163,6 +163,8 @@ export interface ServerConfig {
   pairing: ServerPairingConfig
   engine: { minVersion: string }
   web: { enabled: boolean }
+  /** `server.json.fleet`: how often the Provider Account Ledger re-reads the provider CLIs. */
+  fleet: { accountPollSeconds: number; hubReportSeconds: number }
   policy: ServerPolicyConfig
   tenancy: ServerTenancyConfig
   /** The tenancy mode in force when `tenancy.mode` is not set: `shared` for one person's own install (`config/install-profile.ts`), else `isolated`. */
@@ -177,6 +179,11 @@ export interface ServerConfig {
   /** Absent (default) on a shared/team instance: no home project is provisioned. */
   homeProject: ServerHomeProjectConfig | null
 }
+
+const DEFAULT_ACCOUNT_POLL_SECONDS = 300
+const MIN_ACCOUNT_POLL_SECONDS = 60
+const DEFAULT_HUB_REPORT_SECONDS = 60
+const MIN_HUB_REPORT_SECONDS = 15
 
 /** Every `pairing.defaultScopes` entry manifest C5's example lists, minus `admin` (pairing links never default to admin -- see pairing-links.ts). */
 const DEFAULT_PAIRING_SCOPES: readonly Scope[] = ['conversations:read', 'conversations:operate', 'terminal:operate', 'git:write']
@@ -250,6 +257,7 @@ export function defaultServerConfig(): ServerConfig {
     pairing: { defaultScopes: personal ? [...DEFAULT_PAIRING_SCOPES, 'admin'] : [...DEFAULT_PAIRING_SCOPES], advertiseUrl: null },
     engine: { minVersion: '0.0.0' },
     web: { enabled: false },
+    fleet: { accountPollSeconds: DEFAULT_ACCOUNT_POLL_SECONDS, hubReportSeconds: DEFAULT_HUB_REPORT_SECONDS },
     policy: { authPolicy: 'default', actionInterceptor: 'default', snapshotProjector: 'default' },
     // No explicit override -- unownedTabsVisible() derives the default live from oidc.
     tenancy: {},
@@ -303,7 +311,7 @@ function asScopeArray(v: unknown, field: string): Scope[] {
   return out
 }
 
-function parseOidc(raw: unknown, dir: string): ServerOidcConfig | null {
+export function parseOidc(raw: unknown, dir: string): ServerOidcConfig | null {
   if (raw === null || raw === undefined) return null
   if (typeof raw !== 'object') {
     warn('server.json.oidc is present but not an object; treating as absent (bearer door disabled)')
@@ -436,6 +444,21 @@ function parseLogLevel(raw: unknown, fallback: LogLevel): LogLevel {
  * conversation/tab state, so it is never gated behind `StateFileCorrupt` the
  * way `persistence/state-files.ts` gates `tabs.json`.
  */
+/** `fleet.accountPollSeconds`: each read spawns the provider CLIs, so a period under a minute is refused. `fleet.hubReportSeconds`: how often a Fleet Hub is sent this server's report. */
+function parseFleet(raw: unknown, defaults: ServerConfig['fleet']): ServerConfig['fleet'] {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const seconds = (field: 'accountPollSeconds' | 'hubReportSeconds', min: number): number => {
+    const value = obj[field]
+    if (value === undefined) return defaults[field]
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < min) {
+      warn('fleet period ignored: below its minimum or not a number', { field, value, min_seconds: min })
+      return defaults[field]
+    }
+    return Math.round(value)
+  }
+  return { accountPollSeconds: seconds('accountPollSeconds', MIN_ACCOUNT_POLL_SECONDS), hubReportSeconds: seconds('hubReportSeconds', MIN_HUB_REPORT_SECONDS) }
+}
+
 export function loadServerConfig(dir: string): ServerConfig {
   const defaults = defaultServerConfig()
   const path = join(dir, 'server.json')
@@ -471,6 +494,7 @@ export function loadServerConfig(dir: string): ServerConfig {
         ? (raw.web as Record<string, unknown>).enabled as boolean
         : defaults.web.enabled,
     },
+    fleet: parseFleet(raw.fleet, defaults.fleet),
     policy: parsePolicy(raw.policy, defaults.policy),
     tenancy: parseTenancy(raw.tenancy),
     tenancyDefault: defaults.tenancyDefault,

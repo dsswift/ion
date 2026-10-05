@@ -192,6 +192,14 @@ export interface ProjectedRendererTab {
   canRestoreSettled?: boolean
   /** Woke-pill moment (expired snooze not yet visited). */
   wokeAt: number | null
+  /** Unix ms the usage limit holding this conversation resets; null when none holds. */
+  limitedUntil: number | null
+  /** The window that ran out, while one holds. */
+  limitType?: string
+  /** How the prompt the server holds for this conversation is released, when it holds one. */
+  deferredRelease?: import('./usage-limit').DeferredRelease
+  /** The row asks nothing of the person now; a client draws it receded. */
+  quiet: boolean
   /** Pin metadata and derived background liveness for inbox client parity. */
   pinnedAt?: number | null
   pinOrderKey?: string | null

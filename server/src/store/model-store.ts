@@ -320,10 +320,17 @@ export function setupModelSync(): void {
       // child exit and sends completed. A manual paste can take longer than the
       // 120s started-stage budget, so the timeout is re-armed to the engine's
       // own 10-minute login ceiling rather than expiring under the user.
-      case 'await_auth_code':
-        store.setLoginState(envId, u.provider, { phase: 'await_code', url: u.authUrl })
+      case 'await_auth_code': {
+        // The page that issues the code: named on this stage, or kept from
+        // await_browser when the engine named it only there.
+        const url = u.authUrl || store.loginStateFor(envId, u.provider)?.url
+        store.setLoginState(envId, u.provider, { phase: 'await_code', url })
+        // The CLI opened its own tab on the host. A client anywhere else has
+        // no tab, so the page is opened here for the code to be read from.
+        if (url && store.onHost[envId] !== true) void openExternal(url)
         armTimeout(envId, u.provider, 10 * 60_000)
         break
+      }
       case 'completed':
         clearTimer(envId, u.provider)
         store.setLoginState(envId, u.provider, null)

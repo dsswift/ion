@@ -364,9 +364,16 @@ func (SessionDeadEvent) eventType() string { return EventSessionDead }
 
 // RateLimitNormalizedEvent signals a rate limit in canonical form.
 type RateLimitNormalizedEvent struct {
-	Status        string `json:"status"`
+	Status string `json:"status"`
+	// ResetsAt is the unix second the RateLimitType window resets.
 	ResetsAt      int64  `json:"resetsAt"`
 	RateLimitType string `json:"rateLimitType"`
+	// Utilization is the fraction (0..1) of the RateLimitType window used.
+	// Nil when the backend did not report one.
+	Utilization *float64 `json:"utilization,omitempty"`
+	// Windows is every usage window the backend reported with this event,
+	// keyed by window name.
+	Windows map[string]RateLimitWindow `json:"windows,omitempty"`
 }
 
 func (RateLimitNormalizedEvent) eventType() string { return EventRateLimit }

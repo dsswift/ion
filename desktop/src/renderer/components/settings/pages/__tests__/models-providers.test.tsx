@@ -39,6 +39,8 @@ vi.mock('../../../../rendererLogger', () => ({ rInfo: vi.fn(), rWarn: vi.fn(), r
 const { ProvidersSection } = await import('../models/ProvidersSection')
 const { ProviderPanel } = await import('../models/ProviderPanel')
 const { ProviderCliSignIn } = await import('../models/ProviderCliSignIn')
+const { SwitchAccountPanel } = await import('../fleet/SwitchAccountPanel')
+const { CustomProvidersPanel } = await import('../fleet/CustomProvidersPanel')
 const { describeProviderActionError } = await import('../models/provider-action-error')
 
 const stub = {
@@ -48,6 +50,7 @@ const stub = {
   providerLogout: vi.fn(async () => ({ ok: true })),
   providerLoginCancel: vi.fn(async () => ({ ok: true })),
   providerLoginCode: vi.fn(async (): Promise<{ ok: boolean; error?: string }> => ({ ok: true })),
+  removeProvider: vi.fn(async (): Promise<{ ok: boolean; error?: string }> => ({ ok: true })),
 }
 /** Every studio_action sent, with the server it was sent to. */
 let sent: Array<{ environmentId: string; action: string }>
@@ -143,7 +146,7 @@ describe('Providers', () => {
 
   describe('panel', () => {
     const renderPanel = (provider: ProviderEntry, environmentId = 'local'): Promise<void> =>
-      h.render(<ProviderPanel provider={provider} environmentId={environmentId} onClose={() => {}} onCredentialSaved={() => {}} />)
+      h.render(<ProviderPanel provider={provider} environmentId={environmentId} serverLabel="jolteon" onClose={() => {}} onCredentialSaved={() => {}} />)
 
     it('offers "Add API key" over a CLI subscription, and it reveals the key input', async () => {
       await renderPanel({ id: 'openai', hasAuth: true, authSource: 'codex', backend: 'codex', cli: { backend: 'codex', installed: true, authenticated: true, label: 'ChatGPT Free', email: 'user@example.com' } })
@@ -212,6 +215,29 @@ describe('Providers', () => {
       expect(h.container.textContent).toContain('isn’t returning models')
     })
 
+    it('removes a custom provider on the server the panel is about, after asking once', async () => {
+      await renderPanel({ id: 'corp-gateway', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org', displayName: 'Corp Gateway', custom: true }, 'devbox')
+      await h.click('Remove provider…')
+      expect(stub.removeProvider).not.toHaveBeenCalled()
+      expect(h.container.textContent).toContain('Remove Corp Gateway from jolteon?')
+      await h.click('Remove provider')
+      expect(stub.removeProvider).toHaveBeenCalledWith({ provider: 'corp-gateway' })
+      expect(sent.filter((s) => s.action === 'provider.remove').map((s) => s.environmentId)).toEqual(['devbox'])
+    })
+
+    it('shows the server\'s refusal to remove a provider', async () => {
+      stub.removeProvider.mockResolvedValueOnce({ ok: false, error: 'cannot remove provider "corp-gateway": it is still selected as the default model corp-gateway/m; choose other models first' })
+      await renderPanel({ id: 'corp-gateway', hasAuth: true, baseURL: 'https://gw.example.org', custom: true })
+      await h.click('Remove provider…')
+      await h.click('Remove provider')
+      expect(h.container.textContent).toContain('choose other models first')
+    })
+
+    it('offers no removal for a built-in provider', async () => {
+      await renderPanel({ id: 'anthropic', hasAuth: true, authSource: 'filestore', baseURL: 'https://gw.example.org' })
+      expect(labels(h)).not.toContain('Remove provider…')
+    })
+
     it('describes a scope refusal on a remote server as a missing admin grant', () => {
       expect(describeProviderActionError(new StudioActionFailure('provider.storeCredential requires scope admin', 'scope'), 'devbox')).toMatch(/not an admin of the devbox environment/)
       expect(describeProviderActionError(new StudioActionFailure('boom', 'scope'), 'local')).toBe('boom')
@@ -246,6 +272,64 @@ describe('Providers', () => {
       expect(h.container.textContent).toContain('ChatGPT Pro · user@example.com')
       await h.click('Sign out')
       expect(stub.providerLogout).toHaveBeenCalledWith({ provider: 'openai' })
+    })
+
+    it('switches account while signed in: the same sign-in over the account that is there, with its progress and its failure', async () => {
+      const signedIn = codex({ hasAuth: true, cli: { backend: 'codex', installed: true, authenticated: true, label: 'ChatGPT Pro', email: 'user@example.com' } })
+      await renderCli(signedIn)
+      await h.click('Switch account')
+      expect(stub.providerLogin).toHaveBeenCalledWith({ provider: 'openai' })
+      expect(stub.providerLogout).not.toHaveBeenCalled()
+
+      store.state.loginStates = { local: { openai: { phase: 'waiting', userCode: 'ABCD-1234' } } }
+      await renderCli(signedIn)
+      expect(h.container.textContent).toContain('Enter code ABCD-1234 in your browser')
+      await h.click('Cancel')
+      expect(stub.providerLoginCancel).toHaveBeenCalledWith({ provider: 'openai' })
+
+      store.state.loginStates = { local: { openai: { phase: 'error', error: 'Sign-in timed out' } } }
+      await renderCli(signedIn)
+      expect(h.container.textContent).toContain('ChatGPT Pro · user@example.com')
+      expect(h.container.textContent).toContain('Sign-in timed out')
+      expect(labels(h)).toEqual(['Switch account', 'Sign out'])
+    })
+
+    it('does not offer Switch account for a host-only flow from another machine', async () => {
+      await renderCli({ id: 'xai', hasAuth: true, cli: { backend: 'grok', installed: true, authenticated: true }, loginFlow: 'browser-callback' }, 'devbox')
+      expect(labels(h)).toEqual(['Sign out'])
+    })
+
+    it('lists a server\'s provider CLIs by provider in the Fleet\'s accounts panel, and sends the switch to that server', async () => {
+      store.state.providers = [
+        { id: 'anthropic', hasAuth: true, cli: { backend: 'claude-code', installed: true, authenticated: true, email: 'user@example.com' }, loginFlow: 'browser-code' },
+        { id: 'openai', hasAuth: false, cli: { backend: 'codex', ...installed } },
+        { id: 'google', hasAuth: true },
+      ]
+      await h.render(<SwitchAccountPanel entry={{ id: 'devbox', label: 'devbox', target: { kind: 'bearer', label: 'devbox', url: 'https://devbox.example.org' } }} onClose={() => {}} />)
+      expect([...h.container.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'))).toEqual(['Anthropic', 'OpenAI'])
+      await h.click('Switch account')
+      expect(stub.providerLogin).toHaveBeenCalledWith({ provider: 'anthropic' })
+      expect(sent.at(-1)).toEqual({ environmentId: 'devbox', action: 'provider.login' })
+    })
+
+    it('lists only a server\'s custom providers in the Fleet\'s custom providers panel, and removes one there', async () => {
+      store.state.providers = [
+        { id: 'anthropic', hasAuth: true },
+        { id: 'corp-gateway', hasAuth: true, baseURL: 'https://gw.example.org', displayName: 'Corp Gateway', custom: true },
+      ]
+      await h.render(<CustomProvidersPanel entry={{ id: 'devbox', label: 'devbox', target: { kind: 'bearer', label: 'devbox', url: 'https://devbox.example.org' } }} onClose={() => {}} />)
+      expect([...h.container.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'))).toEqual(['Corp Gateway'])
+      expect(h.container.textContent).toContain('https://gw.example.org')
+      await h.click('Remove provider…')
+      await h.click('Remove provider')
+      expect(stub.removeProvider).toHaveBeenCalledWith({ provider: 'corp-gateway' })
+      expect(sent.at(-1)).toEqual({ environmentId: 'devbox', action: 'provider.remove' })
+    })
+
+    it('says a server has no custom providers', async () => {
+      store.state.providers = [{ id: 'anthropic', hasAuth: true }]
+      await h.render(<CustomProvidersPanel entry={{ id: 'devbox', label: 'devbox', target: { kind: 'bearer', label: 'devbox', url: 'https://devbox.example.org' } }} onClose={() => {}} />)
+      expect(h.container.textContent).toContain('No custom providers.')
     })
 
     it('stays reachable while an API key wins routing, and is absent for a provider with no CLI', async () => {

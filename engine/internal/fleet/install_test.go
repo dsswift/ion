@@ -98,8 +98,39 @@ func TestInstallMacDesktop_InstallsAndReports(t *testing.T) {
 		t.Errorf("receipt = %+v", rec)
 	}
 	all := joined(r)
-	if !strings.Contains(all, copyToScript+"/tmp/Ion-9.9.9.pkg -> /tmp/ion-desktop-") || !strings.Contains(all, "sudo -n installer -pkg '/tmp/ion-desktop-") {
+	if !strings.Contains(all, copyToScript+"/tmp/Ion-9.9.9.pkg -> /tmp/ion-desktop-") || !strings.Contains(all, "sudo -n installer -pkg '/tmp/ion-desktop-") ||
+		!strings.Contains(all, `-target / >&2 && sudo -n chown -R "$(id -un)" '/Applications/Ion.app'`) {
 		t.Errorf("scripts:\n%s", all)
+	}
+}
+
+// A desktop host is meant to be there after a restart: a deploy turns on
+// "Open Ion at login" where nobody has chosen, unless told to leave it.
+func TestInstallMacDesktop_TurnsOnOpenAtLoginUnlessToldNotTo(t *testing.T) {
+	const step = "studio open-at-login on --if-unset"
+	m := &macHost{arch: "arm64", sudoOK: true, installedArchs: "arm64"}
+	r := m.runner()
+	if _, err := InstallMacDesktop(context.Background(), r, mac, "/tmp/Ion-9.9.9.pkg", "arm64", InstallOptions{}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(joined(r), "'"+macAppIon+"' "+step) {
+		t.Errorf("open at login was not set with the host's own engine:\n%s", joined(r))
+	}
+
+	m = &macHost{arch: "arm64", sudoOK: true, installedArchs: "arm64"}
+	r = m.runner()
+	if _, err := InstallMacDesktop(context.Background(), r, mac, "/tmp/Ion-9.9.9.pkg", "arm64", InstallOptions{NoOpenAtLogin: true}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(joined(r), step) {
+		t.Errorf("--no-open-at-login must leave the setting alone:\n%s", joined(r))
+	}
+}
+
+func TestParseInstallArgs_NoOpenAtLogin(t *testing.T) {
+	o, rest, err := ParseInstallArgs([]string{"--no-open-at-login"}, InstallOptions{})
+	if err != nil || !o.NoOpenAtLogin || len(rest) != 0 {
+		t.Fatalf("o=%+v rest=%v err=%v", o, rest, err)
 	}
 }
 
@@ -261,6 +292,9 @@ type winHost struct {
 	state     string // absent, yes, no
 	installed string // DisplayVersion after the install
 	quitFails bool
+	// launchFails: Ion is not running after the launch, as on a laptop on
+	// battery before the launch task allowed batteries.
+	launchFails bool
 }
 
 func (w *winHost) runner() *fakeRunner {
@@ -281,6 +315,10 @@ func (w *winHost) runner() *fakeRunner {
 			case ps == psQuitDesktopOrFail:
 				if w.quitFails {
 					return nil, []byte("Ion is still running after a forced stop"), errors.New("exit status 7")
+				}
+			case ps == psStartDesktop:
+				if w.launchFails {
+					return nil, []byte("Ion did not start within 30 seconds of its launch"), errors.New("exit status 9")
 				}
 			case ps == psInstalledDesktop:
 				return []byte(w.installed + `|C:\Program Files\Ion` + "\n"), nil, nil
@@ -310,7 +348,7 @@ func TestInstallWindowsDesktop_InstallsQuitsAndRelaunches(t *testing.T) {
 		copyToScript + "/out/Ion-Setup-1.101.0-dev.abc-arm64.exe -> .ion/fleet-incoming/Ion-Setup-1.101.0-dev.abc-arm64.exe",
 		"$name = 'Ion-Setup-1.101.0-dev.abc-arm64.exe'\n" + psInstallDesktop,
 		`& 'C:\Program Files\Ion\resources\engine\ion.exe' 'studio' 'relay' 'set' 'wss://relay.example.org' '--oidc' '--no-restart'`,
-		"Start-InUserSession $exe ''",
+		psScript + psStartDesktop,
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("scripts lack %q:\n%s", want, all)
@@ -434,5 +472,23 @@ func TestParseInstallArgs(t *testing.T) {
 	}
 	if _, _, err := ParseInstallArgs([]string{"--relay"}, InstallOptions{}); err == nil {
 		t.Error("--relay needs a value")
+	}
+}
+
+func TestInstallWindowsDesktop_LaunchThatDoesNotStartIsNotOpened(t *testing.T) {
+	w := &winHost{state: "no", installed: "1.101.0-dev.abc", launchFails: true}
+	rec, err := InstallWindowsDesktop(context.Background(), w.runner(), win, "/out/Ion-Setup-1.101.0-dev.abc-arm64.exe", InstallOptions{Open: true}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rec.OK || rec.Opened {
+		t.Errorf("an install whose Ion never started must not report it opened: %+v", rec)
+	}
+}
+
+func TestInstallWindowsDesktop_PairNeedsIonToStart(t *testing.T) {
+	w := &winHost{state: "no", installed: "1.101.0-dev.abc", launchFails: true}
+	if _, err := InstallWindowsDesktop(context.Background(), w.runner(), win, "/out/Ion-Setup-1.101.0-dev.abc-arm64.exe", InstallOptions{Pair: "phone"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("a pairing link was attempted although Ion never started")
 	}
 }

@@ -58,6 +58,8 @@ vi.mock('../studio/connection/tab-environment', () => ({
   },
 }))
 vi.mock('../rendererLogger', () => ({ rWarn: vi.fn() }))
+const manageOnly = vi.hoisted(() => new Set<string>())
+vi.mock('../studio/connection/catalog', () => ({ isManageOnlyEnvironment: (id: string) => manageOnly.has(id) }))
 
 function workflow(id: string, tabId: string): QuestionsWorkflowState {
   return {
@@ -86,6 +88,7 @@ beforeEach(() => {
   h.setCurrent('local')
   h.questionsGetState.mockClear()
   h.questionsPatch.mockClear()
+  manageOnly.clear()
 })
 
 describe('hydrateQuestions', () => {
@@ -99,6 +102,16 @@ describe('hydrateQuestions', () => {
 
     expect(h.targets).toContain('devbox')
     expect(useQuestionsStore.getState().workflows.map((w) => w.workflowId).sort()).toEqual(['w-devbox', 'w-local'])
+  })
+
+  it('does not pull a Manage-Only Server, whose conversations are not in this window', async () => {
+    manageOnly.add('test-vm')
+    h.snapshots.set('test-vm', { workflows: [workflow('w-vm', 'tab-vm')] })
+    const { useQuestionsStore } = await load()
+    h.emitPhases({ local: 'connected', 'test-vm': 'connected' })
+    await vi.waitFor(() => expect(h.questionsGetState).toHaveBeenCalledTimes(1))
+    expect(h.targets).not.toContain('test-vm')
+    expect(useQuestionsStore.getState().workflows).toEqual([])
   })
 
   it('does not pull an Environment that is not reachable', async () => {

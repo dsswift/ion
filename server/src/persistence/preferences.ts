@@ -60,6 +60,18 @@ function getState() {
     get inboxAutoSettleDays(): number {
       return typeof disk.inboxAutoSettleDays === 'number' ? disk.inboxAutoSettleDays : SETTINGS_DEFAULTS.inboxAutoSettleDays
     },
+    get usageLimitAutoResume(): boolean {
+      return typeof disk.usageLimitAutoResume === 'boolean' ? disk.usageLimitAutoResume : SETTINGS_DEFAULTS.usageLimitAutoResume
+    },
+    get usageLimitResumePrompt(): string {
+      return typeof disk.usageLimitResumePrompt === 'string' ? disk.usageLimitResumePrompt : SETTINGS_DEFAULTS.usageLimitResumePrompt
+    },
+    get quotaExpiryAlertHours(): number {
+      return typeof disk.quotaExpiryAlertHours === 'number' ? disk.quotaExpiryAlertHours : SETTINGS_DEFAULTS.quotaExpiryAlertHours
+    },
+    get quotaExpiryUnusedPercent(): number {
+      return typeof disk.quotaExpiryUnusedPercent === 'number' ? disk.quotaExpiryUnusedPercent : SETTINGS_DEFAULTS.quotaExpiryUnusedPercent
+    },
     get aiAssistPromptOverrides(): Record<string, string> {
       return (disk.aiAssistPromptOverrides && typeof disk.aiAssistPromptOverrides === 'object') ? disk.aiAssistPromptOverrides : {}
     },

@@ -181,11 +181,13 @@ func InstallWindowsDesktop(ctx context.Context, r Runner, h Host, setup string, 
 			return rec, err
 		}
 	}
+	atLogin := desktopOpenAtLogin(ctx, r, h, true, psQuote(dir+`\resources\engine\ion.exe`), o, log)
 	// A silent install does not start Ion, where the Mac package relaunches
-	// it; start it again when it was running, or when asked to.
-	if rec.WasRunning || o.Open || o.Pair != "" {
+	// it; start it again when it was running, when asked to, or when it is
+	// set to open at login: such a host is meant to be up.
+	if rec.WasRunning || o.Open || o.Pair != "" || atLogin {
 		log.step("launch Ion on %s", h.Name)
-		if _, err := hostCmd(ctx, r, h, true, psDesktopExe+psStartInUserSession+"Start-InUserSession $exe ''\n", nil, log); err == nil {
+		if _, err := hostCmd(ctx, r, h, true, psStartDesktop, nil, log); err == nil {
 			rec.Opened = true
 		} else {
 			log.note("could not launch Ion (is someone signed in on %s?): %v", h.Name, err)

@@ -61,7 +61,10 @@ type Report struct {
 	// Devices are the devices paired to the host for its owner, and which
 	// are connected now; nil when the running server was not asked.
 	Devices []PairedDevice `json:"devices"`
-	Formats []FormatStatus `json:"formats"`
+	// Accounts is the host's Provider Account Ledger; nil when the host
+	// predates it or the ledger could not be read.
+	Accounts []Account      `json:"accounts,omitempty"`
+	Formats  []FormatStatus `json:"formats"`
 	// Problems names each part of the report that could not be read, so a
 	// reader can tell "absent" from "unknown".
 	Problems []string `json:"problems,omitempty"`

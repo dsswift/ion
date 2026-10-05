@@ -10,7 +10,7 @@ import {
 describe('settings registry', () => {
   it('files auto-settle under the environment, so no client can bring its own value', () => {
     expect(settingScope('inboxAutoSettleDays')).toBe('environment')
-    expect(settingScope('inboxAutoSettleOnMerge')).toBe('environment')
+    expect(settingScope('usageLimitAutoResume')).toBe('environment')
   })
 
   it('files the default model under the account, per person per server', () => {

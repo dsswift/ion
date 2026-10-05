@@ -483,6 +483,11 @@ type ProviderEntry struct {
 	// provider (ProviderConfig.DisplayName). Empty means clients fall back to
 	// their built-in name map / capitalized id. Additive, omitempty.
 	DisplayName string `json:"displayName,omitempty"`
+	// Custom is true for a provider that exists only because engine.json
+	// defines it, as opposed to one the engine provides and configuration
+	// adjusts. Only a custom provider can be removed (provider_remove).
+	// Additive, omitempty.
+	Custom bool `json:"custom,omitempty"`
 	// Backend is the credential-derived effective run backend for this
 	// provider ("api" | "claude-code" | "codex" | "grok" | "cursor") — the
 	// kind hybrid routing will actually pick for the next run (explicit
@@ -542,6 +547,10 @@ type ProviderCliStatus struct {
 	PlanType string `json:"planType,omitempty"`
 	// Email is the signed-in account email when known.
 	Email string `json:"email,omitempty"`
+	// OrgID and OrgName name the signed-in account's organization when the
+	// CLI reports one.
+	OrgID   string `json:"orgId,omitempty"`
+	OrgName string `json:"orgName,omitempty"`
 	// Label is a human-friendly auth summary (e.g. "ChatGPT Pro").
 	Label string `json:"label,omitempty"`
 	// ProbedAt is the RFC3339 timestamp of this probe snapshot.

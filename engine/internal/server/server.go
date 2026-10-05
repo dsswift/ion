@@ -18,7 +18,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/cliprobe"
-	"github.com/dsswift/ion/engine/internal/compat"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/subscription"
@@ -43,6 +42,10 @@ type Server struct {
 	manager      *session.Manager
 	config       *types.EngineRuntimeConfig
 	authResolver *auth.Resolver
+	// removedProviders are providers deleted from configuration since boot.
+	// See provider_configs.go.
+	removedProvidersMu sync.RWMutex
+	removedProviders   map[string]bool
 	// identity is the engine-owned operator OIDC identity manager (nil when
 	// no auth.identityProvider is configured). See dispatch_oidc.go.
 	identity *auth.IdentityManager
@@ -99,6 +102,11 @@ type Server struct {
 	// provider's cli status; it is refreshed asynchronously at startup and on
 	// refresh_models. Never nil after NewServer.
 	probes *cliprobe.Registry
+
+	// usageFn reads a delegated CLI's usage limits; usageMu keeps one
+	// provider_account_usage read running at a time.
+	usageFn cliprobe.UsageFunc
+	usageMu sync.Mutex
 
 	// hybrid is the typed view of the backend when it is a *HybridBackend,
 	// captured at NewServer so SetConfig can wire the live CLI-auth probe into
@@ -292,6 +300,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		computeContextBreakdown: mgr.ComputeAndEmitContextBreakdownContext,
 		contextBreakdownActive:  make(map[string]struct{}),
 		probes:                  newProbeRegistry(),
+		usageFn:                 cliprobe.DefaultUsage,
 		hybrid:                  hybrid,
 	}
 	// Reap orphaned sessions a grace window after their last owning
@@ -737,36 +746,6 @@ func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err erro
 	}
 	line := protocol.SerializeServerResult(result)
 	s.writeToClient(conn, line)
-}
-
-// healthSnapshot returns daemon liveness data for the health command.
-func (s *Server) healthSnapshot() map[string]interface{} {
-	version := s.version
-	if version == "" {
-		version = "dev"
-	}
-	out := map[string]interface{}{
-		"ok":           true,
-		"version":      version,
-		"startedAt":    s.startedAt.UTC().Format(time.RFC3339),
-		"uptimeSec":    int64(time.Since(s.startedAt).Seconds()),
-		"sessionCount": len(s.manager.ListSessions()),
-		"socketPath":   s.socketPath,
-		// telemetryHealth is the current delivery health of each telemetry
-		// collector's network targets; empty when none is configured.
-		"telemetryHealth": s.telemetryHealthSnapshot(),
-		// compat is this running engine's Format Versions registry.
-		"compat": compat.Formats(),
-	}
-	// systemMetrics is the latest System Metrics sample. Absent when
-	// sampling is disabled or no sample has been taken yet; health never
-	// takes a sample itself, so it stays cheap.
-	if sampler := s.SystemMetrics(); sampler != nil {
-		if latest := sampler.Latest(); latest != nil {
-			out["systemMetrics"] = latest
-		}
-	}
-	return out
 }
 
 // writeToClient routes a single line to the given conn through its state

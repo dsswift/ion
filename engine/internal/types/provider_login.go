@@ -38,7 +38,8 @@ type ProviderLoginUpdate struct {
 	Backend string `json:"backend"`
 	// Stage is the lifecycle stage: one of the ProviderLogin* constants.
 	Stage string `json:"stage"`
-	// AuthURL is the browser URL to open (await_browser).
+	// AuthURL is the browser URL to open (await_browser), and the page that
+	// issues the authorization code (await_auth_code).
 	AuthURL string `json:"authUrl,omitempty"`
 	// UserCode is the device code the user enters (await_device_code).
 	UserCode string `json:"userCode,omitempty"`

@@ -17,14 +17,16 @@ vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rWarn: vi.fn(), rError:
 vi.mock('../../theme', () => ({ useColors: () => ({}) }))
 vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../transfer/environment-label-cache', () => ({ useEnvironmentLabel: (id: string | null) => id }))
+const { connected, manageOnly } = vi.hoisted(() => ({ connected: ['local'], manageOnly: new Set<string>() }))
 vi.mock('../connection/registry', () => ({
   registry: {
     subscribe(listener: (states: Map<string, { phase: string }>) => void): () => void {
-      listener(new Map([['local', { phase: 'connected' }]]))
+      listener(new Map(connected.map((id) => [id, { phase: 'connected' }])))
       return () => {}
     },
   },
 }))
+vi.mock('../connection/catalog', () => ({ isManageOnlyEnvironment: (id: string) => manageOnly.has(id) }))
 
 const { ProviderSubscriptionPrompt } = await import('../ProviderSubscriptionPrompt')
 const { subscriptionAttentionStore } = await import('../connection/provider-subscription-attention')
@@ -65,6 +67,8 @@ async function push(snapshot: unknown): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  connected.splice(0, connected.length, 'local')
+  manageOnly.clear()
   subscriptionAttentionStore._resetForTest()
   ;(window as unknown as { ion: unknown }).ion = installFakeWire(ion)
   container = document.createElement('div')
@@ -142,6 +146,14 @@ describe('ProviderSubscriptionPrompt', () => {
     expect(dialog()).toBeNull()
     await push(none)
     expect(text()).toContain('No Corporate Gateway subscription')
+  })
+
+  it('never asks on behalf of a Manage-Only Server', async () => {
+    connected.splice(0, connected.length, 'test-vm')
+    manageOnly.add('test-vm')
+    await mount(selectionRequired)
+    expect(dialog()).toBeNull()
+    expect(ion.providerSubscription).not.toHaveBeenCalled()
   })
 
   it('shows nothing without a lookup or with a key applied', async () => {

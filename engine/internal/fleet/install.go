@@ -31,6 +31,11 @@ type InstallOptions struct {
 	Backup bool
 	// Open makes sure the desktop runs afterwards.
 	Open bool
+	// NoOpenAtLogin leaves a desktop host's "Open Ion at login" setting
+	// alone. Without it a deploy turns the setting on where nobody has
+	// chosen: a host other devices connect to has to come back after a
+	// restart.
+	NoOpenAtLogin bool
 	// Pair mints a pairing link with this label once the host's server is
 	// up; empty mints none.
 	Pair string
@@ -210,4 +215,31 @@ func hostCmd(ctx context.Context, r Runner, h Host, windows bool, script string,
 func lastTextLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+// desktopOpenAtLogin turns on "Open Ion at login" on a desktop host where
+// nobody has chosen, with the host's own engine. ion is the quoted path of
+// that engine. It reports whether the setting is on afterwards. A failure is
+// a note, never the deploy's: the install itself is done.
+func desktopOpenAtLogin(ctx context.Context, r Runner, h Host, windows bool, ion string, o InstallOptions, log installLog) bool {
+	if o.NoOpenAtLogin {
+		return false
+	}
+	log.step("open at login on %s", h.Name)
+	script := ion + " studio open-at-login on --if-unset"
+	if windows {
+		script = "& " + script + "\nexit $LASTEXITCODE\n"
+	}
+	out, err := hostCmd(ctx, r, h, windows, script, nil, log)
+	if err != nil {
+		log.note("could not set open at login on %s: %v", h.Name, err)
+		return false
+	}
+	on := strings.Contains(string(out), "open at login: on")
+	if on {
+		log.note("Ion opens at login on %s", h.Name)
+	} else {
+		log.note("open at login is off on %s, as chosen there", h.Name)
+	}
+	return on
 }

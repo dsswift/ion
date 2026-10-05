@@ -48,7 +48,8 @@ A key named in the wrong namespace is not enforced. The applied state lists it u
         "defaultClass": "sealed",
         "keys": {
           "selectedTheme": { "class": "user-adjustable" },
-          "studioTheme": { "class": "user-adjustable" }
+          "studioTheme": { "class": "user-adjustable" },
+          "openAtLogin": { "class": "sealed", "value": true }
         }
       }
     }

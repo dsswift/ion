@@ -1,8 +1,8 @@
 #!/bin/bash
-# Ion — Finder entry point for the shared development package pipeline.
+# Ion — Finder entry point for the development install pipeline.
 #
-# This command builds a local .pkg, waits for Ion's graceful quit, and opens
-# macOS Installer. It never copies /Applications/Ion.app directly.
+# This command builds Ion.app, waits for Ion's graceful quit, and installs the
+# new build into /Applications without a password prompt.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

@@ -87,13 +87,15 @@ some of them can execute code at install time.
 | In-app updater | Yes | Stages the zip and dispatches `install-worker.sh`; the explicit Restart stops the desktop and engine before the worker replaces the bundle |
 | `.pkg` (manual) | No | `preinstall` refuses before anything is written and tells the user to quit Ion, then retry |
 | `.pkg` (MDM, `installer.runningApp: replace`) | Yes | `preinstall` requests the `SIGUSR1` drain, waits a bounded time, then forces the quit; see [MDM](enterprise/mdm.md#unattended-install-over-a-running-ion) |
-| Source build (`make desktop`) | Yes | A detached coordinator sends the normal `SIGUSR1` drain, waits for Ion to exit, then opens the same `.pkg` |
+| Source build (`make desktop`) | Yes | A detached coordinator sends the normal `SIGUSR1` drain, waits for Ion to exit, then runs `install-worker.sh` on the built app |
 
 The source-build coordinator sends `SIGUSR1`: Ion drains active agents,
 flushes renderer tab state, boots out the engine daemon so launchd does not
 restart it, then exits (`desktop/src/main/app-lifecycle.ts`). The coordinator
-waits outside Installer without a timeout and opens the already-built `.pkg`
-only after Ion exits. A manually opened package never stops Ion: its preinstall
+waits without a timeout and, only after Ion exits, hands a snapshot of the
+build to the same install worker the in-app updater uses. The worker runs as
+the signed-in user, so nothing prompts: it sets a root-owned bundle aside
+instead of deleting it. A manually opened package never stops Ion: its preinstall
 script exits before anything is written and tells the user to quit Ion, then
 retry. Device policy can select the unattended path instead, where the package
 stops Ion itself. Either way the payload lands in a staging directory, and

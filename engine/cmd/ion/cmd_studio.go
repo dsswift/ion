@@ -250,13 +250,17 @@ Commands:
                conversations running now, relays, Format Versions, services, logs
                (--json; --no-latest skips the release lookup)
   restart      Restart both services
-  update       Download and install the latest bundle, then restart (--yes to skip the prompt)
+  update       Download and install the latest bundle, then restart (--yes to skip the prompt).
+               --bundle FILE installs a bundle tarball already on this host instead
     [VERSION]               Install this exact server version instead of the latest
   uninstall    Stop and remove the services and the bundle (--purge-data also removes the data dir)
   pair         Mint a one-time pairing link (--label, --as PERSON, --scopes a,b, --relay, --json),
                or a short code for a desktop that found this server nearby (--code)
   relay        Add, change, or remove a relay on an existing install (list | set | remove);
                run 'ion studio relay' for the forms
+  open-at-login on|off
+               Have the Ion desktop app on this computer open when its person signs in.
+               --if-unset leaves a choice already made on this computer alone
 `
 
 func cmdStudio(positional []string, flags map[string]string) {
@@ -280,6 +284,10 @@ func cmdStudio(positional []string, flags map[string]string) {
 	case "restart":
 		studioRestart(layout)
 	case "update":
+		if bundle := flags["bundle"]; bundle != "" {
+			studioUpdateFromBundle(layout, bundle, flags["yes"] == "true")
+			return
+		}
 		studioUpdate(layout, rest, flags["yes"] == "true")
 	case "uninstall":
 		studioUninstall(layout, flags["purge-data"] == "true")
@@ -287,6 +295,8 @@ func cmdStudio(positional []string, flags map[string]string) {
 		studioPair(layout, flags)
 	case "relay":
 		studioRelay(layout, rest, flags)
+	case "open-at-login":
+		studioOpenAtLogin(layout, rest, flags)
 	case "help":
 		fmt.Print(studioUsage)
 	default:

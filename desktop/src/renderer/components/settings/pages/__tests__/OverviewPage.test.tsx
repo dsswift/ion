@@ -36,7 +36,7 @@ let h: Harness
 
 async function mount(entry: EnvironmentCatalogEntry, justAddedId: string | null = null): Promise<void> {
   await h.render(
-    <SettingsServersProvider value={{ entries: [local, devbox], justAddedId, add: vi.fn(), relabel: vi.fn(), forget: vi.fn() }}>
+    <SettingsServersProvider value={{ entries: [local, devbox], justAddedId, add: vi.fn(), relabel: vi.fn(), forget: vi.fn(), setManageOnly: vi.fn() }}>
       <SettingsNavProvider value={{ location: { pageId: 'overview', environmentId: entry.id, anchor: null }, navigate }}>
         <SettingsEnvironmentProvider entry={entry}><OverviewPage /></SettingsEnvironmentProvider>
       </SettingsNavProvider>
@@ -111,11 +111,20 @@ describe('OverviewPage', () => {
     expect(facts.textContent).not.toContain('Running now')
   })
 
-  it('refuses Restart and Update for a server not installed from a bundle', async () => {
+  it('refuses Restart and Update for a server started by hand: no bundle, and no desktop runs it', async () => {
     actionMock.mockImplementation(async () => info(false))
     await mount(devbox)
     expect((h.control('Restart') as HTMLButtonElement).disabled).toBe(true)
     expect((h.control('Update') as HTMLButtonElement).disabled).toBe(true)
     expect(h.container.textContent).toContain('not a bundle install')
+  })
+
+  it('offers Restart and Update for a server a desktop runs, which asks that desktop', async () => {
+    actionMock.mockImplementation(async (_env: string, name: string) => name === 'environment.server.info' ? { ...info(false), hostApp: { name: 'desktop', version: '2.0.0' } } : { scheduled: true })
+    await mount(devbox)
+    expect((h.control('Restart') as HTMLButtonElement).disabled).toBe(false)
+    expect(h.container.textContent).toContain('Install the newest Ion release on the host.')
+    await h.click('Update')
+    expect(actionMock).toHaveBeenCalledWith('env-g', 'environment.server.update', [])
   })
 })

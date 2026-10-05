@@ -38,6 +38,31 @@ describe('catalog', () => {
     expect(entries[0]).toEqual({ id: 'local', label: 'This Mac', target: { kind: 'local' } })
   })
 
+  it('readConversationCatalog leaves Manage-Only Servers out, and isManageOnlyEnvironment names them', async () => {
+    hostMock.deviceSettings.mockResolvedValue({ environments: [
+      { kind: 'paired', label: 'devbox', url: 'http://devbox.example:7331', credentialRef: 'c1', via: 'lan', environmentId: 'env-devbox' },
+      { kind: 'paired', label: 'test-vm', url: 'http://vm.example:7331', credentialRef: 'c2', via: 'lan', environmentId: 'env-vm', manageOnly: true },
+    ] })
+    const { readCatalog, readConversationCatalog, isManageOnlyEnvironment } = await import('../catalog')
+    expect((await readCatalog()).map((e) => e.id)).toEqual(['local', 'env-devbox', 'env-vm'])
+    expect((await readConversationCatalog()).map((e) => e.id)).toEqual(['local', 'env-devbox'])
+    expect(isManageOnlyEnvironment('env-vm')).toBe(true)
+    expect(isManageOnlyEnvironment('env-devbox')).toBe(false)
+    expect(isManageOnlyEnvironment('local')).toBe(false)
+  })
+
+  it('setCatalogEntryManageOnly sets and clears the mark, keeping the rest of the entry', async () => {
+    const target = { kind: 'paired' as const, label: 'test-vm', url: 'http://vm.example:7331', credentialRef: 'c2', via: 'lan' as const, deploy: { ssh: 'user@vm.example' } }
+    hostMock.deviceSettings.mockResolvedValue({ environments: [target] })
+    const { setCatalogEntryManageOnly } = await import('../catalog')
+    expect(await setCatalogEntryManageOnly(0, true)).toEqual([{ ...target, manageOnly: true }])
+    expect(hostMock.setDeviceSetting).toHaveBeenCalledWith('environments', [{ ...target, manageOnly: true }])
+    hostMock.deviceSettings.mockResolvedValue({ environments: [{ ...target, manageOnly: true }] })
+    const cleared = await setCatalogEntryManageOnly(0, false)
+    expect(cleared[0]).not.toHaveProperty('manageOnly', true)
+    expect((cleared[0] as typeof target).deploy).toEqual({ ssh: 'user@vm.example' })
+  })
+
   it('addToCatalog appends a non-local target and persists it', async () => {
     const { addToCatalog } = await import('../catalog')
     const target = { kind: 'bearer' as const, label: 'Team', url: 'wss://team.example' }

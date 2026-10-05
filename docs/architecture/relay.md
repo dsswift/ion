@@ -20,21 +20,24 @@ The Ion Relay is a stateless Go WebSocket server. It pairs two peers on a channe
 
 ### Channel model
 
-Each channel is identified by a `channelId` (opaque string, typically a UUID). A channel supports exactly two peers:
+Each channel is identified by a `channelId` (opaque string, typically a UUID). A channel has two sides:
 
-- `role=ion` -- the engine instance
-- `role=mobile` -- the iOS app
+- `role=ion` -- the server. One per channel.
+- `role=mobile` -- a client of the server's pairing: the iOS app, a desktop, or the `ion fleet` CLI.
 
-When a message arrives from one peer, the relay forwards it to the other peer on the same channel. If the destination peer is not connected, the message is dropped (with an optional APNs push to wake the mobile peer).
+A channel holds one client unless its server joins as multi-client (`?role=ion&multi=1`). Then it holds every client of the pairing at once, so a desktop's Studio window and its `ion fleet`, or a phone's live session and an admin session, do not knock each other off.
+
+When a message arrives from one side, the relay forwards it to the other side of the same channel. If no client is connected, a server message is dropped (with an optional APNs push to wake the phone).
 
 ### Hub
 
-The `Hub` struct maintains an in-memory map of `channelId -> [ion_conn, mobile_conn]`. No persistence. When both peers disconnect, the channel is cleaned up.
+The `Hub` struct maintains an in-memory map of `channelId -> [ion_conn, mobile_conns]`. No persistence. When the server and every client have disconnected, the channel is cleaned up.
 
 Key behaviors:
 - First peer to connect on a channel creates it
 - Second peer joins the existing channel
-- If a peer reconnects, it replaces the previous connection for that role
+- A server that reconnects replaces the server before it
+- A client that joins replaces the client before it, unless the server is multi-client
 - Messages are forwarded synchronously (no buffering or queuing)
 - Messages are forwarded with `permessage-deflate` compression when the client supports it
 
@@ -53,7 +56,21 @@ The relay validates the Bearer token against `RELAY_API_KEY` before upgrading to
 
 ### Message forwarding
 
-Once connected, all WebSocket frames from one peer are forwarded to the other peer on the same channel. The relay treats every frame as opaque bytes. It does not parse, validate, or transform the content.
+Once connected, all WebSocket frames from one side are forwarded to the other side of the same channel. The relay does not validate or transform a frame's content; it reads only the outer envelope's routing fields.
+
+### Multi-client channels
+
+A server that joins with `multi=1` gets one connection per client. `GET /v1/auth/config` reports `capabilities.multiClient: true` on a relay that supports it; a relay that does not ignores the flag and keeps one client.
+
+| Frame | To | Meaning |
+|---|---|---|
+| `{"type":"relay:connected","peer":"<id>"}` | a client | It joined; `peer` is the relay's id for it on this channel. |
+| `{"type":"relay:peer-joined","peer":"<id>"}` | the server | A client joined. Sent once per client already on the channel when the server itself joins. Replaces `relay:peer-reconnected`. |
+| `{"type":"relay:peer-left","peer":"<id>"}` | the server | That client left. Replaces `relay:peer-disconnected`. |
+
+The relay adds `"peer":"<id>"` to the outer envelope of every client frame it forwards to the server, as the last member, so it wins over any `peer` the client wrote. A server frame whose envelope names a `peer` goes to that client only, and is dropped if the client has left. A server frame that names none goes to every client. The envelope's ciphertext is untouched: clients of one pairing share its key.
+
+A server that is not multi-client that takes over a channel holding several clients keeps the newest and closes the rest.
 
 The relay offers `permessage-deflate` compression during the WebSocket handshake. Both the engine client and iOS client negotiate compression automatically.
 

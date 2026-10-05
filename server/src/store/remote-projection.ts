@@ -21,6 +21,7 @@
  * (remote-projection-push.ts) passes the store state; tests pass fixtures.
  */
 
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
 import type {
   ProjectedRendererTab,
   ProjectedPermissionEntry,
@@ -34,7 +35,7 @@ import { orderedSessionIds, tabHasExtensions } from '@ion/shared/tab-predicates'
 import { settlingIsPermanent } from '@ion/shared/worktree-conversations'
 import { effectiveRunningChildrenCount, waitingStateOfPane } from '@ion/shared/tab-activity-fold'
 import { activeQuestionsCount } from './questions-read'
-import { classifyInbox, inboxUnread, wokeAt } from '@ion/shared/inbox-classify'
+import { classifyInbox, inboxQuiet, inboxUnread, wokeAt } from '@ion/shared/inbox-classify'
 import { liveBackgroundShellCount } from '@ion/shared/background-shell-counts'
 import { usePreferencesStore } from '../persistence/preferences'
 import { projectResolvedModels } from './resolved-model-projection'
@@ -131,6 +132,7 @@ function projectTab(t: TabState, s: ProjectionStoreState, resolvedModels: Record
     pendingAskCount: (activeInst?.permissionQueue.length ?? 0) + (activeInst?.elicitationQueue.length ?? 0),
     waiting: waitingStateOfPane(cPane ?? undefined, activeQuestionsCount(t.id)) !== null,
     failed: t.status === 'failed',
+    limited: usageLimitedUntil(t, nowMs) !== null,
     hasPendingWork: activeInst?.statusFields?.hasPendingWork === true
       || (activeInst?.statusFields?.backgroundAgents ?? 0) > 0
       || liveBackgroundShellCount(activeInst?.statusFields) > 0
@@ -450,6 +452,10 @@ function projectTab(t: TabState, s: ProjectionStoreState, resolvedModels: Record
     // value as restorable, which is the default for every ordinary tab.
     canRestoreSettled: settlingIsPermanent(t.tabRole) ? false : undefined,
     wokeAt: wokeAt(inboxView, nowMs),
+    limitedUntil: usageLimitedUntil(t, nowMs),
+    limitType: usageLimitedUntil(t, nowMs) !== null ? t.usageLimit?.limitType : undefined,
+    deferredRelease: t.deferredSend?.release,
+    quiet: inboxQuiet(inboxView, nowMs, { deferred: t.deferredSend != null }),
     pinnedAt: t.pinnedAt,
     pinOrderKey: t.pinOrderKey,
     backgroundLiveness: anyInstanceHasRunningChildren

@@ -110,6 +110,15 @@ export type RemoteCommand =
   | { type: "desktop_tab_unsettle"; tabId: string }
   | { type: "desktop_tab_snooze"; tabId: string; untilMs: number }
   | { type: "desktop_tab_unsnooze"; tabId: string }
+  /** Hold the server's resume prompt for a limited conversation until its usage limit resets. */
+  | { type: "desktop_tab_resume_at_reset"; tabId: string }
+  /** Snooze a limited conversation until its usage limit resets. */
+  | { type: "desktop_tab_snooze_until_reset"; tabId: string }
+  /** Hold a prompt until the conversation's account has weekly quota about to reset unused. */
+  | { type: "desktop_tab_queue_spare_quota"; tabId: string; text: string }
+  | { type: "desktop_tab_cancel_held_prompt"; tabId: string }
+  /** Send the held prompt now. */
+  | { type: "desktop_tab_send_held_prompt"; tabId: string }
   | { type: "desktop_tab_mark_unread"; tabId: string }
   /**
    * A client's unsent composer text for a conversation. Debounced at the

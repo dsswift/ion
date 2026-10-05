@@ -241,6 +241,14 @@ export interface RemoteTabState {
   canRestoreSettled?: boolean
   /** Wake moment for the Woke pill (expired snooze not yet visited). */
   wokeAt?: number
+  /** Unix ms the usage limit holding this conversation resets. Absent when none holds. */
+  limitedUntil?: number
+  /** The window that ran out ("five_hour", "seven_day"), while one holds. */
+  limitType?: string
+  /** How the prompt the server holds for this conversation is released, when it holds one. */
+  deferredRelease?: 'limit-reset' | 'spare-quota'
+  /** The row asks nothing of the person now; a client draws it receded. */
+  quiet?: boolean
   /** Inbox pin timestamp and fractional presentation order. */
   pinnedAt?: number
   pinOrderKey?: string

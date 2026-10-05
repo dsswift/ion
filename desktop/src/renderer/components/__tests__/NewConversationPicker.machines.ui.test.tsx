@@ -35,7 +35,7 @@ vi.mock('../../theme', () => ({ useColors: () => ({ scrim: '#000', popoverBg: '#
 vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../../preferences', () => ({ usePreferencesStore: (selector: (state: typeof preferenceState) => unknown) => selector(preferenceState) }))
 vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rError: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn() }))
-vi.mock('../../studio/connection/catalog', () => ({ readCatalog: async () => [{ id: 'local', label: 'This Mac' }, { id: 'devbox', label: 'devbox' }, { id: 'work', label: 'macbook' }] }))
+vi.mock('../../studio/connection/catalog', () => ({ readConversationCatalog: async () => [{ id: 'local', label: 'This Mac' }, { id: 'devbox', label: 'devbox' }, { id: 'work', label: 'macbook' }] }))
 vi.mock('../../studio/connection/select-when-present', () => ({ selectTabWhenPresent: vi.fn() }))
 vi.mock('../settings/environment/environment-client', () => ({
   environmentClient: { listProjects: async (env: string) => projectsByEnvironment[env] ?? [] },

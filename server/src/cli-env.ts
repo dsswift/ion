@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
 import { accessSync, constants, statSync } from 'fs'
 import { delimiter, join } from 'path'
-import { log as _log, warn as _warn } from './logger'
+import { debug as _debug, log as _log, warn as _warn } from './logger'
 import { stripPrivilegeEscalation, PRIVILEGE_ESCALATION_VAR } from './launch-env'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -9,6 +9,9 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 }
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('cli-env', msg, fields)
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('cli-env', msg, fields)
 }
 
 let cachedPath: string | null = null
@@ -195,6 +198,16 @@ export function getCliEnv(extraEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     PATH: getCliPath(),
   }
   delete env.CLAUDECODE
+  // The desktop starts this server as Node by running Ion's own executable
+  // with ELECTRON_RUN_AS_NODE=1 (desktop/src/main/local-server.ts). Inherited
+  // by a spawned shell, it turns every Electron app started there into a bare
+  // Node runtime that exits at once, Ion itself included: `make desktop` run
+  // in an Ion terminal relaunched the new build that way and it never came up.
+  // An overlay that sets it on purpose keeps it.
+  if (extraEnv?.ELECTRON_RUN_AS_NODE === undefined && env.ELECTRON_RUN_AS_NODE !== undefined) {
+    delete env.ELECTRON_RUN_AS_NODE
+    debug('dropped the inherited Electron run-as-node switch from a spawn environment')
+  }
   // Last line of defence for the spawn environment itself. Startup already
   // clears this from process.env, so normally there is nothing to strip. It is
   // repeated here because THIS function, not the startup path, is what every

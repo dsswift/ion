@@ -43,6 +43,7 @@ import { handleErrorAction } from "./event-slice-error";
 import { forceFlushTabs } from "../session-store-force-flush";
 import { isPendingUserCardDenial } from "@ion/shared/pending-card";
 import { rInfo, rTrace, rWarn } from "../rendererLogger";
+import { RATE_LIMIT_REJECTED } from "@ion/shared/usage-limit";
 import { setTabStatus } from "./tab-status-transition";
 import {
   sameTab,
@@ -826,13 +827,22 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case "rate_limit":
+              // The backend's own verdict decides the Limited state: refused
+              // sets it, and any later report that allows a request lifts it.
+              if (event.status === RATE_LIMIT_REJECTED) {
+                updated.usageLimit = { limitType: event.rateLimitType, resetsAt: event.resetsAt * 1000, hitAt: now };
+                rInfo("usage-limit", "conversation limited by its account", { tab_id: tabId.slice(0, 8), limit_type: event.rateLimitType, resets_at: event.resetsAt });
+              } else if (updated.usageLimit) {
+                updated.usageLimit = null;
+                rInfo("usage-limit", "limit lifted by the backend", { tab_id: tabId.slice(0, 8), status: event.status });
+              }
               if (event.status !== "allowed") {
                 messages = [
                   ...messages,
                   {
                     id: nextMsgId(),
                     role: "system",
-                    content: `Rate limited (${event.rateLimitType}). Resets at ${new Date(event.resetsAt).toLocaleTimeString()}.`,
+                    content: `Rate limited (${event.rateLimitType}). Resets at ${new Date(event.resetsAt * 1000).toLocaleTimeString()}.`,
                     timestamp: Date.now(),
                   },
                 ];

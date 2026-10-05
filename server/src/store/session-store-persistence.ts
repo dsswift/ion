@@ -151,6 +151,8 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.snoozedAt ? { snoozedAt: t.snoozedAt } : {}),
         ...(t.lastVisitedAt ? { lastVisitedAt: t.lastVisitedAt } : {}),
         ...(t.manualUnread ? { manualUnread: true } : {}),
+        ...(t.usageLimit ? { usageLimit: t.usageLimit } : {}),
+        ...(t.deferredSend ? { deferredSend: t.deferredSend } : {}),
         ...(t.lastResult ? { lastResult: t.lastResult } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.inputLocked ? { inputLocked: true } : {}),
@@ -370,8 +372,14 @@ export function setupPersistence(useSessionStore: Store): void {
         persistTabs(useSessionStore)
         return
       }
-      if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => persistTabs(useSessionStore), 100)
+      // A pending save is left to fire, not pushed back. Restarting the timer
+      // on every change starved it: a streaming conversation changes the
+      // store faster than every 100ms, so nothing saved or published until
+      // every stream went quiet, and a change made meanwhile (a cleared
+      // conversation color) reached no client for tens of seconds. The save
+      // reads the store when it fires, so changes inside the window ride it.
+      if (saveTimer) return
+      saveTimer = setTimeout(() => { saveTimer = null; persistTabs(useSessionStore) }, 100)
     }
   })
 

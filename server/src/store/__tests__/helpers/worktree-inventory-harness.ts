@@ -85,6 +85,8 @@ export function harness(initial: HarnessInit = {}) {
     recordConflictAlert: vi.fn(),
     clearConflictAlert: vi.fn(),
     selectTab: vi.fn((id: string) => { state.activeTabId = id }),
+    // A landed worktree's conversations settle; the settle itself is the inbox slice's.
+    settleLandedTab: vi.fn(async () => {}),
     // Stands in for the real closeTab, including its GUARD: a blocked tab is
     // left in place. Without that fidelity the relocation-fallback test would
     // pass against a version that never checks anything.

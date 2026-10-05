@@ -39,6 +39,8 @@ function Harness(): React.JSX.Element {
       anchor={{ x: 0, y: 0 }}
       selected={sort}
       onSelect={setSort}
+      workingLast={false}
+      onWorkingLast={() => {}}
       triggerRef={sortRef}
       onClose={() => setOpen(null)}
     />}

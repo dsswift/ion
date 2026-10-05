@@ -360,7 +360,7 @@
     {
       "id": "builder-host",
       "term": "Builder Host",
-      "definition": "The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform, the builder included.",
+      "definition": "The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. Any host of the fleet with an SSH target can be one, a target of the deploy or not. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform that takes it. A host that cannot build is told what stops it, and `ion fleet builder` fixes what the fleet can: missing build tools, and a build folder Microsoft Defender scans.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -385,7 +385,7 @@
     {
       "id": "channel",
       "term": "Channel",
-      "definition": "The relay pairing unit. One channel holds at most two peers and is named by an opaque channel identifier.",
+      "definition": "The relay pairing unit, named by an opaque channel identifier. One channel holds one server peer and, when that server joins as multi-client, several client peers the relay names and routes between; otherwise at most one client.",
       "domain": "relay",
       "kind": "public-contract",
       "status": "canonical",
@@ -1172,6 +1172,38 @@
       ]
     },
     {
+      "id": "custom-provider",
+      "term": "Custom Provider",
+      "definition": "A provider that exists only because the engine configuration defines it, such as a company gateway, as opposed to one the engine provides and configuration adjusts. Only a custom provider can be removed; removing it deletes its configuration entry, its stored key, and its models.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (s *Server) dispatchProviderRemove",
+          "path": "engine/internal/server/dispatch_provider_remove.go"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "CustomProvidersPanel",
+          "path": "desktop/src/renderer/components/settings/pages/fleet/CustomProvidersPanel.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct FleetCustomProvidersSheet",
+          "path": "ios/IonRemote/Views/Settings/Root/FleetCustomProvidersSheet.swift"
+        }
+      ]
+    },
+    {
       "id": "desktop-automation",
       "term": "Desktop Automation",
       "definition": "The desktop-owned engine that runs declarative user, project, and enterprise rules from desktop events (message submitted, slash resolved, worktree pin advanced, stage changed, lifecycle, bench). The main process resolves layered definitions, normalizes the current worktree stage onto each event, evaluates conditions that fail closed on an absent path, and runs finite typed actions; renderer actions go through the owner command bridge. Settings edits it through the source-aware Automation Editor with per-item user CRUD, so no project, enterprise, or built-in rule is ever copied into the user store.",
@@ -1741,7 +1773,7 @@
     {
       "id": "environment-catalog",
       "term": "Environment Catalog",
-      "definition": "The desktop's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries.",
+      "definition": "A device's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries. It is also the device's Fleet: `ion fleet` reads and writes the same list, and each entry may carry how the host is deployed to.",
       "domain": "clients",
       "kind": "state",
       "status": "canonical",
@@ -1753,6 +1785,13 @@
           "language": "typescript",
           "symbol": "readCatalog",
           "path": "desktop/src/renderer/studio/connection/catalog.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Entry struct",
+          "path": "engine/internal/fleet/catalog.go"
         }
       ]
     },
@@ -2027,7 +2066,7 @@
     {
       "id": "fleet",
       "term": "Fleet",
-      "definition": "The set of Studio hosts one operator manages from one machine with `ion fleet`: Studio Server hosts on macOS and Linux, and Macs and Windows PCs running the Ion desktop, listed in ~/.ion/fleet.json. The fleet reads each host's status and paired devices over SSH, or through the relay with its own read-only pairing, judges which hosts can work together by their Format Versions, and redeploys a selection or one host, building each platform once.",
+      "definition": "Every Studio server one device is paired with, seen and managed as one set. The fleet is the device's Environment Catalog: Studio's Fleet page, the iPhone's Fleet screen, and `ion fleet` all read the same list, with one pairing per server. Each server answers a Fleet Report about itself; the client adds them up into totals, a Quota Pool per provider, one row per provider account, and which servers can work together by their Format Versions. `ion fleet` and the Fleet page also restart, update, and redeploy hosts, building each platform once.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -2048,11 +2087,128 @@
           "path": "engine/internal/fleettui/model.go"
         },
         {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "FleetPage",
+          "path": "desktop/src/renderer/components/settings/pages/FleetPage.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct FleetView",
+          "path": "ios/IonRemote/Views/Settings/Root/FleetView.swift"
+        },
+        {
           "platform": "engine",
           "presentation": "doc",
           "language": "markdown",
           "symbol": "Fleet",
           "path": "docs/deployment/fleet.md"
+        }
+      ]
+    },
+    {
+      "id": "fleet-deploy-record",
+      "term": "Fleet Deploy Record",
+      "definition": "One deploy as it runs: what is deployed, and each host with its step, the step's detail, and why it failed. `ion fleet deploy` keeps the record and tells the server on its own machine at every step, and at least every 30 seconds while it runs. That server holds the newest few, publishes them to Studio on `ion:fleet-deploys`, and passes each to the Fleet Hubs it reports to. A record still marked running that stops arriving is shown as lost.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type DeployRecord",
+          "path": "engine/internal/fleet/deploy_record.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface FleetDeployRecord",
+          "path": "packages/shared/src/types-fleet-deploy.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "FLEET_DEPLOY_ACTIONS",
+          "path": "server/src/fleet/deploy-actions.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "function FleetDeployCard",
+          "path": "desktop/src/renderer/components/settings/pages/fleet/deploy/FleetDeployCard.tsx"
+        }
+      ]
+    },
+    {
+      "id": "fleet-hub",
+      "term": "Fleet Hub",
+      "definition": "An always-on service a Studio server reports to, so a Fleet can be watched and managed from one page with no device paired to anything. A server dials out to each hub it is enrolled with, sends its Fleet Report on a timer, passes on each Fleet Deploy Record it is told of and each step of its own installs, and runs the fixed list of actions a hub may ask for. A hub is not a device and holds no pairing. Which hubs a server may join is set by its admins and limited by the enterprise policy under `customFields['ion-server'].fleetHubs`.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "function startHub",
+          "path": "server/src/hub/main.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "class HubLink",
+          "path": "server/src/fleet/hub-link.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "function HubApp",
+          "path": "desktop/src/renderer/hub/HubApp.tsx"
+        }
+      ]
+    },
+    {
+      "id": "fleet-report",
+      "term": "Fleet Report",
+      "definition": "What one Studio server says about itself for a Fleet view, answered to the `fleet.report` action: its server facts, newest System Metrics sample, the caller's paired devices, its providers, and its Provider Account Ledger. A server reports only on itself; the client adds the reports of every server it is paired with.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "FLEET_ACTIONS",
+          "path": "server/src/fleet/actions.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface FleetReport",
+          "path": "packages/shared/src/types-fleet.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "struct FleetReport",
+          "path": "ios/IonRemote/Models/Admin/FleetReport.swift"
         }
       ]
     },
@@ -2098,7 +2254,7 @@
     {
       "id": "forwarding",
       "term": "Message forwarding",
-      "definition": "The relay action that passes one frame from a peer to the other peer on the same channel. The relay treats the frame as opaque bytes.",
+      "definition": "The relay action that passes one frame between the server peer and a client peer on the same channel. The relay treats the frame as opaque bytes; on a multi-client channel it stamps a client's frame with that client's peer name and routes a server frame by the peer it names.",
       "domain": "relay",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -2111,8 +2267,8 @@
           "platform": "relay",
           "presentation": "code",
           "language": "go",
-          "symbol": "func (ch *Channel) getPeerLocked",
-          "path": "relay/relay.go"
+          "symbol": "func stampPeer",
+          "path": "relay/peers.go"
         },
         {
           "platform": "relay",
@@ -2316,6 +2472,42 @@
           "language": "markdown",
           "symbol": "Harness",
           "path": "docs/getting-started/concepts.md"
+        }
+      ]
+    },
+    {
+      "id": "held-prompt",
+      "term": "Held Prompt",
+      "definition": "A prompt a Studio server keeps for one conversation and sends by itself once its release is met: the usage limit that stopped the conversation has reset, or the conversation's account has weekly quota about to reset unused. It is owner-durable tab state, so it is sent with every client closed, and a conversation holds at most one.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "deferred send",
+        "queued prompt"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface TabDeferredSend",
+          "path": "packages/shared/src/usage-limit.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "createUsageLimitSlice",
+          "path": "server/src/store/slices/usage-limit-slice.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "static func heldLabel",
+          "path": "ios/IonRemote/Views/InboxRowView.swift"
         }
       ]
     },
@@ -2630,6 +2822,38 @@
       ]
     },
     {
+      "id": "limited-conversation",
+      "term": "Limited Conversation",
+      "definition": "A conversation whose run the provider refused because the signed-in account's usage limit is reached. The server records the limit and its reset time from the backend's own report and lifts it when the backend next allows a request or the reset passes. Clients show the row as Limited with the reset time.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface TabUsageLimit",
+          "path": "packages/shared/src/usage-limit.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "setupUsageLimitWatch",
+          "path": "server/src/store/usage-limit-watch.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "static func limitedUntil",
+          "path": "ios/IonRemote/Views/InboxRowView.swift"
+        }
+      ]
+    },
+    {
       "id": "link-integrity-scan",
       "term": "Link Integrity Scan",
       "definition": "A read-only pass over a session's working directory that resolves every wiki link in every document and reports the ones that name no single file: a missing target, or a bare name more than one file carries. It writes nothing and runs only when asked (scan_wiki_links, ctx.scanWikiLinks). It finds the links broken by renames the engine never observed, which Wiki-Link Propagation cannot repair.",
@@ -2669,6 +2893,31 @@
           "language": "typescript",
           "symbol": "localPrincipal",
           "path": "server/src/identity/local-principal.ts"
+        }
+      ]
+    },
+    {
+      "id": "manage-only-server",
+      "term": "Manage-Only Server",
+      "definition": "A server in a device's Environment Catalog that is part of its Fleet but is not offered for conversations: the device monitors, configures, and deploys to it, and its conversations stay out of the inbox and every conversation view.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "isManageOnlyTarget",
+          "path": "packages/shared/src/types-environments.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Entry struct",
+          "path": "engine/internal/fleet/catalog.go"
         }
       ]
     },
@@ -3370,6 +3619,38 @@
       ]
     },
     {
+      "id": "placement",
+      "term": "Placement",
+      "definition": "The choice of which server a new conversation opens on when the device is left to decide: among the servers that hold the project, the one whose signed-in account has the most room, leaning toward weekly quota about to reset unused, with host load breaking near ties. Scored from each server's Fleet Report, with a per-device weight for each server.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "pickPlacement",
+          "path": "packages/shared/src/fleet-placement.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "placeAmong",
+          "path": "desktop/src/renderer/studio/connection/placement.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "static func mostRoomServerId",
+          "path": "ios/IonRemote/Models/Admin/FleetSummary.swift"
+        }
+      ]
+    },
+    {
       "id": "policy-failure",
       "term": "Policy Failure",
       "definition": "A failure state that results from enterprise policy, named by a stable identifier. The identifier keys the policy's messages map, which replaces the text shown for the failure, and travels with the failure in a policyFailure field. The text is presentation only and never changes the outcome or the error code.",
@@ -3757,6 +4038,31 @@
       "notes": "Name providers by name. Never pin a provider count in prose."
     },
     {
+      "id": "provider-account-ledger",
+      "term": "Provider Account Ledger",
+      "definition": "A Studio server's record of every provider CLI account it has seen signed in during the last 30 days, with the usage limits the CLI last reported for each and whether the account is signed in now. The server reads its CLIs on a timer and on request; a signed-out account keeps its last limits until it ages out.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "listAccounts",
+          "path": "server/src/fleet/account-ledger.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func ReadLedger",
+          "path": "engine/internal/studiostatus/accounts.go"
+        }
+      ]
+    },
+    {
       "id": "provider-subscription",
       "term": "Provider Subscription",
       "definition": "The provider key the engine resolves from a configured subscription lookup endpoint for the signed-in identity. One returned subscription is applied automatically, several wait for a remembered choice, and none is its own state. The key is cached per identity, outranks manually configured keys, and never leaves the engine.",
@@ -3938,6 +4244,38 @@
           "language": "typescript",
           "symbol": "export function ComposerQuickToolsButton",
           "path": "desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx"
+        }
+      ]
+    },
+    {
+      "id": "quota-pool",
+      "term": "Quota Pool",
+      "definition": "One provider's usage limits added up across every account of it in a Fleet, signed in now or seen in the last 30 days. Each account adds 100% to a limit it reports, so two accounts with a 7-day limit hold 200%, and the pool shows how much of that is used and how much is left. A window that reset since it was read counts as unused; a spend limit is money and is left out.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "fleetQuotaPools",
+          "path": "packages/shared/src/fleet-view.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "FleetQuota",
+          "path": "desktop/src/renderer/components/settings/pages/fleet/FleetQuota.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct FleetQuotaPoolView",
+          "path": "ios/IonRemote/Views/Settings/Root/FleetAccountRowView.swift"
         }
       ]
     },

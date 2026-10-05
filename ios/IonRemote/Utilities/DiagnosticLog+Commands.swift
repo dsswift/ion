@@ -145,6 +145,16 @@ extension DiagnosticLog {
             log("CMD: tabSnooze tabId=\(tabId.prefix(8)) until=\(Int(untilMs))", tag: "ipc", level: .info)
         case .tabUnsnooze(let tabId):
             log("CMD: tabUnsnooze tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabResumeAtReset(let tabId):
+            log("CMD: tabResumeAtReset tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabSnoozeUntilReset(let tabId):
+            log("CMD: tabSnoozeUntilReset tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabQueueSpareQuota(let tabId, let text):
+            log("CMD: tabQueueSpareQuota tabId=\(tabId.prefix(8)) len=\(text.count)", tag: "ipc", level: .info)
+        case .tabCancelHeldPrompt(let tabId):
+            log("CMD: tabCancelHeldPrompt tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .tabSendHeldPrompt(let tabId):
+            log("CMD: tabSendHeldPrompt tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
         case .tabMarkUnread(let tabId):
             log("CMD: tabMarkUnread tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
         case .tabPin(let tabId):

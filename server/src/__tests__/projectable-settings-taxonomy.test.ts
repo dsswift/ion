@@ -34,20 +34,22 @@ describe('projected settings and the settings taxonomy', () => {
     }
   })
 
-  it('lists every page with a projected key and every server page, in Studio order, with all their sections', () => {
+  it('lists every page with a projected key and every server page but Fleet, in Studio order, with all their sections', () => {
     const pages = projectablePages()
     const withKeys = new Set(projectableSchema().map((e) => e.page))
-    const expected = SETTINGS_TAXONOMY.filter((p) => p.scope === 'server' || withKeys.has(p.id))
+    const expected = SETTINGS_TAXONOMY.filter((p) => p.id !== 'servers' && (p.scope === 'server' || withKeys.has(p.id)))
     expect(pages.map((p) => p.id)).toEqual(expected.map((p) => p.id))
     expect(pages.find((p) => p.id === 'defaults')).toEqual({
       id: 'defaults', label: 'Defaults', scope: 'you',
       sections: [{ id: 'defaults-conversation', label: 'New conversations' }, { id: 'defaults-thinking', label: 'Extended thinking' }],
     })
     // A page whose keys are all Studio-only, and a page with no projected
-    // key, are left out; the servers list is a server page, so it is in.
+    // key, are left out. Fleet lists every paired server, so a client
+    // would show it as one server's page with an empty Servers section.
     expect(pages.map((p) => p.id)).not.toContain('appearance')
     expect(pages.map((p) => p.id)).not.toContain('keyboard')
-    expect(pages.map((p) => p.id)).toContain('servers')
+    expect(pages.map((p) => p.id)).not.toContain('servers')
+    expect(pages.map((p) => p.id)).toContain('health')
     expect(pages.find((p) => p.id === 'integrations')?.sections.map((s) => s.id)).toEqual(['mcp', 'automation', 'entra'])
   })
 })

@@ -6,6 +6,13 @@
  *
  * A row is one line on purpose. What an item needs rarely goes in its `…`
  * menu; what it needs to be edited goes in a side panel opened by a click.
+ * A list whose items carry more facts than one line holds gives each row a
+ * `detail` block under its line instead of more columns.
+ *
+ * The header and every row share one set of column tracks, so an `auto`
+ * column is as wide as its widest cell in every row. A list long enough to
+ * draw only the rows on screen sizes each row on its own instead; give its
+ * columns explicit widths.
  */
 import React, { useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -50,14 +57,21 @@ export interface DataListProps<T> {
   empty?: React.ReactNode
   /** Draws column headers. Off for single-column lists. */
   showHeader?: boolean
+  /** The height of a row's line. Taller for a list whose cells stack two lines. */
+  rowHeight?: number
+  /** A block under a row's line, the full width of the row. A list with one is never virtualized. */
+  detail?(item: T): React.ReactNode
   anchor?: string
 }
 
 const FILTER_THRESHOLD = 8
 const VIRTUAL_THRESHOLD = 60
+const COLUMN_GAP = 12
+/** A list whose rows carry a detail block is this many times taller before it scrolls. */
+const DETAIL_HEIGHT_FACTOR = 2
 
 export function DataList<T>(props: DataListProps<T>): React.JSX.Element {
-  const { label, items, getKey, columns, title, description, actions, noun, filter, onRowClick, rowMenu, isMuted, loading, empty, showHeader, anchor } = props
+  const { label, items, getKey, columns, title, description, actions, noun, filter, onRowClick, rowMenu, isMuted, loading, empty, showHeader, rowHeight = KIT.rowHeight, detail, anchor } = props
   const colors = useColors()
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
@@ -69,6 +83,29 @@ export function DataList<T>(props: DataListProps<T>): React.JSX.Element {
   ].join(' ')
   const showFilter = filter !== undefined && items.length >= FILTER_THRESHOLD
   const count = noun ? `${q ? `${visible.length} of ` : ''}${items.length} ${items.length === 1 ? noun[0] : noun[1]}` : null
+  const virtual = detail === undefined && visible.length > VIRTUAL_THRESHOLD
+  // Rows that share the list's tracks take them from the grid around them.
+  const tracks = virtual ? template : 'subgrid'
+  const header = showHeader && visible.length > 0 ? (
+    <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: tracks, columnGap: virtual ? COLUMN_GAP : undefined, alignItems: 'center', height: 26, padding: `0 6px 0 ${KIT.inset}px`, borderBottom: `1px solid ${colors.borderSubtle}`, background: colors.surfacePrimary, position: virtual ? undefined : 'sticky', top: 0, zIndex: 1 }}>
+      {columns.map((c) => <div key={c.id} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 10, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.textTertiary, textAlign: c.align === 'end' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.header ?? ''}</div>)}
+      {hasMenu && <div />}
+    </div>
+  ) : null
+  const row = (item: T): React.ReactNode => (
+    <DataRow
+      key={getKey(item)}
+      item={item}
+      columns={columns}
+      tracks={tracks}
+      rowHeight={rowHeight}
+      onClick={onRowClick}
+      menu={rowMenu?.(item)}
+      hasMenu={hasMenu}
+      muted={isMuted?.(item) ?? false}
+      detail={detail?.(item)}
+    />
+  )
 
   return (
     <section aria-label={label} data-settings-anchor={anchor}>
@@ -93,45 +130,26 @@ export function DataList<T>(props: DataListProps<T>): React.JSX.Element {
             {actions && <div style={{ display: 'flex', gap: 6 }}>{actions}</div>}
           </div>
         )}
-        {showHeader && visible.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: template, columnGap: 12, alignItems: 'center', height: 26, padding: `0 6px 0 ${KIT.inset}px`, borderBottom: `1px solid ${colors.borderSubtle}` }}>
-            {columns.map((c) => <div key={c.id} style={{ fontSize: 10, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.textTertiary, textAlign: c.align === 'end' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.header ?? ''}</div>)}
-            {hasMenu && <div />}
-          </div>
-        )}
         {loading && items.length === 0 ? (
           <div style={{ padding: `10px ${KIT.inset}px`, fontSize: KIT.fontSmall, color: colors.textTertiary }}>Loading…</div>
         ) : visible.length === 0 ? (
           q ? <EmptyState title="Nothing matches" detail={`No ${noun?.[1] ?? 'items'} match “${query.trim()}”.`} /> : (empty ?? <EmptyState title="Nothing here yet" />)
         ) : (
-          <Rows
-            items={visible}
-            render={(item) => (
-              <DataRow
-                key={getKey(item)}
-                item={item}
-                columns={columns}
-                template={template}
-                onClick={onRowClick}
-                menu={rowMenu?.(item)}
-                hasMenu={hasMenu}
-                muted={isMuted?.(item) ?? false}
-              />
-            )}
-          />
+          virtual ? <>{header}<VirtualRows items={visible} rowHeight={rowHeight} render={row} /></> : (
+            <div style={{ display: 'grid', gridTemplateColumns: template, columnGap: COLUMN_GAP, maxHeight: detail ? KIT.listMaxHeight * DETAIL_HEIGHT_FACTOR : KIT.listMaxHeight, overflowY: 'auto' }}>
+              {header}
+              <div role="list" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'subgrid' }}>{visible.map(row)}</div>
+            </div>
+          )
         )}
       </div>
     </section>
   )
 }
 
-function Rows<T>({ items, render }: { items: readonly T[]; render(item: T): React.ReactNode }): React.JSX.Element {
+function VirtualRows<T>({ items, rowHeight, render }: { items: readonly T[]; rowHeight: number; render(item: T): React.ReactNode }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const virtual = items.length > VIRTUAL_THRESHOLD
-  const virtualizer = useVirtualizer({ count: virtual ? items.length : 0, getScrollElement: () => scrollRef.current, estimateSize: () => KIT.rowHeight, overscan: 8 })
-  if (!virtual) {
-    return <div role="list" style={{ maxHeight: KIT.listMaxHeight, overflowY: 'auto' }}>{items.map(render)}</div>
-  }
+  const virtualizer = useVirtualizer({ count: items.length, getScrollElement: () => scrollRef.current, estimateSize: () => rowHeight, overscan: 8 })
   return (
     <div ref={scrollRef} role="list" style={{ height: KIT.listMaxHeight, overflowY: 'auto' }}>
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
@@ -143,14 +161,17 @@ function Rows<T>({ items, render }: { items: readonly T[]; render(item: T): Reac
   )
 }
 
-function DataRow<T>({ item, columns, template, onClick, menu, hasMenu, muted }: {
+function DataRow<T>({ item, columns, tracks, rowHeight, onClick, menu, hasMenu, muted, detail }: {
   item: T
   columns: ReadonlyArray<DataColumn<T>>
-  template: string
+  /** The row's own column tracks, or `subgrid` to take the list's. */
+  tracks: string
+  rowHeight: number
   onClick?(item: T): void
   menu?: ReadonlyArray<RowMenuItem | false | null | undefined>
   hasMenu: boolean
   muted: boolean
+  detail?: React.ReactNode
 }): React.JSX.Element {
   const colors = useColors()
   const { hover, handlers } = useInteractiveState()
@@ -165,8 +186,8 @@ function DataRow<T>({ item, columns, template, onClick, menu, hasMenu, muted }: 
       onMouseEnter={handlers.onMouseEnter}
       onMouseLeave={handlers.onMouseLeave}
       style={{
-        display: 'grid', gridTemplateColumns: template, columnGap: 12, alignItems: 'center',
-        height: KIT.rowHeight, padding: `0 6px 0 ${KIT.inset}px`, boxSizing: 'border-box',
+        gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: tracks, columnGap: tracks === 'subgrid' ? undefined : COLUMN_GAP, alignItems: 'center',
+        gridTemplateRows: `${rowHeight - 1}px`, gridAutoRows: 'auto', padding: `0 6px 0 ${KIT.inset}px`, boxSizing: 'border-box',
         borderBottom: `1px solid ${colors.borderSubtle}`, fontSize: KIT.fontSmall, color: colors.textSecondary,
         background: clickable && hover ? colors.surfaceHover : 'transparent', cursor: clickable ? 'pointer' : 'default',
         opacity: muted ? 0.6 : 1, transition: `background ${transitions.base}`,
@@ -178,6 +199,7 @@ function DataRow<T>({ item, columns, template, onClick, menu, hasMenu, muted }: 
         </div>
       ))}
       {hasMenu && <div onClick={(e) => e.stopPropagation()}>{menu && <RowMenu items={menu} />}</div>}
+      {detail && <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>{detail}</div>}
     </div>
   )
 }

@@ -1,11 +1,13 @@
 /**
  * BehaviorPage — how Studio behaves on this device: the surface on a
  * conversation switch, the task list and agent panel, sound, the browser
- * preview's network shield, and the plan card's extra action. The device
+ * preview's network shield, the plan card's extra action, and, in the
+ * desktop app, whether Ion opens at login. The device
  * half of the git panel is its own section, filed under the git group.
  */
 import React from 'react'
 import type { StudioSurfaceSwitchMode } from '@ion/server/preferences-types'
+import { host } from '../../../host/host-instance'
 import { useSettingsPreferences } from '../settings-target'
 import { FormGroup, FormRow, KIT, Segmented, Stack, ToggleRow } from '../kit'
 
@@ -28,6 +30,10 @@ export function BehaviorPage(): React.JSX.Element {
   const setBrowserPreviewNetworkShield = p((s) => s.setBrowserPreviewNetworkShield)
   const showImplementClearContext = p((s) => s.showImplementClearContext)
   const setShowImplementClearContext = p((s) => s.setShowImplementClearContext)
+  const openAtLogin = p((s) => s.openAtLogin)
+  const setOpenAtLogin = p((s) => s.setOpenAtLogin)
+  // The desktop app is what a login opens; a browser tab has nothing to open.
+  const desktopApp = host.capabilities().includes('nativeShell')
 
   return (
     <Stack gap={KIT.groupGap}>
@@ -53,6 +59,11 @@ export function BehaviorPage(): React.JSX.Element {
         <ToggleRow anchor="sound" label="Notification sound" settingKey="soundEnabled" description="Play a sound when a task completes." checked={soundEnabled} onChange={setSoundEnabled} />
         <ToggleRow anchor="network-shield" label="Browser preview network shield" settingKey="browserPreviewNetworkShield" description="Block network requests from browser previews until you allow them in that preview." checked={browserPreviewNetworkShield} onChange={setBrowserPreviewNetworkShield} />
       </FormGroup>
+      {desktopApp && (
+        <FormGroup title="Startup">
+          <ToggleRow anchor="open-at-login" label="Open Ion at login" settingKey="openAtLogin" description="Start Ion when you sign in to this computer, so it is running after a restart. A computer other devices connect to should have this on." checked={openAtLogin} onChange={setOpenAtLogin} />
+        </FormGroup>
+      )}
     </Stack>
   )
 }

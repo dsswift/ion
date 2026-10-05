@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Gate for the Windows entry points: every .ps1 must parse, and the IonBuild
+# Gate for the Windows entry points: every .ps1 must parse, under Windows
+# PowerShell 5.1 too unless it requires pwsh 7, and the IonBuild
 # helpers must behave.
 #
 # A PowerShell syntax error is only discovered when the script runs, which on
@@ -38,6 +39,13 @@ for f in "${scripts[@]}"; do
   " || { echo "check-windows-scripts: $f failed to parse" >&2; exit 1; }
 done
 
+# pwsh 7 parses syntax a stock Windows PowerShell 5.1 rejects, so the parse
+# above cannot prove a script runs on a fresh machine.
+echo "check-windows-scripts: checking for pwsh-7-only syntax"
+pwsh -NoProfile -File scripts/ci/Find-IonPowerShell7Syntax.ps1 "${scripts[@]}" \
+  || { echo "check-windows-scripts: pwsh-7-only syntax found" >&2; exit 1; }
+
+pwsh -NoProfile -File scripts/ci/Find-IonPowerShell7Syntax.test.ps1
 pwsh -NoProfile -File scripts/windows/IonBuild.test.ps1
 pwsh -NoProfile -File desktop/packaging-windows/Remove-IonEngineTasks.test.ps1
 pwsh -NoProfile -File scripts/ci/Write-IonArtifactManifest.test.ps1

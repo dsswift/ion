@@ -8,11 +8,12 @@
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { LOCAL_ENVIRONMENT_ID, type EnvironmentCatalogEntry, type EnvironmentTarget } from '@ion/shared/types-environments'
-import { readCatalog, addToCatalog, relabelCatalogEntry, removeFromCatalog, onCatalogChange } from '../../studio/connection/catalog'
+import { readCatalog, addToCatalog, relabelCatalogEntry, removeFromCatalog, setCatalogEntryManageOnly, onCatalogChange } from '../../studio/connection/catalog'
 import { registry } from '../../studio/connection/registry'
 import { useActiveTabEnvironmentId } from '../../studio/connection/tab-environment'
 import { useSessionStore } from '@ion/server/store/sessionStore'
-import { rError, rInfo } from '../../rendererLogger'
+import { action, host } from '../../host/host-instance'
+import { rError, rInfo, rWarn } from '../../rendererLogger'
 import { LOCAL_ENVIRONMENT_LABEL } from '../../studio/connection/local-label'
 
 export interface SettingsServers {
@@ -22,6 +23,8 @@ export interface SettingsServers {
   add(target: EnvironmentTarget): Promise<EnvironmentCatalogEntry | null>
   relabel(entry: EnvironmentCatalogEntry, label: string): void
   forget(entry: EnvironmentCatalogEntry): Promise<void>
+  /** Makes a server a Manage-Only Server, or a conversation server again. */
+  setManageOnly(entry: EnvironmentCatalogEntry, manageOnly: boolean): Promise<void>
 }
 
 export function useSettingsServersState(): SettingsServers {
@@ -59,13 +62,40 @@ export function useSettingsServersState(): SettingsServers {
   const forget = useCallback(async (entry: EnvironmentCatalogEntry) => {
     const index = indexOf(entry)
     if (index < 0) return
+    // Tell the server first, while the connection is still up: it revokes
+    // this device's pairing and closes every session on it. A server that
+    // cannot be reached keeps the pairing until someone revokes it there.
+    let revoked = false
+    if (entry.target.kind === 'paired') {
+      try {
+        await action(entry.id, 'auth.forgetSelf', [])
+        revoked = true
+      } catch (err) {
+        rWarn('settings.servers', 'server did not revoke this device; removing it here only', { environment_id: entry.id, error: String(err) })
+      }
+    }
     await removeFromCatalog(index)
-    registry.forget(entry.id)
-    rInfo('settings.servers', 'server forgotten', { environment_id: entry.id })
+    registry.forget(entry.id, entry.target)
+    rInfo('settings.servers', 'server forgotten', { environment_id: entry.id, revoked_on_server: revoked })
     refresh()
   }, [indexOf, refresh])
 
-  return useMemo(() => ({ entries, justAddedId, add, relabel, forget }), [entries, justAddedId, add, relabel, forget])
+  const setManageOnly = useCallback(async (entry: EnvironmentCatalogEntry, manageOnly: boolean) => {
+    const index = indexOf(entry)
+    if (index < 0) return
+    await setCatalogEntryManageOnly(index, manageOnly)
+    // An inbox filtered to a server that just left the conversation surfaces would show nothing.
+    const settings = await host.deviceSettings()
+    if (manageOnly && settings.environmentViewFilter === entry.id) await host.setDeviceSetting('environmentViewFilter', 'all')
+    // A fresh connection brings a fresh snapshot, which the tabs sync either
+    // loads or leaves out by the server's new standing.
+    registry.forget(entry.id)
+    await registry.connectAll()
+    rInfo('settings.servers', 'server manage-only changed', { environment_id: entry.id, manage_only: manageOnly })
+    refresh()
+  }, [indexOf, refresh])
+
+  return useMemo(() => ({ entries, justAddedId, add, relabel, forget, setManageOnly }), [entries, justAddedId, add, relabel, forget, setManageOnly])
 }
 
 /** The server of the conversation on screen, else local: where Settings opens. */
@@ -93,6 +123,7 @@ const NO_SERVERS: SettingsServers = {
   add: async () => null,
   relabel: () => {},
   forget: async () => {},
+  setManageOnly: async () => {},
 }
 
 export function useSettingsServers(): SettingsServers {

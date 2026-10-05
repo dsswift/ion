@@ -135,6 +135,8 @@ export interface BridgedEngineShell {
     code: string,
   ): Promise<{ ok: boolean; error?: string }>;
   providerLogout(provider: string): Promise<{ ok: boolean; error?: string }>;
+  /** Delete a custom provider from the server's config, with its stored key and models. */
+  removeProvider(provider: string): Promise<{ ok: boolean; error?: string }>;
   /** Fires for every connected Environment; `environmentId` names the one the login belongs to. */
   onProviderLoginEvent(
     handler: (

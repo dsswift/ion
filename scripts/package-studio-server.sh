@@ -10,7 +10,7 @@
 #     compat.json              the server's Format Versions ({"formats":[...]}); the engine's come from `bin/ion version --json`
 #     bin/ion                  engine binary for the target platform
 #     node/bin/node            official Node runtime (SHASUMS256-verified)
-#     server/dist/*.js         main.js, pair.js, compat.js, clients.js
+#     server/dist/*.js         main.js, pair.js, compat.js, clients.js, hub.js
 #     server/resources/        server runtime assets
 #     server/package.json      the workspace member (node resolves node_modules by walking up)
 #     node_modules/            production dependencies of @ion/server
@@ -95,7 +95,7 @@ if [ "${ION_SKIP_SERVER_BUILD:-0}" != 1 ]; then
   step "server bundle (esbuild)"
   npm -w server run build >/dev/null
 fi
-for f in main.js pair.js compat.js clients.js; do
+for f in main.js pair.js compat.js clients.js hub.js; do
   [ -f "server/dist/$f" ] || die "server/dist/$f is missing (run without ION_SKIP_SERVER_BUILD)"
 done
 

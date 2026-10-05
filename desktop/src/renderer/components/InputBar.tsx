@@ -18,6 +18,7 @@ import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
 import { rDebug, rInfo, rWarn } from '../rendererLogger'
 import { dispatchSend } from './InputBarSend'
+import { queueForSpareQuota, sendThenNew } from './composer-send-modes'
 import { submitWithTrace } from '../lib/prompt-trace'
 import { dispatchBashCommand, createHostExecuteBash } from './InputBarBash'
 import { useModelStore } from '@ion/server/store/model-store'
@@ -259,9 +260,10 @@ export function InputBar() {
   /**
    * `skipClearConfirm` is set only by the confirmation dialog's accept path, so
    * the second pass performs the send the operator already approved instead of
-   * re-asking. Every other caller leaves it false.
+   * re-asking. Every other caller leaves it false. `thenNew` is a background
+   * send: once accepted, the window moves to a fresh conversation like this one.
    */
-  const handleSend = useCallback((skipClearConfirm = false) => {
+  const handleSend = useCallback((skipClearConfirm = false, thenNew = false) => {
     if (showSlashMenu) {
       const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
       if (filtered.length > 0) {
@@ -350,6 +352,7 @@ export function InputBar() {
         warn: (msg, fields) => rWarn('input-bar', msg, fields),
       })
       if (!outcome.accepted) return
+      if (thenNew) sendThenNew(outcome.tabId)
       // Refocus after React re-renders from the state update
       requestAnimationFrame(() => editorRef.current?.focus())
     }
@@ -410,6 +413,13 @@ export function InputBar() {
       if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return true }
     }
     if (!bashMode && historyKeyDown(e)) return true
+    // Cmd/Ctrl+Enter sends in the background; with Shift it queues the prompt for spare quota.
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !bashMode) {
+      e.preventDefault()
+      if (!e.shiftKey) handleSend(false, true)
+      else void queueForSpareQuota(activeTabId, input).then((held) => { if (held) { setInput(''); if (activeTabId) setDraftInput(activeTabId, '') } })
+      return true
+    }
     // Enter sends; Shift+Enter falls through to the editor and inserts a line.
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); return true }
     return false

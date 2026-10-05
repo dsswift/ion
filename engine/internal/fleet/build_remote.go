@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 
 // buildRoots are the parts of a checkout a build reads: what ships to a
 // builder host. The repository root's build files are named one by one.
-var buildRoots = []string{"engine", "server", "packages", "sdk", "desktop", "scripts", "packaging",
+var buildRoots = []string{"engine", "server", "packages", "sdk", "desktop", "scripts", "packaging", ".husky",
 	"Makefile", "make.ps1", "bootstrap.ps1", "release-please-manifest.json", "release-please-config.json", "package.json", "package-lock.json", ".npmrc"}
 
 // defaultBuildDir is a builder host's build folder unless the fleet file
@@ -241,7 +242,7 @@ func remoteBuildScript(b BuildPlan, dir string, stamp checkoutStamp) (script str
 			k, v, _ := strings.Cut(kv, "=")
 			fmt.Fprintf(&env, "$env:%s = %s\n", k, psQuote(v))
 		}
-		return "$d = " + psBuildDir(dir) + "\n" + psPrepareBuildDir + env.String() + `Set-Location $d
+		return "$d = " + psBuildDir(dir) + "\n" + psPrepareBuildDir + psFreshPath + env.String() + `Set-Location $d
 & powershell -NoProfile -ExecutionPolicy Bypass -File .\make.ps1 installer -Arch ` + arch + `
 if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine("make.ps1 installer exited $LASTEXITCODE"); exit 1 }
 $exe = Get-ChildItem -LiteralPath (Join-Path $d 'desktop\release') -Filter 'Ion-Setup-*-` + arch + `.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -254,7 +255,7 @@ if (-not $exe) { [Console]::Error.WriteLine('the build left no installer under d
 		k, v, _ := strings.Cut(kv, "=")
 		env = append(env, "export "+k+"="+shellQuote(v))
 	}
-	build := "D=" + posixBuildDir(dir) + "\n" + posixPrepareBuildDir + strings.Join(env, "\n") + "\n" + posixEnsureDeps
+	build := fleetToolsPath + "D=" + posixBuildDir(dir) + "\n" + posixPrepareBuildDir + strings.Join(env, "\n") + "\n" + posixEnsureDeps
 	if b.Component == ComponentServer {
 		build += "bash scripts/package-studio-server.sh " + b.GOOS + " " + b.GOARCH + " build/deploy\n" +
 			"echo ARTIFACT=build/deploy/ion-studio-server-" + b.GOOS + "-" + b.GOARCH + ".tar.gz\n"
@@ -270,26 +271,55 @@ echo "ARTIFACT=$PKG"
 	return loginShell(build), false
 }
 
-// buildOnHost ships the checkout to the builder, builds there, and fetches
-// the artifact into the local artifacts folder.
-func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string, w io.Writer, report func(step string)) (artifact, error) {
-	h := *b.Builder
-	log := newInstallLog(w, h.Name, InstallOptions{OnStep: report})
+// shipCheckout packs the checkout once per deploy and copies it to the host,
+// where a build script unpacks it into the build folder.
+func (d *Deployer) shipCheckout(ctx context.Context, h Host, windows bool, checkout string, log installLog) (checkoutStamp, error) {
 	stamp, archive, err := d.checkoutArchive(ctx, checkout)
 	if err != nil {
-		return artifact{}, err
+		return stamp, err
 	}
 	log.step("ship %s (%s%s) to %s", checkout, shortCommit(stamp.Commit), map[bool]string{true: ", with uncommitted changes", false: ""}[stamp.Dirty], h.Name)
-	windows := b.GOOS == "windows"
 	mkdir := "mkdir -p \"$HOME/.ion/fleet-build\""
 	if windows {
 		mkdir = "New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.ion\\fleet-build') | Out-Null\n"
 	}
 	if _, err := hostCmd(ctx, d.Runner, h, windows, mkdir, nil, log); err != nil {
-		return artifact{}, err
+		return stamp, err
 	}
 	if err := d.Runner.CopyTo(ctx, h, archive, ".ion/fleet-build/src.tgz"); err != nil {
-		return artifact{}, fmt.Errorf("copy the checkout to %s: %w", h.Name, err)
+		return stamp, fmt.Errorf("copy the checkout to %s: %w", h.Name, err)
+	}
+	return stamp, nil
+}
+
+// scriptError is a line a build script prints for the error that ended it.
+var scriptError = regexp.MustCompile(`\bERROR\s+(\S.*)$`)
+
+// scriptFailure is why a build script on a host failed, in one line: the last
+// error the script printed, else the last line of its stderr. A script's exit
+// status alone says only that it failed.
+func scriptFailure(out, stderr []byte) string {
+	lines := strings.Split(strings.ReplaceAll(string(out), "\r", ""), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if m := scriptError.FindStringSubmatch(strings.TrimSpace(lines[i])); m != nil {
+			return m[1]
+		}
+	}
+	if msg := strings.TrimSpace(string(stderr)); msg != "" {
+		return lastTextLine(msg)
+	}
+	return ""
+}
+
+// buildOnHost ships the checkout to the builder, builds there, and fetches
+// the artifact into the local artifacts folder.
+func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string, w io.Writer, report func(step string)) (artifact, error) {
+	h := *b.Builder
+	log := newInstallLog(w, h.Name, InstallOptions{OnStep: report})
+	windows := b.GOOS == "windows"
+	stamp, err := d.shipCheckout(ctx, h, windows, checkout, log)
+	if err != nil {
+		return artifact{}, err
 	}
 	log.step("build the %s/%s %s on %s", b.GOOS, b.GOARCH, b.Component, h.Name)
 	dir := h.BuildDirOrDefault()
@@ -297,8 +327,8 @@ func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string
 	started := time.Now()
 	out, stderr, err := d.Runner.RunLogged(ctx, h, script, windows, w)
 	if err != nil {
-		if msg := strings.TrimSpace(string(stderr)); msg != "" {
-			err = fmt.Errorf("%w: %s", err, lastTextLine(msg))
+		if why := scriptFailure(out, stderr); why != "" {
+			err = fmt.Errorf("%w: %s", err, why)
 		}
 		return artifact{}, fmt.Errorf("the build on %s failed: %w", h.Name, err)
 	}
@@ -314,7 +344,7 @@ func (d *Deployer) buildOnHost(ctx context.Context, b BuildPlan, checkout string
 	if rel == "" {
 		return artifact{}, fmt.Errorf("the build on %s named no artifact", h.Name)
 	}
-	fetched := filepath.Join(d.Artifacts.artifactsDir(), strings.ReplaceAll(b.Key, "/", "-"))
+	fetched := filepath.Join(d.Artifacts.artifactsDir(), logName(b.Key))
 	if err := os.MkdirAll(fetched, 0o700); err != nil {
 		return artifact{}, err
 	}

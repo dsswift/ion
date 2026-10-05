@@ -161,6 +161,15 @@ func (c *Client) AccountRead(ctx context.Context, refresh bool) (*AccountReadRes
 	return &res, nil
 }
 
+// AccountRateLimitsRead returns the signed-in account's usage limits.
+func (c *Client) AccountRateLimitsRead(ctx context.Context) (*AccountRateLimitsResult, error) {
+	var res AccountRateLimitsResult
+	if err := c.call(ctx, MethodAccountRateLimitsRead, nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // ModelListAll pages through model/list and returns every model. It follows
 // nextCursor until exhausted.
 func (c *Client) ModelListAll(ctx context.Context, cwd string) ([]Model, error) {

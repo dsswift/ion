@@ -283,7 +283,7 @@ extension TabListView {
     }
 
     private func sortedInboxTabs(_ tabs: [RemoteTabState]) -> [RemoteTabState] {
-        InboxNavigator.sorted(tabs, by: inboxSort)
+        InboxNavigator.sorted(tabs, by: inboxSort, workingLast: inboxWorkingLast)
     }
 
     private func isInSelectedInboxProject(_ tab: RemoteTabState) -> Bool {
@@ -402,6 +402,18 @@ extension TabListView {
             .contextMenu {
                 InboxConversationPreview(tab: tab, projectName: project, location: location, branch: branch)
                 Divider()
+                // A usage limit holds the conversation, or the server holds a
+                // prompt for it: the server acts on these with the app closed.
+                if InboxRowView.limitedUntil(tab) != nil, tab.deferredRelease == nil {
+                    Button("Resume at reset") { viewModel.resumeAtLimitReset(tabId: tab.id) }
+                }
+                if InboxRowView.limitedUntil(tab) != nil, tab.inboxState != "snoozed", !viewModel.isBenchConversation(tab) {
+                    Button("Snooze until reset") { viewModel.snoozeUntilLimitReset(tabId: tab.id) }
+                }
+                if tab.deferredRelease != nil {
+                    Button("Send queued prompt now") { viewModel.sendHeldPromptNow(tabId: tab.id) }
+                    Button("Cancel queued prompt", role: .destructive) { viewModel.cancelHeldPrompt(tabId: tab.id) }
+                }
                 if tab.inboxState == "snoozed" {
                     Button("Un-snooze") { viewModel.unsnoozeTab(tabId: tab.id) }
                 } else if !viewModel.isBenchConversation(tab) {

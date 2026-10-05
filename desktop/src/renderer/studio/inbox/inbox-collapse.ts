@@ -11,11 +11,24 @@ function activityTime(tab: TabState): number {
   return tab.lastActivityAt ?? tab.lastMessageAt ?? tab.createdAt ?? 0;
 }
 
-/** Applies the Inbox sort choice with deterministic fallbacks for new tabs. */
+/**
+ * Applies the Inbox sort choice with deterministic fallbacks for new tabs.
+ * With `workingLast`, conversations it names as working keep that order
+ * among themselves but sit below every conversation that is not: the ones
+ * that need a look lead, the ones that need nothing follow.
+ */
 export function orderInboxTabs(
   tabs: readonly TabState[],
   order: InboxSortOrder,
+  workingLast?: (tab: TabState) => boolean,
 ): TabState[] {
+  const sorted = sortInboxTabs(tabs, order);
+  if (!workingLast) return sorted;
+  const working = sorted.filter(workingLast);
+  return working.length === 0 ? sorted : [...sorted.filter((tab) => !workingLast(tab)), ...working];
+}
+
+function sortInboxTabs(tabs: readonly TabState[], order: InboxSortOrder): TabState[] {
   return [...tabs].sort((left, right) =>
     order === "title"
       ? (left.customTitle ?? left.title).localeCompare(

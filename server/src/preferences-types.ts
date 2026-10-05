@@ -31,6 +31,8 @@ export interface PreferencesState {
   defaultPermissionMode: 'auto' | 'plan'
   /** Keep browser preview network access blocked until the user allows it. */
   browserPreviewNetworkShield: boolean
+  /** Open the desktop app when this person signs in to the computer. The desktop's main process applies it. */
+  openAtLogin: boolean
   /**
    * Let agents in Studio drive the Chromium tabs in their conversation's
    * Surface panel. Disabling withdraws the tools only: browser tabs, sessions,
@@ -199,9 +201,18 @@ export interface PreferencesState {
   /** Inbox auto-settle threshold in days (0 = off). */
   inboxAutoSettleDays: number
   setInboxAutoSettleDays: (days: number) => void
-  /** Automatically settle merged change requests. Closed change requests always settle. */
-  inboxAutoSettleOnMerge: boolean
-  setInboxAutoSettleOnMerge: (enabled: boolean) => void
+  /** When a usage limit stops a conversation, hold the resume prompt and send it once the limit resets. */
+  usageLimitAutoResume: boolean
+  setUsageLimitAutoResume: (enabled: boolean) => void
+  /** The prompt a resume at reset sends. */
+  usageLimitResumePrompt: string
+  setUsageLimitResumePrompt: (prompt: string) => void
+  /** A weekly limit counts as about to expire once it resets within this many hours. 0 turns the alert and the spare-quota release off. */
+  quotaExpiryAlertHours: number
+  setQuotaExpiryAlertHours: (hours: number) => void
+  /** And at least this percent of it is unused. */
+  quotaExpiryUnusedPercent: number
+  setQuotaExpiryUnusedPercent: (percent: number) => void
   /** Controlled machine-local Project registry. */
   projectSettingsVersion: number
   projects: ProjectRegistry
@@ -256,6 +267,7 @@ export interface PreferencesState {
   removeRecentBaseDirectory: (dir: string) => void
   setDefaultPermissionMode: (mode: 'auto' | 'plan') => void
   setBrowserPreviewNetworkShield: (enabled: boolean) => void
+  setOpenAtLogin: (enabled: boolean) => void
   setStudioPlaywrightEnabled: (enabled: boolean) => void
   setStudioSurfaceSwitchMode: (mode: StudioSurfaceSwitchMode) => void
   setBashCommandEntry: (enabled: boolean) => void
@@ -345,4 +357,4 @@ export interface PreferencesState {
   applyPreset: (preset: Record<string, unknown>) => void
 }
 
-export const SETTINGS_DEFAULTS = { selectedTheme: 'ion-dark', soundEnabled: true, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, defaultPermissionMode: 'plan' as 'auto' | 'plan', browserPreviewNetworkShield: true, studioPlaywrightEnabled: true, studioSurfaceSwitchMode: 'preserve' as StudioSurfaceSwitchMode, bashCommandEntry: false, gitPanelPaneProportions: {} as Record<string, number>, gitPanelHeight: null as number | null, fileExplorerHeight: null as number | null, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: DEFAULT_MONO_FONT, terminalFontSize: 13, showHiddenFiles: false, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, dataViewFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, pushConversationTitles: true, enableClaudeCompat: false, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, unifiedTurnView: true, aiGeneratedTitles: true, commitCommand: '', aiAssistPromptOverrides: {} as Partial<Record<AiAssistWorkflowId, string>>, gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, relayUrl: '', relayApiKey: '', pairedDevices: [] as RemotePairedDevice[], streamThinkingToRemote: true, defaultThinkingEffort: 'medium' as ThinkingEffort, remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', preferredModel: '', defaultEngineProfileId: '', engineProfiles: [] as EngineProfile[], tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, gitWatcherIgnoredDirectories: ['~/.ion'] as string[], workspaceFolders: {} as Record<string, string[]>, gitPanelRepoSectionsCollapsed: {} as Record<string, boolean>, inboxAutoSettleDays: 0, inboxAutoSettleOnMerge: true, projectSettingsVersion: 1, projects: {} as ProjectRegistry, excludedResourceKinds: [] as string[], keyboardShortcuts: { overlay: {}, studio: {} } as KeyboardShortcuts }
+export const SETTINGS_DEFAULTS = { selectedTheme: 'ion-dark', soundEnabled: true, defaultBaseDirectory: '', recentBaseDirectories: [] as string[], directoryUsageCounts: {} as Record<string, number>, defaultPermissionMode: 'plan' as 'auto' | 'plan', browserPreviewNetworkShield: true, openAtLogin: false, studioPlaywrightEnabled: true, studioSurfaceSwitchMode: 'preserve' as StudioSurfaceSwitchMode, bashCommandEntry: false, gitPanelPaneProportions: {} as Record<string, number>, gitPanelHeight: null as number | null, fileExplorerHeight: null as number | null, gitPanelChangesOpen: true, gitPanelGraphOpen: true, expandToolResults: false, terminalFontFamily: DEFAULT_MONO_FONT, terminalFontSize: 13, showHiddenFiles: false, openMarkdownInPreview: true, editorWordWrap: true, editorFontSize: 12, dataViewFontSize: 13, gitOpsMode: 'manual' as GitOpsMode, worktreeCompletionStrategy: 'merge-ff' as WorktreeCompletionStrategy, worktreeBranchDefaults: {} as Record<string, string>, worktreeSkipPrTitle: false, allowSettingsEdits: false, pushConversationTitles: true, enableClaudeCompat: false, enableEarlyStopContinuation: false, showTodoList: true, agentPanelDefaultOpen: true, unifiedTurnView: true, aiGeneratedTitles: true, commitCommand: '', aiAssistPromptOverrides: {} as Partial<Record<AiAssistWorkflowId, string>>, gitChangesTreeView: false, quickTools: [] as QuickTool[], uiZoom: 1, relayUrl: '', relayApiKey: '', pairedDevices: [] as RemotePairedDevice[], streamThinkingToRemote: true, defaultThinkingEffort: 'medium' as ThinkingEffort, remoteDisplay: null as { customName: string | null; customIcon: string | null; updatedAt: number } | null, engineDefaultModel: '', preferredModel: '', defaultEngineProfileId: '', engineProfiles: [] as EngineProfile[], tabRecoveryEnabled: true, tabRecoveryTimeoutSec: 120, planModelSplitEnabled: false, planModeModel: '', implementModeModel: '', showImplementClearContext: false, gitWatcherIgnoredDirectories: ['~/.ion'] as string[], workspaceFolders: {} as Record<string, string[]>, gitPanelRepoSectionsCollapsed: {} as Record<string, boolean>, inboxAutoSettleDays: 0, usageLimitAutoResume: false, usageLimitResumePrompt: "Continue where you left off.", quotaExpiryAlertHours: 12, quotaExpiryUnusedPercent: 25, projectSettingsVersion: 1, projects: {} as ProjectRegistry, excludedResourceKinds: [] as string[], keyboardShortcuts: { overlay: {}, studio: {} } as KeyboardShortcuts }

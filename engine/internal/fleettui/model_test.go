@@ -434,25 +434,48 @@ func TestDevicesInTableAndDetail(t *testing.T) {
 	}
 }
 
-// A host deployed outside the fleet is only read: deploy, restart, and relay
-// say why instead of opening a screen.
-func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
+// A host with no SSH target and no pairing is only read: deploy, restart,
+// and relay say why instead of opening a screen.
+func TestUnreachableHost_KeysSayItIsReadOnly(t *testing.T) {
 	ext := fleet.Host{Name: "atlas", URL: "https://atlas.example.org", Kind: fleet.KindServer}
 	r := &recorder{}
 	m := New(testDeps(r, ext))
 	m = answered(t, m, statusesFor([]fleet.Host{ext}, "3"))
 	for _, k := range []string{"d", "R", "L"} {
 		m, _ = press(t, m, k)
-		if m.screen != screenTable || !strings.Contains(m.notice, "deployed outside the fleet") {
+		if m.screen != screenTable || !strings.Contains(m.notice, "has no SSH target") {
 			t.Fatalf("%s: screen %v notice %q", k, m.screen, m.notice)
 		}
 	}
 	m, _ = press(t, m, "enter")
-	if view := m.View().Content; !strings.Contains(view, "https://atlas.example.org · deployed outside the fleet, read only") || strings.Contains(view, "d deploy this host") {
+	if view := m.View().Content; !strings.Contains(view, "https://atlas.example.org · no SSH target and no pairing, read only") || strings.Contains(view, "d deploy this host") {
 		t.Errorf("detail:\n%s", view)
 	}
 	if len(r.prepared) != 0 || len(r.restarted) != 0 || len(r.relays) != 0 {
 		t.Errorf("nothing may run: %+v", r)
+	}
+}
+
+// A paired host with no SSH target installs and restarts itself over its
+// Studio connection, so deploy and restart open; only a relay change, which
+// edits the host's own files, is refused.
+func TestPairedHostWithoutSSH_DeploysAndRestarts(t *testing.T) {
+	paired := fleet.Host{Name: "atlas", URL: "https://atlas.example.org", Kind: fleet.KindServer, Entry: &fleet.Entry{Kind: fleet.EntryPaired, Label: "atlas"}}
+	r := &recorder{}
+	m := New(testDeps(r, paired))
+	m = answered(t, m, statusesFor([]fleet.Host{paired}, "3"))
+	m, _ = press(t, m, "L")
+	if m.screen != screenTable || !strings.Contains(m.notice, "has no SSH target") {
+		t.Fatalf("L: screen %v notice %q", m.screen, m.notice)
+	}
+	m, _ = press(t, m, "R")
+	if m.screen != screenConfirm {
+		t.Fatalf("R: screen %v notice %q", m.screen, m.notice)
+	}
+	m, _ = press(t, m, "n")
+	m, _ = press(t, m, "d")
+	if m.screen != screenDeploy {
+		t.Fatalf("d: screen %v notice %q", m.screen, m.notice)
 	}
 }
 
@@ -624,4 +647,36 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Println(strings.Join(os.Args[i+2:], " "))
 	}
 	os.Exit(0)
+}
+
+// The table lists the provider accounts across the fleet under the hosts,
+// and a host's detail lists the ones it has seen.
+func TestAccountsOnTheTableAndTheHostDetail(t *testing.T) {
+	r := &recorder{}
+	c := &clock{t: time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)}
+	deps := testDeps(r, devbox, mac)
+	deps.Now = c.now
+	m := New(deps)
+	statuses := statusesFor([]fleet.Host{devbox, mac}, "3")
+	now := c.t.UnixMilli()
+	statuses[0].Report.Accounts = []studiostatus.Account{
+		{Provider: "anthropic", Email: "a@example.com", Label: "Claude Max", SignedIn: true, LastSeen: now, Limits: []studiostatus.AccountLimit{{Kind: "session", Percent: 16, ResetsAt: "2026-10-03T15:00:00Z", FetchedAt: now}}},
+	}
+	statuses[1].Report.Accounts = []studiostatus.Account{
+		{Provider: "anthropic", Email: "a@example.com", Label: "Claude Max", SignedIn: false, LastSeen: now - 3*3_600_000},
+		{Provider: "anthropic", Email: "gone@example.com", Label: "Claude Max", SignedIn: false, LastSeen: now - 50*3_600_000},
+	}
+	m = answered(t, m, statuses)
+	view := m.View().Content
+	for _, want := range []string{"Accounts", "a@example.com", "16% (resets in 3h)", devbox.Name, "(" + mac.Name + ")", "gone@example.com", "last seen 2d ago"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("table lacks %q:\n%s", want, view)
+		}
+	}
+	m.cursor = 1
+	m, _ = press(t, m, "enter")
+	detail := m.View().Content
+	if !strings.Contains(detail, "seen 3h ago") || !strings.Contains(detail, "gone@example.com") {
+		t.Errorf("host detail:\n%s", detail)
+	}
 }

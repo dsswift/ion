@@ -16,6 +16,13 @@ const { metrics } = vi.hoisted(() => ({ metrics: { publisher: null as null | { l
 vi.mock('../../system-metrics/runtime', () => ({ systemMetricsPublisher: () => metrics.publisher }))
 vi.mock('../../engine/telemetry-health', () => ({ telemetryHealthState: () => [{ target: 'otlp', healthy: true }] }))
 
+const { inbound } = vi.hoisted(() => ({ inbound: { path: '' } }))
+vi.mock('../../transfer/inbound-transfer', () => ({ registerInboundTransfer: vi.fn(async () => inbound.path) }))
+
+import { createHash } from 'crypto'
+import { existsSync, mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { ENVIRONMENT_ACTIONS, setEnvironmentServerVersion } from '../actions'
 
 const conn = { id: 'c', scopes: ['admin'], principal: { subject: 'paired:x', displayName: 'x' }, send: () => true } as unknown as Connection
@@ -25,7 +32,7 @@ describe('scopes', () => {
     const by = (scope: string) => Object.entries(ENVIRONMENT_ACTIONS).filter(([, s]) => s.requiredScope === scope).map(([n]) => n).sort()
     expect(by('conversations:read')).toEqual(['environment.discovery.status', 'environment.fs.browse', 'environment.git.author.get', 'environment.git.hostKeys', 'environment.host.toolchains', 'environment.jobs.list', 'environment.projects.appraiseRemoval', 'environment.projects.list', 'environment.server.info', 'environment.systemMetrics.history', 'environment.systemMetrics.latest', 'environment.systemMetrics.watch'])
     expect(by('git:write')).toEqual(['environment.git.author.set', 'environment.git.test', 'environment.jobs.cancel', 'environment.projects.add', 'environment.projects.clone', 'environment.projects.relocate', 'environment.projects.remove', 'environment.projects.setup', 'environment.projects.trust'])
-    expect(by('admin')).toEqual(['environment.discovery.close', 'environment.discovery.mintCode', 'environment.discovery.open', 'environment.purge.appraise', 'environment.purge.run', 'environment.server.logTail', 'environment.server.restart', 'environment.server.update'])
+    expect(by('admin')).toEqual(['environment.discovery.close', 'environment.discovery.mintCode', 'environment.discovery.open', 'environment.purge.appraise', 'environment.purge.run', 'environment.server.installArtifact', 'environment.server.installNotice', 'environment.server.logTail', 'environment.server.reportInstall', 'environment.server.restart', 'environment.server.update'])
   })
 })
 
@@ -75,5 +82,43 @@ describe('environment.systemMetrics.latest', () => {
   it('answers a null sample, not a refusal, where the server samples nothing', async () => {
     metrics.publisher = null
     expect(await ENVIRONMENT_ACTIONS['environment.systemMetrics.latest'].handler(conn, [])).toMatchObject({ ok: true, value: { latest: null } })
+  })
+})
+
+describe('environment.server.installArtifact', () => {
+  const install = ENVIRONMENT_ACTIONS['environment.server.installArtifact'].handler
+  const build = Buffer.from('a build')
+  const sha256 = createHash('sha256').update(build).digest('hex')
+  const arrive = (): string => {
+    inbound.path = join(mkdtempSync(join(tmpdir(), 'ion-artifact-')), 'build.tar.gz')
+    writeFileSync(inbound.path, build)
+    return inbound.path
+  }
+
+  it('needs a transfer id, a size, and a checksum', async () => {
+    expect(await install(conn, [{ transferId: 't', totalBytes: 7 }])).toMatchObject({ ok: false, error: { code: 'invalid_args' } })
+    expect(await install(conn, [{ sha256, totalBytes: 7 }])).toMatchObject({ ok: false, error: { code: 'invalid_args' } })
+  })
+
+  it('refuses a build that is not the one that was sent, and deletes it', async () => {
+    const path = arrive()
+    const other = createHash('sha256').update('another build').digest('hex')
+    expect(await install(conn, [{ transferId: 't1', totalBytes: build.length, sha256: other, name: 'build.tar.gz' }])).toMatchObject({ ok: false, refusal: { code: 'checksum_mismatch' } })
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('hands a verified build to the host, which here has nothing to install with, and deletes the build nobody will read', async () => {
+    const path = arrive()
+    expect(await install(conn, [{ transferId: 't2', totalBytes: build.length, sha256, name: 'build.tar.gz' }])).toMatchObject({ ok: false, refusal: { code: 'no_bundle' } })
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('takes an install report only from the desktop on the host', async () => {
+    const report = ENVIRONMENT_ACTIONS['environment.server.reportInstall'].handler
+    const onHost = { ...conn, transport: 'local' } as unknown as Connection
+    const remote = { ...conn, transport: 'relay' } as unknown as Connection
+    expect(await report(remote, [{ stage: 'installing', kind: 'release' }])).toMatchObject({ ok: false, refusal: { code: 'not_on_host' } })
+    expect(await report(onHost, [{ stage: 'installing', kind: 'release' }])).toEqual({ ok: true, value: null })
+    expect(await report(onHost, [{ stage: 'requested', kind: 'release' }])).toMatchObject({ ok: false, error: { code: 'invalid_args' } })
   })
 })

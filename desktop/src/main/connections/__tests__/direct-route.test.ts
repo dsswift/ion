@@ -19,7 +19,7 @@ vi.mock('../broker-instance', () => ({
   broker: { connect: vi.fn(), disconnect: vi.fn(), phaseOf: vi.fn(() => undefined as unknown), sendAction: vi.fn(), onFrame: vi.fn(() => () => {}) },
 }))
 
-import { connectEnvironment, disconnectEnvironment, rememberDirectAddresses, rememberAdvertisedRelays } from '../environment-connect'
+import { connectEnvironment, disconnectEnvironment, forgetEnvironment, rememberDirectAddresses, rememberAdvertisedRelays } from '../environment-connect'
 import { findDirectUrl, directCandidates } from '../direct-route'
 import { encodePairedSecret, decodePairedSecret } from '../paired-secret'
 import { connectTcp } from '../transport-tcp'
@@ -135,5 +135,28 @@ describe('findDirectUrl', () => {
 
   it('lists the saved address first and each other address once', () => {
     expect(directCandidates(HOME, [`${HOME}/`, NAME, 'ws://192.168.1.211:7331/studio'])).toEqual([HOME, NAME])
+  })
+})
+
+describe('forgetEnvironment', () => {
+  beforeEach(() => {
+    _setConnectionsFilePathForTest(join(mkdtempSync(join(tmpdir(), 'ion-forget-')), 'desktop-connections.json'))
+    vi.mocked(broker.disconnect).mockClear()
+  })
+
+  it('closes the connection and deletes the secret stored under the target\'s credentialRef', () => {
+    saveCredential('env-w', 'paired', encodePairedSecret({ clientId: 'c1', sharedSecret: secret, relays }))
+    saveCredential('env-other', 'paired', encodePairedSecret({ clientId: 'c2', sharedSecret: secret, relays }))
+    // The catalog id can still be an index placeholder; the secret is filed under credentialRef.
+    forgetEnvironment('catalog-3', target)
+    expect(broker.disconnect).toHaveBeenCalledWith('catalog-3')
+    expect(loadCredential('env-w')).toBeNull()
+    expect(loadCredential('env-other')).not.toBeNull()
+  })
+
+  it('deletes a signed-in server\'s token, filed under its environment id', () => {
+    saveCredential('env-b', 'bearer', JSON.stringify({ refreshToken: 'r' }))
+    forgetEnvironment('env-b', { kind: 'bearer', label: 'Team', url: 'https://team.example.org' })
+    expect(loadCredential('env-b')).toBeNull()
   })
 })

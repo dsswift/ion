@@ -523,6 +523,11 @@ type EngineEvent struct {
 	OidcUsername    string `json:"oidcUsername,omitempty"`
 	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
 
+	// engine_rate_limit — the backend's report of the account's usage limit
+	// state for one run. Incremental: each event stands alone. Nil on every
+	// other event.
+	RateLimit *RateLimitPayload `json:"rateLimit,omitempty"`
+
 	// engine_provider_subscription — complete snapshot of the Provider
 	// Subscription state. Consumers replace their local view with it. It
 	// never carries a key. Nil on every other event.

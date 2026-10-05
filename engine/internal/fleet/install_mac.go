@@ -125,7 +125,7 @@ func InstallMacDesktop(ctx context.Context, r Runner, h Host, pkg, pkgArchs stri
 		err = r.RunTerminal(ctx, h, macTerminalInstall(h, remote, quitInTerminal), banner, w)
 	} else {
 		log.step("install on %s", h.Name)
-		_, err = hostCmd(ctx, r, h, false, "sudo -n installer -pkg '"+remote+"' -target / >&2; rc=$?; rm -f '"+remote+"'; exit $rc", nil, log)
+		_, err = hostCmd(ctx, r, h, false, "sudo -n installer -pkg '"+remote+"' -target / >&2 && "+macTakeOwnership("sudo -n")+"; rc=$?; rm -f '"+remote+"'; exit $rc", nil, log)
 	}
 	if err != nil {
 		return rec, fmt.Errorf("the installer failed on %s after %s: %w%s", h.Name, formatElapsed(time.Since(installStart)), err, sshDropHint(err))
@@ -150,6 +150,9 @@ func InstallMacDesktop(ctx context.Context, r Runner, h Host, pkg, pkgArchs stri
 			return rec, err
 		}
 	}
+	// The package has already relaunched Ion; the running app sees the
+	// setting change in its settings file and registers itself.
+	desktopOpenAtLogin(ctx, r, h, false, "'"+macAppIon+"'", o, log)
 	if o.Open || o.Pair != "" {
 		log.step("launch Ion on %s", h.Name)
 		if _, err := hostCmd(ctx, r, h, false, "open -a '"+desktopApp+"'", nil, log); err == nil {
@@ -259,8 +262,8 @@ func waitForPairingLink(ctx context.Context, mint func() ([]byte, error)) (strin
 
 // macTerminalInstall is the script the host's terminal session runs: sudo
 // asks for the password first and keeps it for the rest of the session, then
-// Ion quits (when it must), then the installer runs. The package is removed
-// however the script ends.
+// Ion quits (when it must), then the installer runs and the app is handed to
+// the SSH user. The package is removed however the script ends.
 func macTerminalInstall(h Host, remote string, quit bool) string {
 	prompt := shellQuote(macSudoPrompt(h))
 	var b strings.Builder
@@ -269,7 +272,7 @@ func macTerminalInstall(h Host, remote string, quit bool) string {
 		b.WriteString("sudo -p " + prompt + " -v || exit $?\n")
 		b.WriteString(macQuitIon)
 	}
-	b.WriteString("sudo -p " + prompt + " installer -pkg '" + remote + "' -target /\n")
+	b.WriteString("sudo -p " + prompt + " installer -pkg '" + remote + "' -target / && " + macTakeOwnership("sudo -p "+prompt) + "\n")
 	return b.String()
 }
 

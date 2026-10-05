@@ -33,6 +33,7 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { rWarn } from '../rendererLogger'
 import { host } from '../host/host-instance'
 import { registry } from '../studio/connection/registry'
+import { isManageOnlyEnvironment } from '../studio/connection/catalog'
 import { withTargetEnvironment } from '../studio/connection/tab-environment'
 
 /** Phases in which a server can still answer a question the operator sends it. */
@@ -142,7 +143,8 @@ export function hydrateQuestions(): () => void {
   // rather than waiting for its next transition.
   const offRegistry = registry.subscribe((states) => {
     for (const [environmentId, state] of states) {
-      const reachable = REACHABLE_PHASES.has(state.phase)
+      // A Manage-Only Server's conversations are not in this window, so neither are their questions.
+      const reachable = REACHABLE_PHASES.has(state.phase) && !isManageOnlyEnvironment(environmentId)
       if (reachable && !pulled.has(environmentId)) {
         pulled.add(environmentId)
         hydrateEnvironment(environmentId)

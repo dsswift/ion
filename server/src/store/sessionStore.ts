@@ -14,6 +14,7 @@ import { createResumeSlice } from './slices/resume-slice'
 import { createForkSlice } from './slices/resume-slice-fork'
 import { createExpandSlice } from './slices/expand-slice'
 import { createInboxSlice } from './slices/inbox-slice'
+import { createUsageLimitSlice } from './slices/usage-limit-slice'
 import { createTerminalSlice } from './slices/terminal-slice'
 import { createFileExplorerSlice } from './slices/file-explorer-slice'
 import { createFileEditorSlice } from './slices/file-editor-slice'
@@ -124,6 +125,7 @@ export const useSessionStore = create<State>((set, get) => {
     ...createForkSlice(_set, _get),
     ...createExpandSlice(_set, _get),
     ...createInboxSlice(_set, _get),
+    ...createUsageLimitSlice(_set, _get),
     ...createTerminalSlice(_set, _get),
     ...createFileExplorerSlice(_set, _get),
     ...createFileEditorSlice(_set, _get),

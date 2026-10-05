@@ -24,11 +24,12 @@ import { host } from '../host/host-instance'
 import { refusalForDraftEnvironment } from '../studio/connection/draft-lock'
 import { policyStore } from '../studio/connection/policy-store'
 import { deriveDesktopEnvironmentPolicy } from '@ion/shared/enterprise-environment-policy'
-import { readCatalog } from '../studio/connection/catalog'
+import { readConversationCatalog } from '../studio/connection/catalog'
 import { withTargetEnvironment } from '../studio/connection/tab-environment'
 import { selectTabWhenPresent } from '../studio/connection/select-when-present'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 import { LOCAL_ENVIRONMENT_LABEL } from '../studio/connection/local-label'
+import { placeAmong, savePlacementMode, savedPlacementMode, usePlacementReports, type PlacementMode } from '../studio/connection/placement'
 
 const NO_PROFILES: PreferencesState['engineProfiles'] = []
 
@@ -104,7 +105,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   const [highlighted, setHighlighted] = useState(0)
   const [environmentCatalog, setEnvironmentCatalog] = useState<EnvironmentCatalogEntry[]>([])
   useEffect(() => {
-    void readCatalog().then(setEnvironmentCatalog).catch((error: unknown) =>
+    void readConversationCatalog().then(setEnvironmentCatalog).catch((error: unknown) =>
       rError('new-conversation-picker', 'environment catalog read failed', { error: String(error) }))
   }, [])
 
@@ -165,11 +166,25 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   // per-machine section already fixes the machine, so the cursor does not
   // apply there.
   const [chipCursor, setChipCursor] = useState<{ rowKey: string; environmentId: string } | null>(null)
+  // With placement on Auto, a row's default machine is the one with the most
+  // room among those that hold it, scored from each server's fleet report.
+  // An explicit choice (a chip, a per-machine section) still wins.
+  const [placementMode, setPlacementMode] = useState<PlacementMode>(savedPlacementMode)
+  const placementVersion = usePlacementReports(pickerCatalog.map((entry) => entry.id), multi && placementMode === 'auto')
+  const placedEnvironment = useCallback((row: MergedProjectRow): string => {
+    const fallback = defaultRowEnvironment(row)
+    if (!multi || placementMode !== 'auto' || row.holders.length < 2) return fallback
+    // The manual default leads, so a tie keeps it.
+    const ordered = [...row.holders].sort((a, b) => Number(b.environmentId === fallback) - Number(a.environmentId === fallback))
+    return placeAmong(ordered).pick?.id ?? fallback
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `placementVersion` is the cache key for the module-level fleet reports
+  }, [multi, placementMode, placementVersion])
+  const choosePlacementMode = (mode: PlacementMode): void => { setPlacementMode(mode); savePlacementMode(mode) }
   const actingEnvironmentFor = useCallback((row: MergedProjectRow, groupEnvironmentId: string | null): string => {
     if (groupEnvironmentId && rowEnvironments(row).includes(groupEnvironmentId)) return groupEnvironmentId
     if (chipCursor?.rowKey === row.key && rowEnvironments(row).includes(chipCursor.environmentId)) return chipCursor.environmentId
-    return defaultRowEnvironment(row)
-  }, [chipCursor])
+    return placedEnvironment(row)
+  }, [chipCursor, placedEnvironment])
   const branchMatches = useMemo(() => filterBranches(branches, query), [branches, query])
   const profileMatches = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
@@ -303,7 +318,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     setWorkspace({ directory: holder.entry.dir, projectDirectory: holder.entry.dir, environmentId }); setQuery('')
     if (initialUseWorktree && worktreesOfferedOn(environmentId)) setView('branches')
     else setView('profiles')
-    rInfo('new-conversation-picker', 'project selected', { directory: holder.entry.dir, environment_id: environmentId, default_environment_id: defaultRowEnvironment(row), usage_count: holder.usageCount, sort_order: sortOrder, grouping: effectiveGrouping, explicit_worktree: initialUseWorktree })
+    rInfo('new-conversation-picker', 'project selected', { directory: holder.entry.dir, environment_id: environmentId, default_environment_id: defaultRowEnvironment(row), placement_mode: placementMode, placed_environment_id: placedEnvironment(row), usage_count: holder.usageCount, sort_order: sortOrder, grouping: effectiveGrouping, explicit_worktree: initialUseWorktree })
   }
   // Left and right move the highlighted row through its machines; the detail
   // line follows, so the row always says where Enter would open it. In a
@@ -358,7 +373,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   return createPortal(<motion.div data-ion-ui role="dialog" aria-modal="true" aria-label="New conversation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 10001, pointerEvents: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 'max(16px, 10vh) 16px 16px', boxSizing: 'border-box', background: colors.scrim }}>
     <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4, scale: 0.99 }} transition={{ duration: 0.14 }} onMouseDown={(event) => event.stopPropagation()} style={{ width: 560, maxWidth: '100%', maxHeight: '100%', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.popoverBg, border: `1px solid ${colors.popoverBorder}`, borderRadius: 12, boxShadow: colors.popoverShadow }}>
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${colors.popoverBorder}`, padding: '8px 10px', gap: 8 }}><button aria-label="Back" className="ion-focusable" onClick={handleBack} style={{ display: 'flex', alignItems: 'center', padding: 4, border: 'none', borderRadius: 5, background: 'transparent', color: colors.textSecondary, cursor: 'pointer' }}><ArrowLeft size={16} /></button><MagnifyingGlass size={16} color={colors.textTertiary} /><input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleInputKey} placeholder={placeholder} spellCheck={false} aria-label="New conversation search" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary, fontSize: 14 }} /></div>
-      {view === 'projects' && <ProjectListControls sort={sortOrder} grouping={grouping} showGrouping={multi} onSort={chooseSortOrder} onGrouping={chooseGrouping} />}
+      {view === 'projects' && <ProjectListControls sort={sortOrder} grouping={grouping} showGrouping={multi} onSort={chooseSortOrder} onGrouping={chooseGrouping} placement={placementMode} onPlacement={choosePlacementMode} />}
       <div style={{ overflowY: 'auto', minWidth: 0, minHeight: 0, padding: 8 }}>
         {environmentError && <div role="alert" style={{ padding: '4px 10px', fontSize: 11, color: colors.statusError }}>{environmentError}</div>}
         {creating && <div role="status" style={{ padding: '4px 10px', fontSize: 11, color: colors.textSecondary }}>Opening the conversation…</div>}
@@ -366,7 +381,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
         {view === 'branches' && <BranchRows branches={branchMatches} highlighted={highlighted} loading={branchLoading} error={branchError} currentBranch={currentBranch} colors={colors} onHover={setHighlighted} onChoose={(branch) => { if (workspace) { setWorkspace({ ...workspace, useWorktree: true, sourceBranch: branch }); setQuery(''); setView('profiles') } }} />}
         {view === 'profiles' && workspace && <ProfileRows profiles={profileMatches} highlighted={highlighted} colors={colors} onHover={setHighlighted} onPlain={() => createConversation(workspace)} onProfile={(profileId) => { const profile = profiles.find((item) => item.id === profileId); if (profile) createConversation(workspace, profile) }} />}
       </div>
-      <div style={{ borderTop: `1px solid ${colors.popoverBorder}`, padding: '8px 12px', color: colors.textTertiary, fontSize: 11 }}>Use ↑ ↓ and Enter to select{view === 'projects' && multi && effectiveGrouping !== 'by-host' ? ', ← → to pick the machine' : ''}. Backspace returns to the prior step.</div>
+      <div style={{ borderTop: `1px solid ${colors.popoverBorder}`, padding: '8px 12px', color: colors.textTertiary, fontSize: 11 }}>Use ↑ ↓ and Enter to select{view === 'projects' && multi && effectiveGrouping !== 'by-host' ? ', ← → to pick the machine' : ''}{view === 'projects' && multi && placementMode === 'auto' ? '. Auto opens each project on the machine with the most room' : ''}. Backspace returns to the prior step.</div>
     </motion.div>
   </motion.div>, layer)
 }

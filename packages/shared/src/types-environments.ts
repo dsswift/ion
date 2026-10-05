@@ -33,7 +33,36 @@ export interface SshEnvironmentLeg {
   remotePort: number
 }
 
-export interface PairedEnvironmentTarget {
+/**
+ * How a server is deployed to from this device: the SSH target a source or
+ * first install reaches it at, and the install settings that go with it.
+ * Absent on a server this device only talks to over its Studio connection.
+ */
+export interface EnvironmentDeploySettings {
+  /** `[user@]host` the server's machine is reached at over SSH. */
+  ssh?: string
+  /** What the machine runs: a Studio Server bundle or the Ion desktop app. */
+  kind?: 'server' | 'desktop'
+  /** The deploy profile (relay and install arguments) in the fleet file. */
+  profile?: string
+  /** The machine's sudo asks for a password. */
+  askSudo?: boolean
+  /** Where the machine builds when it is a builder host. */
+  buildDir?: string
+}
+
+/** What every non-local catalog entry carries beyond how it is dialed. */
+interface ManagedEnvironmentFields {
+  /**
+   * A Manage-Only Server: it appears in Fleet and its settings pages work,
+   * but its conversations are never loaded and no conversation surface
+   * offers it.
+   */
+  manageOnly?: boolean
+  deploy?: EnvironmentDeploySettings
+}
+
+export interface PairedEnvironmentTarget extends ManagedEnvironmentFields {
   kind: 'paired'
   label: string
   /**
@@ -54,7 +83,7 @@ export interface PairedEnvironmentTarget {
   managed?: boolean
 }
 
-export interface BearerEnvironmentTarget {
+export interface BearerEnvironmentTarget extends ManagedEnvironmentFields {
   kind: 'bearer'
   label: string
   url: string
@@ -65,6 +94,11 @@ export interface BearerEnvironmentTarget {
 }
 
 export type EnvironmentTarget = LocalEnvironmentTarget | PairedEnvironmentTarget | BearerEnvironmentTarget
+
+/** Whether a catalog target is a Manage-Only Server. The local environment never is. */
+export function isManageOnlyTarget(target: EnvironmentTarget): boolean {
+  return target.kind !== 'local' && target.manageOnly === true
+}
 
 /** The identifier reserved for the always-present local environment (never appears in `environments[]`). */
 export const LOCAL_ENVIRONMENT_ID = 'local'

@@ -57,10 +57,10 @@ added. Their conversations share one Inbox; nothing is switched.
 To use another Mac's Ion from this one, pair with it. On the other Mac,
 Settings → Servers → This Mac → Access & pairing:
 
-- **Pairing link**, then paste the link here under Settings → All servers →
+- **Pairing link**, then paste the link here under Settings → Fleet →
   Add server → Pairing link. Works anywhere the two can reach each other.
 - **Discovery → make it discoverable** for 15 minutes or an hour, then find
-  it here under All servers → Add server → **Nearby** and type the code it shows.
+  it here under Fleet → Add server → **Nearby** and type the code it shows.
   Works on the same local network, and an organization can turn it off.
 
 A headless host is added the same ways, or directly over SSH (Add
@@ -87,22 +87,32 @@ npm run dist        # package into release/mac-arm64/Ion.app
 ### Install
 
 ```bash
-# Full cycle: build a development-stamped .pkg, wait for active Ion work,
-# then open macOS Installer after Ion exits
+# Full cycle: build a development-stamped Ion.app, wait for active Ion work,
+# then install it after Ion exits, with no password prompt
 make desktop
 
-# Build the package without opening Installer
-cd desktop && npm run dist && npm run pkg
+# Build the package without installing it
+make desktop-pkg
 ```
 
-`make desktop` builds a development-stamped package, asks Ion to finish active
-agent work and quit, then opens macOS Installer. The package is the only
-component that replaces `/Applications/Ion.app` and launches Ion for the
-active macOS user after a successful install.
+`make desktop` builds a development-stamped app, asks Ion to finish active
+agent work and quit, then swaps the new bundle into `/Applications/Ion.app` as
+the signed-in user and reopens Ion. It uses the same install worker as the
+in-app updater, so it never prompts and runs unattended. An admin user can
+rename entries in `/Applications`, so a root-owned bundle from an earlier
+package install is set aside as `.Ion.app.previous` rather than deleted, and
+macOS is told to forget it as an app. Ion
+reopens only when that user is signed in on the Mac's screen.
 
-**Do not copy a new `Ion.app` into `/Applications`.** Install the `.pkg`.
-If Ion is running, the package stops before changing the bundle. Quit Ion, then
-retry the package.
+**Do not copy a new `Ion.app` into `/Applications` by hand.** Use
+`make desktop` or the `.pkg`. If Ion is running, the package stops before
+changing the bundle. Quit Ion, then retry the package.
+
+## Open at login
+
+Ion does not open by itself after a restart unless **Open Ion at login** is on: Settings → Behavior → Startup. It is off by default. Turn it on for a computer other devices connect to, so its server is there after a restart. `ion fleet deploy` turns it on for the desktop hosts it deploys to; see [Fleet](fleet.md#desktop-hosts-open-at-login).
+
+An organization can fix it either way with the device settings policy, key `openAtLogin`: sealed with `true` to force it on, or with `false` so people start Ion themselves. See [Settings policy](../enterprise/settings-policy.md).
 
 ## Updating
 

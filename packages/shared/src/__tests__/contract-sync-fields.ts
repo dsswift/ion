@@ -59,7 +59,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "stderrTail",
   ],
   session_dead: ["exitCode", "signal", "stderrTail"],
-  rate_limit: ["rateLimitType", "resetsAt", "status"],
+  rate_limit: ["rateLimitType", "resetsAt", "status", "utilization", "windows"],
   usage: ["assistantText", "entryId", "usage", "userEntryId"],
   permission_request: [
     "options",
@@ -331,6 +331,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "backend",
     "baseURL",
     "cli",
+    "custom",
     "displayName",
     "hasAuth",
     "id",
@@ -346,10 +347,16 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "email",
     "installed",
     "label",
+    "orgId",
+    "orgName",
     "planType",
     "probedAt",
     "version",
   ],
+  // provider_account_usage result rows.
+  ProviderAccountUsage: ["account", "backend", "error", "fetchedAt", "limits"],
+  ProviderAccount: ["authMethod", "email", "label", "orgId", "orgName", "planType", "provider"],
+  ProviderUsageLimit: ["kind", "label", "percent", "resetsAt"],
   // Enterprise session/agent caps (D-007). Mirrors Go's ResourceLimits in
   // internal/types/config_resource_limits.go; carried inside the
   // get_enterprise_policy response blob.
@@ -438,6 +445,9 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   // It names subscriptions by id and label; the key never reaches a client.
   ProviderSubscriptionStatus: ["error", "message", "options", "policyFailure", "provider", "providerDisplayName", "resolvedAt", "selected", "source", "state"],
   SubscriptionOption: ["id", "label"],
+  // Usage limit report carried by engine_rate_limit, and its per-window row.
+  RateLimitPayload: ["rateLimitType", "resetsAt", "status", "utilization", "windows"],
+  RateLimitWindow: ["resetsAt", "utilization"],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The server's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session.

@@ -83,6 +83,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Corpus Index](#term-corpus-index)
 - [Corpus Root](#term-corpus-root)
 - [Cost](#term-cost)
+- [Custom Provider](#term-custom-provider)
 - [Desktop](#term-desktop-client)
 - [Desktop Automation](#term-desktop-automation)
 - [Developer Surface](#term-developer-surface)
@@ -116,6 +117,9 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Extension context](#term-extension-context)
 - [External Host](#term-external-host)
 - [Fleet](#term-fleet)
+- [Fleet Deploy Record](#term-fleet-deploy-record)
+- [Fleet Hub](#term-fleet-hub)
+- [Fleet Report](#term-fleet-report)
 - [Format Version](#term-format-version)
 - [Git Identity](#term-git-identity)
 - [Graph Agent Highlight](#term-graph-agent-highlight)
@@ -125,6 +129,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Graph View Minimap](#term-graph-view-minimap)
 - [Guided Questions](#term-guided-questions)
 - [Harness](#term-harness)
+- [Held Prompt](#term-held-prompt)
 - [Hook](#term-hook)
 - [Idle release](#term-session-idle-release)
 - [Inbox](#term-inbox)
@@ -135,8 +140,10 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Ion Studio Server](#term-ion-studio-server)
 - [Keepalive](#term-keepalive)
 - [LAN Discovery](#term-lan-discovery)
+- [Limited Conversation](#term-limited-conversation)
 - [Link Integrity Scan](#term-link-integrity-scan)
 - [Local Principal](#term-local-principal)
+- [Manage-Only Server](#term-manage-only-server)
 - [Managed Config Projection](#term-managed-config-projection)
 - [Managed Default](#term-managed-default)
 - [Managed-Mode Marker](#term-managed-mode-marker)
@@ -162,6 +169,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Personal Preference](#term-personal-preference)
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
+- [Placement](#term-placement)
 - [Policy Failure](#term-policy-failure)
 - [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
@@ -175,11 +183,13 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Prompt trace](#term-prompt-trace)
 - [Protected operation](#term-protected-operation)
 - [Provider](#term-provider)
+- [Provider Account Ledger](#term-provider-account-ledger)
 - [Provider Subscription](#term-provider-subscription)
 - [Provider Subscription Prompt](#term-provider-subscription-prompt)
 - [Push address](#term-push-address)
 - [Questions Wizard](#term-questions-wizard)
 - [Quick Tool](#term-quick-tool)
+- [Quota Pool](#term-quota-pool)
 - [Relay](#term-relay)
 - [Relay Trust Announcement](#term-relay-trust-announcement)
 - [Relay hub](#term-relay-hub)
@@ -491,6 +501,21 @@ The money value of model use, computed from token counts and image counts for on
 - **Implementations:**
   - `engine` / `code` / `go`: `func TurnCost` in `engine/internal/cost/cost.go`
   - `ios` / `ui` / `swift`: `StatusDrawerBreakdown` in `ios/IonRemote/Views/StatusDrawerBreakdown.swift`
+
+#### Custom Provider {#term-custom-provider}
+
+A provider that exists only because the engine configuration defines it, such as a company gateway, as opposed to one the engine provides and configuration adjusts. Only a custom provider can be removed; removing it deletes its configuration entry, its stored key, and its models.
+
+- **ID:** `custom-provider`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (s *Server) dispatchProviderRemove` in `engine/internal/server/dispatch_provider_remove.go`
+  - `studio` / `ui` / `typescript`: `CustomProvidersPanel` in `desktop/src/renderer/components/settings/pages/fleet/CustomProvidersPanel.tsx`
+  - `ios` / `ui` / `swift`: `struct FleetCustomProvidersSheet` in `ios/IonRemote/Views/Settings/Root/FleetCustomProvidersSheet.swift`
 
 #### Dispatch {#term-dispatch}
 
@@ -1364,7 +1389,7 @@ A file or image that a user adds to a conversation, or that a tool result carrie
 
 #### Builder Host {#term-builder-host}
 
-The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform, the builder included.
+The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. Any host of the fleet with an SSH target can be one, a target of the deploy or not. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform that takes it. A host that cannot build is told what stops it, and `ion fleet builder` fixes what the fleet can: missing build tools, and a build folder Microsoft Defender scans.
 
 - **ID:** `builder-host`
 - **Status:** `canonical`
@@ -1520,7 +1545,7 @@ A fleet host deployed outside the fleet, such as a server in a cluster, register
 
 #### Fleet {#term-fleet}
 
-The set of Studio hosts one operator manages from one machine with `ion fleet`: Studio Server hosts on macOS and Linux, and Macs and Windows PCs running the Ion desktop, listed in ~/.ion/fleet.json. The fleet reads each host's status and paired devices over SSH, or through the relay with its own read-only pairing, judges which hosts can work together by their Format Versions, and redeploys a selection or one host, building each platform once.
+Every Studio server one device is paired with, seen and managed as one set. The fleet is the device's Environment Catalog: Studio's Fleet page, the iPhone's Fleet screen, and `ion fleet` all read the same list, with one pairing per server. Each server answers a Fleet Report about itself; the client adds them up into totals, a Quota Pool per provider, one row per provider account, and which servers can work together by their Format Versions. `ion fleet` and the Fleet page also restart, update, and redeploy hosts, building each platform once.
 
 - **ID:** `fleet`
 - **Status:** `canonical`
@@ -1531,7 +1556,40 @@ The set of Studio hosts one operator manages from one machine with `ion fleet`: 
 - **Implementations:**
   - `engine` / `code` / `go`: `type Config` in `engine/internal/fleet/config.go`
   - `engine` / `code` / `go`: `type Model` in `engine/internal/fleettui/model.go`
+  - `studio` / `ui` / `typescript`: `FleetPage` in `desktop/src/renderer/components/settings/pages/FleetPage.tsx`
+  - `ios` / `ui` / `swift`: `struct FleetView` in `ios/IonRemote/Views/Settings/Root/FleetView.swift`
   - `engine` / `doc` / `markdown`: `Fleet` in `docs/deployment/fleet.md`
+
+#### Fleet Deploy Record {#term-fleet-deploy-record}
+
+One deploy as it runs: what is deployed, and each host with its step, the step's detail, and why it failed. `ion fleet deploy` keeps the record and tells the server on its own machine at every step, and at least every 30 seconds while it runs. That server holds the newest few, publishes them to Studio on `ion:fleet-deploys`, and passes each to the Fleet Hubs it reports to. A record still marked running that stops arriving is shown as lost.
+
+- **ID:** `fleet-deploy-record`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type DeployRecord` in `engine/internal/fleet/deploy_record.go`
+  - `desktop` / `code` / `typescript`: `interface FleetDeployRecord` in `packages/shared/src/types-fleet-deploy.ts`
+  - `server` / `wire` / `typescript`: `FLEET_DEPLOY_ACTIONS` in `server/src/fleet/deploy-actions.ts`
+  - `studio` / `ui` / `typescript`: `function FleetDeployCard` in `desktop/src/renderer/components/settings/pages/fleet/deploy/FleetDeployCard.tsx`
+
+#### Fleet Hub {#term-fleet-hub}
+
+An always-on service a Studio server reports to, so a Fleet can be watched and managed from one page with no device paired to anything. A server dials out to each hub it is enrolled with, sends its Fleet Report on a timer, passes on each Fleet Deploy Record it is told of and each step of its own installs, and runs the fixed list of actions a hub may ask for. A hub is not a device and holds no pairing. Which hubs a server may join is set by its admins and limited by the enterprise policy under `customFields['ion-server'].fleetHubs`.
+
+- **ID:** `fleet-hub`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `function startHub` in `server/src/hub/main.ts`
+  - `server` / `code` / `typescript`: `class HubLink` in `server/src/fleet/hub-link.ts`
+  - `studio` / `ui` / `typescript`: `function HubApp` in `desktop/src/renderer/hub/HubApp.tsx`
 
 #### Git Identity {#term-git-identity}
 
@@ -1692,6 +1750,20 @@ A Studio Server announcing itself on its local network as `_ion-studio._tcp` so 
   - `desktop` / `ui` / `typescript`: `useNearbyDoor` in `desktop/src/renderer/components/settings/pages/add-server-nearby.tsx`
   - `desktop` / `ui` / `typescript`: `DiscoverySection` in `desktop/src/renderer/components/settings/pages/access/DiscoverySection.tsx`
 
+#### Manage-Only Server {#term-manage-only-server}
+
+A server in a device's Environment Catalog that is part of its Fleet but is not offered for conversations: the device monitors, configures, and deploys to it, and its conversations stay out of the inbox and every conversation view.
+
+- **ID:** `manage-only-server`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `isManageOnlyTarget` in `packages/shared/src/types-environments.ts`
+  - `engine` / `code` / `go`: `type Entry struct` in `engine/internal/fleet/catalog.go`
+
 #### Mounted Folder {#term-mounted-folder}
 
 An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.
@@ -1820,6 +1892,21 @@ A named shell command an operator runs from the lightning button in the Input Ba
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `export interface QuickTool` in `packages/shared/src/types-session.ts`
   - `studio` / `ui` / `typescript`: `export function ComposerQuickToolsButton` in `desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx`
+
+#### Quota Pool {#term-quota-pool}
+
+One provider's usage limits added up across every account of it in a Fleet, signed in now or seen in the last 30 days. Each account adds 100% to a limit it reports, so two accounts with a 7-day limit hold 200%, and the pool shows how much of that is used and how much is left. A window that reset since it was read counts as unused; a spend limit is money and is left out.
+
+- **ID:** `quota-pool`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `fleetQuotaPools` in `packages/shared/src/fleet-view.ts`
+  - `studio` / `ui` / `typescript`: `FleetQuota` in `desktop/src/renderer/components/settings/pages/fleet/FleetQuota.tsx`
+  - `ios` / `ui` / `swift`: `struct FleetQuotaPoolView` in `ios/IonRemote/Views/Settings/Root/FleetAccountRowView.swift`
 
 #### Relay-backed Environment {#term-relay-environment}
 
@@ -2487,7 +2574,7 @@ The current run state of a conversation, with its model, permission mode, contex
 
 #### Environment Catalog {#term-environment-catalog}
 
-The desktop's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries.
+A device's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries. It is also the device's Fleet: `ion fleet` reads and writes the same list, and each entry may carry how the host is deployed to.
 
 - **ID:** `environment-catalog`
 - **Status:** `canonical`
@@ -2497,6 +2584,22 @@ The desktop's own list of Environment targets it can connect to (local, paired, 
 - **Contract:** `internal`
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `readCatalog` in `desktop/src/renderer/studio/connection/catalog.ts`
+  - `engine` / `code` / `go`: `type Entry struct` in `engine/internal/fleet/catalog.go`
+
+#### Held Prompt {#term-held-prompt}
+
+A prompt a Studio server keeps for one conversation and sends by itself once its release is met: the usage limit that stopped the conversation has reset, or the conversation's account has weekly quota about to reset unused. It is owner-durable tab state, so it is sent with every client closed, and a conversation holds at most one.
+
+- **ID:** `held-prompt`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `deferred send`, `queued prompt`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `interface TabDeferredSend` in `packages/shared/src/usage-limit.ts`
+  - `server` / `code` / `typescript`: `createUsageLimitSlice` in `server/src/store/slices/usage-limit-slice.ts`
+  - `ios` / `ui` / `swift`: `static func heldLabel` in `ios/IonRemote/Views/InboxRowView.swift`
 
 #### Inbox {#term-inbox}
 
@@ -2512,6 +2615,35 @@ The client view that groups conversations by attention state: active, snoozed, o
   - `desktop` / `code` / `typescript`: `export function classifyInbox` in `packages/shared/src/inbox-classify.ts`
   - `studio` / `ui` / `typescript`: `InboxSidebar` in `desktop/src/renderer/studio/inbox/InboxSidebar.tsx`
   - `ios` / `ui` / `swift`: `InboxRowView` in `ios/IonRemote/Views/InboxRowView.swift`
+
+#### Limited Conversation {#term-limited-conversation}
+
+A conversation whose run the provider refused because the signed-in account's usage limit is reached. The server records the limit and its reset time from the backend's own report and lifts it when the backend next allows a request or the reset passes. Clients show the row as Limited with the reset time.
+
+- **ID:** `limited-conversation`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `interface TabUsageLimit` in `packages/shared/src/usage-limit.ts`
+  - `server` / `code` / `typescript`: `setupUsageLimitWatch` in `server/src/store/usage-limit-watch.ts`
+  - `ios` / `ui` / `swift`: `static func limitedUntil` in `ios/IonRemote/Views/InboxRowView.swift`
+
+#### Provider Account Ledger {#term-provider-account-ledger}
+
+A Studio server's record of every provider CLI account it has seen signed in during the last 30 days, with the usage limits the CLI last reported for each and whether the account is signed in now. The server reads its CLIs on a timer and on request; a signed-out account keeps its last limits until it ages out.
+
+- **ID:** `provider-account-ledger`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `listAccounts` in `server/src/fleet/account-ledger.ts`
+  - `engine` / `code` / `go`: `func ReadLedger` in `engine/internal/studiostatus/accounts.go`
 
 #### Tab {#term-tab}
 
@@ -2764,6 +2896,21 @@ Find within one pane of the Studio shell. The find shortcuts act on the pane tha
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export function paneFindTarget` in `desktop/src/renderer/studio/find/pane-find.ts`
 
+#### Placement {#term-placement}
+
+The choice of which server a new conversation opens on when the device is left to decide: among the servers that hold the project, the one whose signed-in account has the most room, leaning toward weekly quota about to reset unused, with host load breaking near ties. Scored from each server's Fleet Report, with a per-device weight for each server.
+
+- **ID:** `placement`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `pickPlacement` in `packages/shared/src/fleet-placement.ts`
+  - `studio` / `code` / `typescript`: `placeAmong` in `desktop/src/renderer/studio/connection/placement.ts`
+  - `ios` / `code` / `swift`: `static func mostRoomServerId` in `ios/IonRemote/Models/Admin/FleetSummary.swift`
+
 #### Port Forward {#term-port-forward}
 
 A loopback port on the machine Studio runs on that reaches a TCP port on an Environment's host, carried over the Studio connection the desktop already holds to that Environment. The desktop listens, the server dials its own loopback, and each connection is one flow-controlled stream on the binary channel.
@@ -2950,6 +3097,21 @@ A row an extension adds to the + menu of the Input Bar through the Studio SDK. C
   - `studio` / `code` / `typescript`: `export interface ComposerAction` in `packages/shared/src/studio-sdk-contract.ts`
   - `studio` / `ui` / `typescript`: `export function useComposerActions` in `desktop/src/renderer/components/composer/useComposerActions.tsx`
 
+#### Fleet Report {#term-fleet-report}
+
+What one Studio server says about itself for a Fleet view, answered to the `fleet.report` action: its server facts, newest System Metrics sample, the caller's paired devices, its providers, and its Provider Account Ledger. A server reports only on itself; the client adds the reports of every server it is paired with.
+
+- **ID:** `fleet-report`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `wire` / `typescript`: `FLEET_ACTIONS` in `server/src/fleet/actions.ts`
+  - `desktop` / `code` / `typescript`: `interface FleetReport` in `packages/shared/src/types-fleet.ts`
+  - `ios` / `wire` / `swift`: `struct FleetReport` in `ios/IonRemote/Models/Admin/FleetReport.swift`
+
 #### On Host {#term-on-host}
 
 Whether a Studio wire connection runs on its server's own host, meaning it arrived on the local socket. Sent as studio_welcome.onHost. A sign-in that finishes on a loopback callback on the host can only finish for such a connection; the server refuses host-only sign-ins to any other and hands browser sign-ins back to the requester to finish with auth.completeSignIn. Keyed on the connection, never on an environment id. Absent from an older server, which reads as not on the host.
@@ -3072,7 +3234,7 @@ One live WebSocket link between a peer and the relay. A new connection for the s
 
 #### Message forwarding {#term-forwarding}
 
-The relay action that passes one frame from a peer to the other peer on the same channel. The relay treats the frame as opaque bytes.
+The relay action that passes one frame between the server peer and a client peer on the same channel. The relay treats the frame as opaque bytes; on a multi-client channel it stamps a client's frame with that client's peer name and routes a server frame by the peer it names.
 
 - **ID:** `forwarding`
 - **Status:** `canonical`
@@ -3081,7 +3243,7 @@ The relay action that passes one frame from a peer to the other peer on the same
 - **Legacy names:** None
 - **Contract:** `public-wire`
 - **Implementations:**
-  - `relay` / `code` / `go`: `func (ch *Channel) getPeerLocked` in `relay/relay.go`
+  - `relay` / `code` / `go`: `func stampPeer` in `relay/peers.go`
   - `relay` / `code` / `go`: `type forwardAck struct` in `relay/relay.go`
 
 #### Keepalive {#term-keepalive}
@@ -3144,7 +3306,7 @@ The in-memory map from channel identifier to its connected peers. It holds no pe
 
 #### Channel {#term-channel}
 
-The relay pairing unit. One channel holds at most two peers and is named by an opaque channel identifier.
+The relay pairing unit, named by an opaque channel identifier. One channel holds one server peer and, when that server joins as multi-client, several client peers the relay names and routes between; otherwise at most one client.
 
 - **ID:** `channel`
 - **Status:** `canonical`
@@ -3210,6 +3372,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Corpus Index | `export async function scanCorpus` | `export async function scanCorpus` | `export async function scanCorpus` | None | iOS |
 | Corpus Root | `interface CorpusRootConfig` | `interface CorpusRootConfig` | `interface CorpusRootConfig` | None | iOS |
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
+| Custom Provider | None | `CustomProvidersPanel` | None | `struct FleetCustomProvidersSheet` | Overlay |
 | Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
 | Developer Surface | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | `developerSurfacesFor(environmentId: string): DeveloperSurfaceState` | None | iOS |
@@ -3230,6 +3393,10 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Environment Policy | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | None | iOS |
 | Environment Purge | `RemoveServerPanel` | `RemoveServerPanel` | `RemoveServerPanel` | None | iOS |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
+| Fleet | None | `FleetPage` | None | `struct FleetView` | Overlay |
+| Fleet Deploy Record | `interface FleetDeployRecord` | `interface FleetDeployRecord`, `function FleetDeployCard` | `interface FleetDeployRecord` | None | iOS |
+| Fleet Hub | None | `function HubApp` | None | None | Overlay, iOS |
+| Fleet Report | `interface FleetReport` | `interface FleetReport` | `interface FleetReport` | `struct FleetReport` | None |
 | Format Version | `ServerFactsGroup` | `ServerFactsGroup` | `ServerFactsGroup` | None | iOS |
 | Git Identity | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `struct GitIdentitySummary`, `struct AddGitCredentialSheet` | None |
 | Graph Agent Highlight | `agentHighlightNodeIds` | `agentHighlightNodeIds` | `agentHighlightNodeIds` | None | iOS |
@@ -3238,6 +3405,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Graph View | `export function GraphSurface` | `export function GraphSurface` | `export function GraphSurface` | None | iOS |
 | Graph View Minimap | None | `export function GraphMinimap` | None | None | Overlay, iOS |
 | Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
+| Held Prompt | `interface TabDeferredSend` | `interface TabDeferredSend` | `interface TabDeferredSend` | `static func heldLabel` | None |
 | Inbox | `export function classifyInbox` | `export function classifyInbox`, `InboxSidebar` | `export function classifyInbox` | `InboxRowView` | None |
 | Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | None | iOS |
 | Input Bar | `export function InputBar` | `export function InputBar`, `InputBar` | `export function InputBar` | `InputBar` | None |
@@ -3246,7 +3414,9 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Ion Studio Server | `main` | `main` | `main` | None | iOS |
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |
+| Limited Conversation | `interface TabUsageLimit` | `interface TabUsageLimit` | `interface TabUsageLimit` | `static func limitedUntil` | None |
 | Local Principal | `localPrincipal` | `localPrincipal` | `localPrincipal` | None | iOS |
+| Manage-Only Server | `isManageOnlyTarget` | `isManageOnlyTarget` | `isManageOnlyTarget` | None | iOS |
 | Managed Default | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `enum ManagedDefault` | None |
 | Menu | `export function InboxRowMenu` | `export function InboxRowMenu` | `export function InboxRowMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
@@ -3262,6 +3432,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Placement | `pickPlacement` | `pickPlacement`, `placeAmong` | `pickPlacement` | `static func mostRoomServerId` | None |
 | Policy Failure | None | None | None | `func failureText` | Desktop, Studio, Overlay |
 | Policy Override Notice | `export function providerOverrides` | `export function providerOverrides` | `export function providerOverrides` | None | iOS |
 | Port Forward | `export class PortForwardManager` | `export class PortForwardManager`, `PortsSurface` | `export class PortForwardManager` | None | iOS |
@@ -3276,6 +3447,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |
+| Quota Pool | `fleetQuotaPools` | `fleetQuotaPools`, `FleetQuota` | `fleetQuotaPools` | `struct FleetQuotaPoolView` | None |
 | Relay-backed Environment | `RelayStudioSocket` | `RelayStudioSocket` | `RelayStudioSocket` | None | iOS |
 | Request Principal | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
@@ -3369,6 +3541,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `conversation storage` → [Conversation persistence](#term-conversation-persistence)
 - Alias: `conversation tab` → [Tab](#term-tab)
 - Alias: `daemon` → [Engine server](#term-engine-server)
+- Alias: `deferred send` → [Held Prompt](#term-held-prompt)
 - Alias: `desktop automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
 - Alias: `desktop_transcript_patch` → [Transcript Patch](#term-transcript-patch)
@@ -3426,6 +3599,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `question round` → [Guided Questions](#term-guided-questions)
 - Alias: `questions card` → [Questions Wizard](#term-questions-wizard)
 - Alias: `questions workflow` → [Guided Questions](#term-guided-questions)
+- Alias: `queued prompt` → [Held Prompt](#term-held-prompt)
 - Alias: `quiescent session release` → [Idle release](#term-session-idle-release)
 - Alias: `relay channel` → [Channel](#term-channel)
 - Alias: `relay peer` → [Peer](#term-peer)

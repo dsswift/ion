@@ -29,7 +29,7 @@ import { useColors } from '../../theme'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 import type { EnvironmentProject } from '@ion/shared/types-environment-admin'
 import { useTabEnvironmentId } from '../connection/tab-environment'
-import { readCatalog } from '../connection/catalog'
+import { readConversationCatalog } from '../connection/catalog'
 import { useEnvironmentViewFilter } from '../connection/view-filter'
 import { host } from '../../host/host-instance'
 import { useTransfer } from './useTransfer'
@@ -43,6 +43,8 @@ export interface TransferDialogProps {
   tabId: string
   /** What moves when the dialog opens. A worktree's own Transfer opens on `worktree`; a conversation's on `conversation`. */
   initialMode?: TransferMode
+  /** The destination the dialog starts on, when it is one of the machines offered. */
+  suggestedEnvironmentId?: string
   onClose(): void
 }
 
@@ -60,12 +62,12 @@ function formatBytes(n: number): string {
  * own included: a conversation can move within the machine it is on.
  */
 async function loadCatalogAndTargets(): Promise<{ catalog: EnvironmentCatalogEntry[]; targets: EnvironmentCatalogEntry[] }> {
-  const [catalog, connections] = await Promise.all([readCatalog(), host.connections()])
+  const [catalog, connections] = await Promise.all([readConversationCatalog(), host.connections()])
   const connectedIds = new Set(connections.filter((c) => c.phase.phase === 'connected').map((c) => c.environmentId))
   return { catalog, targets: catalog.filter((entry) => connectedIds.has(entry.id)) }
 }
 
-export function TransferDialog({ tabId, initialMode = 'conversation', onClose }: TransferDialogProps): React.JSX.Element {
+export function TransferDialog({ tabId, initialMode = 'conversation', suggestedEnvironmentId, onClose }: TransferDialogProps): React.JSX.Element {
   const colors = useColors()
   const [candidates, setCandidates] = useState<EnvironmentCatalogEntry[] | null>(null)
   const [catalog, setCatalog] = useState<EnvironmentCatalogEntry[]>([])
@@ -106,8 +108,8 @@ export function TransferDialog({ tabId, initialMode = 'conversation', onClose }:
   // choice that is no longer offered.
   useEffect(() => {
     if (!candidates || targets.some((t) => t.id === targetEnvironmentId)) return
-    setTargetEnvironmentId(targets[0]?.id ?? '')
-  }, [candidates, targets, targetEnvironmentId])
+    setTargetEnvironmentId(targets.find((t) => t.id === suggestedEnvironmentId)?.id ?? targets[0]?.id ?? '')
+  }, [candidates, targets, targetEnvironmentId, suggestedEnvironmentId])
 
   useEffect(() => {
     let cancelled = false

@@ -159,11 +159,15 @@ argument is one object. Shapes: `@ion/shared/types-environment-admin`.
 | `environment.fs.browse` `{path, showHidden?}` | `conversations:read` | Directories under `path` on the host, git checkouts marked. |
 | `environment.host.toolchains` | `conversations:read` | `git`, `go`, `node`, `npm`, `gh` on the host's login PATH. |
 | `environment.server.info` | `conversations:read` | Server, engine, host, data dir, installed bundle, the engine minimum and whether the running engine meets it, the host app (`hostApp`, a desktop that runs this server), conversations with an agent running now, and every [Format Version](../architecture/format-versions.md) of the server and its engine. The last five are absent from a server that predates them. |
+| `fleet.report` | `conversations:read` | Everything a Fleet row shows for this server (`FleetReport`): the `environment.server.info` facts, the newest System Metrics sample, the caller's own paired device counts, each provider's auth state, backend, CLI account and model count, the default provider, the model tiers, and the Provider Account Ledger. A client shows its Fleet by asking every server it is paired with and adding the answers up. |
+| `fleet.refreshAccounts` | `conversations:read` | Re-read the provider CLIs now and answer `{accounts}`, the Provider Account Ledger: every provider CLI account this server has seen signed in during the last 30 days, whether it is signed in now, and the usage limits last read for it. |
 | `environment.systemMetrics.watch` `{on}` | `conversations:read` | Start (`on: true`) or stop this connection's System Metrics. A mirror connection then receives every merged sample on `ion:system-metrics`; a thin connection receives a `desktop_system_metrics` summary on `studio:thin-event` every 10 s. Answers `{latest, watching}`, `latest` the current `EnvironmentSystemMetrics` or `null`. A watch also ends when the connection closes. |
 | `environment.systemMetrics.latest` | `conversations:read` | `{latest, telemetryHealth}` (`EnvironmentSystemMetricsLatest`): the newest full sample, `null` before the first or where the server samples nothing, and the delivery state of every telemetry target. Reads without starting or stopping a watch, for a client that refreshes on its own timer. |
 | `environment.systemMetrics.history` `{windowSec?}` | `conversations:read` | `{buckets, windowMs}`: the last `windowSec` (default 900, at most 3600) of System Metrics in 10-second buckets, each `{at, hostCpuAvg, hostCpuMax, memoryUsedMaxBytes, ionCpuAvgPercent, ionRssMaxBytes}`. The server keeps an hour whether or not anyone watches. |
 | `environment.server.logTail` `{file, lines?}` | `admin` | The tail of `engine.jsonl` or `server.jsonl`. |
-| `environment.server.restart` / `.update` | `admin` | Scheduled detached through the bundle's `ion studio`. |
+| `environment.server.restart` / `.update` `{version?}` | `admin` | The host restarts, or installs a release, on itself. A Studio Server bundle runs its own `ion studio restart` / `update`, scheduled detached. A server a desktop runs hands the request to that desktop on its on-host connection, which uses the app's own updater (the newest release only). Answers `{scheduled, by}` before the host goes down, or refuses with why it cannot: `no_bundle`, `needs_sudo`, `host_app_unreachable`. |
+| `environment.server.installArtifact` `{transferId, totalBytes, sha256, name}` | `admin` | The host installs a build the client sends: a server bundle tarball, or a desktop update archive. The file follows as `FILE_CHUNK` frames keyed by `transferId`. The host checks its SHA-256 against the request before installing, and refuses `checksum_mismatch`. |
+| `environment.server.reportInstall` `{stage, kind, code?, message?}` | `admin`, on the host only | The desktop that runs the server reports a host install it was handed. Republished on `ion:host-install-progress`. |
 | `environment.git.test` `{url}` | `git:write` | `git ls-remote` from the host with the principal's credential. |
 | `environment.git.author.get` / `.set` `{name, email}` | `conversations:read` / `git:write` | The host's global git author. |
 | `engine.agentState` `{tabId, instanceId?}` | `conversations:read` | The tab's complete agent roster, `{tabId, instanceId, agents}`. Never a delta; an unknown tab answers with an empty roster. |
@@ -487,7 +491,8 @@ default mirror only). A thin connection receives `studio:thin-event`,
 channels a phone's Settings pages refresh on: `ion:project-job`,
 `ion:projects-changed`, `ion:discovery`, `ion:clients-changed`,
 `ion:remote-relays-changed`, `ion:mcp-servers-changed`,
-`ion:model-tiers-updated`, `ion:default-provider-updated`, and
+`ion:model-tiers-updated`, `ion:default-provider-updated`,
+`ion:provider-subscription-changed`, `ion:host-install-progress`, and
 `ion:provider-login-event`. It receives nothing else. `studio:client-log-request` carries
 `{sinceSeq}` to one connection: the server asking that client for the
 diagnostic log lines it has written past the cursor, which the client hands

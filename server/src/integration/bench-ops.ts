@@ -100,6 +100,12 @@ export function ensureWorkspace(repoPath: string, sourceBranch: string): Integra
   return ws
 }
 
+/** Whether a worktree is already a member of its source branch's bench. */
+export function findMemberWorkspace(repoPath: string, sourceBranch: string, worktreePath: string): boolean {
+  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  return ws?.members.some((m) => m.worktreePath === worktreePath) ?? false
+}
+
 /**
  * Enroll a worktree, pinned at its current committed contribution.
  *

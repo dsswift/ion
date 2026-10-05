@@ -87,10 +87,11 @@ func formatElapsed(d time.Duration) string {
 // names itself within a minute instead of sitting silent.
 func heartbeat(what, host string, sw *stampWriter, toLog bool, report func(detail string)) (stop func()) {
 	started := time.Now()
+	every := heartbeatEvery
 	done := make(chan struct{})
 	var once sync.Once
 	go func() {
-		t := time.NewTicker(heartbeatEvery)
+		t := time.NewTicker(every)
 		defer t.Stop()
 		for {
 			select {

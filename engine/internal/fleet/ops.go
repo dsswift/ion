@@ -18,17 +18,8 @@ const desktopApp = "/Applications/Ion.app"
 // sessions stopped), kills one that ignores it, and opens it again.
 const restartDesktop = macQuitIon + "open -a '" + desktopApp + "'\n"
 
-// Restart restarts the host's Ion: the Studio Server services, or the
-// desktop app (which stops its running conversations).
-func Restart(ctx context.Context, r Runner, h Host) error {
-	if h.External() {
-		return h.ErrExternal()
-	}
-	err := restart(ctx, r, h)
-	logOutcome("restart", h, err)
-	return err
-}
-
+// restart restarts the host's Ion over SSH: the Studio Server services, or
+// the desktop app.
 func restart(ctx context.Context, r Runner, h Host) error {
 	if h.Kind != KindDesktop {
 		_, err := runIon(ctx, r, h, []string{"studio", "restart"}, nil)
@@ -76,7 +67,13 @@ func SetRelay(ctx context.Context, r Runner, h Host, p Profile) error {
 	if h.External() {
 		return h.ErrExternal()
 	}
-	err := setRelay(ctx, r, h, p)
+	kind, err := resolveKind(ctx, r, h)
+	if err != nil {
+		logOutcome("relay set", h, err)
+		return err
+	}
+	h.Kind = kind
+	err = setRelay(ctx, r, h, p)
 	logOutcome("relay set", h, err)
 	return err
 }

@@ -1,4 +1,5 @@
-import { setEnvironmentServerVersion } from './environment/actions'
+import { bootedEnvironmentServerVersion, setEnvironmentServerVersion } from './environment/actions'
+import { clearHostInstallArtifacts, completePendingHostInstall } from './environment/host-install'
 import { isProcessEntry } from './entry-guard'
 import { join } from 'path'
 import { dataDir } from './paths'
@@ -69,6 +70,8 @@ import { hydrateChartCatalogFromDisk } from './engine/chart-restore'
 import { restoreStudioTerminals } from './persistence/studio-terminal-persistence'
 import { cleanOrphanedWorktrees } from './git/git-runner'
 import { startWorktreeFreshnessPoll } from './worktree/freshness-poll'
+import { startAccountPoll } from './fleet/account-poll'
+import { startFleetHubs } from './fleet/hub-run'
 import { installTelemetryHealthConsumer } from './engine/telemetry-health'
 import { installMcpServersBroadcast } from './engine/mcp-servers-broadcast'
 import { installSystemMetrics } from './system-metrics/runtime'
@@ -506,6 +509,14 @@ export async function main(): Promise<ServerHandle> {
   restoreStudioTerminals()
   cleanOrphanedWorktrees().catch((err: unknown) => warn('orphaned worktree cleanup failed', { error: String(err) }))
   startWorktreeFreshnessPoll()
+  // The Provider Account Ledger: which provider CLI accounts this server has
+  // seen signed in, read on a period whether or not a client is connected.
+  startAccountPoll()
+  // The Fleet Hubs this server reports to: dialed out, never listened for.
+  const stopFleetHubs = startFleetHubs()
+  // The last server on this host may have gone down for an install: say the host is back.
+  completePendingHostInstall(bootedEnvironmentServerVersion())
+  clearHostInstallArtifacts()
 
   // Fire-and-forget, matching the desktop's former Overlay-owned
   // useTabRestoration.ts: restoration runs concurrently with the rest of
@@ -545,6 +556,7 @@ export async function main(): Promise<ServerHandle> {
     studio,
     relays,
     close: async () => {
+      stopFleetHubs()
       stopDiscovery()
       unsubscribePairing()
       relayStudio.close()

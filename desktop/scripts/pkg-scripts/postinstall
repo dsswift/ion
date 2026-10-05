@@ -48,7 +48,9 @@ if ! mv "$SWAP_SOURCE" "$APP_PATH"; then
   fail "could not move the new bundle into place."
 fi
 
-rm -rf "$PREVIOUS_APP" "$STAGING_DIR" "$INCOMING_APP"
+# "$PREVIOUS_APP".*: bundles the in-app updater set aside and could not
+# delete, because a package install had left them owned by root.
+rm -rf "$PREVIOUS_APP" "$PREVIOUS_APP".* "$STAGING_DIR" "$INCOMING_APP"
 if [ "$HAD_PREVIOUS" = true ]; then
   log "replaced ${APP_PATH} with the new bundle."
 else

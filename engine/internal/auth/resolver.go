@@ -78,8 +78,12 @@ type StoredCredential struct {
 // Resolver implements 5-level API key resolution for LLM providers, above
 // which sits the key a Provider Subscription lookup applied (Level 0).
 type Resolver struct {
-	config       *types.AuthConfig
-	programmatic map[string]string // provider ID -> API key (Level 1)
+	config *types.AuthConfig
+
+	// programmatic holds keys from engine.json (Level 1). Removing a provider
+	// clears its key at runtime, so it has its own lock.
+	programmaticMu sync.RWMutex
+	programmatic   map[string]string // provider ID -> API key
 
 	// subscription holds looked-up keys (Level 0). It changes at runtime
 	// as identities sign in and out, so it has its own lock.
@@ -106,9 +110,27 @@ func NewResolver(config *types.AuthConfig) *Resolver {
 // SetProgrammatic stores an API key for a provider in the in-process programmatic
 // map. Keys set here take priority over all other resolution levels.
 func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
+	r.programmaticMu.Lock()
 	r.programmatic[strings.ToLower(providerID)] = apiKey
+	r.programmaticMu.Unlock()
 	// A negative cached before this call would now be wrong.
 	InvalidateHasKey(providerID)
+}
+
+// ClearProgrammatic drops the in-process key for a provider, as when the
+// engine.json entry that supplied it is removed.
+func (r *Resolver) ClearProgrammatic(providerID string) {
+	r.programmaticMu.Lock()
+	delete(r.programmatic, strings.ToLower(providerID))
+	r.programmaticMu.Unlock()
+	InvalidateHasKey(providerID)
+}
+
+// programmaticKey is the Level 1 key for a provider, or "".
+func (r *Resolver) programmaticKey(provider string) string {
+	r.programmaticMu.RLock()
+	defer r.programmaticMu.RUnlock()
+	return r.programmatic[provider]
 }
 
 // HasKey performs a lightweight check to determine if the given provider has
@@ -155,7 +177,7 @@ func (r *Resolver) HasKeyForSubject(subject, provider string) (bool, string) {
 	}
 
 	// Level 1: Programmatic
-	if key, ok := r.programmatic[provider]; ok && key != "" {
+	if r.programmaticKey(provider) != "" {
 		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "programmatic"})
 		return true, "programmatic"
 	}
@@ -243,7 +265,7 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 
 	// Level 1: Programmatic (in-process override, highest priority)
 	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying programmatic", map[string]any{"provider": provider})
-	if key, ok := r.programmatic[provider]; ok && key != "" {
+	if key := r.programmaticKey(provider); key != "" {
 		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via programmatic", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}

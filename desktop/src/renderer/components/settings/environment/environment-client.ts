@@ -7,6 +7,7 @@
  * way (`action('local', …)`), so the local environment's page is the one
  * projects UI rather than a second implementation.
  */
+import type { FleetDeploy } from '@ion/shared/types-fleet-deploy'
 import { useCallback, useEffect, useState } from 'react'
 import type {
   EnvironmentProject, EnvironmentFsBrowse, EnvironmentToolchains, EnvironmentServerInfo, EnvironmentLogFile,
@@ -91,6 +92,8 @@ export const environmentClient = {
   discoveryOpen: (env: string, minutes: number) => call<EnvironmentDiscoveryStatus>(env, 'environment.discovery.open', [{ minutes }]),
   discoveryClose: (env: string) => call<EnvironmentDiscoveryStatus>(env, 'environment.discovery.close'),
   discoveryMintCode: (env: string) => call<{ code: string; expiresAt: number }>(env, 'environment.discovery.mintCode'),
+  /** The deploys `ion fleet deploy` on the server's own machine told it of, newest first. */
+  fleetDeploys: (env: string) => call<FleetDeploy[]>(env, 'fleet.deploys.list'),
 }
 
 function isStudioEvent(frame: unknown): frame is { type: 'studio_event'; channel: string; payload: unknown } {

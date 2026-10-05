@@ -12,6 +12,7 @@ import type { NearbyStudioServer } from '@ion/shared/types-nearby'
 import type { ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
+import type { FleetRunProgress, FleetRunRequest, FleetRunSnapshot, FleetRunStart } from '@ion/shared/types-fleet-run'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
 import type { ShellApi } from './shell-api'
@@ -241,6 +242,17 @@ export interface StudioHost {
   onSshProgress(cb: (progress: SshAddEnvironmentProgress) => void): () => void
   /** Asks the shell to disconnect one environment's connection (no auto-retry until reconnected). */
   disconnectEnvironment(environmentId: string): void
+  /** Disconnects one environment and deletes the secret this device holds for it: the local half of Remove. */
+  forgetEnvironment(environmentId: string, target: EnvironmentTarget): void
+  /** Runs the bundled `ion fleet` on this device (a deploy from source). Refused where the host has none to run. */
+  fleetRun(request: FleetRunRequest): Promise<FleetRunStart>
+  cancelFleetRun(runId: string): void
+  /** The deploys this device started and still remembers, with their logs: what a page that opens mid-deploy catches up from. */
+  fleetRuns(): Promise<FleetRunSnapshot[]>
+  /** Each line a fleet run prints, and its exit. */
+  onFleetProgress(cb: (progress: FleetRunProgress) => void): () => void
+  /** The Environment catalog was changed on disk by another process (`ion fleet`). */
+  onCatalogChangedOnDisk(cb: () => void): () => void
   /** Asks the shell to re-arm the backoff ladder and reconnect immediately (manual Refresh/Restart). */
   restartEnvironment(environmentId: string): void
   /** Reads back one environment's cached last-welcome frame, or null when absent. */

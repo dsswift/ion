@@ -103,6 +103,14 @@ describe('loadServerConfig: partial overrides', () => {
     expect(config.listen.local).toBe(true)
   })
 
+  it('reads the fleet periods and refuses one that is too short', () => {
+    expect(loadServerConfig(dir).fleet).toEqual({ accountPollSeconds: 300, hubReportSeconds: 60 })
+    writeFileSync(join(dir, 'server.json'), JSON.stringify({ fleet: { accountPollSeconds: 900, hubReportSeconds: 30 } }))
+    expect(loadServerConfig(dir).fleet).toEqual({ accountPollSeconds: 900, hubReportSeconds: 30 })
+    writeFileSync(join(dir, 'server.json'), JSON.stringify({ fleet: { accountPollSeconds: 5, hubReportSeconds: 1 } }))
+    expect(loadServerConfig(dir).fleet).toEqual({ accountPollSeconds: 300, hubReportSeconds: 60 })
+  })
+
   it('parses a full oidc block', () => {
     writeFileSync(
       join(dir, 'server.json'),

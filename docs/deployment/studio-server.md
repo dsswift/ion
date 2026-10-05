@@ -62,7 +62,7 @@ Everything after the install is one command on the host:
 | `ion studio pair [--label L] [--as PERSON] [--scopes a,b] [--relay] [--code] [--json]` | Mints a one-time pairing link (`--relay` also opens a relay pairing channel for a client off the LAN; `--as` names the person the joining device belongs to on an `isolated` host; `--code` mints the short code for a desktop that found this server under Nearby) |
 | `ion studio relay list \| set wss://URL (--oidc \| --key-stdin \| --key-file PATH) \| remove wss://URL` | Adds, changes, or removes a relay on an install that already exists, then restarts the services (`--no-restart` to skip). `install --relay` only names one on a first install. A pre-shared key is read from standard input or a file, never the command line |
 | `ion studio restart` | Restarts both services and waits on `/readyz` |
-| `ion studio update [VERSION] [--yes]` | Downloads and verifies a newer bundle, repoints `current`, asks before the restart that interrupts running agents |
+| `ion studio update [VERSION] [--yes]` | Downloads and verifies a newer bundle, repoints `current`, asks before the restart that interrupts running agents. `--bundle FILE` installs a bundle tarball already on the host instead, such as one built from source |
 | `ion studio uninstall [--purge-data]` | Removes the services and the bundle; the data directory stays unless purged |
 
 Everything it does is also in `~/.ion/engine.jsonl` under the `studio`
@@ -71,7 +71,7 @@ tag.
 ### From the desktop: Add server → SSH
 
 A host you can reach with key-based SSH needs no host-side step at all.
-Settings → All servers → Add server → **SSH**, type `user@host` (or
+Settings → Fleet → Add server → **SSH**, type `user@host` (or
 `host:2222`, or an `~/.ssh/config` alias), Add. The desktop probes the host,
 pipes the same installer above into `sh -s` there (pinned to the server
 version this desktop shipped with; a desktop built from source, `npm run
@@ -214,7 +214,7 @@ ION_DATA_DIR=/var/lib/ion node dist/main.js
 
 ## Using a remote Environment from Studio
 
-Once paired (Settings → All servers → Add server, through a pairing
+Once paired (Settings → Fleet → Add server, through a pairing
 link, Nearby, SSH, or sign-in), the remote server's conversations appear in
 the same Inbox as your local ones, live: the desktop stays
 connected to every Environment at once. A remote row wears a badge naming
@@ -319,7 +319,7 @@ that looks like across a laptop, a headless host, and a second laptop.
 
 Every server this desktop can reach is a row under **Servers** in the
 Settings sidebar, the local server included. The row opens into that
-server's pages; **All servers** lists them and adds new ones. Add server
+server's pages; **Fleet** lists them and adds new ones. Add server
 lands on the new server's **Overview** with a "finish setting up" notice;
 later, the same pages are where a server is reconfigured. Lists are one row
 per item; adding, editing, and testing open in a side panel. The pages:

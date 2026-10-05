@@ -18,9 +18,9 @@ import { InboxNavigatorGroups } from './InboxNavigatorGroups'
 import { buildInboxNavigator, inboxGroupRowKey, inboxNavigatorProjectFor, inboxProjectRowKey, type InboxNavigatorOptions, type InboxNavigatorProject } from './inbox-navigator'
 import { buildProjectScopeResolver, normalizeProjectSelection } from './project-identity'
 import { useProjectsByEnvironment } from '../connection/environment-projects'
-import { onCatalogChange, readCatalog } from '../connection/catalog'
+import { onCatalogChange, readConversationCatalog } from '../connection/catalog'
 import { LOCAL_ENVIRONMENT_ID, type EnvironmentCatalogEntry } from '@ion/shared/types-environments'
-import { orderInboxTabs } from './inbox-collapse'
+import { isInboxTabWorking, orderInboxTabs } from './inbox-collapse'
 import { loadProjectSelection, saveProjectSelection, type InboxProjectSelection } from './project-selection'
 import { rInfo, rWarn } from '../../rendererLogger'
 import { settledRecordRestorableFromInventory } from '@ion/server/store/settled-worktree'
@@ -38,6 +38,7 @@ const ACTIVE_COLLAPSED_KEY = 'ion:inbox:active-collapsed'
 const SNOOZED_COLLAPSED_KEY = 'ion:inbox:snoozed-collapsed'
 const PROJECT_FILTER_KEY = 'ion:inbox:project-filter'
 const SORT_ORDER_KEY = 'ion:inbox:sort-order'
+const WORKING_LAST_KEY = 'ion:inbox:working-last'
 
 function savedBoolean(key: string, fallback: boolean): boolean {
   const stored = localStorage.getItem(key)
@@ -73,6 +74,9 @@ export function InboxSidebar(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState<InboxProjectSelection>(savedProjectFilter)
   const [sortOrder, setSortOrder] = useState<InboxSortOrder>(savedSortOrder)
+  const [workingLast, setWorkingLast] = useState(() => savedBoolean(WORKING_LAST_KEY, false))
+  const panes = useSessionStore((state) => state.conversationPanes)
+  const isWorking = useMemo(() => workingLast ? (tab: TabState): boolean => isInboxTabWorking(tab, panes.get(tab.id)) : undefined, [workingLast, panes])
   const [projectAnchor, setProjectAnchor] = useState<{ x: number; y: number } | null>(null)
   const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number } | null>(null)
   const [environmentAnchor, setEnvironmentAnchor] = useState<{ x: number; y: number } | null>(null)
@@ -105,7 +109,7 @@ export function InboxSidebar(): React.JSX.Element {
   const [environmentCatalog, setEnvironmentCatalog] = useState<EnvironmentCatalogEntry[]>([])
   useEffect(() => {
     const load = (): void => {
-      void readCatalog().then(setEnvironmentCatalog).catch((error: unknown) => rWarn('inbox', 'environment catalog read failed', { error: String(error) }))
+      void readConversationCatalog().then(setEnvironmentCatalog).catch((error: unknown) => rWarn('inbox', 'environment catalog read failed', { error: String(error) }))
     }
     load()
     return onCatalogChange(load)
@@ -144,7 +148,7 @@ export function InboxSidebar(): React.JSX.Element {
   const snoozedTabs = useMemo(() => visible(partition.snoozed), [visible, partition.snoozed])
   const allSettled = useMemo(() => visible([...partition.settled, ...settledHistory]), [visible, partition.settled, settledHistory])
   const { recent: recentSettled, history: historySettled } = useMemo(() => partitionSettled(settledOrder(allSettled), Date.now()), [allSettled])
-  const activeNavigator = useMemo(() => buildInboxNavigator(orderInboxTabs(activeTabs, sortOrder), benches, inventory, new Map(Object.entries(selectedBench)), projectFilter, filteredNavigatorOptions), [activeTabs, benches, inventory, sortOrder, selectedBench, projectFilter, filteredNavigatorOptions])
+  const activeNavigator = useMemo(() => buildInboxNavigator(orderInboxTabs(activeTabs, sortOrder, isWorking), benches, inventory, new Map(Object.entries(selectedBench)), projectFilter, filteredNavigatorOptions), [activeTabs, benches, inventory, sortOrder, isWorking, selectedBench, projectFilter, filteredNavigatorOptions])
   const snoozedNavigator = useMemo(() => buildInboxNavigator(orderInboxTabs(snoozedTabs, sortOrder), benches, inventory, new Map(Object.entries(selectedBench)), projectFilter, filteredNavigatorOptions), [snoozedTabs, benches, inventory, sortOrder, selectedBench, projectFilter, filteredNavigatorOptions])
   const allProjects = useMemo(() => buildInboxNavigator([...partition.pinned, ...partition.inbox, ...partition.snoozed], benches, inventory, new Map(Object.entries(selectedBench)), new Set(), navigatorOptions), [partition.pinned, partition.inbox, partition.snoozed, benches, inventory, selectedBench, navigatorOptions])
   const projectOptions = useMemo(() => {
@@ -164,6 +168,7 @@ export function InboxSidebar(): React.JSX.Element {
   useEffect(() => { localStorage.setItem(SNOOZED_EXPANDED_KEY, String(snoozedOpen)) }, [snoozedOpen])
   useEffect(() => { localStorage.setItem(SETTLED_EXPANDED_KEY, String(settledOpen)) }, [settledOpen])
   useEffect(() => { localStorage.setItem(SORT_ORDER_KEY, sortOrder) }, [sortOrder])
+  useEffect(() => { localStorage.setItem(WORKING_LAST_KEY, String(workingLast)) }, [workingLast])
   useEffect(() => {
     const stored = saveProjectSelection(projectFilter)
     if (stored) localStorage.setItem(PROJECT_FILTER_KEY, stored)
@@ -312,7 +317,7 @@ export function InboxSidebar(): React.JSX.Element {
       {composeOpen && <NewConversationPicker onClose={() => setComposeOpen(false)} />}
       {projectAnchor && <InboxProjectScopePicker anchor={projectAnchor} projects={projectOptions} selected={projectFilter} onSelect={setProjectFilter} triggerRef={projectButton} onClose={() => setProjectAnchor(null)} />}
       {environmentAnchor && <InboxEnvironmentPicker anchor={environmentAnchor} environments={environmentOptions} selected={environmentFilter} onSelect={(next) => { rInfo('inbox', 'environment view filter changed', { filter: next }); setEnvironmentFilter(next) }} triggerRef={environmentButton} onClose={() => setEnvironmentAnchor(null)} />}
-      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}
+      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} workingLast={workingLast} onWorkingLast={setWorkingLast} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}
     </div>
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px' }}>
       {searching ? (searchRows.length ? searchRows.map((tab) => tab.settledAt != null ? settledRow(tab) : row(tab, 'card', inboxProjectFor(tab, benches).name)) : <div style={emptyText(colors)}>No conversations found.</div>) : <>

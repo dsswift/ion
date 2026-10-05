@@ -531,6 +531,8 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
 
+	case "provider_account_usage":
+		s.dispatchProviderAccountUsage(conn, cmd)
 	case "provider_subscription_status", "provider_subscription_select", "provider_subscription_refresh":
 		s.dispatchProviderSubscription(conn, cmd)
 
@@ -548,6 +550,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "provider_logout":
 		s.dispatchProviderLogout(conn, cmd)
+
+	case "provider_remove":
+		s.dispatchProviderRemove(conn, cmd)
 
 	case "refresh_models":
 		s.dispatchRefreshModels(conn, cmd)

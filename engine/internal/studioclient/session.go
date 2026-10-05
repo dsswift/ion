@@ -64,19 +64,22 @@ type frame struct {
 
 // Connect joins the pairing's channel on `relay`, says hello with the paired
 // credential in the thin view, and waits for the welcome.
+// unknownClientReason is the close reason a server gives a sealed connection
+// that names a pairing it does not hold, or one it has revoked.
+const unknownClientReason = "unknown client"
+
+// ErrUnknownClient is a server refusing a paired connection because it has
+// no usable pairing for the client: it was revoked, or the server's data was
+// replaced since the pairing was made.
+var ErrUnknownClient = errors.New("the server holds no pairing for this client")
+
 func Connect(ctx context.Context, relay Relay, bearer string, p Pairing) (*Session, error) {
 	conn, err := dialRelay(ctx, relay.URL, ChannelID(p.SharedSecret), bearer)
 	if err != nil {
 		return nil, err
 	}
 	s := &Session{conn: conn, secret: p.SharedSecret}
-	proof := RelayProof(p.SharedSecret)
-	hello := map[string]any{
-		"type": "studio_hello", "protocolVersion": studioProtocolVersion, "clientId": p.ClientID,
-		"clientKind": "desktop", "capabilities": []string{}, "view": "thin",
-		"credential": map[string]any{"kind": "paired", "clientId": p.ClientID, "proof": proof},
-	}
-	if err := s.handshake(ctx, hello, relay.URL); err != nil {
+	if err := s.handshake(ctx, pairedHello(p, RelayProof(p.SharedSecret)), relay.URL); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -93,6 +96,10 @@ func (s *Session) handshake(ctx context.Context, hello map[string]any, where str
 		raw, err := s.read(ctx)
 		if err != nil {
 			s.Close()
+			var closed websocket.CloseError
+			if errors.As(err, &closed) && closed.Code == websocket.StatusPolicyViolation && closed.Reason == unknownClientReason {
+				return fmt.Errorf("%w: %s", ErrUnknownClient, closed.Reason)
+			}
 			return fmt.Errorf("waiting for studio_welcome: %w", err)
 		}
 		var f frame
@@ -128,33 +135,15 @@ func RelayProof(secret []byte) string {
 
 // Action runs one studio action and returns its value.
 func (s *Session) Action(ctx context.Context, action string, args ...any) (json.RawMessage, error) {
-	if args == nil {
-		args = []any{}
-	}
-	id := "fleet-" + strconv.FormatInt(s.nextID.Add(1), 10)
-	if err := s.send(ctx, map[string]any{"type": "studio_action", "id": id, "action": action, "args": args}); err != nil {
+	id, err := s.StartAction(ctx, action, args...)
+	if err != nil {
 		return nil, err
 	}
-	for {
-		raw, err := s.read(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("waiting for %s: %w", action, err)
-		}
-		var f frame
-		if json.Unmarshal(raw, &f) != nil || f.Type != "studio_action_result" || f.ID != id {
-			continue
-		}
-		if f.OK {
-			return f.Value, nil
-		}
-		if f.Refusal != nil {
-			return nil, fmt.Errorf("%s refused: %s", action, f.Refusal.Message)
-		}
-		if f.Error != nil {
-			return nil, fmt.Errorf("%s failed: %s", action, f.Error.Message)
-		}
-		return nil, fmt.Errorf("%s failed", action)
-	}
+	return s.WaitResult(ctx, action, id, nil)
+}
+
+func (s *Session) nextActionID() string {
+	return "fleet-" + strconv.FormatInt(s.nextID.Add(1), 10)
 }
 
 // Close ends the session.

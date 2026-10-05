@@ -437,6 +437,14 @@ struct InboxNavigator {
         sorted(tabs, by: .recent)
     }
 
+    /// The chosen sort, with conversations still working placed below the
+    /// rest when `workingLast` is on. Each part keeps the chosen order.
+    static func sorted(_ tabs: [RemoteTabState], by sort: Sort, workingLast: Bool) -> [RemoteTabState] {
+        let ordered = sorted(tabs, by: sort)
+        guard workingLast else { return ordered }
+        return ordered.filter { !isWorking($0) } + ordered.filter(isWorking)
+    }
+
     /// Snoozed shelf: lifecycle order (soonest wake first), never the active
     /// sort. Mirrors useInboxPartition (snoozedUntil asc).
     static func snoozedOrder(_ tabs: [RemoteTabState]) -> [RemoteTabState] {

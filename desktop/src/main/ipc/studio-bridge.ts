@@ -21,7 +21,10 @@ import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import { broker as _broker } from '../connections/broker-instance'
 import { ownRelayIdentity } from '../connections/own-identity'
 import type { ConnectionPhaseSnapshot } from '../connections/phases'
-import { connectEnvironment, disconnectEnvironment, restartEnvironment } from '../connections/environment-connect'
+import { connectEnvironment, disconnectEnvironment, forgetEnvironment, restartEnvironment } from '../connections/environment-connect'
+import { cancelFleetRun, fleetRunSnapshots, startFleetRun } from '../fleet/fleet-run'
+import { watchCatalog } from '../catalog-watch'
+import type { FleetRunRequest } from '@ion/shared/types-fleet-run'
 import { pairEnvironment, type ServerSignIn } from '../connections/pairing'
 import { signInToServer } from '../connections/server-sign-in'
 import { clearBearerSignInCooldown } from '../connections/server-bearer'
@@ -32,7 +35,7 @@ import { portForwards } from '../connections/port-forward-instance'
 import { hostname } from 'os'
 import { exportToFile, importFromFile, onTransferProgress, cancelTransfer } from '../connections/transfer'
 import { state } from '../state'
-import { readDeviceSettings, requestDeviceSettingWrite } from '../device-settings'
+import { readDeviceSettings, requestDeviceSettingWrite, deviceSettingsFile } from '../device-settings'
 import { writeEnvCache, readEnvCache } from '../env-cache'
 import { noteDevicePolicyFrame } from '../device-policy'
 import { debug as _debug, log as _log, warn as _warn } from '../logger'
@@ -59,6 +62,9 @@ export const broker = _broker
 
 /** Environment labels, kept alongside the broker's phase-only view for the connections snapshot. */
 const environmentLabels = new Map<string, string>()
+
+/** The watch on the Environment catalog file, for changes another process makes. */
+let catalogWatch: ReturnType<typeof watchCatalog> | null = null
 
 function pushToWindows(channel: string, ...args: unknown[]): void {
   const win = state.studioWindow
@@ -170,7 +176,23 @@ export function registerStudioBridgeIpc(): void {
   ipcMain.handle(IPC.STUDIO_DEVICE_SETTINGS_SET, (_event, key: string, value: unknown) => {
     const result = requestDeviceSettingWrite(key, value)
     log('studio:device-settings-set: write', { key, ok: result.ok })
+    // The window made this catalog change itself; only another process's is news to it.
+    if (key === 'environments') catalogWatch?.note()
     return result
+  })
+
+  catalogWatch?.stop()
+  catalogWatch = watchCatalog(deviceSettingsFile(), () => pushToWindows(IPC.HOST_CATALOG_CHANGED))
+
+  ipcMain.handle(IPC.HOST_FLEET_RUN, (_event, request: FleetRunRequest) => {
+    log('studio:host-fleet-run: requested', { kind: request?.kind })
+    return startFleetRun(request, (progress) => pushToWindows(IPC.HOST_FLEET_PROGRESS, progress))
+  })
+
+  ipcMain.handle(IPC.HOST_FLEET_RUNS, () => fleetRunSnapshots())
+
+  ipcMain.on(IPC.HOST_FLEET_CANCEL, (_event, runId: string) => {
+    log('studio:host-fleet-cancel: requested', { run_id: runId, running: cancelFleetRun(runId) })
   })
 
   ipcMain.handle(IPC.HOST_CONNECT_ENVIRONMENT, async (_event, environmentId: string, label: string, target: EnvironmentTarget) => {
@@ -243,6 +265,12 @@ export function registerStudioBridgeIpc(): void {
     disconnectEnvironment(environmentId)
   })
 
+  ipcMain.on(IPC.HOST_FORGET_ENVIRONMENT, (_event, environmentId: string, target: EnvironmentTarget) => {
+    log('studio:host-forget-environment: forget requested', { environment_id: environmentId, kind: target?.kind })
+    portForwards.stopEnvironment(environmentId)
+    forgetEnvironment(environmentId, target)
+  })
+
   ipcMain.on(IPC.HOST_RESTART_ENVIRONMENT, (_event, environmentId: string) => {
     log('studio:host-restart-environment: restart requested', { environment_id: environmentId })
     restartEnvironment(environmentId)
@@ -306,4 +334,6 @@ function isSendPayload(v: unknown): v is { environmentId: string; frame: StudioF
 export function _resetStudioBridgeForTest(): void {
   wired = false
   environmentLabels.clear()
+  catalogWatch?.stop()
+  catalogWatch = null
 }

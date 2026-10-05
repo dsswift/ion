@@ -70,7 +70,7 @@ import {
 import { readPlanBashAllowlist } from './plan-bash-allowlist-store'
 import { isKnownDesktopThemeId } from './theme-packs'
 import { BUILTIN_THEME_IDS } from '@ion/shared/theme-pack-types'
-import { SETTINGS_TAXONOMY, type SettingsPageScope } from '@ion/shared/settings-taxonomy'
+import { SERVERS_PAGE_ID, SETTINGS_TAXONOMY, type SettingsPageScope } from '@ion/shared/settings-taxonomy'
 import type {
   ProjectableGroup,
   ProjectableItemField,
@@ -407,10 +407,12 @@ const PAGES_WITH_PROJECTED_KEYS = new Set(VISIBLE.map((s) => s.page))
  * The settings pages a client renders the projection under, in Studio's
  * order: every page that shows a projected key, and every server page (a
  * server page's other sections are administered through their own actions).
- * Each page lists all its sections.
+ * Each page lists all its sections. The Fleet page sits under the server
+ * heading but lists every paired server, not this one, so it is left out.
  */
 export function projectablePages(): ProjectablePage[] {
   return SETTINGS_TAXONOMY
+    .filter((page) => page.id !== SERVERS_PAGE_ID)
     .filter((page) => page.scope === 'server' || PAGES_WITH_PROJECTED_KEYS.has(page.id))
     .map((page) => ({
       id: page.id,

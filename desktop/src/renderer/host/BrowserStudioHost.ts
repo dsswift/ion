@@ -39,8 +39,6 @@
  * that table still throws, deliberately: a silent no-op would leave the
  * caller believing it had succeeded.
  */
-import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
-import type { NearbyStudioServer } from '@ion/shared/types-nearby'
 import type { StudioFrame, StudioRefusalReason } from '@ion/shared/studio-wire/types'
 import { decodeFrame, encodeFrame } from '@ion/shared/studio-wire/codec'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
@@ -48,7 +46,6 @@ import type { IonAPI } from '../../preload/ionapi'
 import type { ShellApi } from './shell-api'
 import type { ConnectionPhase, ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import { LOCAL_ENVIRONMENT_ID, type EnvironmentTarget } from '@ion/shared/types-environments'
-import type { ExportFileResult, ImportFileResult, TransferProgress } from '@ion/shared/types-transfer'
 import type { Capability, StudioHost, FileDialogFilter } from './StudioHost'
 import { getDeviceSettings, getEnvCache, setDeviceSetting, setEnvCache } from './web-storage'
 import { rInfo, rWarn } from '../rendererLogger'
@@ -58,6 +55,8 @@ import { createBridgedShell, refuseUnbridged } from './bridged-shell'
 import { BrowserLogForwarder } from './browser-log-forward'
 import { WIRE_PING_CAPABILITY } from '@ion/shared/studio-wire/types'
 import { ClientWireLatency } from '@ion/shared/client-wire-latency'
+import { tabClientId } from './browser-client-id'
+import { BrowserUnsupported } from './BrowserUnsupported'
 
 const CAPABILITIES: Capability[] = [
   'terminal', 'git', 'files', 'questions', 'graph',
@@ -83,24 +82,8 @@ const MAX_ATTEMPTS = 5
  */
 const OFFLINE_RETRY_MS = 30_000
 
-const CLIENT_ID_KEY = 'ion-web-client-id'
-
 /** Matches `host-actions.ts`'s ACTION_TIMEOUT_MS so both round trips fail the same way. */
 const BRIDGED_CALL_TIMEOUT_MS = 30_000
-
-/** A stable id for this tab, kept in `sessionStorage` so it survives a reload but not a new tab (one environment per tab — no catalog, spec 18). */
-function tabClientId(): string {
-  try {
-    const existing = window.sessionStorage.getItem(CLIENT_ID_KEY)
-    if (existing) return existing
-    const id = crypto.randomUUID()
-    window.sessionStorage.setItem(CLIENT_ID_KEY, id)
-    return id
-  } catch {
-    // Private-mode sessionStorage can throw; a fresh id per reconnect attempt is still correct, just not stable across reloads.
-    return crypto.randomUUID()
-  }
-}
 
 /**
  * The browser's local answers, read before the bridge table.
@@ -127,7 +110,7 @@ const BROWSER_OVERRIDES: Partial<IonAPI> = {
   },
 }
 
-export class BrowserStudioHost implements StudioHost {
+export class BrowserStudioHost extends BrowserUnsupported implements StudioHost {
   /**
    * What this tab waits through: an action leaving here and its result
    * arriving back. Its lines reach `server.jsonl` as `component=web` through
@@ -344,26 +327,9 @@ export class BrowserStudioHost implements StudioHost {
     return { ok: true }
   }
 
-  async pairEnvironment(_link: string, _label?: string): Promise<{ ok: true; target: EnvironmentTarget } | { ok: false; error: string }> {
-    // A browser client has exactly one environment -- the origin that served
-    // it -- and no catalog to add a paired server to (see `catalog.ts`).
-    rWarn('BrowserStudioHost', 'pairEnvironment refused: a browser client cannot add environments')
-    return { ok: false, error: 'A browser Studio client cannot pair with other environments.' }
-  }
-
-  async sshAddEnvironment(_destination: string, _label?: string): Promise<SshAddEnvironmentResult> {
-    // Same reason as pairEnvironment: a browser client has no catalog and no ssh binary.
-    rWarn('BrowserStudioHost', 'sshAddEnvironment refused: a browser client cannot add environments')
-    return { ok: false, error: 'A browser Studio client cannot add environments over SSH.' }
-  }
-
-  async browseNearby(): Promise<NearbyStudioServer[]> {
-    // A browser tab cannot do mDNS, and a browser client adds no environments.
-    return []
-  }
-
-  onSshProgress(_cb: (progress: SshAddEnvironmentProgress) => void): () => void {
-    return () => {}
+  /** A browser client holds no stored secret; forgetting is disconnecting. */
+  forgetEnvironment(environmentId: string, _target: EnvironmentTarget): void {
+    this.disconnectEnvironment(environmentId)
   }
 
   disconnectEnvironment(_environmentId: string): void {
@@ -396,24 +362,7 @@ export class BrowserStudioHost implements StudioHost {
     return getEnvCache(environmentId)
   }
 
-  async exportToFile(): Promise<ExportFileResult> {
-    return { ok: false, refusal: { code: 'unsupported', message: 'file transfer is not available in a browser Studio client' } }
-  }
-
-  async importFromFile(): Promise<ImportFileResult> {
-    return { ok: false, refusal: { code: 'unsupported', message: 'file transfer is not available in a browser Studio client' } }
-  }
-
-  onTransferProgress(_cb: (progress: TransferProgress) => void): () => void {
-    // No binary channel is opened over this socket (see handleMessage) — transfer never produces progress here.
-    return () => {}
-  }
-
   readonly portForward = null
-  async cancelTransfer(): Promise<boolean> {
-    // Nothing can be in flight: exportToFile/importFromFile are refused above.
-    return false
-  }
 
   private beginConnect(): void {
     this.setPhase({ phase: 'connecting', transport: 'tcp' })

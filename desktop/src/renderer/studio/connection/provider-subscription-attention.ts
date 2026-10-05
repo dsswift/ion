@@ -20,6 +20,7 @@ import {
 import { action, host } from '../../host/host-instance'
 import { rInfo, rWarn } from '../../rendererLogger'
 import { registry } from './registry'
+import { isManageOnlyEnvironment } from './catalog'
 
 export const PROVIDER_SUBSCRIPTION_CHANGED_CHANNEL = 'ion:provider-subscription-changed'
 
@@ -57,7 +58,8 @@ class SubscriptionAttentionStore {
   private onPhases(states: Map<string, EnvironmentPhaseState>): void {
     let changed = false
     for (const [environmentId, state] of states) {
-      const isConnected = state.phase === 'connected'
+      // A Manage-Only Server runs no conversation here, so it never asks for a subscription pick.
+      const isConnected = state.phase === 'connected' && !isManageOnlyEnvironment(environmentId)
       if (isConnected === this.connected.has(environmentId)) continue
       changed = true
       if (isConnected) {

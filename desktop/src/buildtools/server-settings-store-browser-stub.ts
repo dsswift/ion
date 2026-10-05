@@ -81,7 +81,10 @@ export const SETTINGS_DEFAULTS = {
   workspaceFolders: {} as Record<string, string[]>,
   gitPanelRepoSectionsCollapsed: {} as Record<string, boolean>,
   inboxAutoSettleDays: 0,
-  inboxAutoSettleOnMerge: true,
+  usageLimitAutoResume: false,
+  usageLimitResumePrompt: 'Continue where you left off.',
+  quotaExpiryAlertHours: 12,
+  quotaExpiryUnusedPercent: 25,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   projects: {} as Record<string, any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

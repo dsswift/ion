@@ -27,7 +27,7 @@ vi.mock('../../connection/tab-environment', () => ({
   useTabEnvironmentId: () => 'env-source',
 }))
 vi.mock('../../connection/catalog', () => ({
-  readCatalog: async () => [{ id: 'env-target', label: 'This Mac' }],
+  readConversationCatalog: async () => [{ id: 'env-target', label: 'This Mac' }],
 }))
 vi.mock('../../connection/view-filter', () => ({
   useEnvironmentViewFilter: () => ['all', vi.fn()],
