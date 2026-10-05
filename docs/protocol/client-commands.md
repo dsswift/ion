@@ -303,6 +303,7 @@ Fork a session at a specific message index, creating a new session with conversa
 | `newKey`       | string            | no       | Client-owned key for the forked session |
 | `entryId`      | string            | no       | User-turn entry to exclude from the fork; takes priority over `messageIndex` |
 | `userTurnIndex`| number            | no       | User-turn ordinal fallback when `entryId` is unavailable; used only with `newKey` |
+| `leafId`       | string            | no       | Copy exactly the branch ending at this leaf (see `list_branches`), whether or not it is the active path; takes priority over `entryId` and `messageIndex`; used only with `newKey`. The source tree is unchanged. |
 | `requestId`    | string            | no       | Correlates with ServerResult       |
 
 ```json
@@ -458,6 +459,58 @@ Retrieve the conversation tree structure for a session.
 ```
 
 **Response:** `ServerResult` with `data` containing the tree structure.
+
+---
+
+### list_branches
+
+List every branch of the conversation tree. A branch is the path from the root to a leaf: an entry no other entry names as its parent. Detached agent-dispatch records are not branches. Read from the stored `parentId` chain; nothing is written.
+
+| Field      | Type              | Required | Description                  |
+|------------|-------------------|----------|------------------------------|
+| `cmd`      | `"list_branches"` | yes      | Command discriminator        |
+| `key`      | string            | yes      | Session key                  |
+| `requestId`| string            | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"list_branches","key":"abc-123","requestId":"r1"}
+```
+
+**Response:** `ServerResult` with `data`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `activeLeafId` | string | The current leaf. An interior entry right after a rewind (then no branch is `active`); `""` when the leaf was cleared to before the first entry. |
+| `branches[].leafId` | string | The branch's last entry |
+| `branches[].timestamp` | number | The leaf's timestamp, Unix ms |
+| `branches[].preview` | string | Text of the path's last message that has any, cut short |
+| `branches[].messageCount` | number | Message entries on the path |
+| `branches[].forkPointId` | string | Deepest entry on the path with more than one child; omitted when none |
+| `branches[].active` | boolean | The current leaf is this leaf |
+| `branchPoints[].entryId` | string | Entry with more than one child; `""` for the root when the tree has several roots |
+| `branchPoints[].timestamp` | number | That entry's timestamp, Unix ms |
+| `branchPoints[].childIds` | string[] | Its children, in entry order |
+
+A conversation with no stored file yet answers with empty lists.
+
+---
+
+### switch_branch
+
+Make the branch ending at `leafId` the active path, so the next prompt continues it. The model context (`.llm.jsonl`) is rebuilt from that path alone, the plan file in effect on it is restored, and the engine emits [`engine_active_path_changed`](server-events.md#engine_active_path_changed). Refused while a run, a compaction, or a run recovery is appending to the current path, and when `leafId` is not a branch leaf (move to an interior entry with `navigate_tree`).
+
+| Field      | Type              | Required | Description                  |
+|------------|-------------------|----------|------------------------------|
+| `cmd`      | `"switch_branch"` | yes      | Command discriminator        |
+| `key`      | string            | yes      | Session key                  |
+| `leafId`   | string            | yes      | Leaf of the branch to switch to |
+| `requestId`| string            | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"switch_branch","key":"abc-123","leafId":"e42","requestId":"r2"}
+```
+
+**Response:** `ServerResult` with `ok: true`, or an error naming why the switch was refused.
 
 ---
 

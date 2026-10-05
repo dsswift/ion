@@ -63,6 +63,34 @@
       ]
     },
     {
+      "id": "active-path",
+      "term": "Active path",
+      "definition": "The branch of a conversation tree the model context is built from: the entries from the root to the current leaf. The next prompt continues it. Switching branches moves it to another leaf and rebuilds the context from that path alone.",
+      "domain": "engine",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "active branch"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func SwitchBranch",
+          "path": "engine/internal/conversation/branches.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "EventActivePathChanged",
+          "path": "engine/internal/types/normalized_event_types.go"
+        }
+      ]
+    },
+    {
       "id": "agent",
       "term": "Agent",
       "definition": "One named actor that runs a prompt loop with its own model, tools, and system prompt. The root agent is the conversation itself. A sub-agent is an agent that the root agent or another agent starts.",

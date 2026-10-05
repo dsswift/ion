@@ -1013,6 +1013,17 @@ Incremental confirmation emitted after an `abort` with `abortScope: "all_work"` 
 | `sessionWorkStopped.stoppedBackgroundTaskIds` | string[] | Background task IDs targeted by the stop |
 | `sessionWorkStopped.killedAgentProcessCount` | number | Agent processes signalled by the stop |
 
+#### engine_active_path_changed
+
+`switch_branch` moved the conversation onto another branch. A snapshot of where the active path now ends; see [`active_path_changed`](normalized-events.md#active_path_changed).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_active_path_changed"` | Event type |
+| `activePathChanged.conversationId` | string | Conversation whose path moved |
+| `activePathChanged.leafId` | string | Entry the active path now ends at |
+| `activePathChanged.previousLeafId` | string | Entry it ended at before; omitted when it had no leaf |
+
 #### engine_background_task_complete
 
 A background bash command started with `Bash(run_in_background: true, notify_on_complete: true)` reached a terminal state. Emitted once per completion, before the engine resolves delivery — the typed event is the engine's complete signaling obligation, and what happens next (start a run, queue the result, do nothing) is the operator's opinion configured with `backgroundTasks.delivery`. See [`docs/tools/task-tools.md`](../tools/task-tools.md) § "Background bash completion" and [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).

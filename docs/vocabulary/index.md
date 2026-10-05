@@ -49,6 +49,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Abort Marker](#term-abort-marker)
 - [Account Policy](#term-account-policy)
 - [Account Setting](#term-account-setting)
+- [Active path](#term-active-path)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Application Config](#term-application-config)
@@ -384,6 +385,22 @@ The filesystem root that scopes tool execution and file access for a conversatio
   - `engine` / `code` / `go`: `type Registry struct` in `engine/internal/workspaces/registry.go`
   - `engine` / `wire` / `go`: `ClientWorkspaceContext` in `engine/internal/protocol/protocol.go`
   - `desktop` / `ui` / `typescript`: `WorkspaceStatusIndicator` in `desktop/src/renderer/components/WorkspaceStatusIndicator.tsx`
+
+### state
+
+#### Active path {#term-active-path}
+
+The branch of a conversation tree the model context is built from: the entries from the root to the current leaf. The next prompt continues it. Switching branches moves it to another leaf and rebuilds the context from that path alone.
+
+- **ID:** `active-path`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `active branch`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func SwitchBranch` in `engine/internal/conversation/branches.go`
+  - `engine` / `wire` / `go`: `EventActivePathChanged` in `engine/internal/types/normalized_event_types.go`
 
 ### action
 
@@ -3539,6 +3556,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
 - Legacy name: `Tab Strip` → [Inbox](#term-inbox)
+- Alias: `active branch` → [Active path](#term-active-path)
 - Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
 - Alias: `agent browser link` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
