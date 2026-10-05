@@ -79,7 +79,7 @@ export function ProvidersSection(): React.JSX.Element {
           />
         )}
       />
-      {open && <ProviderPanel key={`${env.id}:${open.id}`} provider={open} environmentId={env.id} onClose={() => setOpenId(null)} onCredentialSaved={refetchModels} />}
+      {open && <ProviderPanel key={`${env.id}:${open.id}`} provider={open} environmentId={env.id} serverLabel={env.label} onClose={() => setOpenId(null)} onCredentialSaved={refetchModels} />}
     </>
   )
 }

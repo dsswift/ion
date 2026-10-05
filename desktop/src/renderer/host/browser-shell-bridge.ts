@@ -122,6 +122,7 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
     pack: (args) => [{ provider: args[0], code: args[1] }],
   },
   providerLogout: { action: 'provider.logout', pack: named('provider') },
+  removeProvider: { action: 'provider.remove', pack: named('provider') },
   automationUpsert: { action: 'automation.upsert', pack: (args) => [args[0]] },
   automationDuplicate: { action: 'automation.duplicate', pack: (args) => [{ id: args[0], projectPath: args[1] }] },
   setProjectAutomationEnabled: {
