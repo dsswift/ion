@@ -61,6 +61,8 @@ export interface SettingsPage {
   scope: SettingsPageScope
   description?: string
   sections: readonly SettingsSection[]
+  /** The page uses the dialog's full width instead of the reading column. */
+  wide?: boolean
 }
 
 /** What Studio adds to a taxonomy section: how it renders and what search finds there. */
@@ -98,6 +100,7 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
     item('agent-panel', 'Agent panel open by default', 'agent panel open default', ['agentPanelDefaultOpen']),
     item('sound', 'Notification sound', 'notification sound alert audio task complete', ['soundEnabled']),
     item('network-shield', 'Browser preview network shield', 'browser preview network shield block', ['browserPreviewNetworkShield']),
+    item('open-at-login', 'Open Ion at login', 'open launch start at login startup boot autostart sign in', ['openAtLogin']),
     item('implement-clear', 'Show “Implement, clear context”', 'clear context implement plan button', ['showImplementClearContext']),
   ] },
   'device-git': { component: P.DeviceGitSection, items: [
@@ -124,8 +127,12 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
     item('notification-kinds', 'Notification kinds', 'notification tray inbox kinds resource mute exclude', ['excludedResourceKinds']),
   ] },
   // ── Servers ──────────────────────────────────────────────────────────
-  servers: { component: P.ServersPage, requires: 'local', items: [
-    item('servers-list', 'Servers', 'environment server host list reach connect'),
+  servers: { component: P.FleetPage, requires: 'local', items: [
+    item('fleet-quota', 'Quota by provider', 'fleet quota provider pool limit usage claude codex subscription 5-hour 7-day weekly'),
+    item('fleet-accounts', 'Accounts and usage', 'fleet accounts usage limit quota claude codex subscription 5-hour 7-day weekly signed in'),
+    item('fleet-totals', 'Fleet totals', 'fleet totals servers online running conversations versions'),
+    item('servers-list', 'Servers', 'environment server host list reach connect fleet manage only version load'),
+    item('fleet-compatibility', 'Compatibility', 'fleet compatibility transfer format studio wire versions'),
     item('add-server', 'Add a server', 'add environment server pair pairing link ssh sign in nearby'),
     item('hidden-servers', 'Hidden and blocked servers', 'hidden blocked environment diagnostics unreachable'),
   ] },
@@ -189,7 +196,8 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
     item('watcher-ignore', 'Ignored directories', 'git watcher ignored directories node_modules', ['gitWatcherIgnoredDirectories']),
   ] },
   tabs: { component: P.InboxSection, items: [
-    item('auto-settle', 'Auto-settle conversations', 'inbox settle inactive idle days merged pull request automatic archive', ['inboxAutoSettleDays', 'inboxAutoSettleOnMerge']),
+    item('auto-settle', 'Auto-settle conversations', 'inbox settle inactive idle days automatic archive', ['inboxAutoSettleDays']),
+    item('usage-limits', 'Usage limits', 'usage limit quota resume reset rate limited spare unused expire alert subscription', ['usageLimitAutoResume', 'usageLimitResumePrompt', 'quotaExpiryAlertHours', 'quotaExpiryUnusedPercent']),
   ] },
   quicktools: { component: P.QuickToolsSection, items: [
     item('quick-tools', 'Quick tools', 'quick tools custom button shortcut action icon command', ['quickTools']),
@@ -222,7 +230,7 @@ function studioPage(page: SettingsTaxonomyPage): SettingsPage {
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = SETTINGS_TAXONOMY_PAGES.map(studioPage)
 
-export const SERVERS_PAGE: SettingsPage = studioPage(SETTINGS_TAXONOMY_SERVERS_PAGE)
+export const SERVERS_PAGE: SettingsPage = { ...studioPage(SETTINGS_TAXONOMY_SERVERS_PAGE), wide: true }
 
 /** Where the dialog is: a page, the server it is about (server pages only), and a row to reveal. */
 export interface SettingsLocation {

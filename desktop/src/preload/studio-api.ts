@@ -15,6 +15,7 @@ import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
 import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBrowserFindRequest, StudioBrowserFindResult, StudioBrowserPrompt, StudioBrowserPromptAnswer, StudioBrowserShortcutEvent, StudioBrowserViewState, StudioBrowserZoomRequest } from '@ion/shared/studio-browser-types'
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
+import type { FleetRunProgress, FleetRunRequest, FleetRunSnapshot, FleetRunStart } from '@ion/shared/types-fleet-run'
 import type { DeviceSettingWrite } from '@ion/shared/enterprise-settings-policy'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
@@ -122,6 +123,15 @@ export interface StudioApi {
   onHostSshProgress(callback: (progress: SshAddEnvironmentProgress) => void): () => void
   /** Asks main to disconnect one environment's connection (closedByUser — no auto-retry). */
   hostDisconnectEnvironment(environmentId: string): void
+  hostForgetEnvironment(environmentId: string, target: EnvironmentTarget): void
+  /** Runs the bundled `ion fleet` on this device; its lines arrive on `onHostFleetProgress`. */
+  hostFleetRun(request: FleetRunRequest): Promise<FleetRunStart>
+  hostFleetCancel(runId: string): void
+  /** The deploys this desktop started and still remembers, with their logs. */
+  hostFleetRuns(): Promise<FleetRunSnapshot[]>
+  onHostFleetProgress(callback: (progress: FleetRunProgress) => void): () => void
+  /** The Environment catalog was changed on disk by another process. */
+  onHostCatalogChanged(callback: () => void): () => void
   /** Asks main to re-arm the backoff ladder and reconnect immediately. */
   hostRestartEnvironment(environmentId: string): void
   /** Reads back one environment's cached last-welcome frame (spec 13 env-cache), or null when absent. */
@@ -245,6 +255,20 @@ export const studioApi: StudioApi = {
     return () => ipcRenderer.removeListener(IPC.HOST_SSH_PROGRESS, handler)
   },
   hostDisconnectEnvironment: (environmentId) => ipcRenderer.send(IPC.HOST_DISCONNECT_ENVIRONMENT, environmentId),
+  hostForgetEnvironment: (environmentId, target) => ipcRenderer.send(IPC.HOST_FORGET_ENVIRONMENT, environmentId, target),
+  hostFleetRun: (request) => ipcRenderer.invoke(IPC.HOST_FLEET_RUN, request),
+  hostFleetCancel: (runId) => ipcRenderer.send(IPC.HOST_FLEET_CANCEL, runId),
+  hostFleetRuns: () => ipcRenderer.invoke(IPC.HOST_FLEET_RUNS),
+  onHostFleetProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: FleetRunProgress): void => callback(progress)
+    ipcRenderer.on(IPC.HOST_FLEET_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC.HOST_FLEET_PROGRESS, handler)
+  },
+  onHostCatalogChanged: (callback) => {
+    const handler = (): void => callback()
+    ipcRenderer.on(IPC.HOST_CATALOG_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.HOST_CATALOG_CHANGED, handler)
+  },
   hostRestartEnvironment: (environmentId) => ipcRenderer.send(IPC.HOST_RESTART_ENVIRONMENT, environmentId),
   hostGetEnvCache: (environmentId) => ipcRenderer.invoke(IPC.HOST_GET_ENV_CACHE, environmentId),
   hostTransferExportToFile: (environmentId, tabId, targetEnvironmentId, options) =>

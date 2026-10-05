@@ -3,7 +3,7 @@ declare const __ION_DESKTOP_VERSION__: string
 import { app, BrowserWindow, dialog, Menu, powerMonitor, screen } from 'electron'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-import { log as _log, error as _error, initLoggerMachineIdentity, LOG_FILE } from './logger'
+import { log as _log, error as _error, flushLogs, initLoggerMachineIdentity, LOG_FILE } from './logger'
 import { installMainCrashLogging } from './crash-logging'
 import { applyConfiguredLogLevel } from './log-level'
 import { loadMachineIdentity } from '@ion/server/machine-identity'
@@ -28,9 +28,11 @@ import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { localServer } from './local-server-instance'
 import { ensureEntraAuthConfig } from '@ion/server/oauth/entra-config'
 import { initAutoUpdater } from './updater'
+import { wireHostInstall } from './host-install'
 import { disableAutoUpdateFrom, firstLocalWelcome } from './local-welcome'
 import { startWatchdog, setWatchdogSuspended } from '@ion/server/watchdog'
 import { startDeviceMetrics } from './device-metrics'
+import { startLoginItem } from './login-item'
 import { broker } from './connections/broker-instance'
 import { wireAttentionReporting } from './connections/attention-reporter'
 import { LOCAL_ENVIRONMENT_ID, localEnvironmentLabel } from '@ion/shared/types-environments'
@@ -53,7 +55,11 @@ export function setupAppLifecycle(): void {
   // The cooperative single-instance lock first: a running Ion that holds it
   // receives this launch (its window comes forward, or a forced quit runs)
   // and this process leaves without startup work.
+  // The quit handlers that drain the log are installed further down, so every
+  // early exit drains it here; otherwise the reason this process left, and
+  // everything startup logged before it, never reaches desktop.jsonl.
   if (!claimSingleInstance()) {
+    flushLogs()
     app.quit()
     return
   }
@@ -94,6 +100,7 @@ export function setupAppLifecycle(): void {
   // Holding the lock means no Ion was running to take the forced quit.
   if (process.argv.includes(FORCE_QUIT_ARG)) {
     log('launched to force a quit, but no Ion is running; exiting')
+    flushLogs()
     app.exit(0)
     return
   }
@@ -140,6 +147,9 @@ export function setupAppLifecycle(): void {
     if (disableAutoUpdate) log('app_lifecycle: auto-update disabled by enterprise policy')
     await app.whenReady()
     initAutoUpdater({ disableAutoUpdate })
+    // The local server hands this desktop the restarts and updates a client
+    // asks it for; the same policy decides whether an update is allowed.
+    wireHostInstall(broker, { disableAutoUpdate })
   })
   void connectEnvironment(LOCAL_ENVIRONMENT_ID, localLabel, { kind: 'local' }).catch((err) => {
     log('app_lifecycle: local environment connect failed', { error: String(err) })
@@ -197,6 +207,8 @@ export function setupAppLifecycle(): void {
     // This device's own Studio processes and GPU time (Device Metrics), with
     // the idle-repaint warning. Local only: nothing here reaches a server.
     startDeviceMetrics()
+    // Whether the system opens Ion at sign-in, kept in step with the `openAtLogin` device setting.
+    startLoginItem()
     // This client's own view of wire latency, alongside the server's.
     broker.latency.start()
     // The server owns the relay sockets and its own stall watchdog; this

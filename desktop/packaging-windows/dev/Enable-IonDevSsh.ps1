@@ -76,8 +76,10 @@ icacls $adminKeys /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' | O
 
 # The loop scripts are PowerShell 7 when it is present; fall back to Windows
 # PowerShell so a fresh VM still gets a usable remote shell.
-$shell = (Get-Command pwsh -ErrorAction SilentlyContinue)?.Source
-if (-not $shell) { $shell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" }
+# This script runs on a fresh machine, where only Windows PowerShell 5.1
+# exists, so it must parse there.
+$pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+$shell = if ($pwsh) { $pwsh.Source } else { "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" }
 New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null
 New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell `
   -Value $shell -PropertyType String -Force | Out-Null

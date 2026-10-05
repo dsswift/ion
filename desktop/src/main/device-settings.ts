@@ -41,6 +41,7 @@ export const DEVICE_SETTINGS_DEFAULTS = {
   logLevel: 'DEBUG',
   selectedTheme: 'ion-dark',
   soundEnabled: true,
+  openAtLogin: false,
   showDirLabel: true,
   preferredOpenWith: 'cli',
   expandToolResults: false,

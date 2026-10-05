@@ -15,13 +15,9 @@
 #   4. Embeds pkg-scripts/. By default the package refuses to replace a running
 #      Ion and its log tells the operator to quit Ion and retry. Device policy
 #      can select the unattended path, which stops a running Ion first.
-#      `make desktop` uses a detached coordinator that waits for the normal Ion
-#      drain, then opens this package.
-#      The package is the only mechanism that writes /Applications/Ion.app.
 #
 # Prerequisites: a built Ion.app. Produce one with:
 #     cd desktop && npm run dist            # builds release/mac*/Ion.app
-#   (or the full make desktop, though that also installs+relaunches).
 #
 # Signing/notarization: the .app is already signed by electron-builder's mac
 # pipeline (hardenedRuntime + entitlements). This script produces the unsigned
@@ -50,20 +46,7 @@ die() { printf '[build-pkg] ERROR: %s\n' "$1" >&2; exit 1; }
 command -v pkgbuild >/dev/null 2>&1 || die "pkgbuild not found (macOS command line tools required)"
 
 # --- Locate the built Ion.app ------------------------------------------------
-# electron-builder writes the app under release/mac, release/mac-universal, or
-# release/mac-arm64 depending on the target arch. Take the first match.
-APP_PATH=""
-for candidate in \
-  "${RELEASE_DIR}/mac-universal/${APP_NAME}" \
-  "${RELEASE_DIR}/mac/${APP_NAME}" \
-  "${RELEASE_DIR}/mac-arm64/${APP_NAME}" \
-  "${RELEASE_DIR}/mac-x64/${APP_NAME}"; do
-  if [ -d "${candidate}" ]; then
-    APP_PATH="${candidate}"
-    break
-  fi
-done
-
+APP_PATH="$(bash "${SCRIPT_DIR}/built-app-path.sh" "${RELEASE_DIR}" || true)"
 [ -n "${APP_PATH}" ] || die "no built ${APP_NAME} found under ${RELEASE_DIR}/mac*. Run 'npm run dist' first."
 log "found app: ${APP_PATH}"
 
