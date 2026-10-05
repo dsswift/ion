@@ -1,7 +1,7 @@
 // The desktop that runs a server carries out the restarts and updates that
 // server is asked for, tells it each step, and refuses with the reason when
 // it will not replace its own app.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 
 const el = vi.hoisted(() => ({ app: { isPackaged: true, relaunch: vi.fn(), getVersion: () => '1.5.0' } }))
@@ -32,8 +32,16 @@ const request = (payload: unknown, environmentId = 'local'): void => deliver(env
 const settle = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve() }
 const reports = (): Array<Record<string, unknown>> => sendAction.mock.calls.map((c) => (c as unknown[])[2] as unknown[]).map((args) => args[0] as Record<string, unknown>)
 
+// The install path depends on the platform; every case runs as the one named
+// here, whatever the test host is.
+const realPlatform = process.platform
+const setPlatform = (platform: NodeJS.Platform): void => { Object.defineProperty(process, 'platform', { value: platform, configurable: true }) }
+
+afterEach(() => setPlatform(realPlatform))
+
 beforeEach(() => {
   vi.clearAllMocks()
+  setPlatform('darwin')
   el.app.isPackaged = true
   fs.writable = true
   updater.hasUpdateFeed.mockReturnValue(true)
@@ -95,16 +103,25 @@ describe('a request from the local server', () => {
 describe('a desktop that will not replace its own app', () => {
   it('refuses a release with the reason, and still restarts', async () => {
     fs.writable = false
-    if (process.platform === 'darwin') {
-      request({ kind: 'release' })
-      await settle()
-      expect(reports()[0]).toMatchObject({ stage: 'refused', kind: 'release', code: 'not_admin' })
-      expect(updater.installLatestReleaseNow).not.toHaveBeenCalled()
-    }
+    request({ kind: 'release' })
+    await settle()
+    expect(reports()[0]).toMatchObject({ stage: 'refused', kind: 'release', code: 'not_admin' })
+    expect(updater.installLatestReleaseNow).not.toHaveBeenCalled()
     sendAction.mockClear()
     request({ kind: 'restart' })
     await settle()
     expect(el.app.relaunch).toHaveBeenCalled()
+  })
+
+  it('refuses a release and a sent build on Windows', async () => {
+    setPlatform('win32')
+    request({ kind: 'release' })
+    await settle()
+    request({ kind: 'artifact', path: '/data/host-install/Ion.zip' })
+    await settle()
+    expect(reports().map((r) => r.code)).toEqual(['needs_administrator', 'needs_administrator'])
+    expect(updater.installLatestReleaseNow).not.toHaveBeenCalled()
+    expect(updater.installArchiveNow).not.toHaveBeenCalled()
   })
 
   it('names the reason for each case', () => {
@@ -120,7 +137,6 @@ describe('a desktop that will not replace its own app', () => {
 
   it('refuses a release when the build has no feed', async () => {
     updater.hasUpdateFeed.mockReturnValue(false)
-    if (process.platform === 'win32') return
     request({ kind: 'release' })
     await settle()
     expect(reports()[0]).toMatchObject({ stage: 'refused', code: 'no_update_feed' })

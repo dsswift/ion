@@ -22,18 +22,18 @@ const workflow = parse(
 describe('studio server bundle ordering', () => {
   const job = workflow.jobs['build-studio-server']
 
-  // The bundle downloads the engine binary from the engine release. A download
-  // that runs while publish-engine flips that release from draft to public
-  // can find it under neither state and fail with "release not found".
-  it('waits for the engine release to be published before downloading from it', () => {
+  // The bundle downloads the engine binary from the engine release, which is
+  // still a draft then. ready-engine runs once every engine asset is
+  // attached; a download before it can find the asset missing.
+  it('waits for the engine release assets before downloading from it', () => {
     expect(job.needs).toContain('build-engine')
-    expect(job.needs).toContain('publish-engine')
+    expect(job.needs).toContain('ready-engine')
   })
 
-  // publish-engine is skipped when the engine is not in the release and on a
+  // ready-engine is skipped when the engine is not in the release and on a
   // dry run; the bundle must still build then.
-  it('still runs when publish-engine is skipped', () => {
+  it('still runs when ready-engine is skipped', () => {
     expect(job.if).toMatch(/^always\(\)/)
-    expect(job.if).not.toContain('publish-engine')
+    expect(job.if).not.toContain('ready-engine')
   })
 })
