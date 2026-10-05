@@ -283,11 +283,11 @@ export type RemoteCommand =
       providerId?: string;
     }
   | { type: "desktop_load_attachments"; tabId: string }
-  // A thin client's Personal preferences (`preferences.declare`): held on its
-  // connection, never written to a settings document.
   // A conversation's branches (`engine.listBranches`), and switching to one (`engine.switchBranch`).
   | { type: "desktop_list_branches"; tabId: string }
   | { type: "desktop_switch_branch"; tabId: string; leafId: string }
+  // A thin client's Personal preferences (`preferences.declare`): held on its
+  // connection, never written to a settings document.
   | { type: "desktop_declare_preferences"; preferences: import("@ion/shared/settings-registry").PersonalPreferences }
   | { type: "desktop_register_push"; token: string; env: "sandbox" | "production" }
   | { type: "desktop_unpair" }
