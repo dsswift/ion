@@ -82,6 +82,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         web: resolve(__dirname, "src/renderer/web.html"),
+        // The Fleet Hub's portal: its own page, served by `node dist/hub.js`.
+        hub: resolve(__dirname, "src/renderer/hub.html"),
       },
     },
   },
