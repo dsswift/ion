@@ -30,6 +30,18 @@ func TestIonDir_HomeDefault(t *testing.T) {
 	}
 }
 
+// TestHomeIonDir_IgnoresEnv asserts HomeIonDir stays on <home>/.ion even
+// when ION_DATA_DIR points the engine's own data root elsewhere.
+func TestHomeIonDir_IgnoresEnv(t *testing.T) {
+	t.Setenv("ION_DATA_DIR", "/tmp/ion-a")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, ".ion")
+	if got := HomeIonDir(); got != want {
+		t.Fatalf("HomeIonDir() = %q, want %q", got, want)
+	}
+}
+
 // TestIonDir_Empty asserts an empty string is returned (with a WARN log,
 // not verified here) when neither ION_DATA_DIR nor HOME resolves a home.
 func TestIonDir_Empty(t *testing.T) {

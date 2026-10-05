@@ -132,10 +132,9 @@ type Catalog struct {
 // as the desktop keeps it.
 func OpenCatalog() *Catalog {
 	dir := utils.IonDir()
-	home, err := utils.UserHomeDir()
 	connections := filepath.Join(dir, "desktop-connections.json")
-	if err == nil && home != "" {
-		connections = filepath.Join(home, ".ion", "desktop-connections.json")
+	if homeDir := utils.HomeIonDir(); homeDir != "" {
+		connections = filepath.Join(homeDir, "desktop-connections.json")
 	}
 	return &Catalog{settingsPath: filepath.Join(dir, "desktop.json"), connectionsPath: connections, keyDir: dir}
 }
