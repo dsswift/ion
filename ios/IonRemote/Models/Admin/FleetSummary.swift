@@ -77,8 +77,17 @@ struct FleetQuotaLimit: Equatable, Sendable {
     var capacity: Double = 0
     /// Percent used, summed over those accounts. A window that reset since it was read counts as unused.
     var used: Double = 0
-    /// The soonest reset still ahead among those accounts.
-    var nextReset: Date?
+    /// The resets still ahead that give quota back, soonest first. Each
+    /// account resets on its own clock, so one reset frees only the use of
+    /// the accounts whose window ends then.
+    var resets: [FleetQuotaReset] = []
+}
+
+/// One upcoming reset of a summed limit: when it comes and how much it gives back.
+struct FleetQuotaReset: Equatable, Sendable {
+    let at: Date
+    /// Percent freed: the use of every account whose window resets at `at`.
+    var freed: Double
 }
 
 /// One provider's quota across the Fleet: every account of it, signed in now or seen in the last 30 days.
@@ -165,8 +174,15 @@ enum FleetSummary {
                 sum.accounts += 1
                 sum.capacity += 100
                 if !expired(limit, now: now) {
-                    sum.used += min(max(limit.percent, 0), 100)
-                    if let resets = resetDate(limit), resets > now, sum.nextReset.map({ resets < $0 }) ?? true { sum.nextReset = resets }
+                    let used = min(max(limit.percent, 0), 100)
+                    sum.used += used
+                    if let at = resetDate(limit), at > now, used > 0 {
+                        if let same = sum.resets.firstIndex(where: { $0.at == at }) {
+                            sum.resets[same].freed += used
+                        } else {
+                            sum.resets.append(FleetQuotaReset(at: at, freed: used))
+                        }
+                    }
                 }
                 sums[row.provider, default: [:]][id] = sum
             }
@@ -174,7 +190,13 @@ enum FleetSummary {
         return accounts
             .map { provider, count in
                 FleetQuotaPool(provider: provider, accounts: count,
-                               limits: (sums[provider] ?? [:]).values.sorted { order(kind: $0.kind, label: $0.label) < order(kind: $1.kind, label: $1.label) })
+                               limits: (sums[provider] ?? [:]).values
+                                   .map { limit in
+                                       var limit = limit
+                                       limit.resets.sort { $0.at < $1.at }
+                                       return limit
+                                   }
+                                   .sorted { order(kind: $0.kind, label: $0.label) < order(kind: $1.kind, label: $1.label) })
             }
             .sorted {
                 ServerProviderEntry.displayName(for: $0.provider, in: [])

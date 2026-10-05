@@ -208,7 +208,10 @@ final class FleetModelTests: XCTestCase {
         XCTAssertEqual(anthropic.map { FleetSummary.title(kind: $0.kind, label: $0.label) }, ["7-day Fable", "5-hour", "7-day"])
         XCTAssertEqual(anthropic.map(\.capacity), [100, 100, 200])
         XCTAssertEqual(anthropic.map(\.used), [99, 30, 176])
-        XCTAssertEqual(anthropic[2].nextReset, now.addingTimeInterval(3600))
+        XCTAssertEqual(anthropic[2].resets, [FleetQuotaReset(at: now.addingTimeInterval(3600), freed: 76),
+                                             FleetQuotaReset(at: now.addingTimeInterval(86_400), freed: 100)])
+        XCTAssertTrue(anthropic[0].resets.isEmpty)
+        XCTAssertTrue(anthropic[1].resets.isEmpty)
         XCTAssertEqual(FleetQuotaPoolView.detail(anthropic[2]), "176% of 200% used · 24% left")
         XCTAssertTrue(pools[2].limits.isEmpty)
     }
