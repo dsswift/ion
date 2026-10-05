@@ -9,7 +9,7 @@ import { rError, rInfo, rWarn } from '../rendererLogger'
 import { setTabStatus } from './tab-status-transition'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
 import { resolveRegisteredWorktree } from '../worktree-registration'
-import { adoptTab, createTab, engineStart, ensureEngineSession, fsExists, gitWorktreeSetEphemeralOwner, setPermissionMode } from '../host-api'
+import { adoptTab, createTab, engineStart, ensureEngineSession, fsExists, gitWorktreeRememberChoice, gitWorktreeSetEphemeralOwner, setPermissionMode } from '../host-api'
 import { isAbsolutePath } from '@ion/shared/paths'
 
 /**
@@ -42,9 +42,16 @@ export interface CreateConversationTabOpts {
   sourceBranch?: string
   /**
    * Make the requested worktree ephemeral: removed when this conversation
-   * closes with nothing unlanded. Absent means the project's `ephemeralDefault`.
+   * closes with nothing unlanded. Absent means the project's remembered
+   * choice, else its `ephemeralDefault`.
    */
   ephemeralWorktree?: boolean
+  /**
+   * Save `sourceBranch` and `ephemeralWorktree` as this project's worktree
+   * choice once the worktree is cut, so the next worktree conversation here
+   * starts without asking.
+   */
+  rememberWorktreeChoice?: boolean
   /** Restore-only identity already resolved from persisted state/registry. */
   worktree?: import('@ion/shared/types').WorktreeInfo | null
   /**
@@ -113,6 +120,13 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       { ephemeral: opts.ephemeralWorktree },
     )
     const workingDirectory = resolution.dir
+    if (opts.rememberWorktreeChoice && resolution.worktree && opts.sourceBranch) {
+      await gitWorktreeRememberChoice(baseWorkingDirectory, opts.sourceBranch, opts.ephemeralWorktree)
+    } else if (opts.rememberWorktreeChoice) {
+      rWarn('engine.create', 'worktree choice not remembered: no worktree was cut from a named branch', {
+        directory: baseWorkingDirectory, source_branch: opts.sourceBranch ?? '', worktree_cut: !!resolution.worktree,
+      })
+    }
     // Restoration supplies already-known metadata. New tabs resolve either the
     // newly-created worktree or a registered identity for their final directory.
     const worktree = opts.worktree ?? (resolution.worktree ?? await resolveRegisteredWorktree(workingDirectory))

@@ -62,7 +62,7 @@
     },
     "desktop_create_tab": {
       "action": "tabs.create",
-      "args": "[{workingDirectory, profileId, useWorktree, sourceBranch, ephemeralWorktree, clientCmdId}] (extensions is not sent; the profile names them)",
+      "args": "[{workingDirectory, profileId, useWorktree, sourceBranch, ephemeralWorktree, rememberWorktreeChoice, clientCmdId}] (extensions is not sent; the profile names them)",
       "result": "value is {tabId}, null when the create failed; the server sends desktop_tab_created{tab, clientCmdId} as an event, so no client synthesizes it"
     },
     "desktop_create_terminal_tab": {

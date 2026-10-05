@@ -23,6 +23,7 @@ import { announceWorktreeTitle } from '../worktree/title-announce'
 import { syncAllWorktrees } from '../worktree/sync-all'
 import { discardWorktree } from '../worktree/relocate'
 import { readEphemeralPolicy } from '../worktree/ephemeral-policy'
+import { rememberWorktreeChoice, worktreeEphemeralDefault } from '../worktree/worktree-choice'
 import { keepEphemeralWorktree, setEphemeralWorktreeOwner } from '../worktree/registry-ephemeral'
 import {
   listWorkspaces,
@@ -135,7 +136,7 @@ export async function worktreesOffered(): Promise<boolean> {
 
 /**
  * What a worktree cut for a conversation asks for. `ephemeral` absent means the
- * project's `ephemeralDefault`. A worktree cut with no conversation (the
+ * project's remembered choice, else its `ephemeralDefault`. A worktree cut with no conversation (the
  * panel's New worktree) passes nothing and is never ephemeral, because nothing
  * could ever close it.
  */
@@ -160,7 +161,7 @@ export async function gitWorktreeAdd(repoPath: string, sourceBranch: string, con
     let baseSha: string | undefined
     try { baseSha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim() } catch { /* best-effort */ }
     const ephemeral = conversation
-      ? conversation.ephemeral ?? readEphemeralPolicy(repoPath).ephemeralDefault
+      ? conversation.ephemeral ?? worktreeEphemeralDefault(repoPath).ephemeral
       : false
     registerWorktree({
       worktreePath, repoPath, branchName, sourceBranch, baseSha,
@@ -286,6 +287,12 @@ export function gitWorktreeSetEphemeralOwner(worktreePath: string, ownerTabId: s
 
 export function gitWorktreeKeepEphemeral(worktreePath: string, reason: string) {
   return Promise.resolve({ ok: keepEphemeralWorktree(worktreePath, reason) })
+}
+
+/** Save `sourceBranch` and, when given, `ephemeral` as the project's worktree choice. */
+export function gitWorktreeRememberChoice(repoPath: string, sourceBranch: string, ephemeral: boolean | undefined) {
+  rememberWorktreeChoice(repoPath, sourceBranch, ephemeral)
+  return Promise.resolve({ ok: true })
 }
 
 export function gitWorktreeEphemeralPolicy(repoPath: string) {

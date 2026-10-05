@@ -114,6 +114,7 @@ const mockIon = {
     calls.push(`gitWorktreeSetEphemeralOwner:${worktreePath}@${tabId}`)
     return { ok: true }
   }),
+  gitWorktreeRememberChoice: vi.fn(async (..._a: any[]) => ({ ok: true })),
   createTab: vi.fn(async (..._a: any[]) => ({ tabId: 'tab-1' })),
   adoptTab: vi.fn(async (..._a: any[]) => ({ tabId: 'tab-1' })),
   engineStart: vi.fn(async (..._a: any[]) => ({ ok: true })),
@@ -135,6 +136,7 @@ vi.mock('../host-api', () => ({
   worktreesOffered: () => mockIon.worktreesOffered(),
   gitWorktreeAdd: (...args: [string, string, { ephemeral?: boolean }?]) => mockIon.gitWorktreeAdd(...args),
   gitWorktreeSetEphemeralOwner: (...args: [string, string]) => mockIon.gitWorktreeSetEphemeralOwner(...args),
+  gitWorktreeRememberChoice: (...args: any[]) => mockIon.gitWorktreeRememberChoice(...args),
   createTab: (...args: any[]) => mockIon.createTab(...(args as [])),
   adoptTab: (...args: any[]) => mockIon.adoptTab(...(args as [])),
   engineStart: (...args: any[]) => mockIon.engineStart(...args),
@@ -272,6 +274,17 @@ describe('worktree resolution ordering', () => {
     const ensureIdx = calls.findIndex((c) => c.startsWith('ensureEngineSession:'))
     expect(bindIdx).toBeGreaterThanOrEqual(0)
     expect(ensureIdx === -1 || bindIdx < ensureIdx).toBe(true)
+  })
+
+  it('remembers the chosen branch and ephemeral answer only when asked to', async () => {
+    const { set, get } = buildHarness()
+
+    await createConversationTabAction(set, get)(REPO, { useWorktree: true, sourceBranch: 'release', ephemeralWorktree: false, rememberWorktreeChoice: true })
+    expect(mockIon.gitWorktreeRememberChoice).toHaveBeenCalledWith(REPO, 'release', false)
+
+    mockIon.gitWorktreeRememberChoice.mockClear()
+    await createConversationTabAction(set, get)(REPO, { useWorktree: true, sourceBranch: 'release', ephemeralWorktree: true })
+    expect(mockIon.gitWorktreeRememberChoice).not.toHaveBeenCalled()
   })
 
   it('does not create a worktree when none was requested', async () => {

@@ -152,6 +152,7 @@ const ACTION_SURFACES: Record<string, readonly DeveloperSurface[]> = {
   // ── Worktrees and benches ──
   'git.worktreeAppraise': WT,
   'git.worktreeRetirePreview': WT,
+  'git.worktreeEphemeralDefault': WT,
   'git.worktreeRebase': WT,
   'git.worktreeSetTitle': WT,
   'worktree.state': WT,

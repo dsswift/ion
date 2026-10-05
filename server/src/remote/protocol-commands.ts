@@ -31,6 +31,8 @@ export type RemoteCommand =
       sourceBranch?: string;
       /** With `useWorktree`: make it ephemeral. Absent means the project's `ephemeralDefault`. */
       ephemeralWorktree?: boolean;
+      /** With `useWorktree` and `sourceBranch`: save both choices as the project's worktree default. */
+      rememberWorktreeChoice?: boolean;
     }
   | { type: "desktop_git_branches"; directory: string }
   | {

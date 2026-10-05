@@ -128,6 +128,7 @@ export const PARITY_ACTIONS: Record<string, SessionActionSpec> = {
       useWorktree: a.useWorktree === true || undefined,
       sourceBranch: str(a.sourceBranch) || undefined,
       ephemeralWorktree: typeof a.ephemeralWorktree === 'boolean' ? a.ephemeralWorktree : undefined,
+      rememberWorktreeChoice: a.rememberWorktreeChoice === true || undefined,
       clientCmdId,
     })
     if (tabId) await notifyTabCreated(tabId, clientCmdId)

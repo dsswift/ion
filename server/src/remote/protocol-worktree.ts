@@ -246,6 +246,12 @@ export interface RemoteWorktreeState {
    * branch picker, matching the desktop.
    */
   defaultSourceBranch?: string
+  /**
+   * Whether a worktree conversation created here without an explicit choice is
+   * ephemeral: the project's remembered choice, else `.ion/worktree.json`
+   * `ephemeralDefault`. A client preselects its Ephemeral control from it.
+   */
+  ephemeralDefault: boolean
 }
 
 /** iOS → desktop worktree/bench commands. */
