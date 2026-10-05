@@ -136,6 +136,8 @@ export interface RateLimitEvent {
     status: string;
     resetsAt: number;
     rateLimitType: string;
+    utilization?: number;
+    unifiedWindows?: Record<string, { utilization: number; resetsAt: number }>;
   };
   session_id: string;
   uuid: string;

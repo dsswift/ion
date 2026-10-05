@@ -198,6 +198,11 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     }
   });
 
+  it("the engine_rate_limit payload field is present in the Go EngineEvent manifest", () => {
+    const goFields = new Set(manifest.engineEvent);
+    expect(goFields.has("rateLimit"), "Go EngineEvent is missing rateLimit").toBe(true);
+  });
+
   it("the engine_oidc_identity requirement field is present in the Go EngineEvent manifest", () => {
     const goFields = new Set(manifest.engineEvent);
     expect(

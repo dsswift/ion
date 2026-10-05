@@ -91,7 +91,33 @@ export interface ProviderSubscriptionStatus {
   message?: string;
 }
 
+/** One usage window: the fraction (0..1) of it used and the unix second it resets. */
+export interface RateLimitWindow {
+  utilization: number;
+  resetsAt: number;
+}
+
+/** What a backend reported about the signed-in account's usage limits during a run. */
+export interface RateLimitPayload {
+  /** The backend's verdict for the next request ("allowed", "allowed_warning", "rejected"). */
+  status: string;
+  /** Unix second the rateLimitType window resets. */
+  resetsAt: number;
+  /** The window the status is about ("five_hour", "seven_day"). */
+  rateLimitType: string;
+  /** Fraction (0..1) of the rateLimitType window used; absent when not reported. */
+  utilization?: number;
+  /** Every usage window reported with this event, keyed by window name. */
+  windows?: Record<string, RateLimitWindow>;
+}
+
 export type EngineEventModel =
+  // engine_rate_limit — INCREMENTAL: each event is one backend report and
+  // stands alone.
+  | { type: "engine_rate_limit"; rateLimit: RateLimitPayload }
+  // engine_providers_updated — a payload-free nudge: provider sign-in or
+  // model state may have changed, so re-read it.
+  | { type: "engine_providers_updated" }
   | { type: "engine_provider_login"; providerLogin?: ProviderLoginUpdate }
   | { type: "engine_mcp_servers"; mcpServers?: McpServerStatus[] }
   // engine_provider_subscription — complete SNAPSHOT of the Provider
