@@ -384,6 +384,7 @@ export function handleEngineEvent(
     case "engine_background_task_started":
     case "engine_background_task_terminal":
     case "engine_session_work_stopped":
+    case "engine_active_path_changed":
     case "engine_steer_injected":
     case "engine_steer_degraded":
     case "engine_steer_interrupted_stream":

@@ -10,6 +10,8 @@ const deps = vi.hoisted(() => ({
   engineBranchBefore: vi.fn(async () => undefined),
   engineBroadcastHistory: vi.fn(async () => undefined),
   engineDialogResponse: vi.fn(async () => undefined),
+  engineListBranches: vi.fn(async () => ({ activeLeafId: 'e2', branches: [], branchPoints: [] })),
+  engineSwitchBranch: vi.fn(async () => undefined),
   engineRemapSession: vi.fn(),
   engineStop: vi.fn(async () => undefined),
   engineStopBackgroundTask: vi.fn(async () => ({ ok: true, status: 'stopped' })),
@@ -37,6 +39,10 @@ describe('ENGINE_ACTIONS', () => {
     expect(deps.engineStop).toHaveBeenCalledWith('t1')
     await run('engine.branchBefore', { key: 't1', entryId: 'e9' })
     expect(deps.engineBranchBefore).toHaveBeenCalledWith('t1', 'e9')
+    expect(await run('engine.listBranches', { key: 't1' })).toEqual({ ok: true, value: { activeLeafId: 'e2', branches: [], branchPoints: [] } })
+    expect(deps.engineListBranches).toHaveBeenCalledWith('t1')
+    await run('engine.switchBranch', { key: 't1', leafId: 'e7' })
+    expect(deps.engineSwitchBranch).toHaveBeenCalledWith('t1', 'e7')
     await run('engine.remapSession', { oldKey: 't1', newKey: 't2' })
     expect(deps.engineRemapSession).toHaveBeenCalledWith('t1', 't2')
     await run('engine.broadcastHistory', { tabId: 't1', instanceId: 'main', opts: { queueUntilTabExists: true } })
@@ -50,7 +56,10 @@ describe('ENGINE_ACTIONS', () => {
     expect(ENGINE_ACTIONS['engine.stop'].tabIdAt?.([{ key: '' }])).toBeUndefined()
     expect(ENGINE_ACTIONS['engine.remapSession'].tabIdAt?.([{ oldKey: 'old', newKey: 'new' }])).toBe('old')
     expect(ENGINE_ACTIONS['engine.broadcastHistory'].tabIdAt?.([{ tabId: 't9' }])).toBe('t9')
-    for (const name of ['engine.abortDispatch', 'engine.stopBackgroundTask', 'engine.dialogResponse', 'engine.stop', 'engine.branchBefore', 'engine.remapSession', 'engine.broadcastHistory']) {
+    expect(ENGINE_ACTIONS['engine.listBranches'].tabIdAt?.([{ key: 't3' }])).toBe('t3')
+    expect(ENGINE_ACTIONS['engine.switchBranch'].tabIdAt?.([{ key: 't4', leafId: 'e' }])).toBe('t4')
+    expect(ENGINE_ACTIONS['engine.listBranches'].requiredScope).toBe('conversations:read')
+    for (const name of ['engine.abortDispatch', 'engine.stopBackgroundTask', 'engine.dialogResponse', 'engine.stop', 'engine.branchBefore', 'engine.switchBranch', 'engine.remapSession', 'engine.broadcastHistory']) {
       expect(ENGINE_ACTIONS[name].requiredScope, name).toBe('conversations:operate')
     }
   })

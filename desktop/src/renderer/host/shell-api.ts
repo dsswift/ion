@@ -23,6 +23,7 @@ import type { ComposerActionsState } from '@ion/shared/composer-actions'
 import type { HealthReport, ResolvedNewConversationDefaults } from '@ion/shared/types'
 import type { DeepLinkConfirmRequest, DeepLinkConfirmResult } from '@ion/shared/types-ipc'
 import type { GraphViewConfig, GraphViewSavedView } from '@ion/shared/graph-view-types'
+import type { ConversationBranches } from '@ion/shared/conversation-branches'
 import type { CorpusDelta, CorpusSnapshot } from '@ion/shared/graph-corpus-types'
 import type {
   WorktreeOverlapAnalysis,
@@ -81,6 +82,8 @@ export interface BridgedOnlyShell
   engineDialogResponse(key: string, dialogId: string, value: unknown): Promise<void>
   engineStop(key: string): Promise<void>
   engineBranchBefore(key: string, entryId: string): Promise<void>
+  engineListBranches(key: string): Promise<ConversationBranches>
+  engineSwitchBranch(key: string, leafId: string): Promise<void>
   engineRemapSession(oldKey: string, newKey: string): Promise<void>
   engineBroadcastHistory(tabId: string, instanceId: string | null, opts?: { queueUntilTabExists?: boolean }): Promise<void>
   pluginInstall(source: string): Promise<{ ok: boolean; error?: string; data?: { name: string; source: string; version: string } }>

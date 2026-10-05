@@ -20,9 +20,11 @@ import {
   engineBranchBefore,
   engineBroadcastHistory,
   engineDialogResponse,
+  engineListBranches,
   engineRemapSession,
   engineStop,
   engineStopBackgroundTask,
+  engineSwitchBranch,
 } from '../store/host-api-engine'
 import { log as _log, warn as _warn } from '../logger'
 import type { Scope } from '@ion/shared/studio-wire/types'
@@ -83,6 +85,13 @@ export const ENGINE_ACTIONS: Record<string, SessionActionSpec> = {
   'engine.branchBefore': wrap('engine.branchBefore', 'conversations:operate', (a) => {
     const p = obj(a[0])
     return engineBranchBefore(str(p.key), str(p.entryId))
+  }, keyAt),
+  // [{ key }] → ConversationBranches
+  'engine.listBranches': wrap('engine.listBranches', 'conversations:read', (a) => engineListBranches(str(obj(a[0]).key)), keyAt),
+  // [{ key, leafId }] -- refused while a run is active.
+  'engine.switchBranch': wrap('engine.switchBranch', 'conversations:operate', (a) => {
+    const p = obj(a[0])
+    return engineSwitchBranch(str(p.key), str(p.leafId))
   }, keyAt),
   // [{ oldKey, newKey }] -- owned by the session being moved.
   'engine.remapSession': wrap('engine.remapSession', 'conversations:operate', (a) => {

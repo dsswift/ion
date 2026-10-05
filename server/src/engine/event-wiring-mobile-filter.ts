@@ -48,6 +48,8 @@ export const TRANSCRIPT_ONLY_ENGINE_EVENTS: ReadonlySet<string> = new Set([
   'engine_run_recovery',
   'engine_dispatch_lost',
   'engine_dispatch_activity',
+  // A branch switch replaces the whole transcript (active-path-reload.ts).
+  'engine_active_path_changed',
 ])
 
 export function isTranscriptOnlyEngineEvent(event: { type?: string }): boolean {
