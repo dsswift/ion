@@ -11,8 +11,9 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// Pairings keeps the fleet's own pairing with each host, encrypted, apart
-// from the engine's credential store: ~/.ion/fleet/credentials.enc.
+// Pairings is the store an earlier fleet kept its own pairing with each host
+// in, apart from Studio's: ~/.ion/fleet/credentials.enc. The fleet now uses
+// Studio's pairings; Migrate reads this store only to revoke what is in it.
 type Pairings struct {
 	store *auth.FileStore
 }

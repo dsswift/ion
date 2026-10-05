@@ -33,24 +33,22 @@ type HostStatus struct {
 	CheckedAt time.Time `json:"checkedAt"`
 }
 
-// PairingSource reads the fleet's pairing with a host.
-type PairingSource interface {
-	Get(host string) (studioclient.Pairing, bool, error)
-}
+// StudioReader reads a host over its Studio connection and says how the
+// connection reached it.
+type StudioReader func(ctx context.Context, h Host) (studioclient.Status, string, error)
 
 // Collector reads host statuses.
 type Collector struct {
-	Runner   Runner
-	Pairings PairingSource
-	// Tokens mints relay OIDC tokens; nil when the local engine is not reachable.
-	Tokens studioclient.TokenSource
-	// SignIns keeps the fleet's sign-ins to external hosts.
-	SignIns SignInStore
-	// External reads hosts deployed outside the fleet.
-	External ExternalReader
-	// ReadRelay reads a status through a relay; studioclient.ReadStatus by default.
-	ReadRelay func(ctx context.Context, relay studioclient.Relay, bearer string, p studioclient.Pairing) (studioclient.Status, error)
-	Now       func() time.Time
+	Runner Runner
+	// Studio opens a host's Studio connection with the device's credential.
+	Studio Studio
+	// ReadStudio reads a host over its Studio connection; opening one with
+	// Studio and reading it by default.
+	ReadStudio StudioReader
+	// Public reads what a server answers without a credential;
+	// studioclient.ReadPublic by default.
+	Public func(ctx context.Context, base string) (studioclient.Public, error)
+	Now    func() time.Time
 }
 
 // SSHTimeout bounds one host's status probe over SSH.
@@ -71,41 +69,97 @@ func (c Collector) Collect(ctx context.Context, hosts []Host) []HostStatus {
 	return out
 }
 
-// One reads one host: SSH first, then the relay when SSH produced no report
-// and the fleet is paired with the host.
+// One reads one host: over SSH when it has an SSH target, since only the
+// host itself sees its services and installed versions; else, or when SSH
+// gives no report, over its Studio connection; else what the server
+// publishes to anyone.
 func (c Collector) One(ctx context.Context, h Host) HostStatus {
 	now := time.Now
 	if c.Now != nil {
 		now = c.Now
 	}
 	st := HostStatus{Host: h, Via: ViaNone, CheckedAt: now()}
-	if h.External() {
-		report, err := c.overHTTPS(ctx, h)
-		if err != nil {
-			utils.LogWithFields(utils.LevelWarn, logTag, "external host unreadable", map[string]any{"fleet_host": h.Name, "error": err.Error()})
-			st.Error = err.Error()
+	var errs []string
+	if h.SSH != "" {
+		report, err := c.overSSH(ctx, h)
+		if err == nil {
+			c.markOwnPairing(h, report)
+			st.Via, st.Report = ViaSSH, report
+			utils.LogWithFields(utils.LevelInfo, logTag, "host read over ssh", map[string]any{"fleet_host": h.Name, "kind": report.Kind, "problems": len(report.Problems)})
 			return st
 		}
-		st.Via, st.Report = ViaHTTPS, report
-		return st
+		utils.LogWithFields(utils.LevelWarn, logTag, "host not readable over ssh", map[string]any{"fleet_host": h.Name, "error": err.Error()})
+		errs = append(errs, "ssh: "+err.Error())
 	}
-	report, sshErr := c.overSSH(ctx, h)
-	if sshErr == nil {
-		c.markOwnPairing(h, report)
-		st.Via, st.Report = ViaSSH, report
-		utils.LogWithFields(utils.LevelInfo, logTag, "host read over ssh", map[string]any{"fleet_host": h.Name, "kind": report.Kind, "problems": len(report.Problems)})
-		return st
+	if h.Paired() {
+		report, via, err := c.overStudio(ctx, h)
+		if err == nil {
+			st.Via, st.Report = via, report
+			utils.LogWithFields(utils.LevelInfo, logTag, "host read over its studio connection", map[string]any{"fleet_host": h.Name, "via": via})
+			return st
+		}
+		utils.LogWithFields(utils.LevelWarn, logTag, "host not readable over its studio connection", map[string]any{"fleet_host": h.Name, "error": err.Error()})
+		errs = append(errs, "studio: "+err.Error())
+		if h.URL != "" {
+			if report, err := c.publicly(ctx, h, err.Error()); err == nil {
+				st.Via, st.Report = ViaHTTPS, report
+				return st
+			}
+		}
 	}
-	utils.LogWithFields(utils.LevelWarn, logTag, "host not readable over ssh; trying the relay", map[string]any{"fleet_host": h.Name, "error": sshErr.Error()})
-	report, relayErr := c.overRelay(ctx, h)
-	if relayErr == nil {
-		st.Via, st.Report = ViaRelay, report
-		utils.LogWithFields(utils.LevelInfo, logTag, "host read through the relay", map[string]any{"fleet_host": h.Name})
-		return st
+	if len(errs) == 0 {
+		errs = append(errs, "the fleet has no way to reach this host")
 	}
-	utils.LogWithFields(utils.LevelWarn, logTag, "host unreadable", map[string]any{"fleet_host": h.Name, "ssh_error": sshErr.Error(), "relay_error": relayErr.Error()})
-	st.Error = "ssh: " + sshErr.Error() + "; relay: " + relayErr.Error()
+	st.Error = strings.Join(errs, "; ")
+	utils.LogWithFields(utils.LevelWarn, logTag, "host unreadable", map[string]any{"fleet_host": h.Name, "error": st.Error})
 	return st
+}
+
+// ReadTimeout bounds one host's read over its Studio connection, every
+// address it is tried at included.
+const ReadTimeout = 45 * time.Second
+
+func (c Collector) overStudio(ctx context.Context, h Host) (*studiostatus.Report, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, ReadTimeout)
+	defer cancel()
+	read := c.ReadStudio
+	if read == nil {
+		read = func(ctx context.Context, h Host) (studioclient.Status, string, error) {
+			link, err := c.Studio.Open(ctx, h)
+			if err != nil {
+				return studioclient.Status{}, "", err
+			}
+			defer link.Close()
+			st, err := studioclient.ReadSession(ctx, link.Session, h.Name)
+			return st, link.Via, err
+		}
+	}
+	st, via, err := read(ctx, h)
+	if err != nil {
+		return nil, "", err
+	}
+	r := st.Report()
+	return &r, via, nil
+}
+
+// publicly reads what the server at the host's address answers to anyone:
+// its versions, readiness, and formats. why is the reason the full read did
+// not happen.
+func (c Collector) publicly(ctx context.Context, h Host, why string) (*studiostatus.Report, error) {
+	ctx, cancel := context.WithTimeout(ctx, SSHTimeout)
+	defer cancel()
+	read := c.Public
+	if read == nil {
+		read = studioclient.ReadPublic
+	}
+	pub, err := read(ctx, h.URL)
+	if err != nil {
+		return nil, err
+	}
+	utils.LogWithFields(utils.LevelInfo, logTag, "host read publicly", map[string]any{"fleet_host": h.Name, "reason": why})
+	r := pub.Report(publicOnlyProblem + why)
+	r.Hostname = pub.Auth.Label
+	return &r, nil
 }
 
 func (c Collector) overSSH(ctx context.Context, h Host) (*studiostatus.Report, error) {
@@ -121,14 +175,14 @@ func (c Collector) overSSH(ctx context.Context, h Host) (*studiostatus.Report, e
 	return DecodeReport(out)
 }
 
-// markOwnPairing marks the fleet's own pairing among a host's devices. Over
-// SSH the host lists every device of its owner, the fleet's included; through
-// the relay the server marks it itself.
+// markOwnPairing marks this device's own pairing among a host's devices.
+// Over SSH the host lists every device of its owner, this one included;
+// over a Studio connection the server marks it itself.
 func (c Collector) markOwnPairing(h Host, r *studiostatus.Report) {
-	if c.Pairings == nil || len(r.Devices) == 0 {
+	if h.Entry == nil || c.Studio.Catalog == nil || len(r.Devices) == 0 {
 		return
 	}
-	p, ok, err := c.Pairings.Get(h.Name)
+	p, ok, err := c.Studio.Catalog.Pairing(h.Entry.CredentialKey())
 	if err != nil || !ok {
 		return
 	}
@@ -184,40 +238,4 @@ func upgradeFirstShape(r *studiostatus.Report) {
 // Legacy reports whether the host answered with the first shape.
 func Legacy(r *studiostatus.Report) bool {
 	return r != nil && r.SchemaVersion == 0
-}
-
-func (c Collector) overRelay(ctx context.Context, h Host) (*studiostatus.Report, error) {
-	if c.Pairings == nil {
-		return nil, errors.New("no pairing store")
-	}
-	p, ok, err := c.Pairings.Get(h.Name)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, errors.New("not paired (run `ion fleet pair " + h.Name + "`)")
-	}
-	if len(p.Relays) == 0 {
-		return nil, errors.New("the host advertised no relay when it paired")
-	}
-	read := c.ReadRelay
-	if read == nil {
-		read = studioclient.ReadStatus
-	}
-	var errs []string
-	for _, relay := range p.Relays {
-		bearer, err := studioclient.RelayBearer(ctx, relay, c.Tokens)
-		if err != nil {
-			errs = append(errs, err.Error())
-			continue
-		}
-		st, err := read(ctx, relay, bearer, p)
-		if err != nil {
-			errs = append(errs, relay.URL+": "+err.Error())
-			continue
-		}
-		r := st.Report()
-		return &r, nil
-	}
-	return nil, errors.New(strings.Join(errs, "; "))
 }

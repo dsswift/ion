@@ -16,7 +16,7 @@ func (m Model) startDeploy(hosts []fleet.Host) (tea.Model, tea.Cmd) {
 	if len(hosts) == 0 || m.deploying {
 		return m, nil
 	}
-	if err := refuseExternal(hosts); err != nil {
+	if err := refuseUnreachable(hosts); err != nil {
 		m.notice = err.Error()
 		return m, nil
 	}
@@ -124,7 +124,11 @@ func (m Model) ask(op string, hosts []fleet.Host) (tea.Model, tea.Cmd) {
 	if len(hosts) == 0 {
 		return m, nil
 	}
-	if err := refuseExternal(hosts); err != nil {
+	refuse := refuseUnreachable
+	if op != "restart" {
+		refuse = refuseWithoutSSH
+	}
+	if err := refuse(hosts); err != nil {
 		m.notice = err.Error()
 		return m, nil
 	}
@@ -170,8 +174,20 @@ func hostNames(hosts []fleet.Host) string {
 	return strings.Join(names, ", ")
 }
 
-// refuseExternal: the fleet changes nothing on a host deployed outside it.
-func refuseExternal(hosts []fleet.Host) error {
+// refuseUnreachable: a host the device holds no pairing for and has no SSH
+// target to is one the fleet cannot change.
+func refuseUnreachable(hosts []fleet.Host) error {
+	for _, h := range hosts {
+		if h.External() && !h.Paired() {
+			return h.ErrExternal()
+		}
+	}
+	return nil
+}
+
+// refuseWithoutSSH: setting a relay edits the host's own files, which only
+// SSH reaches.
+func refuseWithoutSSH(hosts []fleet.Host) error {
 	for _, h := range hosts {
 		if h.External() {
 			return h.ErrExternal()

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -532,6 +533,50 @@ func TestRepointCurrent(t *testing.T) {
 	target, err := os.Readlink(l.current)
 	if err != nil || target != v2 {
 		t.Fatalf("current -> %s (%v)", target, err)
+	}
+}
+
+// A bundle sent to the host installs under a name of its own, beside the
+// tree the running services were started from, and `current` follows it.
+func TestStudioUpdateFromBundle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Windows studio server bundle exists")
+	}
+	l := testLayout(t)
+	running := filepath.Join(l.versions, "1.0.0")
+	if err := os.MkdirAll(running, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := repointCurrent(l, running); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "ion-studio-server")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "VERSION"), []byte(`{"server":"1.0.0","engine":"2.0.0","node":"22.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tarball := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	if out, err := exec.Command("tar", "-czf", tarball, "-C", filepath.Dir(src), filepath.Base(src)).CombinedOutput(); err != nil {
+		t.Fatalf("tar: %v: %s", err, out)
+	}
+
+	// No terminal answers the restart prompt in a test, so nothing restarts.
+	studioUpdateFromBundle(l, tarball, false)
+
+	target, err := os.Readlink(l.current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target == running || !strings.HasPrefix(filepath.Base(target), "local-") {
+		t.Fatalf("current -> %s, want a local-* tree beside %s", target, running)
+	}
+	if v, err := readBundleVersion(target); err != nil || v.Engine != "2.0.0" {
+		t.Fatalf("installed VERSION = %+v (%v)", v, err)
+	}
+	if _, err := os.Stat(running); err != nil {
+		t.Fatalf("the running tree was removed: %v", err)
 	}
 }
 

@@ -234,6 +234,11 @@ func collectStudioStatus(l studioLayout, d statusDeps) studiostatus.Report {
 			problem("services", err)
 		}
 	}
+	if accounts, err := studiostatus.ReadLedger(l.dataDir); err == nil {
+		r.Accounts = accounts
+	} else {
+		problem("provider accounts", err)
+	}
 	for _, u := range studioUnits(l) {
 		r.Logs = append(r.Logs, u.StdoutPath, u.StderrPath)
 	}

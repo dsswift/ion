@@ -170,3 +170,20 @@ func postForm(ctx context.Context, endpoint string, form url.Values, out any) er
 func firstLine(s string) string {
 	return strings.TrimSpace(strings.SplitN(s, "\n", 2)[0])
 }
+
+// RefreshBearer mints an access token from a refresh token under a server's
+// published sign-in, and returns the refresh token to keep: the one the
+// issuer rotated to, or the same one.
+func RefreshBearer(ctx context.Context, oidc AuthOIDC, refreshToken string) (access, kept string, err error) {
+	disc, err := discover(ctx, oidc.Issuer)
+	if err != nil {
+		return "", refreshToken, err
+	}
+	clientID := oidc.ClientID
+	if clientID == "" {
+		clientID = oidc.Audience
+	}
+	s := SignIn{Issuer: oidc.Issuer, ClientID: clientID, Scope: ComposeOIDCScope(oidc.Audience, oidc.Scope), TokenEndpoint: disc.TokenEndpoint, RefreshToken: refreshToken}
+	access, rotated, err := s.Refresh(ctx)
+	return access, rotated.RefreshToken, err
+}

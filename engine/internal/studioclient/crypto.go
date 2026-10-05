@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // E2EKeyDerivationVersion is the HKDF info string of the pairing key
@@ -90,9 +91,16 @@ func ChannelID(secret []byte) string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// decodeNonce reads a server nonce the way the server does: either base64
+// alphabet, padded or not. The server mints its nonce URL-safe and unpadded.
+func decodeNonce(nonce string) ([]byte, error) {
+	std := strings.NewReplacer("-", "+", "_", "/").Replace(strings.TrimRight(nonce, "="))
+	return base64.RawStdEncoding.DecodeString(std)
+}
+
 // AuthProof is HMAC-SHA256(secret, base64-decoded nonce), base64.
 func AuthProof(nonceB64 string, secret []byte) (string, error) {
-	nonce, err := base64.StdEncoding.DecodeString(nonceB64)
+	nonce, err := decodeNonce(nonceB64)
 	if err != nil {
 		return "", fmt.Errorf("decode nonce: %w", err)
 	}

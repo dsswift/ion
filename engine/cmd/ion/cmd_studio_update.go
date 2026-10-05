@@ -159,6 +159,36 @@ func studioUpdate(l studioLayout, positional []string, yes bool) {
 	studioRestart(l)
 }
 
+// studioUpdateFromBundle installs a bundle tarball already on this host: one
+// built from source and sent here, where a release would be downloaded. It
+// lands beside the installed versions under a name of its own, so it never
+// replaces the tree the running services were started from.
+func studioUpdateFromBundle(l studioLayout, path string, yes bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		studioFail("read bundle", err)
+	}
+	name := "local-" + sha256sum(data)[:12]
+	dest, err := extractStudioBundle(l, name, data)
+	if err != nil {
+		studioFail("extract", err)
+	}
+	version, err := readBundleVersion(dest)
+	if err != nil {
+		studioFail("read bundle VERSION", err)
+	}
+	if err := repointCurrent(l, dest); err != nil {
+		studioFail("repoint current", err)
+	}
+	utils.LogWithFields(utils.LevelInfo, studioTag, "local bundle installed", map[string]any{"bundle": path, "server_version": version.Server, "dest": dest})
+	studioSay("installed %s from %s at %s; current -> %s", version.Server, path, dest, dest)
+	if !yes && !confirm(fmt.Sprintf("Restart the services now to run %s? This interrupts running agents. [y/N] ", version.Server)) {
+		studioSay("not restarted; the services keep running until `ion studio restart`")
+		return
+	}
+	studioRestart(l)
+}
+
 // extractStudioBundle writes the tarball to versions/<ver> via the system
 // tar (the same tool the installer uses, so both paths produce identical
 // trees, including node-pty's executable spawn-helper).
