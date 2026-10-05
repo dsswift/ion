@@ -91,6 +91,14 @@ await build({
   outfile: join(root, 'dist/clients.js'),
 })
 
+// The Fleet Hub (`node dist/hub.js`): the service servers report to. Its own
+// entry so a hub never boots a Studio Server, and never needs an engine.
+await build({
+  ...sharedOptions,
+  entryPoints: [join(root, 'src/hub/main.ts')],
+  outfile: join(root, 'dist/hub.js'),
+})
+
 // dist/ is served from locations with no package.json above it (the
 // desktop's app.asar.unpacked). Without this, Node has to sniff main.js for
 // module syntax and warns MODULE_TYPELESS_PACKAGE_JSON on every boot.

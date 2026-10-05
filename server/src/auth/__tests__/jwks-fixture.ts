@@ -69,6 +69,8 @@ export interface SignTokenClaims {
   expiresInSeconds?: number
   name?: string
   preferred_username?: string
+  /** The directory object id an Entra token carries. */
+  oid?: string
 }
 
 export async function signToken(fixture: JwksFixture, claims: SignTokenClaims): Promise<string> {
@@ -79,6 +81,7 @@ export async function signToken(fixture: JwksFixture, claims: SignTokenClaims): 
     roles: claims.roles,
     name: claims.name,
     preferred_username: claims.preferred_username,
+    oid: claims.oid,
   })
     .setProtectedHeader({ alg: 'RS256', kid: fixture.kid })
     .setIssuedAt()

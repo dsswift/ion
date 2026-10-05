@@ -108,9 +108,9 @@ function isFile(path: string): boolean {
  * inside `webDir`, or null when the request maps outside `webDir` (path
  * traversal) or `urlPath` is the root/a directory (served as `index.html`).
  */
-function resolveRequestedPath(webDir: string, urlPath: string): string | null {
+function resolveRequestedPath(webDir: string, urlPath: string, indexFile: string): string | null {
   const decoded = decodeURIComponent(urlPath)
-  const relative = decoded === '/' || decoded === '' ? 'index.html' : decoded.replace(/^\/+/, '')
+  const relative = decoded === '/' || decoded === '' ? indexFile : decoded.replace(/^\/+/, '')
   const resolved = normalize(join(webDir, relative))
   if (resolved !== webDir && !resolved.startsWith(webDir + sep)) {
     warn('static request resolved outside web dir; refusing', { url_path: urlPath })
@@ -148,6 +148,8 @@ export interface StaticRouteOptions {
   enabled: boolean
   /** Overrides `defaultWebDir()`. Test seam. */
   webDir?: string
+  /** The page `/` and an unresolved path are served. Default `index.html`. */
+  indexFile?: string
 }
 
 /**
@@ -157,6 +159,7 @@ export interface StaticRouteOptions {
  */
 export function staticRoute(opts: StaticRouteOptions): (req: IncomingMessage, res: ServerResponse) => void {
   const webDir = opts.webDir ?? defaultWebDir()
+  const indexFile = opts.indexFile ?? 'index.html'
   let loggedMissing = false
 
   return (req: IncomingMessage, res: ServerResponse): void => {
@@ -175,7 +178,7 @@ export function staticRoute(opts: StaticRouteOptions): (req: IncomingMessage, re
     }
 
     const urlPath = (req.url ?? '/').split('?')[0] ?? '/'
-    const resolved = resolveRequestedPath(webDir, urlPath)
+    const resolved = resolveRequestedPath(webDir, urlPath, indexFile)
     if (!resolved) {
       writeJson(res, 404, { error: 'not_found' })
       return
@@ -190,7 +193,7 @@ export function staticRoute(opts: StaticRouteOptions): (req: IncomingMessage, re
     // served index.html when it exists, matching every other static SPA
     // host's default behavior. A genuinely missing bundle (index.html itself
     // absent) falls through to the 404 below.
-    const indexPath = join(webDir, 'index.html')
+    const indexPath = join(webDir, indexFile)
     if (isFile(indexPath)) {
       log('static request fell back to index.html (SPA route)', { url_path: urlPath })
       serveFile(req, res, indexPath)

@@ -106,6 +106,12 @@ describe('verifyBearer: refusals', () => {
     expect(result).toMatchObject({ ok: false, reason: 'unlisted_subject' })
   })
 
+  it('accepts a person listed by directory object id, whose sub differs per app', async () => {
+    const token = await signToken(fixture, { sub: 'pairwise-sub', oid: 'object-id-1', aud: 'api://studio-server', scp: 'Studio.Access' })
+    const result = await verifyBearer({ kind: 'bearer', token }, oidcConfig({ allowedSubjects: ['object-id-1'] }))
+    expect(result.ok).toBe(true)
+  })
+
   it('accepts a subject present in a non-empty allowedSubjects', async () => {
     const token = await signToken(fixture, { sub: 'user-1', aud: 'api://studio-server', scp: 'Studio.Access' })
     const result = await verifyBearer({ kind: 'bearer', token }, oidcConfig({ allowedSubjects: ['user-1', 'user-2'] }))

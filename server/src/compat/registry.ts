@@ -11,6 +11,7 @@
 import type { FormatVersion } from '@ion/shared/format-versions'
 import { CHART_SCHEMA_VERSION } from '@ion/shared/chart-schema'
 import { E2E_KEY_DERIVATION_VERSION } from '@ion/shared/e2e'
+import { HUB_PROTOCOL_VERSION } from '@ion/shared/fleet-hub'
 import { RELAY_ENVELOPE_VERSION } from '@ion/shared/studio-wire/relay-envelope'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import { UNIFIED_SCHEMA_VERSION } from '@ion/shared/tab-migration-unify'
@@ -41,6 +42,8 @@ export const SERVER_FORMAT_REGISTRY: readonly RegisteredFormat[] = [
     'Sealed frame format on a relay channel; both ends must share it'),
   entry('relay-key-derivation', E2E_KEY_DERIVATION_VERSION, 'E2E_KEY_DERIVATION_VERSION', 'exact',
     'How a pairing derives its encryption key; both ends must share it'),
+  entry('fleet-hub-link', HUB_PROTOCOL_VERSION, 'HUB_PROTOCOL_VERSION', 'exact',
+    'Frames between a server and a Fleet Hub it reports to; both must share it'),
   entry('telemetry-frame', TELEMETRY_FRAME_VERSION, 'TELEMETRY_FRAME_VERSION', 'reader-at-least',
     'Compact telemetry frame the server and desktop read'),
   entry('chart-schema', CHART_SCHEMA_VERSION, 'CHART_SCHEMA_VERSION', 'reader-at-least',
