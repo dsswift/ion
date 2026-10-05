@@ -95,7 +95,7 @@ vi.mock('../conversation/ScrollToBottomButton', () => ({ ScrollToBottomButton: (
 vi.mock('../conversation', () => ({
   groupMessages: () => [], suppressUserImageEchoes: (messages: unknown[]) => messages,
   MessageActions: () => null, QueuedMessage: () => null,
-  EmptyState: () => <div>Empty conversation</div>, RunDurationFooter: () => null,
+  EmptyState: () => <div>Empty conversation</div>, RunDurationFooter: () => null, BranchSwitcher: () => null,
   InterruptButton: () => <button data-testid="interrupt-button">Interrupt</button>,
 }))
 
