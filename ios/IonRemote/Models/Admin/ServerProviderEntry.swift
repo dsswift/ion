@@ -24,6 +24,9 @@ struct ServerProviderEntry: Decodable, Equatable, Sendable, Identifiable {
     let apiKeyRef: String?
     /// The operator's name for the provider, from the engine's config.
     let displayName: String?
+    /// True when the provider exists only because the server's config defines
+    /// it. Only a custom provider can be removed.
+    let custom: Bool
     /// The run backend selected now (api | claude-code | codex | grok | cursor).
     let backend: String?
     let cli: ServerProviderCliStatus?
@@ -31,7 +34,7 @@ struct ServerProviderEntry: Decodable, Equatable, Sendable, Identifiable {
     let loginFlow: LoginFlow?
 
     private enum CodingKeys: String, CodingKey {
-        case id, hasAuth, authSource, baseURL, apiKeyRef, displayName, backend, cli, loginFlow
+        case id, hasAuth, authSource, baseURL, apiKeyRef, displayName, custom, backend, cli, loginFlow
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +45,7 @@ struct ServerProviderEntry: Decodable, Equatable, Sendable, Identifiable {
         baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL)
         apiKeyRef = try container.decodeIfPresent(String.self, forKey: .apiKeyRef)
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        custom = try container.decodeIfPresent(Bool.self, forKey: .custom) ?? false
         backend = try container.decodeIfPresent(String.self, forKey: .backend)
         cli = try container.decodeIfPresent(ServerProviderCliStatus.self, forKey: .cli)
         // A flow added after this build reads as unknown, not as a broken listing.
@@ -50,7 +54,8 @@ struct ServerProviderEntry: Decodable, Equatable, Sendable, Identifiable {
 
     init(
         id: String, hasAuth: Bool, authSource: String? = nil, baseURL: String? = nil, apiKeyRef: String? = nil,
-        displayName: String? = nil, backend: String? = nil, cli: ServerProviderCliStatus? = nil, loginFlow: LoginFlow? = nil
+        displayName: String? = nil, custom: Bool = false, backend: String? = nil, cli: ServerProviderCliStatus? = nil,
+        loginFlow: LoginFlow? = nil
     ) {
         self.id = id
         self.hasAuth = hasAuth
@@ -58,6 +63,7 @@ struct ServerProviderEntry: Decodable, Equatable, Sendable, Identifiable {
         self.baseURL = baseURL
         self.apiKeyRef = apiKeyRef
         self.displayName = displayName
+        self.custom = custom
         self.backend = backend
         self.cli = cli
         self.loginFlow = loginFlow

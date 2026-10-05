@@ -13,7 +13,7 @@ final class ProviderDetailModelTests: XCTestCase {
     ) async -> (ProviderDetailModel, ProvidersAdminModel, FakeActionCaller) {
         let caller = FakeActionCaller(scopes: scopes)
         caller.answer(.modelList, with: .success(ModelsFixtures.json(ModelsFixtures.catalog)))
-        for action in [PhoneAction.providerLogin, .providerLoginCancel, .providerLoginCode, .providerStoreCredential] {
+        for action in [PhoneAction.providerLogin, .providerLoginCancel, .providerLoginCode, .providerStoreCredential, .providerRemove] {
             caller.answer(action, with: .success(ModelsFixtures.ok))
         }
         let catalog = ProvidersAdminModel(client: ServerAdminClient(serverLabel: "Studio Mac", caller: caller), serverId: "srv", events: ServerAdminEvents())
@@ -63,6 +63,29 @@ final class ProviderDetailModelTests: XCTestCase {
         model.stop()
     }
 
+    /// The code comes from the sign-in page, so the code stage shows that page
+    /// even when only the browser stage before it named it, and a sign-in this
+    /// phone started opens it here once.
+    func testTheCodeStageKeepsTheSignInPageAndOpensItOnceForASignInStartedHere() async {
+        let (model, _, _) = await make()
+        XCTAssertNil(model.takeSignInPageToOpen())
+
+        await model.startCliSignIn()
+        await model.apply(stage("await_browser", backend: "claude-code", extra: #","authUrl":"https://auth.example.org/authorize?x=1""#))
+        XCTAssertNil(model.takeSignInPageToOpen())
+        await model.apply(stage("await_auth_code", backend: "claude-code"))
+        XCTAssertEqual(model.login, .awaitingCode(signInUrl: "https://auth.example.org/authorize?x=1"))
+        XCTAssertEqual(model.takeSignInPageToOpen()?.absoluteString, "https://auth.example.org/authorize?x=1")
+        XCTAssertNil(model.takeSignInPageToOpen())
+
+        // A sign-in someone else started on the server is shown, never opened here.
+        await model.apply(stage("completed", backend: "claude-code"))
+        await model.apply(stage("await_auth_code", backend: "claude-code", extra: #","authUrl":"https://auth.example.org/authorize?x=2""#))
+        XCTAssertEqual(model.login, .awaitingCode(signInUrl: "https://auth.example.org/authorize?x=2"))
+        XCTAssertNil(model.takeSignInPageToOpen())
+        model.stop()
+    }
+
     func testACompletedSignInClearsTheStageAndAFailedOneShowsItsError() async {
         let (model, _, _) = await make()
         await model.apply(stage("started"))
@@ -97,5 +120,22 @@ final class ProviderDetailModelTests: XCTestCase {
         let stored = calls.lastIndex { $0.action == "provider.storeCredential" }
         XCTAssertEqual(stored.map { calls[$0].args }, [.object(["provider": .string("openai"), "credential": .string("sk-test")])])
         XCTAssertTrue(calls.suffix(from: (stored ?? 0) + 1).contains { $0.action == "model.list" }, "the list reloads after the save")
+    }
+
+    func testRemovingAProviderAsksTheServerAndReloadsTheCatalog() async {
+        let (model, _, caller) = await make()
+        let loadsBefore = caller.calls.filter { $0.action == "model.list" }.count
+        let removed = await model.removeProvider()
+        XCTAssertTrue(removed)
+        XCTAssertTrue(caller.calls.contains(.init(action: "provider.remove", args: [.object(["provider": .string("openai")])])))
+        XCTAssertEqual(caller.calls.filter { $0.action == "model.list" }.count, loadsBefore + 1)
+    }
+
+    func testARefusedRemovalShowsTheServersReason() async {
+        let (model, _, caller) = await make()
+        caller.answer(.providerRemove, with: .success(ModelsFixtures.declined("choose other models first")))
+        let removed = await model.removeProvider()
+        XCTAssertFalse(removed)
+        XCTAssertTrue(model.error?.contains("choose other models first") == true)
     }
 }

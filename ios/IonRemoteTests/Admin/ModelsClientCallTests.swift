@@ -36,6 +36,22 @@ final class ModelsClientCallTests: XCTestCase {
         ])
     }
 
+    func testRemovingAProviderSendsItsIdAndThrowsTheServersRefusal() async throws {
+        let caller = FakeActionCaller(scopes: ["admin"])
+        caller.answer(.providerRemove, with: .success(ModelsFixtures.ok))
+        let admin = client(caller)
+        try await admin.removeProvider(provider: "corp-gateway")
+        XCTAssertEqual(caller.calls, [.init(action: "provider.remove", args: [.object(["provider": .string("corp-gateway")])])])
+
+        caller.answer(.providerRemove, with: .success(ModelsFixtures.declined("the default model corp-gateway/m comes from it")))
+        do {
+            try await admin.removeProvider(provider: "corp-gateway")
+            XCTFail("a refused removal must throw")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("default model"))
+        }
+    }
+
     func testTierAndDefaultProviderWritesSendTheirShapes() async throws {
         let caller = FakeActionCaller(scopes: ["admin"])
         for action in [PhoneAction.modelSetTier, .modelRemoveTier, .providerSetDefault, .modelRefresh] {

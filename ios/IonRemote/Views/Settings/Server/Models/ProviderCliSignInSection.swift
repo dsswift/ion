@@ -2,7 +2,9 @@ import SwiftUI
 
 /// A provider's delegated-CLI sign-in on the server: install guidance, the
 /// sign-in with its live stage, the pasted authorization code, or the
-/// signed-in account with Sign Out.
+/// signed-in account with Switch Account and Sign Out. Switch Account runs
+/// the same sign-in over the account that is there, which stays signed in
+/// until the new sign-in finishes.
 struct ProviderCliSignInSection: View {
     let session: ServerAdminSession
     let model: ProviderDetailModel
@@ -16,6 +18,10 @@ struct ProviderCliSignInSection: View {
             rows
         } header: {
             Text("\(provider.cliName) CLI")
+                // The header is one view, so this runs once per stage.
+                .onChange(of: model.login) {
+                    if let page = model.takeSignInPageToOpen() { openURL(page) }
+                }
         } footer: {
             footer
         }
@@ -30,7 +36,20 @@ struct ProviderCliSignInSection: View {
                 } label: {
                     Label("Open Sign-in Page", systemImage: "safari")
                 }
+            } else {
+                Text("The sign-in page opened in a browser on \(session.serverLabel). Approve it there and copy the code it shows.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
+            // Pastes the copied code and sends it in one tap.
+            PasteButton(payloadType: String.self) { pasted in
+                guard let first = pasted.first else { return }
+                Task { @MainActor in
+                    code = first.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if await model.submitCode(code) { code = "" }
+                }
+            }
+            .disabled(model.busy)
             TextField("Authorization code", text: $code)
                 .font(.body.monospaced())
                 .textInputAutocapitalization(.never)
@@ -61,6 +80,15 @@ struct ProviderCliSignInSection: View {
                 }
             } else if cli.authenticated {
                 LabeledContent("Account", value: [cli.label ?? "Signed in", cli.email].compactMap { $0 }.joined(separator: " · "))
+                if case .failed(let message) = model.login {
+                    AdminErrorRow(message: message)
+                }
+                if !provider.cliSignInIsHostOnly {
+                    Button("Switch Account") {
+                        Task { await model.startCliSignIn() }
+                    }
+                    .disabled(model.busy || !session.allows(.providerLogin))
+                }
                 Button("Sign Out", role: .destructive) {
                     Task { await model.cliSignOut() }
                 }
@@ -93,7 +121,7 @@ struct ProviderCliSignInSection: View {
 
     @ViewBuilder private var footer: some View {
         if case .awaitingCode = model.login {
-            Text("Approve the sign-in on the page, then paste the authorization code it shows.")
+            Text("1. On the sign-in page, sign in to the account you want and approve.\n2. The page shows a code. Copy it.\n3. Come back here and tap Paste. \(session.serverLabel) finishes the sign-in.")
         } else if let cli = provider.cli, !cli.installed {
             Text(provider.cliInstallCommand == nil
                  ? "Install the \(provider.cliName) CLI on \(session.serverLabel), then refresh its models."

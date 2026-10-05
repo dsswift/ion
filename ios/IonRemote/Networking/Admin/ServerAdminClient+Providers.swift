@@ -29,6 +29,11 @@ extension ServerAdminClient {
         try await callChecked(.providerLogout, args: [.object(["provider": .string(provider)])])
     }
 
+    /// Deletes a custom provider from the server's config, with its saved key and models.
+    func removeProvider(provider: String) async throws {
+        try await callChecked(.providerRemove, args: [.object(["provider": .string(provider)])])
+    }
+
     /// Starts a browser sign-in. Google answers at once with the page to open
     /// and a flow id; the landing address goes to `completeSignIn`.
     func oauthStart(provider: String) async throws -> OAuthStartResult {

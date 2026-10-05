@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// One provider's credentials and sign-ins on one server: its API key, its
-/// browser sign-in, its CLI sign-in, and a model refresh.
+/// browser sign-in, its CLI sign-in, a model refresh, and, for a custom
+/// provider, its removal.
 ///
 /// A phone is never the server's host, so a sign-in that only finishes in a
 /// browser there is not offered, and one that reaches that stage anyway is
@@ -38,6 +39,10 @@ final class ProviderDetailModel {
     @ObservationIgnored private let startedTimeout: Duration
     @ObservationIgnored private let codeTimeout: Duration
     @ObservationIgnored private var timeoutTask: Task<Void, Never>?
+    /// The sign-in page a browser stage named, kept for the code stage after it.
+    @ObservationIgnored private var signInPage: String?
+    /// True from the moment this phone starts a sign-in until its page has been opened here once.
+    @ObservationIgnored private var opensSignInPage = false
     @ObservationIgnored private var devicePollTask: Task<Void, Never>?
 
     private var client: ServerAdminClient { catalog.client }
@@ -101,6 +106,7 @@ final class ProviderDetailModel {
             // claude-code opens its own browser and also takes a pasted code,
             // so its sign-in carries on; any other browser stage needs the host.
             if update.backend == "claude-code" {
+                signInPage = update.authUrl
                 login = .waiting(userCode: nil, verificationUrl: nil)
             } else {
                 DiagnosticLog.log("provider sign-in: browser stage needs the host, cancelling", tag: "admin.providers", level: .warn, fields: [
@@ -115,17 +121,20 @@ final class ProviderDetailModel {
             // The person switches to a browser to enter the code; give them the long budget.
             armTimeout(codeTimeout)
         case .awaitAuthCode:
-            login = .awaitingCode(signInUrl: update.authUrl)
+            login = .awaitingCode(signInUrl: update.authUrl ?? signInPage)
             armTimeout(codeTimeout)
         case .completed:
             cancelTimeout()
+            endSignIn()
             login = nil
             notice = "Signed in."
         case .failed:
             cancelTimeout()
+            endSignIn()
             login = .failed(update.loginError ?? "Sign-in failed.")
         case .cancelled:
             cancelTimeout()
+            endSignIn()
             // A refusal this phone raised stays on screen; the cancel it sent echoes back here.
             if isInFlight { login = nil }
         case nil:
@@ -139,14 +148,33 @@ final class ProviderDetailModel {
 
     func startCliSignIn() async {
         await run("cli sign-in") {
+            self.signInPage = nil
+            self.opensSignInPage = true
             try await self.client.providerLogin(provider: self.providerId)
             if self.login == nil { self.login = .waiting(userCode: nil, verificationUrl: nil) }
             self.armTimeout(self.startedTimeout)
         }
     }
 
+    /// The page to open on this phone, once, for a sign-in this phone started
+    /// that now waits for a code: the server's own browser tab is on the server.
+    func takeSignInPageToOpen() -> URL? {
+        guard opensSignInPage, case .awaitingCode(let page?) = login, let url = URL(string: page) else { return nil }
+        opensSignInPage = false
+        DiagnosticLog.log("provider sign-in: opening the sign-in page here", tag: "admin.providers", fields: [
+            "server_id": serverId, "provider": providerId
+        ])
+        return url
+    }
+
+    private func endSignIn() {
+        signInPage = nil
+        opensSignInPage = false
+    }
+
     func cancelCliSignIn() async {
         cancelTimeout()
+        endSignIn()
         login = nil
         await run("cli sign-in cancel") { try await self.client.providerLoginCancel(provider: self.providerId) }
     }
@@ -181,6 +209,18 @@ final class ProviderDetailModel {
     func removeKey() async {
         await run("api key remove") {
             try await self.client.storeCredential(provider: self.providerId, credential: "")
+            await self.catalog.load()
+        }
+    }
+
+    // MARK: - Removal
+
+    /// Deletes a custom provider from the server. The server refuses while
+    /// its default model or a model tier still uses the provider; that reason
+    /// lands in `error`.
+    func removeProvider() async -> Bool {
+        await run("provider remove") {
+            try await self.client.removeProvider(provider: self.providerId)
             await self.catalog.load()
         }
     }
