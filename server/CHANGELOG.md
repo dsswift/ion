@@ -8,6 +8,16 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.12.0](https://github.com/dsswift/ion/compare/server-v1.11.0...server-v1.12.0) (2026-10-05)
+
+### Features
+
+* **server:** add deep-link routes, remote opening, and link routes ([d3dae6c](https://github.com/dsswift/ion/commit/d3dae6cbdee7847ed282c31718a68c1f7aa933ea))
+
+### Bug Fixes
+
+* **server:** expect ephemeralDefault in worktree state tests (#485) ([459efc7](https://github.com/dsswift/ion/commit/459efc7321ac61458a768fe4af6130fa3b1fbf6e))
+
 ## [1.11.0](https://github.com/dsswift/ion/compare/server-v1.10.0...server-v1.11.0) (2026-10-05)
 
 ### Features

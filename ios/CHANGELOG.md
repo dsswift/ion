@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.10.0](https://github.com/dsswift/ion/compare/ios-v2.9.0...ios-v2.10.0) (2026-10-05)
+
+### Features
+
+* **ios:** open ion links through the server and show plan refusals ([51ab48b](https://github.com/dsswift/ion/commit/51ab48b417119a75bc3be9d2bb3e60019e9b29fa))
+
 ## [2.9.0](https://github.com/dsswift/ion/compare/ios-v2.8.0...ios-v2.9.0) (2026-10-05)
 
 ### Features

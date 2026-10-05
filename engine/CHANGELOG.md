@@ -18,6 +18,19 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.0](https://github.com/dsswift/ion/compare/engine-v1.99.0...engine-v1.100.0) (2026-10-05)
+
+### Features
+
+* **engine:** dedup context files by identity and fire context hooks ([4a2e611](https://github.com/dsswift/ion/commit/4a2e611a107970db91ef73047e43a95b1335c436))
+* **engine:** run skill shell commands with hook and policy gates ([e8a6fd4](https://github.com/dsswift/ion/commit/e8a6fd4e53954ad9580372f5d2e3c2b5007b43ac))
+* **engine:** fire plan-mode hooks on every path and switch mid-turn ([6767568](https://github.com/dsswift/ion/commit/67675689027a09e5f27d93040713b6e8f1d4d37f))
+
+### Bug Fixes
+
+* **engine:** pin the mode-invariant plan tool list in tests (#484) ([2c92a39](https://github.com/dsswift/ion/commit/2c92a396d68b48d3978568b685b3c9d5429c4840))
+* **engine:** expect the rpc error code in the schedule timeout test ([c21783a](https://github.com/dsswift/ion/commit/c21783a06f8992fd81f068ec97e198f08848ffc1))
+
 ## [1.99.0](https://github.com/dsswift/ion/compare/engine-v1.98.0...engine-v1.99.0) (2026-10-05)
 
 ### Features

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.23](https://github.com/dsswift/ion/compare/sdk/go-v0.1.22...sdk/go-v0.1.23) (2026-10-05)
+
+### Features
+
+* **sdk:** fire plan-mode hooks and add skill shell and context hook payloads ([cadfd33](https://github.com/dsswift/ion/commit/cadfd339577f26a4158aab6d2c3dffa50866b5e7))
+
 ## [0.1.22](https://github.com/dsswift/ion/compare/sdk/go-v0.1.21...sdk/go-v0.1.22) (2026-10-04)
 
 ## [0.1.21](https://github.com/dsswift/ion/compare/sdk/go-v0.1.20...sdk/go-v0.1.21) (2026-10-03)
