@@ -47,7 +47,7 @@ password is still asked). On a headless macOS host the account also needs
 passwordless `sudo`, because with no GUI session the services are system
 LaunchDaemons.
 
-On Laptop A: Settings → All servers → Add server → **SSH**, type
+On Laptop A: Settings → Fleet → Add server → **SSH**, type
 `user@host`, Add. The desktop installs the server there, pairs with it
 through an SSH port forward, and the host appears as a second row. The
 dialog streams each stage. Nothing was typed on the host.
@@ -94,11 +94,11 @@ machine that joins. Here Laptop B is being joined. Pick one:
 
 - **Pairing link.** On Laptop B: Settings → Servers → This Mac →
   Access & pairing → **Pairing link**. Get the link to Laptop A and paste it
-  under All servers → Add server → **Pairing link**. Treat the link like a password
+  under Fleet → Add server → **Pairing link**. Treat the link like a password
   until it is used; it works once.
 - **Nearby**, when both are on the same local network. On Laptop B:
   Settings → Servers → This Mac → Access & pairing → **Discovery**, make it
-  discoverable for 15 minutes. On Laptop A: All servers → Add server → **Nearby**, pick Laptop B,
+  discoverable for 15 minutes. On Laptop A: Fleet → Add server → **Nearby**, pick Laptop B,
   type the code Laptop B is showing. The window closes itself. An
   organization can seal discovery off, in which case the section offers
   nothing and the link is the way
@@ -126,7 +126,7 @@ on the row opens the conversation on Laptop A when Laptop A has the
 repository; a click on a chip opens it on that machine instead, for that one
 conversation.
 
-On Laptop B, Settings → All servers shows **This Mac** and nothing else.
+On Laptop B, Settings → Fleet shows **This Mac** and nothing else.
 
 ## Why the arrows only point one way
 
@@ -145,7 +145,7 @@ Laptop A you would have to repeat step 4 in the other direction, on purpose.
 
 To check it rather than trust it:
 
-- On Laptop B, Settings → All servers lists only This Mac.
+- On Laptop B, Settings → Fleet lists only This Mac.
 - On Laptop A, Settings → Servers → This Mac → **Access & pairing** does not
   list Laptop B. Laptop B has no device row anywhere but its own.
 - On Laptop A, the host → **Access & pairing** lists Laptop A and not
