@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -135,16 +136,10 @@ func textResponse(text string, inputTokens, outputTokens int) []types.LlmStreamE
 }
 
 func toolUseResponse(toolName, toolID string, input map[string]any, inputTokens, outputTokens int) []types.LlmStreamEvent {
-	inputJSON := "{"
-	first := true
-	for k, v := range input {
-		if !first {
-			inputJSON += ","
-		}
-		inputJSON += fmt.Sprintf(`"%s":"%v"`, k, v)
-		first = false
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		panic(fmt.Sprintf("toolUseResponse: marshal input: %v", err))
 	}
-	inputJSON += "}"
 
 	stopReason := "tool_use"
 	return []types.LlmStreamEvent{
@@ -170,7 +165,7 @@ func toolUseResponse(toolName, toolID string, input map[string]any, inputTokens,
 			BlockIndex: 0,
 			Delta: &types.LlmStreamDelta{
 				Type:        "input_json_delta",
-				PartialJSON: inputJSON,
+				PartialJSON: string(inputJSON),
 			},
 		},
 		{Type: "content_block_stop", BlockIndex: 0},

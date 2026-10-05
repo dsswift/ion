@@ -228,3 +228,16 @@ func TestRender_OutputCapKeepsRunesWhole(t *testing.T) {
 		t.Fatalf("tail = %q", tl)
 	}
 }
+
+// Windows shells end output with CRLF; the whole line ending is dropped, not
+// just the LF, so no stray carriage return lands in the prompt.
+func TestRender_TrailingCRLFTrimmed(t *testing.T) {
+	fx := &fakeExec{results: map[string]ExecOutcome{"echo hi": {Output: "hi\r\n"}}}
+	got, err := render(t, RenderInput{Body: "Value: !`echo hi`\nDone.", Exec: fx.exec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Value: hi\nDone." {
+		t.Fatalf("got %q", got)
+	}
+}

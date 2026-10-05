@@ -6,6 +6,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/testhome"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -69,7 +70,7 @@ func TestWirePermissionHookServer_FailsThePromptWithoutARail(t *testing.T) {
 	})
 
 	t.Run("settings file cannot be written", func(t *testing.T) {
-		t.Setenv("TMPDIR", "/nonexistent-ion-rail-test-dir")
+		testhome.UnwritableTempDir(t)
 		mgr, s := railTestSession(t, backend.NewClaudeCodeBackend())
 		opts := types.RunOptions{}
 		err := mgr.wirePermissionHookServer(s, "rail", &opts, permissions.NewEngine(&permissions.DefaultPolicy))

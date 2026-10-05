@@ -16,6 +16,7 @@ package testhome
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -115,5 +116,17 @@ func resetEnv(key, value string, had bool) {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testhome: cannot restore %s: %v\n", key, err)
+	}
+}
+
+// UnwritableTempDir points os.TempDir at a directory that does not exist for
+// the rest of the test, so any file created there fails. os.TempDir reads
+// TMPDIR on Unix and TMP, then TEMP, on Windows; all three are set so the
+// same test fails the same way on every OS.
+func UnwritableTempDir(t testing.TB) {
+	t.Helper()
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, missing)
 	}
 }

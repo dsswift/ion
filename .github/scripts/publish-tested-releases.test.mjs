@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { GATES, legsVerdict, makeSweeper } from './publish-tested-releases.mjs';
+import { GATES, isTransient, legsVerdict, makeSweeper, withRetry } from './publish-tested-releases.mjs';
 
 const REPO = 'owner/ion';
 const sha = (c) => c.repeat(40);
@@ -256,5 +256,63 @@ test('every gating job is a job in quality.yml', () => {
   const jobs = new Set([...quality.matchAll(/^ {2}([a-z0-9-]+):$/gm)].map((m) => m[1]));
   for (const [component, gates] of Object.entries(GATES)) {
     for (const job of gates) assert.ok(jobs.has(job), `${component} gates on ${job}, which quality.yml does not define`);
+  }
+});
+
+// A gh failure carries GitHub's answer on stderr, as execFileSync reports it.
+function ghError(stderr) {
+  return Object.assign(new Error(`Command failed: gh api\n${stderr}`), { stderr });
+}
+
+test('a transient GitHub error is retried with doubling backoff, then succeeds', () => {
+  const sleeps = [];
+  const logs = [];
+  let calls = 0;
+  const fn = withRetry(
+    () => {
+      calls++;
+      if (calls < 3) throw ghError('gh: Server Error (HTTP 502)\n');
+      return 'ok';
+    },
+    { sleep: (ms) => sleeps.push(ms), log: (m) => logs.push(m) },
+  );
+  assert.equal(fn(), 'ok');
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [2000, 4000]);
+  assert.equal(logs.length, 2);
+});
+
+test('a transient error that never clears fails after the last attempt', () => {
+  let calls = 0;
+  const fn = withRetry(
+    () => {
+      calls++;
+      throw ghError('gh: Server Error (HTTP 503)\n');
+    },
+    { attempts: 3, sleep: () => {}, log: () => {} },
+  );
+  assert.throws(fn, /HTTP 503/);
+  assert.equal(calls, 3);
+});
+
+test('a permanent GitHub error is not retried', () => {
+  let calls = 0;
+  const fn = withRetry(
+    () => {
+      calls++;
+      throw ghError('gh: Not Found (HTTP 404)\n');
+    },
+    { sleep: () => assert.fail('slept on a permanent error'), log: () => {} },
+  );
+  assert.throws(fn, /HTTP 404/);
+  assert.equal(calls, 1);
+});
+
+test('transient covers 5xx, timeouts, and dropped connections only', () => {
+  for (const s of ['gh: Server Error (HTTP 502)', 'HTTP 504: Gateway Timeout', 'read: connection reset by peer', 'unexpected EOF', 'i/o timeout']) {
+    assert.ok(isTransient(ghError(s)), s);
+  }
+  for (const s of ['gh: Not Found (HTTP 404)', 'HTTP 422: Validation Failed', 'HTTP 401: Bad credentials']) {
+    assert.ok(!isTransient(ghError(s)), s);
   }
 });

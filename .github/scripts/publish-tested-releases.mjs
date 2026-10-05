@@ -270,18 +270,51 @@ export function makeSweeper({ api, apiLines, gh, git, docker, log, repo }) {
   };
 }
 
+// A GitHub failure worth retrying: a 5xx answer, a timeout, or a dropped
+// connection. Anything else (404, 422, a bad argument) fails the same way on
+// every try.
+const TRANSIENT = /HTTP 5\d\d|timed? ?out|connection reset|ECONNRESET|unexpected EOF/i;
+
+export function isTransient(err) {
+  return TRANSIENT.test(`${err?.stderr ?? ''}\n${err?.message ?? ''}`);
+}
+
+// withRetry runs fn, retrying a transient failure with doubling backoff. Only
+// wrap calls that are safe to repeat: a request the server took before
+// answering 5xx runs again.
+export function withRetry(fn, { attempts = 4, baseDelayMs = 2000, sleep, log }) {
+  return (...args) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return fn(...args);
+      } catch (err) {
+        if (attempt >= attempts || !isTransient(err)) throw err;
+        const delay = baseDelayMs * 2 ** (attempt - 1);
+        log(`transient GitHub failure (attempt ${attempt}/${attempts}), retrying in ${delay}ms: ${String(err.stderr || err.message).trim()}`);
+        sleep(delay);
+      }
+    }
+  };
+}
+
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
 function main() {
   const repo = process.env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is required');
+  const log = (msg) => console.log(msg);
   const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const ghRetry = withRetry((args) => run('gh', args), { sleep: sleepSync, log });
   const sweep = makeSweeper({
     repo,
-    api: (p) => JSON.parse(run('gh', ['api', p])),
-    apiLines: (p, jq) => run('gh', ['api', '--paginate', p, '--jq', `${jq} | tojson`]).split('\n').filter(Boolean).map((l) => JSON.parse(l)),
-    gh: (args) => run('gh', args),
+    api: (p) => JSON.parse(ghRetry(['api', p])),
+    apiLines: (p, jq) => ghRetry(['api', '--paginate', p, '--jq', `${jq} | tojson`]).split('\n').filter(Boolean).map((l) => JSON.parse(l)),
+    // A workflow dispatch is not repeatable: a 5xx after GitHub queued the
+    // run would start a second one. Every other gh call here is idempotent.
+    gh: (args) => (args[0] === 'workflow' && args[1] === 'run' ? run('gh', args) : ghRetry(args)),
     git: (args) => run('git', args),
     docker: (args) => run('docker', args),
-    log: (msg) => console.log(msg),
+    log,
   });
   sweep();
 }
