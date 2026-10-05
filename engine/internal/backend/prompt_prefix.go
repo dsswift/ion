@@ -24,6 +24,11 @@ import (
 // The tracker makes it a log line: every run records a fingerprint of each
 // part, and a run whose fingerprint differs from the conversation's previous
 // run says which part changed.
+//
+// The warning reports a change in what the engine sent. Whether the provider
+// then rewrote its cache is in the run's token counts: on a resumed claude-code
+// session a changed --append-system-prompt has been observed to leave the
+// cache read intact.
 
 // prefixTrackerLimit bounds the tracker. It holds a few short hashes per
 // conversation; when the bound is reached the record is dropped and rebuilt
@@ -97,7 +102,7 @@ func logPromptPrefix(backendKind, runID, conversationID string, parts map[string
 		utils.LogWithFields(utils.LevelInfo, "backend.prompt_prefix", "prompt prefix unchanged since the previous run", fields)
 	default:
 		fields["changed"] = changed
-		utils.LogWithFields(utils.LevelWarn, "backend.prompt_prefix", "prompt prefix changed since the previous run; the provider cache for this conversation is rewritten", fields)
+		utils.LogWithFields(utils.LevelWarn, "backend.prompt_prefix", "prompt prefix changed since the previous run; the provider cache for this conversation may be rewritten", fields)
 	}
 }
 
