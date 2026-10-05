@@ -215,6 +215,14 @@ export interface TabState {
   /** User-forced unread marker (cleared on visit). */
   manualUnread: boolean;
   /**
+   * The usage limit that refused this conversation's run, as the backend
+   * reported it. Cleared when the backend next allows a request; a limit
+   * past its reset no longer holds whether or not it was cleared.
+   */
+  usageLimit?: import("./usage-limit").TabUsageLimit | null;
+  /** A prompt the server holds and sends by itself when its release condition is met. */
+  deferredSend?: import("./usage-limit").TabDeferredSend | null;
+  /**
    * Auto-recovery bookkeeping for the stuck-tab watchdog. When a running tab
    * goes silent past the recovery threshold, the watchdog automatically
    * recreates the engine session and resubmits the last prompt (in-process, no

@@ -39,12 +39,17 @@ export interface InboxTabView {
   waiting: boolean
   /** Last run failed (fresh error signal for the raised hand). */
   failed: boolean
+  /**
+   * A usage limit still holds the conversation. Its failed run is the limit
+   * itself, not news, so it does not wake a snooze set to wait the limit out.
+   */
+  limited?: boolean
 }
 
 /** A snoozed conversation's early-resurface conditions. */
 export function raisedHand(tab: InboxTabView): boolean {
   if (tab.pendingAskCount > 0 || tab.waiting) return true
-  if (tab.failed) return true
+  if (tab.failed && !tab.limited) return true
   // A real message after snooze means the conversation spoke while parked.
   if (tab.lastMessageAt != null && tab.snoozedAt != null && tab.lastMessageAt > tab.snoozedAt) return true
   return false
@@ -108,6 +113,19 @@ export function inboxUnread(tab: InboxTabView): boolean {
   if (newestReviewableAt === 0) return false
   if (tab.lastVisitedAt == null) return false
   return newestReviewableAt > tab.lastVisitedAt
+}
+
+/**
+ * Whether a row asks nothing of the person right now, so a client draws it
+ * receded: it is working, connecting, or idle and read. A row that is unread,
+ * just woke, waits on the person, failed, or is stopped by a usage limit with
+ * nothing queued to resume it, is never quiet.
+ */
+export function inboxQuiet(tab: InboxTabView, now: number, held: { deferred: boolean }): boolean {
+  if (inboxUnread(tab) || wokeAt(tab, now) !== null) return false
+  if (tab.pendingAskCount > 0 || tab.waiting) return false
+  if (tab.limited) return held.deferred
+  return !tab.failed
 }
 
 /** Wake moment for the "Woke" pill: a snooze that expired after the last visit. */

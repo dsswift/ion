@@ -269,6 +269,31 @@
       "args": "[tabId]",
       "result": "events"
     },
+    "desktop_tab_resume_at_reset": {
+      "action": "resumeAtLimitReset",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_snooze_until_reset": {
+      "action": "snoozeUntilLimitReset",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_queue_spare_quota": {
+      "action": "deferSend",
+      "args": "[tabId, text, 'spare-quota']",
+      "result": "events"
+    },
+    "desktop_tab_cancel_held_prompt": {
+      "action": "cancelDeferredSend",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_send_held_prompt": {
+      "action": "releaseDeferredSend",
+      "args": "[tabId]",
+      "result": "events"
+    },
     "desktop_tab_mark_unread": {
       "action": "markTabUnread",
       "args": "[tabId]",
