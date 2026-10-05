@@ -6,9 +6,10 @@ import { motion } from 'framer-motion'
 import { CaretDown, Check, ShieldCheck, ListChecks } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
+import { Tooltip } from './git/Tooltip'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
-import { effectivePermissionMode } from '@ion/server/store/conversation-instance'
+import { activeInstanceOfPane, effectivePermissionMode } from '@ion/server/store/conversation-instance'
 import { tabHasExtensions } from '@ion/shared/tab-predicates'
 
 /* ─── Permission Mode Picker ─── */
@@ -68,6 +69,9 @@ export function PermissionModePicker() {
     if (!tab) return 'plan'
     return effectivePermissionMode(tab, s.conversationPanes)
   })
+  // The last toggle an extension refused, so the pill can say why it did
+  // not move. The server already reverted the mode itself.
+  const rejection = useSessionStore((s) => activeInstanceOfPane(s.conversationPanes.get(s.activeTabId))?.planModeRejection ?? null)
   const setPermissionMode = useSessionStore((s) => s.setPermissionMode)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const popoverLayer = usePopoverLayer()
@@ -151,6 +155,16 @@ export function PermissionModePicker() {
             straight to the confirm modal so no caret is needed. */}
         {!permissionModeGoverned && <CaretDown size={10} style={{ opacity: 0.6 }} />}
       </button>
+      {rejection && (() => {
+        const label = (
+          <span className="text-[10px] truncate" style={{ color: colors.warningFg, maxWidth: 260 }}>
+            {rejection.requestedEnabled ? 'Plan mode refused' : 'Leaving plan mode refused'}
+            {rejection.reason ? `: ${rejection.reason}` : ''}
+          </span>
+        )
+        // The pill truncates a long reason; the tooltip shows all of it.
+        return rejection.reason ? <Tooltip text={rejection.reason}>{label}</Tooltip> : label
+      })()}
 
       {/* Conversation popover — Plan/Auto choices, applied immediately. */}
       {!permissionModeGoverned && popoverLayer && open && createPortal(

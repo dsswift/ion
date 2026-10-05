@@ -10,6 +10,8 @@ import type { DeepLinkConfirmRequest } from '@ion/shared/types'
 import { DEFAULT_MONO_FONT } from '../typography'
 import { host } from '../host/host-instance'
 import { tabListKey } from '../studio/connection/tab-environment'
+import { answerRemoteDeepLink, onRemoteDeepLinkConfirm } from '../deeplink-client'
+import { rWarn } from '../rendererLogger'
 
 /**
  * Approval gate for an untrusted `ion://` deep link.
@@ -37,6 +39,13 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
   const tabs = useSessionStore((s) => s.tabs)
   const [queue, setQueue] = useState<DeepLinkConfirmRequest[]>([])
   const [selectedTabs, setSelectedTabs] = useState<Record<string, string>>({})
+
+  // A link this client opened itself (a browser `/open/...` path) comes back
+  // as a confirmation for this window alone, with no OS registration involved.
+  useEffect(() => onRemoteDeepLinkConfirm((request) => {
+    rInfo('deeplink', 'remote confirmation queued', { id: request.id, action: request.action })
+    setQueue((q) => [...q, request])
+  }), [])
 
   useEffect(() => {
     // ion:// deep links are an OS URL-scheme registration -- Electron-only,
@@ -79,15 +88,20 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
     const currentRequest = queue.find((request) => request.id === id)
     const tabId = currentRequest?.selectTab ? selectedTabs[id] : undefined
     rInfo('deeplink', 'confirmation answered', { id, approved, tab_id: tabId ?? '' })
-    host.shell.resolveDeepLinkConfirm({ id, owner, approved, tabId })
+    if (currentRequest?.owner === 'remote') {
+      answerRemoteDeepLink(id, approved).catch((err: unknown) => rWarn('deeplink', 'remote confirmation answer failed', { id, error: String(err) }))
+    } else {
+      host.shell.resolveDeepLinkConfirm({ id, owner, approved, tabId })
+    }
     setQueue((q) => q.filter((r) => r.id !== id))
   }
 
   if (!popoverLayer || !current) return null
 
   const isTerminal = current.action === 'terminal'
-  const title = isTerminal ? 'Run a command from a link?' : 'Start a conversation from a link?'
-  const verb = isTerminal ? 'Run command' : (current.submit ? 'Send prompt' : 'Open conversation')
+  const isExt = current.action === 'ext'
+  const title = isTerminal ? 'Run a command from a link?' : isExt ? 'Run an extension command from a link?' : 'Start a conversation from a link?'
+  const verb = isTerminal ? 'Run command' : isExt ? 'Run' : (current.submit ? 'Send prompt' : 'Open conversation')
 
   return createPortal(
     <motion.div
@@ -170,7 +184,19 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
           <Field label="Launch key (a pane holding it is stopped and reused)" colors={colors} mono>{current.key}</Field>
         ) : null}
 
-        {!isTerminal && current.text ? (
+        {isExt && current.label ? (
+          <Field label="Extension route" colors={colors}>{current.label}</Field>
+        ) : null}
+
+        {isExt && current.command ? (
+          <Field label="Command (sent to the conversation)" colors={colors} mono>{current.command}</Field>
+        ) : null}
+
+        {isExt ? (
+          <Field label="Conversation" colors={colors}>{current.conversationId ?? 'A new conversation in the directory above'}</Field>
+        ) : null}
+
+        {!isTerminal && !isExt && current.text ? (
           <Field label={current.submit ? 'Prompt (will be sent immediately)' : 'Prompt (will wait in the composer)'} colors={colors} mono>
             {current.text}
           </Field>

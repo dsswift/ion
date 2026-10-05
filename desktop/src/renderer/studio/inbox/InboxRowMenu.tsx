@@ -31,6 +31,8 @@ import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeG
 import { useTransferGate } from '../transfer/useTransferGate'
 import { openTransferDialog } from '../transfer/TransferDialogHost'
 import { copyConversationSessionIds, copyConversationTranscript } from '../../copy-conversation'
+import { copyDeepLink } from '../../deeplink-client'
+import { conversationLink } from '@ion/shared/deeplink-url'
 
 function MenuButton({ label, onSelect, disabled = false, icon, danger = false }: { label: string; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode; danger?: boolean }): React.JSX.Element {
   const colors = useColors()
@@ -264,6 +266,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
       />
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
       {developerSurfaces.repositoryStatus && tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
+      {!tab.isTerminalOnly && tab.conversationId && <MenuButton label="Copy link" onSelect={() => exec(() => { copyDeepLink(conversationLink(tab.conversationId!)).catch((error: unknown) => rWarn('inbox', 'copy link failed', { error: String(error) })) })} />}
       {!tab.isTerminalOnly && <MenuButton label="Copy transcript" onSelect={() => exec(() => { void copyConversationTranscript(tab.id) })} />}
       {!tab.isTerminalOnly && <MenuButton label="Copy session ID" disabled={!tab.conversationId && !tab.lastKnownSessionId && tab.historicalSessionIds.length === 0} onSelect={() => exec(() => { void copyConversationSessionIds(tab) })} />}
       <MenuButton

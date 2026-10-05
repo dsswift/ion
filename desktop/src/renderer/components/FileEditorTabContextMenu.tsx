@@ -55,6 +55,8 @@ interface TabContextMenuProps {
   onCloseToRight: () => void
   onCopyPath: () => void
   onCopyRelativePath: () => void
+  /** Copy an `ion://file` link that opens this file in Ion's editor. */
+  onCopyLink: () => void
   onRevealInFinder: () => void
   onOpenInVSCode: () => void
 }
@@ -62,7 +64,7 @@ interface TabContextMenuProps {
 export function FileEditorTabContextMenu({
   x, y, filePath, onClose,
   onCloseTab, onCloseOthers, onCloseAll, onCloseToRight,
-  onCopyPath, onCopyRelativePath, onRevealInFinder, onOpenInVSCode,
+  onCopyPath, onCopyRelativePath, onCopyLink, onRevealInFinder, onOpenInVSCode,
 }: TabContextMenuProps) {
   const colors = useColors()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -94,6 +96,7 @@ export function FileEditorTabContextMenu({
     'separator',
     { label: 'Copy Path', action: () => exec(onCopyPath), disabled: !filePath },
     { label: 'Copy Relative Path', action: () => exec(onCopyRelativePath), disabled: !filePath },
+    { label: 'Copy Link', action: () => exec(onCopyLink), disabled: !filePath },
     { label: 'Reveal in Finder', action: () => exec(onRevealInFinder), disabled: !filePath },
     { label: 'Open in VS Code', action: () => exec(onOpenInVSCode), disabled: !filePath },
   ]

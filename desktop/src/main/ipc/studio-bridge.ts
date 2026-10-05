@@ -124,6 +124,10 @@ export function registerStudioBridgeIpc(): void {
     if (environmentId === LOCAL_ENVIRONMENT_ID && frame.type === 'studio_event' && frame.channel === 'ion:deeplink-present') {
       openStudioWindow('deeplink confirmation')
     }
+    // A navigation link moves the window's view, so the window must be up.
+    if (environmentId === LOCAL_ENVIRONMENT_ID && frame.type === 'studio_event' && frame.channel === 'ion:deeplink-navigate') {
+      openStudioWindow('deeplink navigation')
+    }
     pushToWindows(IPC.STUDIO_FRAME, { environmentId, frame })
   })
 

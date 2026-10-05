@@ -67,6 +67,7 @@ import { resolveStudioResponsiveLayout } from '../responsive-layout'
 import { useResourceBootstrap } from "../hooks/useResourceBootstrap";
 import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
+import { useDeepLinkNavigation } from "../hooks/useDeepLinkNavigation";
 import { ProviderSubscriptionPrompt } from "./ProviderSubscriptionPrompt";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
 import { RemoteDirectoryPicker } from "../components/RemoteDirectoryPicker";
@@ -155,6 +156,7 @@ export function StudioShell(): React.JSX.Element {
   // resized — falls back to the global default below.
   const conversationSurfaceWidth = useSurfaceStore((s) => s.surfaceWidth);
   const startupReady = useStudioBootstrap(hydrated);
+  useDeepLinkNavigation(startupReady);
   const closeIntent = useSessionStore((s) => s.closeIntent);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
   const settingsInitialTab = useSessionStore((s) => s.settingsInitialTab);

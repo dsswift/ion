@@ -21,7 +21,7 @@ import type { StudioGetStateResult } from '@ion/shared/types-studio'
 import type { ComposerAction } from '@ion/shared/studio-sdk-contract'
 import type { ComposerActionsState } from '@ion/shared/composer-actions'
 import type { HealthReport, ResolvedNewConversationDefaults } from '@ion/shared/types'
-import type { DeepLinkConfirmRequest, DeepLinkConfirmResult } from '@ion/shared/types-ipc'
+import type { DeepLinkActionOutcome, DeepLinkConfirmRequest, DeepLinkConfirmResult, DeepLinkNavigateTarget, DeepLinkOpenResult } from '@ion/shared/types-ipc'
 import type { GraphViewConfig, GraphViewSavedView } from '@ion/shared/graph-view-types'
 import type { ConversationBranches } from '@ion/shared/conversation-branches'
 import type { CorpusDelta, CorpusSnapshot } from '@ion/shared/graph-corpus-types'
@@ -125,6 +125,12 @@ export interface BridgedOnlyShell
   onDeepLinkConfirmSettled(callback: (id: string) => void): () => void
   setDeepLinkConfirmAvailability(owner: 'overlay' | 'studio', available: boolean): void
   resolveDeepLinkConfirm(result: DeepLinkConfirmResult): void
+  /** A navigation link the local desktop received from its OS; move the view to `target`. */
+  onDeepLinkNavigate(callback: (target: DeepLinkNavigateTarget) => void): () => void
+  /** Open an `ion://` URL this client holds (a browser `/open/...` path, a pasted link). */
+  openDeepLink(url: string): Promise<DeepLinkOpenResult>
+  /** Answer a confirmation `openDeepLink` returned (`owner: 'remote'`); resolves to what the action did. */
+  answerDeepLink(result: DeepLinkConfirmResult): Promise<DeepLinkActionOutcome>
 
   // ── Graph View (`graphView.*`) ──
   graphViewGetConfig(projectPath: string): Promise<GraphViewConfig>

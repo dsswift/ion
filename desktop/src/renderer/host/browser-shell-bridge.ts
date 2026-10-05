@@ -270,6 +270,10 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
   // rather than invoked them, and nothing waits on a reply here either.
   setDeepLinkConfirmAvailability: { action: 'deeplink.setConfirmAvailability', pack: (args) => [{ owner: args[0], available: args[1] }], oneWay: true },
   resolveDeepLinkConfirm: { action: 'deeplink.confirmResult', pack: (args) => [args[0]], oneWay: true },
+  // A link this client opens itself goes to the server to be resolved, and a
+  // confirmation it gets back is answered here, awaiting what the action did.
+  openDeepLink: { action: 'deeplink.open', pack: (args) => [{ url: args[0] }] },
+  answerDeepLink: { action: 'deeplink.confirmResult', pack: (args) => [args[0]] },
   // The Graph View's config and corpus. `projectPath` is positional on the
   // wire; the preload wrapped it in an envelope, which the server never saw.
   graphViewGetConfig: { action: 'graphView.getConfig', pack: (args) => [args[0]] },

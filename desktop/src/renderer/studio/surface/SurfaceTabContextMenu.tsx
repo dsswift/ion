@@ -1,7 +1,7 @@
 /**
  * SurfaceTabContextMenu — right-click menu for a surface tab pill:
  * Link agent (browser) / Close / Close Others / Close to the Right /
- * Copy Path (file/preview).
+ * Copy Path and Copy Link (file/preview).
  */
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -13,6 +13,10 @@ import { transitions } from '../../theme-tokens'
 import { isPinnableSingleton, type SurfaceTab } from '@ion/shared/studio-surface-types'
 import { useSurfaceStore } from './surface-store'
 import { scrollableMenuStyle } from '../../menu-viewport'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { fileLinkForPath } from '@ion/shared/deeplink-url'
+import { copyDeepLink } from '../../deeplink-client'
+import { rWarn } from '../../rendererLogger'
 
 function MenuButton({
   label,
@@ -117,6 +121,17 @@ export function SurfaceTabContextMenu({
           {
             label: 'Copy Path',
             action: () => exec(() => void navigator.clipboard.writeText(filePath)),
+          },
+          {
+            // An ion://file link opens this file in Ion's editor. The
+            // conversation's working directory is the link's dir when the
+            // file is inside it.
+            label: 'Copy Link',
+            action: () => exec(() => {
+              const s = useSessionStore.getState()
+              const root = s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? null
+              copyDeepLink(fileLinkForPath(filePath, root)).catch((error: unknown) => rWarn('surface', 'copy link failed', { error: String(error) }))
+            }),
           },
         ] as Item[])
       : []),
