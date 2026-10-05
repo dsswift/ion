@@ -146,6 +146,7 @@ export const SETTINGS_REGISTRY = {
   keyboardShortcuts: device('shortcuts'),
   browserPreviewNetworkShield: device('general'),
   openAtLogin: device('general'),
+  showBuildNotice: device('general'),
   gitChangesTreeView: device('git'),
   gitPanelPaneProportions: recorded(device('none')),
   gitPanelHeight: recorded(device('none')),
