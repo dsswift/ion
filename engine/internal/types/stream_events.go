@@ -136,6 +136,19 @@ type RateLimitInfo struct {
 	Status        string `json:"status"`
 	ResetsAt      int64  `json:"resetsAt"`
 	RateLimitType string `json:"rateLimitType"`
+	// Utilization is the fraction (0..1) of the RateLimitType window used,
+	// when the CLI reports it at the top level.
+	Utilization *float64 `json:"utilization,omitempty"`
+	// UnifiedWindows is every subscription window the CLI reported with this
+	// event, keyed by window name ("five_hour", "seven_day").
+	UnifiedWindows map[string]RateLimitWindow `json:"unifiedWindows,omitempty"`
+}
+
+// RateLimitWindow is one subscription usage window: the fraction (0..1) of
+// it used, and the unix second it resets.
+type RateLimitWindow struct {
+	Utilization float64 `json:"utilization"`
+	ResetsAt    int64   `json:"resetsAt"`
 }
 
 // ResultEvent signals completion (success or error) of a Claude run.

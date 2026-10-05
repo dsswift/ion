@@ -30,8 +30,14 @@ type Probe struct {
 	AuthMethod    string
 	PlanType      string
 	Email         string
-	Label         string
-	Models        []types.ModelEntry
+	// OrgID and OrgName name the account's organization when the CLI
+	// reports one.
+	OrgID   string
+	OrgName string
+	Label   string
+	Models  []types.ModelEntry
+	// ProbedAt is when the registry took this snapshot.
+	ProbedAt time.Time
 }
 
 // ProbeFunc interrogates one backend kind and returns its Probe.
@@ -60,6 +66,7 @@ type claudeAuthStatus struct {
 	AuthMethod       string `json:"authMethod"`
 	APIProvider      string `json:"apiProvider"`
 	Email            string `json:"email"`
+	OrgID            string `json:"orgId"`
 	OrgName          string `json:"orgName"`
 	SubscriptionType string `json:"subscriptionType"`
 }
@@ -122,6 +129,8 @@ func probeClaudeCode() Probe {
 	p.AuthMethod = st.AuthMethod
 	p.PlanType = st.SubscriptionType
 	p.Email = st.Email
+	p.OrgID = st.OrgID
+	p.OrgName = st.OrgName
 	p.Label = claudeLabel(st)
 	utils.LogWithFields(utils.LevelInfo, "cliprobe", "claude-code auth status resolved", map[string]any{
 		"binaryPath": bin, "authenticated": st.LoggedIn, "authMethod": st.AuthMethod,

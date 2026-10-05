@@ -2,6 +2,7 @@ package cliprobe
 
 import (
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -36,6 +37,7 @@ func (r *Registry) Refresh(kinds []string) {
 	r.mu.RUnlock()
 	for _, kind := range kinds {
 		p := fn(kind)
+		p.ProbedAt = time.Now()
 		r.mu.Lock()
 		r.probes[kind] = p
 		r.mu.Unlock()

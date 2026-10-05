@@ -229,6 +229,8 @@ func normalizeRateLimit(raw json.RawMessage) []types.NormalizedEvent {
 			Status:        rle.RateLimitInfo.Status,
 			ResetsAt:      rle.RateLimitInfo.ResetsAt,
 			RateLimitType: rle.RateLimitInfo.RateLimitType,
+			Utilization:   rle.RateLimitInfo.Utilization,
+			Windows:       rle.RateLimitInfo.UnifiedWindows,
 		},
 	}}
 }

@@ -238,3 +238,23 @@ func TestNormalizeInvalidJSON(t *testing.T) {
 		t.Errorf("expected 0 events for invalid JSON, got %d", len(events))
 	}
 }
+
+// The Claude CLI reports every subscription window with a rate limit event;
+// all of them survive normalization.
+func TestNormalizeRateLimitWindows(t *testing.T) {
+	raw := []byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791048000,"rateLimitType":"five_hour","unifiedWindows":{"five_hour":{"utilization":0.24,"resetsAt":1791048000},"seven_day":{"utilization":0.64,"resetsAt":1791234000}}},"uuid":"u","session_id":"s"}`)
+	events := normalizeRateLimit(raw)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	rl, ok := events[0].Data.(*types.RateLimitNormalizedEvent)
+	if !ok {
+		t.Fatalf("expected RateLimitNormalizedEvent, got %T", events[0].Data)
+	}
+	if got := rl.Windows["seven_day"]; got.Utilization != 0.64 || got.ResetsAt != 1791234000 {
+		t.Errorf("seven_day window = %+v", got)
+	}
+	if got := rl.Windows["five_hour"]; got.Utilization != 0.24 {
+		t.Errorf("five_hour window = %+v", got)
+	}
+}
