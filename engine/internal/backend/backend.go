@@ -357,7 +357,11 @@ type RunConfig struct {
 	Hooks RunHooks
 
 	PermEngine *permissions.Engine
-	SandboxCfg *sandbox.Config
+	// PermissionAsk surfaces a permission decision of "ask" to the session's
+	// consumer and resolves to the chosen option. A delegated-CLI child's
+	// permission rail uses it; nil means an "ask" resolves without prompting.
+	PermissionAsk PermissionAskCallback
+	SandboxCfg    *sandbox.Config
 	// CommandPatterns are the configured dangerous-command patterns. A Bash
 	// call whose command matches one is refused before execution, whether or
 	// not SandboxCfg is set (see checkCommandPatterns). Empty means no

@@ -48,3 +48,23 @@ func TestWirePrincipalRunConfig_UnattributedParent(t *testing.T) {
 		t.Fatal("an unattributed run must not get a principal boundary")
 	}
 }
+
+// A dispatched child is bound by the session's permission rules, and can ask
+// through the session when a rule says "ask". Without the engine on its
+// RunConfig no rule reaches anything the child does.
+func TestWirePrincipalRunConfig_GivesDispatchedRunThePermissionRules(t *testing.T) {
+	a := newPrincipalWiringAccessor(nil)
+	a.m.wireSessionPermissions(a.s, nil)
+	if a.s.permEngine == nil {
+		t.Fatal("precondition: the session has a permission engine")
+	}
+	cfg := &backend.RunConfig{}
+	a.WirePrincipalRunConfig(cfg)
+
+	if cfg.PermEngine != a.s.permEngine {
+		t.Fatal("dispatched run was not given the session's permission engine")
+	}
+	if cfg.PermissionAsk == nil {
+		t.Fatal("dispatched run has no ask bridge")
+	}
+}

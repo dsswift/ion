@@ -50,6 +50,10 @@ type ToolServer struct {
 	// policy that decides which bridged tools may run. Nil means no plan-mode
 	// boundary is applied here.
 	planPolicy PlanPolicySource
+
+	// onStop holds cleanups for resources whose life is tied to this server,
+	// run once when it stops.
+	onStop []func()
 }
 
 // toolEntry stores a tool's handler alongside its MCP metadata so
@@ -255,7 +259,12 @@ func (ts *ToolServer) Stop() {
 	configPath := ts.configPath
 	ts.configPath = ""
 	toolCount := len(ts.tools)
+	cleanups := ts.onStop
+	ts.onStop = nil
 	ts.mu.Unlock()
+	for _, cleanup := range cleanups {
+		cleanup()
+	}
 
 	// Silent-failure backstop: if this server carried tools but no delegated-CLI
 	// MCP session ever connected, the model ran without any ion tool and the
@@ -280,6 +289,15 @@ func (ts *ToolServer) Stop() {
 // SocketPath returns the path to the Unix socket.
 func (ts *ToolServer) SocketPath() string {
 	return ts.sockPath
+}
+
+// OnStop registers a cleanup to run when the server stops. It is how a
+// resource that exists only to serve this server's run (a hook server, a
+// settings file) is released with it.
+func (ts *ToolServer) OnStop(fn func()) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.onStop = append(ts.onStop, fn)
 }
 
 // ResetTools removes every registered tool, leaving the server listening.

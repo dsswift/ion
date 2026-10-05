@@ -68,32 +68,51 @@ func ResolveChildCapabilities(child RunBackend, model string) BackendCapabilitie
 	return resolveChildRoute(child, model).Capabilities()
 }
 
-// BuildDelegatedChildToolServer wires a per-child ToolServer for a dispatched
-// child that will be served by a delegated-CLI backend, so the CLI child gets
-// the same ion tools an API child receives through its RunConfig — the
-// extension tools (emit_briefing and the rest) and ion_agent (so the child can
-// dispatch grandchildren). This closes the gap where a CLI-routed child dropped
-// the RunConfig and was left tool-orphaned: unable to dispatch or emit.
+// BuildDelegatedChildToolServer wires a dispatched child that will be served by
+// a delegated-CLI backend, so the CLI child gets what an API child receives
+// through its RunConfig.
 //
-// The child's tools are sourced from its already-built RunConfig rather than
-// re-derived: each cfg.ExternalTools entry routes through cfg.McpToolRouter, and
-// ion_agent routes through cfg.AgentSpawner (which BuildChildAgentSpawner wired
-// at the child's depth, so a grandchild spawns at depth+1). opts is mutated in
-// place with the MCP attach; the returned *ToolServer must be Stopped when the
-// child run exits (the caller owns that lifecycle).
+//   - Its tools: the extension tools (emit_briefing and the rest) and ion_agent
+//     (so the child can dispatch grandchildren). The child's tools are sourced
+//     from its already-built RunConfig rather than re-derived: each
+//     cfg.ExternalTools entry routes through cfg.McpToolRouter, and ion_agent
+//     routes through cfg.AgentSpawner (which BuildChildAgentSpawner wired at
+//     the child's depth, so a grandchild spawns at depth+1).
+//   - Its permission rail and plan mode (cli_child_rail.go): the plan policy on
+//     every bridged tool, and for claude-code a PreToolUse hook server, the
+//     plan tools, and the plan-mode notice on the prompt.
 //
-// Returns (nil, nil) when the child routes to an engine-owned (API) backend —
-// that path consumes the RunConfig directly and needs no tool server.
+// opts is mutated in place. The returned *ToolServer must be Stopped when the
+// child run exits (the caller owns that lifecycle); stopping it releases
+// everything wired here.
+//
+// Returns (nil, nil) when the child routes to a backend that takes no tool
+// server: an engine-owned (API) backend consumes the RunConfig directly.
+//
+// A returned error means the child must not be started. A claude-code child
+// runs under bypassPermissions; without its rail every tool call would run
+// unchecked.
 func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunConfig, opts *types.RunOptions) (*ToolServer, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	kind, ok := McpCapableCli(resolveChildRoute(child, opts.Model))
+	route := resolveChildRoute(child, opts.Model)
+	// Backends whose subprocess asks the engine to approve a tool call (codex,
+	// the ACP backends) decline every approval when no ask bridge is set.
+	if askable, isAskable := route.(PermissionAskable); isAskable && cfg.PermissionAsk != nil {
+		askable.SetPermissionAskCallback(cfg.PermissionAsk)
+		utils.LogWithFields(utils.LevelInfo, "backend.cli_child_tools", "permission ask bridge wired for delegated-CLI child", map[string]any{"session_id": sessionID})
+	}
+	kind, ok := McpCapableCli(route)
 	if !ok {
 		return nil, nil // API-routed child: RunConfig is consumed directly.
 	}
 
 	ts := NewToolServer(sessionID)
+	// The same plan policy guards the tools bridged here and, for claude-code,
+	// the CLI's own tools at the hook.
+	planPolicy := childPlanPolicySource(cfg, opts)
+	ts.SetPlanPolicySource(planPolicy)
 
 	// Extension tools → route through the child's McpToolRouter. The MCP
 	// request ctx flows into the router so session/server teardown cancels a
@@ -157,12 +176,23 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		}, statusDef.Description, statusDef.InputSchema)
 	}
 
+	if kind == "claude-code" {
+		registerChildPlanTools(ts, sessionID, opts, childEmitter(route))
+	}
+
 	if err := ts.Start(); err != nil {
 		return nil, err
 	}
 	if err := AttachToolServerToRunOptions(opts, ts, sessionID, kind); err != nil {
 		ts.Stop()
 		return nil, err
+	}
+	if kind == "claude-code" {
+		if err := wireChildPermissionRail(ts, sessionID, cfg, opts, planPolicy); err != nil {
+			ts.Stop()
+			return nil, err
+		}
+		opts.Prompt = childPlanNotice(opts)
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "backend.cli_child_tools", "wired tool server for delegated-CLI child", map[string]any{

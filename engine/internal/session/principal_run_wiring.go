@@ -29,17 +29,24 @@ func (m *Manager) wirePrincipalRun(s *engineSession, key string, principal *type
 }
 
 // WirePrincipalRunConfig gives a dispatched child run its parent session's
-// principal wiring (wirePrincipalRun). Without it the child acts as nobody:
-// on a partitioned instance every provider credential is refused for it, and
-// its tools run outside the principal's boundary and git identity.
+// principal wiring (wirePrincipalRun) and permission rules. Without it the
+// child acts as nobody: on a partitioned instance every provider credential is
+// refused for it, its tools run outside the principal's boundary and git
+// identity, and no permission rule applies to what it does.
 func (a *sessionAccessor) WirePrincipalRunConfig(cfg *backend.RunConfig) {
 	principal := a.s.principal
 	a.m.wirePrincipalRun(a.s, a.key, principal, cfg)
+	// The session's permission rules are resolved for its principal, and a
+	// dispatched run is bound by them as the session's own runs are. The ask
+	// bridge lets a rule that says "ask" reach the session's consumer from a
+	// child served by a delegated CLI.
+	cfg.PermEngine = a.s.permEngine
+	cfg.PermissionAsk = a.m.permissionAskClosure(a.key)
 	subject := ""
 	if principal != nil {
 		subject = principal.Subject
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "dispatched run wired to parent principal", map[string]any{
-		"key": a.key, "subject": subject, "attributed": principal != nil,
+		"key": a.key, "subject": subject, "attributed": principal != nil, "has_perm_engine": cfg.PermEngine != nil,
 	})
 }
