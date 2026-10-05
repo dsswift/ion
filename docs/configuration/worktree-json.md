@@ -231,9 +231,20 @@ set the project's policy:
 ```
 
 - `ephemeralDefault` decides whether a worktree cut for a conversation is
-  ephemeral when the client does not say. A client can always ask either way
+  ephemeral when the client does not say and the person has not remembered an
+  answer for the project. A client can always ask either way
   (`ephemeralWorktree` on `tabs.create`). A worktree cut from the worktree
   list's New worktree, with no conversation, is never ephemeral.
+
+The branch step of a new worktree conversation, on desktop and iOS, offers
+**Ephemeral** (preselected from this default) and **Remember for this project**.
+Remembering saves the branch in the `worktreeBranchDefaults` setting and the
+ephemeral answer as `worktreeEphemeral` on the project's entry in `projects`
+(`rememberWorktreeChoice` on `tabs.create`). Both are personal settings. The
+next worktree conversation in that project then starts at once, and the saved
+answer outranks `ephemeralDefault`. **Choose branch…** in the project menu, or
+an Alt/Option-click on the worktree row on desktop, shows the step again.
+Project settings show and clear both saved values.
 - `ephemeralMayDiscard` decides what happens when the conversation closes and
   the worktree still has uncommitted files or commits that have not landed.
   Off (the default): the worktree is kept, becomes an ordinary worktree, and the

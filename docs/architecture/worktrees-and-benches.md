@@ -96,6 +96,10 @@ it into an ordinary worktree for good and records why. The worktree list on
 desktop and iOS marks an ephemeral worktree and shows that reason on a kept one.
 A project sets the default and the discard permission in `.ion/worktree.json`
 (`worktree.ephemeralDefault`, `worktree.ephemeralMayDiscard`, both off). A
+person's remembered answer for the project (`worktreeEphemeral` on its
+`projects` entry, saved with the branch when a create sets
+`rememberWorktreeChoice`) outranks that default
+(`server/src/worktree/worktree-choice.ts`). A
 worktree cut with no conversation is never ephemeral, because nothing could
 close it. Reference:
 [`docs/configuration/worktree-json.md`](../configuration/worktree-json.md)
