@@ -89,6 +89,7 @@ const GIT_ACTION_MAP: Record<string, [string, Scope]> = {
   // ── Worktree verbs behind the same gitDirect gate ──
   'git.worktreeAppraise': [IPC.GIT_WORKTREE_APPRAISE, 'conversations:read'],
   'git.worktreeRetirePreview': [IPC.GIT_WORKTREE_RETIRE_PREVIEW, 'conversations:read'],
+  'git.worktreeEphemeralDefault': [IPC.GIT_WORKTREE_EPHEMERAL_DEFAULT, 'conversations:read'],
   'git.worktreeRebase': [IPC.GIT_WORKTREE_REBASE, 'git:write'],
   'git.worktreeSetTitle': [IPC.GIT_WORKTREE_SET_TITLE, 'git:write'],
 }

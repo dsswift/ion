@@ -9,85 +9,50 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// TestResolveCliPlanModePrompt_HarnessOverrideWins pins the plan-prompt seam:
-// RunOptions.PlanModePrompt replaces the engine default verbatim, and an empty
-// field falls back to the engine default (a full workflow that names the
-// ExitPlanMode delivery mechanism). Revert resolveCliPlanModePrompt to call
-// buildCliPlanModePrompt unconditionally and the override case goes red — that
-// regression is exactly the CLI path ignoring the harness seam that codex and
-// the API backend both honor.
-func TestResolveCliPlanModePrompt_HarnessOverrideWins(t *testing.T) {
+// TestCliPlanModeEnterNotice_HarnessOverrideWins pins the plan-prompt seam on
+// the CLI path: RunOptions.PlanModePrompt replaces the engine default verbatim,
+// and an empty field falls back to the engine default, a full workflow that
+// names the ExitPlanMode delivery mechanism.
+func TestCliPlanModeEnterNotice_HarnessOverrideWins(t *testing.T) {
 	planPath := filepath.Join(t.TempDir(), "plan.md")
 
 	override := "HARNESS PLAN POLICY: investigate read-only, then call ExitPlanMode."
-	got := resolveCliPlanModePrompt(types.RunOptions{
-		PlanMode:       true,
-		PlanFilePath:   planPath,
-		PlanModePrompt: override,
-	}, false)
+	got := CliPlanModeEnterNotice(types.RunOptions{PlanMode: true, PlanModePrompt: override}, planPath)
 	if got != override {
 		t.Fatalf("harness override must be used verbatim; got %q", got)
 	}
 
-	// Empty override -> engine default full workflow, still carrying the
-	// ExitPlanMode delivery mechanism.
-	def := resolveCliPlanModePrompt(types.RunOptions{PlanMode: true, PlanFilePath: planPath}, false)
-	if !strings.Contains(def, "[PLAN MODE]") {
-		t.Errorf("engine default missing [PLAN MODE] marker: %q", def)
+	def := CliPlanModeEnterNotice(types.RunOptions{PlanMode: true}, planPath)
+	for _, want := range []string{"[PLAN MODE]", "ExitPlanMode", planPath} {
+		if !strings.Contains(def, want) {
+			t.Errorf("engine default missing %q: %q", want, def)
+		}
 	}
-	if !strings.Contains(def, "ExitPlanMode") {
-		t.Errorf("engine default must name ExitPlanMode delivery: %q", def)
+	// A notice must not claim to out-rank the rest of the conversation: a
+	// later exit notice has to be able to end it.
+	if strings.Contains(def, "elsewhere in this prompt or conversation") {
+		t.Errorf("enter notice must be ended by a later exit notice, not override it: %q", def)
+	}
+
+	// An existing plan file switches the default to revise-in-place guidance.
+	if err := os.WriteFile(planPath, []byte("# plan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if existing := CliPlanModeEnterNotice(types.RunOptions{PlanMode: true}, planPath); !strings.Contains(existing, "already exists") {
+		t.Errorf("an existing plan file must be mentioned: %q", existing)
 	}
 }
 
-// TestBuildClaudeArgs_PlanModePromptOverride pins the seam at the args layer:
-// a plan-mode spawn whose RunOptions carry PlanModePrompt injects that text into
-// --append-system-prompt instead of the engine default. Without the resolver the
-// engine default would win and this goes red.
-func TestBuildClaudeArgs_PlanModePromptOverride(t *testing.T) {
-	planPath := filepath.Join(t.TempDir(), "plan.md")
-	override := "HARNESS-ONLY PLAN DIRECTIVE via ExitPlanMode"
-	args := buildClaudeArgs(types.RunOptions{
-		PlanMode:       true,
-		PlanFilePath:   planPath,
-		PlanModePrompt: override,
-		Model:          "claude-sonnet-4-5",
-	})
-	appendPrompt := flagValue(args, "--append-system-prompt")
-	if !strings.Contains(appendPrompt, override) {
-		t.Errorf("plan-mode --append-system-prompt must carry the harness override; got %q", appendPrompt)
+// The reminder is the harness text when supplied, else the engine default.
+func TestCliPlanModeReminder(t *testing.T) {
+	if got := CliPlanModeReminder(types.RunOptions{PlanModeSparseReminder: "HARNESS REMINDER"}, "/p/a.md"); got != "[SYSTEM] HARNESS REMINDER" {
+		t.Fatalf("harness reminder: got %q", got)
 	}
-	if strings.Contains(appendPrompt, "[PLAN MODE] You are in planning mode") {
-		t.Errorf("harness override must replace the engine default, not append to it; got %q", appendPrompt)
-	}
-}
-
-// TestPlanModeExtensionToolAllowed pins the CLI plan-mode authorization rule,
-// mirroring the ApiBackend buildToolDefs filter: a plan-safe tool is admitted,
-// a non-plan-safe tool is withheld, and a non-plan-safe tool becomes admitted
-// only when the run's plan-mode MCP allowlist matches its prefixed name.
-func TestPlanModeExtensionToolAllowed(t *testing.T) {
-	const prefixed = "mcp__" + McpServerName + "__deploy_service"
-
-	if !PlanModeExtensionToolAllowed(prefixed, true, types.RunOptions{PlanMode: true}) {
-		t.Error("a plan-mode-safe extension tool must be allowed")
-	}
-	if PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{PlanMode: true}) {
-		t.Error("a non-plan-safe extension tool must be withheld by default")
-	}
-	// Explicit per-run allowlist admits an otherwise-unsafe tool.
-	if !PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{
-		PlanMode:                true,
-		PlanModeAllowedMcpTools: []string{prefixed},
-	}) {
-		t.Error("an allowlisted extension tool must be admitted even when not plan-safe")
-	}
-	// A prefix-scoped allowlist entry (whole ion-extensions server) also matches.
-	if !PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{
-		PlanMode:                true,
-		PlanModeAllowedMcpTools: []string{"mcp__" + McpServerName},
-	}) {
-		t.Error("a server-scoped allowlist entry must admit its tools")
+	def := CliPlanModeReminder(types.RunOptions{}, "/p/a.md")
+	for _, want := range []string{"[SYSTEM] Plan mode still active", "/p/a.md", "WritePlan", "ExitPlanMode"} {
+		if !strings.Contains(def, want) {
+			t.Errorf("default reminder missing %q: %q", want, def)
+		}
 	}
 }
 

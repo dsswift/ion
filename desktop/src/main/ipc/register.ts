@@ -14,6 +14,7 @@ import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerStartupIpc } from "./startup";
 import { registerQuestionsIpc } from "../questions/questions-ipc";
+import { registerBuildNoticeIpc } from "../build-notice";
 
 export function registerAllIpc(): void {
   registerStartupIpc();
@@ -32,4 +33,5 @@ export function registerAllIpc(): void {
   registerStudioBridgeIpc();
   registerFaviconIpc();
   registerWorktreeOverlapIpc();
+  registerBuildNoticeIpc();
 }

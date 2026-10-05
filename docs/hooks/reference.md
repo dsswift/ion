@@ -549,7 +549,7 @@ type ElicitationResultInfo struct {
 | `before_plan_mode_enter` | LLM calls `EnterPlanMode` tool requesting mode transition | `PlanModeEnterInfo{Source}` | `*BeforePlanModeEnterResult{Allow, Reason}` | Last non-nil `Allow` across hosts wins. Return `Allow: &false` to deny. Default (nil or no handler): allow. |
 | `before_plan_mode_exit` | LLM calls `ExitPlanMode` tool requesting plan review | `BeforePlanModeExitInfo{PlanFilePath, Source}` | `*BeforePlanModeExitResult{Allow, Reason}` | Last non-nil `Allow` wins. Return `Allow: &false` to send the model back for more planning. Default: allow. |
 | `before_plan_mode_auto_exit` | Plan-mode run ends with `end_turn` / `stop` but the assistant never invoked `ExitPlanMode` or `AskUserQuestion` (the engine is about to deterministically synthesize the exit — see [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md)) | `BeforePlanModeAutoExitInfo{SessionID, RunID, StopReason, PlanFilePath, AssistantText, EmittedTools}` | `*BeforePlanModeAutoExitResult{Suppress, PlanFilePath, Reason}` | Last writer wins per field across handlers. Return `Suppress: true` to block synthesis (the conversation stays parked in plan mode). Override `PlanFilePath` for stage-then-promote workflows; override `Reason` to localize or rephrase the human-readable string surfaced on the approval card. |
-| `plan_mode_prompt` | Plan mode session starts | `string` (plan file path) | `PlanModePromptResult{Prompt, Tools, SparseReminder}` or `string` | Last non-nil wins. Override plan mode prompt, allowed tool list, and/or per-turn sparse reminder text. |
+| `plan_mode_prompt` | Once per API-backend run, the first time the run is planning | `string` (plan file path) | `PlanModePromptResult{Prompt, Tools, SparseReminder}` or `string` | Last non-nil wins. `Prompt` replaces the plan-mode instructions, delivered as the `plan_mode_enter` notice. `Tools` replaces the read-only tool set the plan policy allows. `SparseReminder` replaces the reminder text. See [ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md). |
 
 ### Payload Types
 
@@ -670,7 +670,9 @@ type PromptContext struct {
 
 | Kind | When injected | Default text pattern |
 |------|--------------|---------------------|
-| `"plan_mode_reminder"` | Turn 2+ during plan mode | `[SYSTEM] Plan mode still active...` |
+| `"plan_mode_enter"` | The run is planning and the model has not been told so for this plan file | The plan-mode instructions (`[PLAN MODE] Plan mode is now active...`), or the harness prompt |
+| `"plan_mode_exit"` | The model was told it is planning and the run is not | `[PLAN MODE ENDED] Plan mode has ended...` |
+| `"plan_mode_reminder"` | Planning continues and five assistant turns have passed since the last plan-mode notice | `[SYSTEM] Plan mode still active...` |
 | `"turn_limit_warning"` | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
 | `"max_token_continue"` | LLM response hits `max_tokens` | `Continue from where you left off.` |
 | `"early_stop_continue"` | Model emits `end_turn` below the configured token budget | harness-supplied (none by default) — see [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) |

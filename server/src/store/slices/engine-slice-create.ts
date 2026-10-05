@@ -5,11 +5,11 @@ import { makeLocalTab, nextMsgId, initialModelOverride, initialPermissionMode, i
 import { makeMainPane } from '../conversation-instance'
 import { registerTabOwner } from '../../protocol/tabs-index'
 import { formatSessionStartDivider } from '@ion/shared/clear-divider'
-import { rError, rInfo } from '../rendererLogger'
+import { rError, rInfo, rWarn } from '../rendererLogger'
 import { setTabStatus } from './tab-status-transition'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
 import { resolveRegisteredWorktree } from '../worktree-registration'
-import { adoptTab, createTab, engineStart, ensureEngineSession, fsExists, setPermissionMode } from '../host-api'
+import { adoptTab, createTab, engineStart, ensureEngineSession, fsExists, gitWorktreeRememberChoice, gitWorktreeSetEphemeralOwner, setPermissionMode } from '../host-api'
 import { isAbsolutePath } from '@ion/shared/paths'
 
 /**
@@ -40,6 +40,18 @@ export interface CreateConversationTabOpts {
   useWorktree?: boolean
   /** Explicit branch for a requested worktree. Overrides the saved branch default. */
   sourceBranch?: string
+  /**
+   * Make the requested worktree ephemeral: removed when this conversation
+   * closes with nothing unlanded. Absent means the project's remembered
+   * choice, else its `ephemeralDefault`.
+   */
+  ephemeralWorktree?: boolean
+  /**
+   * Save `sourceBranch` and `ephemeralWorktree` as this project's worktree
+   * choice once the worktree is cut, so the next worktree conversation here
+   * starts without asking.
+   */
+  rememberWorktreeChoice?: boolean
   /** Restore-only identity already resolved from persisted state/registry. */
   worktree?: import('@ion/shared/types').WorktreeInfo | null
   /**
@@ -105,8 +117,16 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       baseWorkingDirectory,
       opts.useWorktree,
       opts.sourceBranch,
+      { ephemeral: opts.ephemeralWorktree },
     )
     const workingDirectory = resolution.dir
+    if (opts.rememberWorktreeChoice && resolution.worktree && opts.sourceBranch) {
+      await gitWorktreeRememberChoice(baseWorkingDirectory, opts.sourceBranch, opts.ephemeralWorktree)
+    } else if (opts.rememberWorktreeChoice) {
+      rWarn('engine.create', 'worktree choice not remembered: no worktree was cut from a named branch', {
+        directory: baseWorkingDirectory, source_branch: opts.sourceBranch ?? '', worktree_cut: !!resolution.worktree,
+      })
+    }
     // Restoration supplies already-known metadata. New tabs resolve either the
     // newly-created worktree or a registered identity for their final directory.
     const worktree = opts.worktree ?? (resolution.worktree ?? await resolveRegisteredWorktree(workingDirectory))
@@ -174,6 +194,17 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
         tabId = res.tabId
       } catch {
         tabId = crypto.randomUUID()
+      }
+    }
+
+    // The worktree was cut before this id existed. Bind it before the tab is
+    // visible, so no close can reach the tab while its worktree has no owner.
+    if (resolution.ephemeral && resolution.worktree) {
+      const bound = await gitWorktreeSetEphemeralOwner(resolution.worktree.worktreePath, tabId)
+      if (!bound.ok) {
+        rWarn('engine.create', 'ephemeral worktree owner not bound; it will not close with this conversation', {
+          tab_id: tabId.slice(0, 8), worktree_path: resolution.worktree.worktreePath,
+        })
       }
     }
 

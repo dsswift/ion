@@ -5,6 +5,7 @@ import { WorktreeRowMenu } from '../../components/WorktreeRowMenu'
 import { WorktreeStateSlot } from '../../components/WorktreeStateSlot'
 import { WorktreeStageSlot } from '../../components/WorktreeStageSlot'
 import { WorktreeEnrollmentSlot } from '../../components/WorktreeEnrollmentSlot'
+import { WorktreeEphemeralBadge } from '../../components/WorktreeEphemeralBadge'
 import { resolveRowState, resolveRowWords } from '../../components/worktreeRowState'
 import { findActiveAutoFix } from '@ion/server/store/slices/conflict-assist-dedupe'
 import { ConflictsDialog } from '../../components/git/ConflictsDialog'
@@ -158,6 +159,7 @@ export function InboxWorktreeRow({
         <span style={{ fontFamily: 'monospace', flexShrink: 0 }}>{entry.label}</span>
         <span>·</span>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{words || entry.lastCommitSubject || 'no commits yet'}</span>
+        <WorktreeEphemeralBadge entry={entry} />
         <span data-testid={`inbox-worktree-stage-${entry.branchName}`} style={{ display: 'inline-flex', marginLeft: 'auto', flexShrink: 0 }}>
           <WorktreeStageSlot stage={entry.stage} branchName={entry.branchName} onSetStage={setStage} />
         </span>

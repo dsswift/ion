@@ -1031,8 +1031,15 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// for API-routed children (they consume the RunConfig directly). The
 		// server is Stopped after runChild fully returns (both call sites below),
 		// spanning any suspend/revive iterations.
+		//
+		// A wiring failure fails the dispatch. The same call sets up a
+		// claude-code child's permission rail, and that child runs under
+		// bypassPermissions: started without the rail, every tool call it made
+		// would run unchecked.
+		var childWiringErr error
 		if ts, err := backend.BuildDelegatedChildToolServer(child, childReqID, childCfg, &runOpts); err != nil {
-			utils.LogWithFields(utils.LevelWarn, "session", "dispatch: cli child tool-server wiring failed", map[string]any{"session_key": key, "agent": agentName, "error": err.Error()})
+			childWiringErr = fmt.Errorf("delegated-CLI child could not be wired, so it was not started: %w", err)
+			utils.LogWithFields(utils.LevelError, "session", "dispatch: cli child wiring failed; child not started", map[string]any{"session_key": key, "agent": agentName, "error": err.Error()})
 		} else {
 			childToolServer = ts
 		}
@@ -1061,7 +1068,17 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// Note: we reset the WaitGroup by decrement-then-increment only
 				// after doneCh is consumed (the select below), so there is no
 				// race with the concurrent Done() call.
-				startChild(child, childReqID, runOpts, childCfg)
+				if childWiringErr != nil {
+					// Never started: report the failure through the same
+					// signals a child's own exit would set.
+					childErr = childWiringErr
+					childExitCode.Store(1)
+					if childDoneArmed.CompareAndSwap(1, 0) {
+						childDone.Done()
+					}
+				} else {
+					startChild(child, childReqID, runOpts, childCfg)
+				}
 
 				// Wait for the child to finish, but also watch for context
 				// cancellation (recall).

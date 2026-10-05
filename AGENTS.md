@@ -103,6 +103,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 - Work from a GitHub issue: subject ends ` (#N)` **and** a commit or PR body carries `Fixes #N` / `Closes #N`. `make check-issue-closure` fails the PR otherwise.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
 - Commit finished work before reporting. Never `--no-verify`. Never push.
+- End with a clean tree: commit or revert every change, whoever made it. `package-lock.json` changes are always committed.
 
 ## Layered architecture
 

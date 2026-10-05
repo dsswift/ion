@@ -154,6 +154,21 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "get_tree",
 		},
 		{
+			name: "list_branches",
+			line: `{"cmd":"list_branches","key":"s1"}`,
+			cmd:  "list_branches",
+		},
+		{
+			name: "switch_branch",
+			line: `{"cmd":"switch_branch","key":"s1","leafId":"e42"}`,
+			cmd:  "switch_branch",
+		},
+		{
+			name: "fork_session at a branch leaf",
+			line: `{"cmd":"fork_session","key":"s1","newKey":"s2","leafId":"e42"}`,
+			cmd:  "fork_session",
+		},
+		{
 			name: "shutdown",
 			line: `{"cmd":"shutdown"}`,
 			cmd:  "shutdown",
@@ -346,6 +361,18 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		{
 			name: "get_tree missing key",
 			line: `{"cmd":"get_tree"}`,
+		},
+		{
+			name: "list_branches missing key",
+			line: `{"cmd":"list_branches"}`,
+		},
+		{
+			name: "switch_branch missing leafId",
+			line: `{"cmd":"switch_branch","key":"s1"}`,
+		},
+		{
+			name: "fork_session leafId without newKey",
+			line: `{"cmd":"fork_session","key":"s1","leafId":"e42"}`,
 		},
 		{
 			name: "stop_session missing key",

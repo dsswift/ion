@@ -34,6 +34,8 @@ import { disenrollWorktree } from "../integration/bench-ops";
 import { writeRecoveryRef } from "./recovery";
 import { appraiseWorktree, preserveWorktreeWork } from "./safety";
 import { clearProvisionState } from "./provision-state";
+import { cancelWorktreeProvisioning } from "./provision";
+import { isListedWorktree, removeLeftoverCheckout } from "./checkout-presence";
 import type { WorktreeInfo, WorktreeMoveResult } from "@ion/shared/types";
 
 const TAG = "worktree.move";
@@ -60,6 +62,12 @@ export interface DiscardOptions {
   worktreePath: string;
   branchName: string;
   sourceBranch: string;
+  /**
+   * Refuse instead of preserving and removing when the appraisal finds work
+   * that would be lost. The refusal sets `refusedUnlanded`. Checked inside the
+   * same mutation slot as the removal, so no work can appear in between.
+   */
+  onlyIfSafe?: boolean;
 }
 
 /**
@@ -79,6 +87,7 @@ export async function discardWorktree(
       worktree_path: opts.worktreePath,
       branch: opts.branchName,
       source_branch: opts.sourceBranch,
+      only_if_safe: !!opts.onlyIfSafe,
     });
 
     const appraisal = await appraiseWorktree(
@@ -98,6 +107,19 @@ export async function discardWorktree(
       };
     }
 
+    if (!appraisal.safeToDiscard && opts.onlyIfSafe) {
+      log("discard: refused, worktree holds unlanded work", {
+        worktree_path: opts.worktreePath,
+        uncommitted: appraisal.uncommittedPaths.length,
+        unlanded: appraisal.unlandedCommitCount,
+      });
+      return {
+        ok: false,
+        refusedUnlanded: true,
+        error: appraisal.reason ?? "This worktree holds work that has not landed.",
+      };
+    }
+
     let recoveryRef: string | undefined;
     let preservedRefCount = 0;
     if (!appraisal.safeToDiscard) {
@@ -105,6 +127,7 @@ export async function discardWorktree(
         opts.repoPath,
         opts.worktreePath,
         opts.branchName,
+        appraisal.checkoutRemoved === true,
       );
       if (preservation.error) {
         warn("discard: refused because preservation failed", {
@@ -155,20 +178,11 @@ async function removeWorktreeUnqueued(
   opts: RemoveWorktreeOptions,
 ): Promise<WorktreeMoveResult> {
   const { repoPath, worktreePath, branchName, force, operation } = opts;
-  try {
-    const removeArgs = ["worktree", "remove", worktreePath];
-    if (force) removeArgs.push("--force");
-    await runGit(repoPath, removeArgs);
-    log("worktree removed", { operation, worktree_path: worktreePath });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    warn("worktree remove failed", {
-      operation,
-      worktree_path: worktreePath,
-      error: msg,
-    });
-    return { ok: false, error: msg };
-  }
+  // A provisioning run still writing into the checkout makes the delete fail
+  // half way, after git has already unregistered the worktree.
+  await cancelWorktreeProvisioning(worktreePath);
+  const removed = await removeCheckout(repoPath, worktreePath, force, operation);
+  if (!removed.ok) return removed;
 
   try {
     await runGit(repoPath, ["branch", "-D", branchName]);
@@ -223,6 +237,44 @@ async function removeWorktreeUnqueued(
     prunedBenchPaths: prunedBenches,
     warning: registryWarning,
   };
+}
+
+/**
+ * Remove the checkout. When git no longer lists it, whether before the call or
+ * because `git worktree remove` unregistered it and then failed to delete
+ * everything, the directory is a leftover and is deleted directly so the
+ * removal can finish instead of failing on every retry.
+ */
+async function removeCheckout(
+  repoPath: string,
+  worktreePath: string,
+  force: boolean,
+  operation: RemoveWorktreeOptions["operation"],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const listed = await isListedWorktree(repoPath, worktreePath).catch((err: unknown) => {
+    warn("worktree list failed before removal; trying git remove", { operation, worktree_path: worktreePath, error: String(err) });
+    return true;
+  });
+  if (!listed) {
+    log("worktree no longer listed by git; removing the leftover directory", { operation, worktree_path: worktreePath });
+    return removeLeftoverCheckout(repoPath, worktreePath);
+  }
+  try {
+    const removeArgs = ["worktree", "remove", worktreePath];
+    if (force) removeArgs.push("--force");
+    await runGit(repoPath, removeArgs);
+    log("worktree removed", { operation, worktree_path: worktreePath });
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stillListed = await isListedWorktree(repoPath, worktreePath).catch(() => true); // silent-ok: unknown keeps the failure
+    if (!stillListed) {
+      log("worktree remove unregistered it but left files; removing the rest", { operation, worktree_path: worktreePath, error: msg });
+      return removeLeftoverCheckout(repoPath, worktreePath);
+    }
+    warn("worktree remove failed", { operation, worktree_path: worktreePath, error: msg });
+    return { ok: false, error: msg };
+  }
 }
 
 /**

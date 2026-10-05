@@ -49,6 +49,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Abort Marker](#term-abort-marker)
 - [Account Policy](#term-account-policy)
 - [Account Setting](#term-account-setting)
+- [Active path](#term-active-path)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Application Config](#term-application-config)
@@ -57,6 +58,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Automation Editor](#term-automation-editor)
 - [Backend](#term-backend)
 - [Branch](#term-branch)
+- [Build Notice](#term-build-notice)
 - [Builder Host](#term-builder-host)
 - [Channel](#term-channel)
 - [Chart Output](#term-chart-output)
@@ -110,6 +112,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Environment Policy](#term-environment-policy)
 - [Environment Purge](#term-environment-purge)
 - [Environment Setting](#term-environment-setting)
+- [Ephemeral Worktree](#term-ephemeral-worktree)
 - [Event segment](#term-event-segment)
 - [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
@@ -170,6 +173,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
 - [Placement](#term-placement)
+- [Plan Mode Notice](#term-plan-mode-notice)
+- [Plan Policy](#term-plan-policy)
 - [Policy Failure](#term-policy-failure)
 - [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
@@ -382,6 +387,22 @@ The filesystem root that scopes tool execution and file access for a conversatio
   - `engine` / `code` / `go`: `type Registry struct` in `engine/internal/workspaces/registry.go`
   - `engine` / `wire` / `go`: `ClientWorkspaceContext` in `engine/internal/protocol/protocol.go`
   - `desktop` / `ui` / `typescript`: `WorkspaceStatusIndicator` in `desktop/src/renderer/components/WorkspaceStatusIndicator.tsx`
+
+### state
+
+#### Active path {#term-active-path}
+
+The branch of a conversation tree the model context is built from: the entries from the root to the current leaf. The next prompt continues it. Switching branches moves it to another leaf and rebuilds the context from that path alone.
+
+- **ID:** `active-path`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `active branch`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func SwitchBranch` in `engine/internal/conversation/branches.go`
+  - `engine` / `wire` / `go`: `EventActivePathChanged` in `engine/internal/types/normalized_event_types.go`
 
 ### action
 
@@ -718,6 +739,33 @@ The decision about whether a tool call may run. The engine classifies the call a
   - `engine` / `wire` / `go`: `type PermissionRequestEvent struct` in `engine/internal/types/normalized_event.go`
   - `desktop` / `ui` / `typescript`: `PermissionCard` in `desktop/src/renderer/components/PermissionCard.tsx`
   - `ios` / `ui` / `swift`: `struct PermissionCardView` in `ios/IonRemote/Views/PermissionCardView.swift`
+
+#### Plan Mode Notice {#term-plan-mode-notice}
+
+A machine-authored user turn the engine appends to a conversation where a run's plan mode and what the model was last told disagree. There are three: enter carries the plan-mode instructions, exit ends an earlier enter, and reminder repeats the short form while planning continues. Each is saved exactly as it was sent, so the conversation reads as a timeline and the prompt a provider caches is never changed by a mode switch.
+
+- **ID:** `plan-mode-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `InjectionKindPlanModeEnter` in `engine/internal/types/injection_kind.go`
+  - `engine` / `code` / `go`: `func ReconcilePlanMode` in `engine/internal/conversation/plan_mode_ledger.go`
+
+#### Plan Policy {#term-plan-policy}
+
+The single decision of whether one tool call may run while a run is planning. Plan mode is read-only apart from the plan file, and the policy enforces that when a tool is called instead of by leaving tools out of the list the model sees. The API run loop, the delegated-CLI hook server, and the engine's MCP tool server all ask it.
+
+- **ID:** `plan-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `PlanPolicy` in `engine/internal/backend/plan_policy.go`
 
 #### Policy Failure {#term-policy-failure}
 
@@ -1529,6 +1577,21 @@ A setting with one value for a whole Environment. It is stored in that server's 
 - **Implementations:**
   - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
 
+#### Ephemeral Worktree {#term-ephemeral-worktree}
+
+A worktree cut for one conversation and removed when that conversation closes, through Retire's appraisal and relocation. If it still holds work that has not landed, the close keeps it and turns it into an ordinary worktree, and the worktree list says why. A project sets the default and whether that work may ever be discarded in .ion/worktree.json.
+
+- **ID:** `ephemeral-worktree`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export async function releaseEphemeralWorktreeOnClose` in `server/src/store/slices/ephemeral-worktree-close.ts`
+  - `studio` / `ui` / `typescript`: `export function WorktreeEphemeralBadge` in `desktop/src/renderer/components/WorktreeEphemeralBadge.tsx`
+  - `ios` / `wire` / `swift`: `var ephemeralKeptReason: String?` in `ios/IonRemote/Models/WorktreeTypes.swift`
+
 #### External Host {#term-external-host}
 
 A fleet host deployed outside the fleet, such as a server in a cluster, registered by its address (`url`) instead of an SSH target. The fleet reads it (its public versions and formats, and with the fleet's own device-code sign-in its load, running conversations, and devices) and never changes it: deploy, restart, and relay set refuse it.
@@ -2103,6 +2166,21 @@ The shared Settings surface for Desktop Automation: one panel with three labeled
   - `desktop` / `ui` / `typescript`: `export function AutomationEditorPanel` in `desktop/src/renderer/components/settings/pages/integrations/AutomationEditorPanel.tsx`
   - `desktop` / `code` / `typescript`: `AUTOMATION_TRIGGERS` in `packages/shared/src/automation-catalog.ts`
   - `ios` / `ui` / `swift`: `struct AutomationEditorView` in `ios/IonRemote/Views/Settings/Server/Automations/AutomationEditorView.swift`
+
+#### Build Notice {#term-build-notice}
+
+The dialog Studio shows on the desktop the first time it opens on a build this device has not acknowledged. It names the running build by version and build time, and the build it replaced. A released build also lists its What's new notes: plain-language bullets the release pipeline writes into desktop/whats-new.json under that version. A build is its version plus the moment it was built, so a rebuild of the same commit is a new build. Dismissing it acknowledges the build; until then it shows on every launch. Unpackaged dev runs and browser Studio have no notice.
+
+- **ID:** `build-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `buildNoticeFor` in `packages/shared/src/build-notice.ts`
+  - `desktop` / `code` / `typescript`: `currentBuildNotice` in `desktop/src/main/build-notice.ts`
+  - `studio` / `ui` / `typescript`: `BuildNoticeDialog` in `desktop/src/renderer/studio/BuildNoticeDialog.tsx`
 
 #### Conversation Status Bar {#term-conversation-status-bar}
 
@@ -3355,6 +3433,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
 | Automation Editor | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `struct AutomationEditorView` | None |
+| Build Notice | `buildNoticeFor`, `currentBuildNotice` | `buildNoticeFor`, `currentBuildNotice`, `BuildNoticeDialog` | `buildNoticeFor`, `currentBuildNotice` | None | iOS |
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
@@ -3392,6 +3471,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Environment Page | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `struct ServerPagesView` | None |
 | Environment Policy | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | None | iOS |
 | Environment Purge | `RemoveServerPanel` | `RemoveServerPanel` | `RemoveServerPanel` | None | iOS |
+| Ephemeral Worktree | None | `export function WorktreeEphemeralBadge` | None | `var ephemeralKeptReason: String?` | Overlay |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Fleet | None | `FleetPage` | None | `struct FleetView` | Overlay |
 | Fleet Deploy Record | `interface FleetDeployRecord` | `interface FleetDeployRecord`, `function FleetDeployCard` | `interface FleetDeployRecord` | None | iOS |
@@ -3510,6 +3590,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
 - Legacy name: `Tab Strip` → [Inbox](#term-inbox)
+- Alias: `active branch` → [Active path](#term-active-path)
 - Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
 - Alias: `agent browser link` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)

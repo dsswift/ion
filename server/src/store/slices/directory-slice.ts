@@ -102,7 +102,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
         // ordering is exactly the assumption that produced the original bug, so
         // the helper is used unconditionally rather than trusted to be
         // unnecessary.
-        void resolveWorktreeForNewTab(dir, true).then(async (resolved) => {
+        void resolveWorktreeForNewTab(dir, true, undefined, { ownerTabId: activeTabId }).then(async (resolved) => {
           if (resolved.worktree) {
             // This tab may already be named — the operator can repoint an
             // in-flight conversation at a new base directory. Carry that name

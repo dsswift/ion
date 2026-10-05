@@ -234,6 +234,12 @@ extension ConversationView {
                 Button { showTerminal = true } label: {
                     Label("Terminal", systemImage: "terminal")
                 }
+                // Only once a rewind has left another path to go back to.
+                if branchCount > 1 {
+                    Button { showBranches = true } label: {
+                        Label("Branches (\(branchCount))", systemImage: "signpost.right.and.left")
+                    }
+                }
                 Divider()
                 Button { showStatusDrawer = true } label: {
                     Label("Conversation status", systemImage: "gauge.with.dots.needle.33percent")

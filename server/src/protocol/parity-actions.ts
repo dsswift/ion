@@ -110,7 +110,7 @@ export const PARITY_ACTIONS: Record<string, SessionActionSpec> = {
     }, { kind: 'caller', clientId: clientKey(conn), principalSubject: conn.principal?.subject })
   }, tabAt),
 
-  // [{ workingDirectory?, profileId?, useWorktree?, sourceBranch?, clientCmdId? }] -> { tabId: string | null }
+  // [{ workingDirectory?, profileId?, useWorktree?, sourceBranch?, ephemeralWorktree?, clientCmdId? }] -> { tabId: string | null }
   // A conversation made by a client that is not the desktop: the desktop's
   // active tab stays where it was (the store's own create actions make the new
   // tab active, which every mirror follows), no directory means the configured
@@ -127,6 +127,8 @@ export const PARITY_ACTIONS: Record<string, SessionActionSpec> = {
       profileId: str(a.profileId) || undefined,
       useWorktree: a.useWorktree === true || undefined,
       sourceBranch: str(a.sourceBranch) || undefined,
+      ephemeralWorktree: typeof a.ephemeralWorktree === 'boolean' ? a.ephemeralWorktree : undefined,
+      rememberWorktreeChoice: a.rememberWorktreeChoice === true || undefined,
       clientCmdId,
     })
     if (tabId) await notifyTabCreated(tabId, clientCmdId)

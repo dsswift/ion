@@ -257,6 +257,8 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
   engineDialogResponse: { action: 'engine.dialogResponse', pack: (args) => [{ key: args[0], dialogId: args[1], value: args[2] }] },
   engineStop: { action: 'engine.stop', pack: (args) => [{ key: args[0] }] },
   engineBranchBefore: { action: 'engine.branchBefore', pack: (args) => [{ key: args[0], entryId: args[1] }] },
+  engineListBranches: { action: 'engine.listBranches', pack: (args) => [{ key: args[0] }] },
+  engineSwitchBranch: { action: 'engine.switchBranch', pack: (args) => [{ key: args[0], leafId: args[1] }] },
   engineRemapSession: { action: 'engine.remapSession', pack: (args) => [{ oldKey: args[0], newKey: args[1] }] },
   engineBroadcastHistory: { action: 'engine.broadcastHistory', pack: (args) => [{ tabId: args[0], instanceId: args[1], opts: args[2] }] },
   pluginInstall: { action: 'plugin.install', pack: (args) => [args[0]] },
@@ -424,6 +426,7 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
     pack: (args) => [{ worktreePath: args[0], sourceBranch: args[1] }],
   },
   gitWorktreeRetirePreview: { action: 'git.worktreeRetirePreview', pack: named('worktreePath') },
+  gitWorktreeEphemeralDefault: { action: 'git.worktreeEphemeralDefault', pack: named('repoPath') },
   gitWorktreeRebase: {
     action: 'git.worktreeRebase',
     pack: (args) => [{ worktreePath: args[0], sourceBranch: args[1] }],

@@ -31,11 +31,31 @@ describe('fleetQuotaPools', () => {
     const pools = fleetQuotaPools(rows, T0)
     expect(pools.map((p) => [p.provider, p.accounts])).toEqual([['anthropic', 2], ['openai', 1], ['xai', 1]])
     expect(pools[0].limits).toEqual([
-      { kind: 'weekly_model', label: 'Fable', accounts: 1, capacity: 100, used: 99 },
-      { kind: 'session', accounts: 1, capacity: 100, used: 0 },
-      { kind: 'weekly', accounts: 2, capacity: 200, used: 176, nextReset: new Date(T0 + 3_600_000).toISOString() },
+      { kind: 'weekly_model', label: 'Fable', accounts: 1, capacity: 100, used: 99, resets: [] },
+      { kind: 'session', accounts: 1, capacity: 100, used: 0, resets: [] },
+      { kind: 'weekly', accounts: 2, capacity: 200, used: 176, resets: [
+        { at: new Date(T0 + 3_600_000).toISOString(), freed: 76 },
+        { at: new Date(T0 + 86_400_000).toISOString(), freed: 100 },
+      ] },
     ])
     expect(pools[2].limits).toEqual([])
+  })
+
+  it('lists each upcoming reset with only the use it gives back, soonest first', () => {
+    const at = (ms: number): string => new Date(T0 + ms).toISOString()
+    const weekly = (percent: number, resetsIn: number) => ({ limits: [{ kind: 'weekly' as const, percent, resetsAt: at(resetsIn), fetchedAt: T0 }] })
+    const rows = mergeFleetAccounts([server('oscar', [
+      account('a@example.com', weekly(99, 9 * 3_600_000)),
+      account('b@example.com', weekly(32, 2 * 86_400_000)),
+      account('c@example.com', weekly(10, 2 * 86_400_000)),
+      account('d@example.com', weekly(0, 3_600_000)),
+    ])])
+    const [limit] = fleetQuotaPools(rows, T0)[0].limits
+    expect(limit.used).toBe(141)
+    expect(limit.resets).toEqual([
+      { at: at(9 * 3_600_000), freed: 99 },
+      { at: at(2 * 86_400_000), freed: 42 },
+    ])
   })
 })
 

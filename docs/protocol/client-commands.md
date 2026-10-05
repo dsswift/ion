@@ -89,11 +89,11 @@ Send a user message to an active session.
 | `injectionKind`             | string   | no       | How this turn was authored, as an `InjectionKind` wire value. Lets a client state that the turn it delivers arrived through something other than the prompt box — a questions wizard, a form, a scheduler. The engine records it on the persisted turn and publishes the derived `machineAuthored` flag; what a consumer does with either is its own policy (ADR-017). Note that a kind is not automatically machine-authored: `structured_answer` (a form submission) is USER-authored, because a person chose every value — the kind tells a consumer to *label* the turn, not to hide it. **Validated, not trusted:** an unrecognized value is dropped and the turn is treated as user-authored, so a client cannot hide content by inventing a kind. Absent (the default) means an ordinary user turn. Known values: `agent_completion`, `slash_command`, `background_task_completion`, `checkin`, `revive`, `run_recovery`, `structured_answer`, `system_steer`, `steer`. |
 | `traceparent`               | string   | no       | The caller's W3C trace context, `00-<trace-id>-<parent-span-id>-<flags>`. When valid, the run joins the caller's trace: its `run.execute` span is a child of the caller's span, and every log line and span in the run carries the caller's `trace_id`. Absent or invalid: the engine starts a new trace for the run (an invalid value is logged). See [log schema § Spans](../observability/log-schema.md#spans). |
 | `planMode`                  | boolean  | no       | Start this run in plan mode. See [Plan Mode](../sessions/lifecycle.md#plan-mode). |
-| `planModeTools`             | string[] | no       | Override the tool allowlist for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","WebFetch","WebSearch"]`. |
+| `planModeTools`             | string[] | no       | Override the read-only tool set for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","AgentStatus","WebFetch","WebSearch","Skill"]`. The set is enforced when a tool is called: every tool stays in the list the model sees, and a call to one outside the set is refused while the run is planning. See [ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md). |
 | `planFilePath`              | string   | no       | Path of the plan file for this plan-mode run. The engine enforces write-only access to this file while plan mode is active. |
-| `planModePrompt`            | string   | no       | Custom system prompt for plan mode. When non-empty, the engine uses this string verbatim instead of building the default from `buildPlanModePrompt`. On the codex backend it is sent as the plan collaboration mode's `developer_instructions` (a generic engine default applies when empty). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides) and [Plan mode on delegated-CLI backends](../sessions/lifecycle.md#plan-mode-on-delegated-cli-backends). |
-| `planModeReentry`           | boolean  | no       | When `true`, prepends re-entry guidance (read the existing plan before making changes). Set by the session manager when plan mode is re-enabled on a session that has a prior plan file. |
-| `implementationPhase`       | boolean  | no       | Suppresses the `EnterPlanMode` sentinel-tool injection. Set on the "implement" half of a plan-then-implement flow so the model cannot re-propose plan-mode entry. See ADR-004. |
+| `planModePrompt`            | string   | no       | Custom plan-mode instructions. When non-empty, the engine uses this string verbatim instead of its default. The instructions are delivered as a `plan_mode_enter` notice in the conversation, not through the system prompt. On the codex backend it is sent as the plan collaboration mode's `developer_instructions` (a generic engine default applies when empty). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides) and [Plan mode on delegated-CLI backends](../sessions/lifecycle.md#plan-mode-on-delegated-cli-backends). |
+| `planModeReentry`           | boolean  | no       | When `true`, the enter notice is prefixed with re-entry guidance (read the existing plan before making changes). Set by the session manager when plan mode is re-enabled on a session that has a prior plan file. The engine also adds the guidance on its own when the conversation shows the model left this plan before. |
+| `implementationPhase`       | boolean  | no       | Marks the "implement" half of a plan-then-implement flow. The `EnterPlanMode` tool stays in the list, and a call to it on this run is refused, so the model cannot re-propose plan-mode entry. See ADR-004 and ADR-038. |
 | `thinkingEffort`            | string   | no       | Per-prompt extended-thinking effort for this run: `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"` (ascending), or `"adaptive"` to request reasoning while letting a self-regulating model choose its own depth. A live per-conversation control — a client changes the level and it takes effect on the very next prompt with no session restart (mirrors `implementationPhase`). **Three distinct states.** A level sets thinking for the run. The literal `"off"` **clears** it, beating both the session default and the engine-wide [`engine.json` default](../configuration/engine-json.md#thinking). An **absent** field means "no opinion" and inherits whichever default is configured — so a client that wants thinking off must send `"off"` rather than omitting the field, or it will inherit the default. The engine maps a level onto `RunOptions.Thinking`; the provider then resolves the per-model mechanism (Anthropic adaptive `effort`, OpenAI `reasoning_effort`, Gemini `thinkingConfig`). A model that declares no thinking mechanism receives no directive. See the [model capability fields](../configuration/models.md#providersidmodelsname) (`thinkingMode` / `thinkingEfforts`) a client uses to decide whether to offer this control. |
 | `enterPlanModeDescription`  | string   | no       | Harness-supplied description prose for the `EnterPlanMode` sentinel tool. When non-empty, the engine forwards it verbatim as the tool description. Empty falls back to the engine's one-line neutral default. Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md). |
 | `planModeSparseReminder`    | string   | no       | Harness-supplied text for the per-turn plan-mode sparse reminder. When non-empty, the engine injects this verbatim instead of building the reminder from the plan file. Empty inherits the engine default (`buildPlanModeSparseReminder`). See [Plan mode prose overrides](../sessions/lifecycle.md#plan-mode-prose-overrides). |
@@ -303,6 +303,7 @@ Fork a session at a specific message index, creating a new session with conversa
 | `newKey`       | string            | no       | Client-owned key for the forked session |
 | `entryId`      | string            | no       | User-turn entry to exclude from the fork; takes priority over `messageIndex` |
 | `userTurnIndex`| number            | no       | User-turn ordinal fallback when `entryId` is unavailable; used only with `newKey` |
+| `leafId`       | string            | no       | Copy exactly the branch ending at this leaf (see `list_branches`), whether or not it is the active path; takes priority over `entryId` and `messageIndex`; used only with `newKey`. The source tree is unchanged. |
 | `requestId`    | string            | no       | Correlates with ServerResult       |
 
 ```json
@@ -458,6 +459,58 @@ Retrieve the conversation tree structure for a session.
 ```
 
 **Response:** `ServerResult` with `data` containing the tree structure.
+
+---
+
+### list_branches
+
+List every branch of the conversation tree. A branch is the path from the root to a leaf: an entry no other entry names as its parent. Detached agent-dispatch records are not branches. Read from the stored `parentId` chain; nothing is written.
+
+| Field      | Type              | Required | Description                  |
+|------------|-------------------|----------|------------------------------|
+| `cmd`      | `"list_branches"` | yes      | Command discriminator        |
+| `key`      | string            | yes      | Session key                  |
+| `requestId`| string            | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"list_branches","key":"abc-123","requestId":"r1"}
+```
+
+**Response:** `ServerResult` with `data`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `activeLeafId` | string | The current leaf. An interior entry right after a rewind (then no branch is `active`); `""` when the leaf was cleared to before the first entry. |
+| `branches[].leafId` | string | The branch's last entry |
+| `branches[].timestamp` | number | The leaf's timestamp, Unix ms |
+| `branches[].preview` | string | Text of the path's last message that has any, cut short |
+| `branches[].messageCount` | number | Message entries on the path |
+| `branches[].forkPointId` | string | Deepest entry on the path with more than one child; omitted when none |
+| `branches[].active` | boolean | The current leaf is this leaf |
+| `branchPoints[].entryId` | string | Entry with more than one child; `""` for the root when the tree has several roots |
+| `branchPoints[].timestamp` | number | That entry's timestamp, Unix ms |
+| `branchPoints[].childIds` | string[] | Its children, in entry order |
+
+A conversation with no stored file yet answers with empty lists.
+
+---
+
+### switch_branch
+
+Make the branch ending at `leafId` the active path, so the next prompt continues it. The model context (`.llm.jsonl`) is rebuilt from that path alone, the plan file in effect on it is restored, and the engine emits [`engine_active_path_changed`](server-events.md#engine_active_path_changed). Refused while a run, a compaction, or a run recovery is appending to the current path, and when `leafId` is not a branch leaf (move to an interior entry with `navigate_tree`).
+
+| Field      | Type              | Required | Description                  |
+|------------|-------------------|----------|------------------------------|
+| `cmd`      | `"switch_branch"` | yes      | Command discriminator        |
+| `key`      | string            | yes      | Session key                  |
+| `leafId`   | string            | yes      | Leaf of the branch to switch to |
+| `requestId`| string            | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"switch_branch","key":"abc-123","leafId":"e42","requestId":"r2"}
+```
+
+**Response:** `ServerResult` with `ok: true`, or an error naming why the switch was refused.
 
 ---
 

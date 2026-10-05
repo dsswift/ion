@@ -194,10 +194,10 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 			exitPrompt(1)
 		}
-		timedOut := streamUntilIdle(sock, key, timeout)
+		end := streamUntilIdle(sock, key, timeout)
 		cleanupEphemeralPrompt(sock, key, spawned)
-		if timedOut {
-			exitPrompt(124)
+		if code := end.exitCode(); code != 0 {
+			exitPrompt(code)
 		}
 		return
 	}
@@ -240,10 +240,8 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	}
 	if ok, _ := result["ok"].(bool); ok { //nolint:errcheck // missing/!bool ok treated as failure -> prints result JSON
 		if flags["attach"] == "true" {
-			timedOut := streamUntilIdle(sock, key, timeout)
-			if timedOut {
-				fmt.Fprintf(os.Stderr, "\nTimeout: prompt exceeded %s deadline\n", timeout)
-				exitPrompt(124)
+			if code := streamUntilIdle(sock, key, timeout).exitCode(); code != 0 {
+				exitPrompt(code)
 			}
 		} else {
 			fmt.Println("Prompt sent. Use `ion attach` to stream output.")

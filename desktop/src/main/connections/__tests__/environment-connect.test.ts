@@ -82,7 +82,7 @@ describe('connectEnvironment', () => {
     const target = vi.mocked(broker.connect).mock.calls[0][0]
     expect(target.transport).toBe('local')
     expect((await target.open()).credential).toEqual({ kind: 'local' })
-    expect(target.capabilities).toEqual(['graph', 'browser', 'wire-ping'])
+    expect(target.capabilities).toEqual(['graph', 'browser', 'wire-ping', 'host-install'])
   })
 
   it('refuses the attempt for a bearer target with no sign-in configuration', async () => {
@@ -100,7 +100,7 @@ describe('connectEnvironment', () => {
     expect(attempt.credential).toEqual({ kind: 'bearer', token: 'server-app-token' })
     expect(attempt.transport).toBe('tcp')
     // The desktop answers graph commands for every Environment it connects to, not only the local one.
-    expect(target.capabilities).toEqual(['graph', 'browser', 'wire-ping'])
+    expect(target.capabilities).toEqual(['graph', 'browser', 'wire-ping', 'host-install'])
   })
 
   it('refuses the attempt for a paired LAN target with no stored secret', async () => {

@@ -62,10 +62,9 @@ var legacyHarnessDispatchLost = regexp.MustCompile(`^\[Agent [^\]\r\n]+ was LOST
 // being asked to answer — so it classifies as a revive.
 var legacyHarnessChildQuestion = regexp.MustCompile(`^\[Agent [^\]\r\n]+ is waiting for your answer\](?:\r?\n|$)`)
 
-// legacyPlanModeReminder matches the engine's plan-mode steering reminder.
-// Transient today (backend.injectSystemMessage always injects it in-memory),
-// but earlier versions persisted it, and it is by far the most common leaked
-// row in real conversation files.
+// legacyPlanModeReminder matches the engine's plan-mode steering reminder as
+// earlier versions persisted it: with no classification at all. It is by far
+// the most common leaked row in real conversation files.
 //
 // Requires the sentence to continue past the phrase, so a user asking "[SYSTEM]
 // Plan mode still active — but I never entered plan mode?" does not match.

@@ -124,10 +124,11 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // preflight, merge, remove, close conversations, and refresh.
   landAndRetireWorktree: { minArgs: 2, maxArgs: 3, workspacePathAt: 0 },
   convertToWorktree: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
-  // setupWorktree is (tabId, sourceBranch, setAsDefault) — all three required.
-  // A stale maxArgs:2 rejected every real invocation from the mirror; the
-  // action could never actually complete a Studio-initiated worktree setup.
-  setupWorktree: { minArgs: 3, maxArgs: 3, tabIdAt: 0 },
+  // setupWorktree is (tabId, sourceBranch, setAsDefault, ephemeral?) — the
+  // first three required. A stale maxArgs:2 rejected every real invocation from
+  // the mirror; the action could never actually complete a Studio-initiated
+  // worktree setup.
+  setupWorktree: { minArgs: 3, maxArgs: 4, tabIdAt: 0 },
   createWorktree: { minArgs: 2, maxArgs: 2, workspacePathAt: 0 },
   cancelWorktreeSetup: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   // Renames a tab and then resolves that tab's worktree to rename it too,

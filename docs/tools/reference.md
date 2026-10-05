@@ -463,29 +463,29 @@ These tools are not registered by default. Call `RegisterTaskTools()` from harne
 
 ## Sentinel Tools
 
-Sentinel tools are injected per-run by the engine. They are **not** in the global tool registry and cannot be registered via `RegisterTool`. Each sentinel is guarded to its own mode: calls that arrive in the wrong mode fall through to an "Unknown tool" error rather than triggering the sentinel logic.
+Sentinel tools are injected per-run by the engine. They are **not** in the global tool registry and cannot be registered via `RegisterTool`. The plan sentinels are in the tool list in every mode: the list a provider caches must not change when the mode does ([ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md)). What a call does in the run's current mode is decided when it is made.
 
 ### ExitPlanMode
 
-Injected only when `PlanMode=true`. No parameters.
+In the tool list in every mode. No parameters.
 
-When the model calls `ExitPlanMode`, the engine:
+When the model calls `ExitPlanMode` and a plan file is known, the engine:
 
-1. Records a `PermissionDenial` to signal plan completion.
-2. Emits `PlanModeChangedEvent{Enabled: false}`.
-3. **Terminates the run** so the desktop can surface the plan-ready card.
+1. Fires the [`before_plan_mode_exit`](../hooks/reference.md#plan-mode-2) hook. A veto returns its reason to the model and the run continues.
+2. Records a `PermissionDenial` to signal plan completion and emits `PlanProposalEvent{Kind: "exit"}`.
+3. **Terminates the run** so a consumer can surface the plan for approval. The mode itself does not change until the consumer approves.
 
-Hallucinated calls in auto mode (`PlanMode=false`) fall through to "Unknown tool" and do not trigger any plan-mode transition.
+A call with no plan file known to the run or the session returns an error telling the model that plan mode is not active.
 
 ### EnterPlanMode
 
-Injected only when `PlanMode=false` (auto mode). No parameters.
+In the tool list in every mode. No parameters. The list a provider caches must not change with the mode, so what a call does is decided when it is made ([ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md)).
 
-When the model calls `EnterPlanMode`, the engine:
+When the model calls `EnterPlanMode` from a run that is not planning, the engine:
 
 1. Fires the [`before_plan_mode_enter`](../hooks/reference.md#plan-mode-2) hook. Extensions can veto by returning `Allow: &false` with an optional `Reason`.
 2. If denied, the run continues in auto mode and the `Reason` is returned to the model as the tool result.
 3. If allowed, the session flips into plan mode, allocates or reuses the `planFilePath`, and emits `PlanModeChangedEvent{Enabled: true}`.
-4. **Does not terminate the run.** The full plan-mode prompt is returned as the tool result so the model sees the framing immediately and can begin planning.
+4. **Does not terminate the run.** The tool result states that plan mode is active and names the plan file. The plan-mode instructions follow as a `plan_mode_enter` notice before the model's next turn, and the read-only boundary applies from its next tool call.
 
-Hallucinated calls in plan mode (`PlanMode=true`) fall through to "Unknown tool" and do not trigger any transition.
+A call from a run that is already planning is answered "Plan mode is already active" and changes nothing. A call from a run that is carrying out an approved plan (`implementationPhase`) is refused.

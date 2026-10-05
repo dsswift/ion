@@ -10,15 +10,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// cliPlanModeDisallowedTools are the mutating built-in tools the engine strips
-// from a delegated claude-code plan-mode run via --disallowedTools. Under
-// bypassPermissions the CLI removes disallowed tools from the model's advertised
-// tool list entirely (verified against claude 2.1.x), which is what makes the
-// plan run read-only without the CLI's native --permission-mode plan — the mode
-// that exposes no ExitPlanMode and hard-denies edits with an interactive-only
-// approval error a headless daemon can never satisfy.
-var cliPlanModeDisallowedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
-
 // mcpExitPlanModeToolName is the wire name of the engine ExitPlanMode tool as
 // the delegated-CLI model sees it: the per-session ToolServer exposes it through
 // the ion-extensions MCP server, so its tool_use block carries the prefixed
@@ -32,8 +23,7 @@ var mcpExitPlanModeToolName = "mcp__" + McpServerName + "__" + tools.ExitPlanMod
 var mcpEnterPlanModeToolName = "mcp__" + McpServerName + "__" + tools.EnterPlanModeName
 
 // CliExitPlanModeTool returns the metadata for the engine-owned ExitPlanMode
-// tool that wirePlanModeToolServer registers on a delegated claude-code
-// plan-mode run's MCP ToolServer.
+// tool registered on a delegated claude-code run's MCP ToolServer.
 //
 // `plan` is OPTIONAL. The model authors its plan into the session's plan file
 // through WritePlan/EditPlan (cli_plan_file_tools.go), so by the time it exits
@@ -64,62 +54,70 @@ func CliExitPlanModeTool() (name, description string, inputSchema map[string]any
 		}
 }
 
-// resolveCliPlanModePrompt resolves the plan-mode --append-system-prompt prose
-// for a delegated claude-code run. The harness override (RunOptions.PlanModePrompt)
-// wins; otherwise the engine's default buildCliPlanModePrompt is used.
+// CliPlanModeEnterNotice returns the plan-mode enter notice for a delegated
+// claude-code run. The harness override (RunOptions.PlanModePrompt) wins;
+// otherwise the engine's default buildCliPlanModePrompt is used.
 //
-// This mirrors resolveCodexPlanInstructions one-for-one: the plan_mode_prompt
-// hook layer does not reach delegated-CLI backends (it rides on RunConfig.Hooks,
-// which the hybrid router forwards only to the ApiBackend), so the precedence
-// for CLI backends is two layers — the wire field, then the engine default.
-// Per ADR-017 the engine owns the mechanism (read-only spawn + ExitPlanMode
-// delivery) and ships a full default workflow; the workflow and tone around it
-// are an opinion a harness overrides through this seam, exactly as the API
-// backend (buildPlanModePrompt) and codex (defaultCodexDeveloperInstructions)
-// expose a rich engine default that RunOptions.PlanModePrompt can replace.
+// The plan_mode_prompt hook layer does not reach delegated-CLI backends (it
+// rides on RunConfig.Hooks, which the hybrid router forwards only to the
+// ApiBackend), so the precedence for CLI backends is two layers: the wire
+// field, then the engine default. Per ADR-017 the engine owns the mechanism
+// and ships a full default workflow; the workflow and tone around it are an
+// opinion a harness overrides through this seam.
 //
 // An override should keep instructing the model to author its plan through
-// WritePlan/EditPlan: a CLI plan spawn has no file-writing tools of its own, so
-// a prompt that tells the model to Write a plan file (as the API-backend
-// default does) would leave the plan unwritten.
-func resolveCliPlanModePrompt(opts types.RunOptions, planFileExists bool) string {
+// WritePlan/EditPlan: the CLI's own file-writing tools are refused while
+// planning, so a prompt that tells the model to Write a plan file (as the
+// API-backend default does) would leave the plan unwritten.
+func CliPlanModeEnterNotice(opts types.RunOptions, planFilePath string) string {
 	if opts.PlanModePrompt != "" {
 		return opts.PlanModePrompt
 	}
-	return buildCliPlanModePrompt(opts.PlanFilePath, planFileExists)
+	_, err := os.Stat(planFilePath)
+	return buildCliPlanModePrompt(planFilePath, err == nil)
 }
 
-// PlanModeExtensionToolAllowed reports whether an extension tool exposed on the
-// ion-extensions MCP ToolServer may be registered for a delegated-CLI plan-mode
-// run. It mirrors the ApiBackend plan-mode tool-def filter (buildToolDefs): a
-// tool is admitted when it declares itself plan-mode-safe, or when the run's
-// effective plan-mode MCP allowlist (PlanModeAllowedMcpTools ∪ per-prompt
-// additions, enterprise-clamped) matches its MCP-prefixed name. Everything else
-// is a potential state-mutator and is withheld, so the read-only plan boundary
-// holds: the CLI ToolServer never advertises a mutating extension tool during a
-// plan-mode run, matching the API backend, which filters the same tools out of
-// its tool defs.
-//
-// prefixedName is the tool's wire name as the CLI model sees it,
-// "mcp__<McpServerName>__<tool>". planModeSafe is the tool's own declaration.
-func PlanModeExtensionToolAllowed(prefixedName string, planModeSafe bool, opts types.RunOptions) bool {
-	if planModeSafe {
-		return true
+// CliPlanModeEnteredResult is the EnterPlanMode tool result on a claude-code
+// run: the fact that plan mode is active, the plan file, and how to proceed.
+func CliPlanModeEnteredResult(planFilePath string) string {
+	return fmt.Sprintf("Plan mode is now active, and stays active until a later message says plan mode has ended. Plan file: %s\n\nKeep working in this same conversation: continue exploring, but make no edits or other mutating tool calls; they are refused while plan mode is active. Author your plan with WritePlan (full draft) and refine it with EditPlan (targeted revisions) — both always target the plan file above, so you never pass a path. When the plan is ready, call ExitPlanMode with NO arguments; the engine reads the plan from that file, so do not resend it.", planFilePath)
+}
+
+// CliPlanModeReminder returns the periodic plan-mode reminder for a delegated
+// claude-code run: the harness text when one was supplied, otherwise the
+// engine default.
+func CliPlanModeReminder(opts types.RunOptions, planFilePath string) string {
+	text := opts.PlanModeSparseReminder
+	if text == "" {
+		text = fmt.Sprintf(
+			"Plan mode still active (see the full plan-mode instructions earlier in this conversation). "+
+				"Read-only except the plan file `%s`, which you write only through WritePlan and EditPlan. "+
+				"End your turn one of three ways: AskUserQuestion (for a clarification), ExitPlanMode with no arguments (the plan is ready), or a direct answer when the request needs no plan. "+
+				"Never ask for plan approval in prose or with a question tool; that is what ExitPlanMode is for.",
+			planFilePath)
 	}
-	return mcpToolAllowed(prefixedName, effectiveMcpAllowlist(opts))
+	return "[SYSTEM] " + text
 }
 
-// buildCliPlanModePrompt builds the plan-mode system prompt injected into a
-// delegated claude-code run's --append-system-prompt. It mirrors the
+// PlanModeExitNotice returns the notice that tells the model plan mode has
+// ended.
+func PlanModeExitNotice(planFilePath string) string { return buildPlanModeExitNotice(planFilePath) }
+
+// PlanModeReminderInterval is the number of assistant turns after the most
+// recent plan-mode notice before the reminder is sent again.
+const PlanModeReminderInterval = planModeReminderInterval
+
+// buildCliPlanModePrompt builds the plan-mode instructions a delegated
+// claude-code run is given when it enters plan mode. It mirrors the
 // ApiBackend's buildPlanModePrompt: read-only exploration, a plan authored into
 // the session's plan file, and ExitPlanMode as a bare completion signal.
 //
 // The one mechanical difference is HOW the plan file is written. The ApiBackend
-// hands the model real Write/Edit tools and restricts them by target path; a
-// CLI plan spawn has those tools stripped at spawn, so the engine supplies
-// WritePlan/EditPlan instead — same destination, same events, no path argument.
-// The read-only tool list is derived from defaultPlanModeTools so it can never
-// drift from the set the API backend advertises.
+// lets the model use the real Write/Edit tools and restricts them by target
+// path; on a CLI run those tools are refused while planning, and the engine
+// supplies WritePlan/EditPlan instead — same destination, same events, no path
+// argument. The read-only tool list is derived from defaultPlanModeTools so it
+// can never drift from the set the API backend advertises.
 func buildCliPlanModePrompt(planFilePath string, planFileExists bool) string {
 	readOnlyTools := strings.Join(defaultPlanModeTools, ", ")
 	planFileHeader := "**Your plan file for this session is fixed by the engine. WritePlan and EditPlan always target it; you never supply a path.**"
@@ -130,7 +128,7 @@ func buildCliPlanModePrompt(planFilePath string, planFileExists bool) string {
 	if planFileExists && planFilePath != "" {
 		priorPlan = "\n\nA plan file from a previous cycle already exists. Read it for context, then revise it with EditPlan rather than rewriting it from scratch."
 	}
-	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits or run any tool that mutates state. The plan file is the single exception, and you reach it only through WritePlan and EditPlan. This overrides any conflicting instructions elsewhere in this prompt or conversation.
+	return fmt.Sprintf(`[PLAN MODE] Plan mode is now active. It stays active until a later message in this conversation says plan mode has ended. While it is active you MUST NOT make any edits or run any tool that mutates state; such calls are refused. The plan file is the single exception, and you reach it only through WritePlan and EditPlan. Until plan mode ends, these restrictions take precedence over other instructions.
 
 %s%s
 

@@ -288,6 +288,14 @@ export function handleStreamSignalEvent(
       return true;
     }
 
+    case "engine_active_path_changed": {
+      const changed = event.activePathChanged;
+      if (!changed) return true;
+      log("active_path_changed", { tab_id: tabId, conversation_id: changed.conversationId, leaf_id: changed.leafId, previous_leaf_id: changed.previousLeafId ?? "" });
+      ctx.emit("event", tabId, { type: "active_path_changed", ...changed } as NormalizedEvent);
+      return true;
+    }
+
     case "engine_background_work_delivered": {
       const delivered = event.backgroundWorkDelivered;
       if (!delivered) return true;

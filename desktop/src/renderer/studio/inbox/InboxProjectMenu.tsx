@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react'
-import { ChatCircle, GitBranch } from '@phosphor-icons/react'
+import { ChatCircle, GitBranch, GitFork } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { useColors } from '../../theme'
 import { ContextMenuItem } from '../../components/ContextMenuItem'
@@ -13,7 +13,11 @@ interface InboxProjectMenuProps {
   /** The machine the project's checkout is on. */
   environmentId: string
   onNewConversation(): void
-  onNewWorktreeConversation(): void
+  /**
+   * `chooseBranch` asks for the branch step even when the project remembers a
+   * branch: the "Choose branch…" row, or the worktree row clicked with Alt.
+   */
+  onNewWorktreeConversation(chooseBranch: boolean): void
   onClose(): void
 }
 
@@ -60,9 +64,15 @@ export function InboxProjectMenu({
         <span>New conversation</span>
       </ContextMenuItem>
       {worktreesOffered && (
-        <ContextMenuItem onClick={() => { onNewWorktreeConversation(); onClose() }}>
+        <ContextMenuItem onClick={(event) => { onNewWorktreeConversation(event.altKey); onClose() }}>
           <GitBranch size={14} />
           <span>New conversation in worktree</span>
+        </ContextMenuItem>
+      )}
+      {worktreesOffered && (
+        <ContextMenuItem onClick={() => { onNewWorktreeConversation(true); onClose() }}>
+          <GitFork size={14} />
+          <span>Choose branch…</span>
         </ContextMenuItem>
       )}
     </div>

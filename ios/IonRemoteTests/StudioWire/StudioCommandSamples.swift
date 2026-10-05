@@ -44,7 +44,8 @@ enum StudioCommandSamples {
 
     static let all: [RemoteCommand] = [
         .sync,
-        .createTab(workingDirectory: "s", profileId: "s", extensions: ["s"], clientCmdId: "s", useWorktree: true, sourceBranch: "s"),
+        .createTab(workingDirectory: "s", profileId: "s", extensions: ["s"], clientCmdId: "s", useWorktree: true, sourceBranch: "s",
+                   ephemeralWorktree: true, rememberWorktreeChoice: true),
         .createTerminalTab(workingDirectory: "s", clientCmdId: "s"),
         .closeTab(tabId: "s"),
         .resetTabSession(tabId: "s"),
@@ -152,6 +153,8 @@ enum StudioCommandSamples {
         .discoverCommands(directory: "s"),
         .uploadAttachment(dataUrl: "s", name: "s", correlationId: "s"),
         .loadAttachments(tabId: "s"),
+        .listBranches(tabId: "s"),
+        .switchBranch(tabId: "s", leafId: "l"),
         .voiceConfig(enabled: true, mode: "s", systemPrompt: "s"),
         .diagnosticLogsResponse(logs: "s", pairingId: "s", nextSeq: 1, withheldUnstamped: 1, withheldOtherPairing: 1),
         .setRemoteDisplay(customName: "s", customIcon: "s", updatedAt: .init(timeIntervalSince1970: 1)),

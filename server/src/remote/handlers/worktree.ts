@@ -25,6 +25,7 @@ import {
 } from '../../integration/bench-ops'
 import { setWorktreeStage, lookupWorktreeRegistration } from '../../worktree/registry'
 import { readWorktreeBranchDefault } from '../../persistence/settings-store'
+import { worktreeEphemeralDefault } from '../../worktree/worktree-choice'
 import { workStageDescriptor } from '@ion/shared/types-git'
 import {
   collectAllDirConversations,
@@ -156,6 +157,8 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     stage: w.stage,
     provisionState: w.provisionState,
     provisionError: w.provisionError,
+    ephemeral: w.ephemeral,
+    ephemeralKeptReason: w.ephemeralKeptReason,
     operationState: w.operationState,
     conflictedCount: w.conflictedPaths?.length,
     openConversations: openIn(w.worktreePath),
@@ -208,8 +211,12 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
   // set, iOS creates a worktree conversation directly with this branch instead
   // of prompting; when absent, iOS falls back to the branch picker.
   const defaultSourceBranch = readWorktreeBranchDefault(sourceRepoPath)
+  // What a worktree conversation here is when the create does not say: the
+  // project's remembered choice, else `.ion/worktree.json`. iOS preselects
+  // its Ephemeral switch from it.
+  const ephemeralDefault = worktreeEphemeralDefault(sourceRepoPath).ephemeral
 
-  return { repoPath: sourceRepoPath, worktrees, benches, defaultSourceBranch }
+  return { repoPath: sourceRepoPath, worktrees, benches, defaultSourceBranch, ephemeralDefault }
 }
 
 /**

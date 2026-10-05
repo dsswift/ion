@@ -19,7 +19,7 @@ vi.mock('../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), er
 const untrusted = vi.hoisted(() => new Set<string>())
 vi.mock('../../environment/project-trust', () => ({ isProjectTrusted: (dir: string) => !untrusted.has(dir) }))
 
-import { provisionWorktree, _resetProvisionQueuesForTests } from '../provision'
+import { provisionWorktree, cancelWorktreeProvisioning, _resetProvisionQueuesForTests } from '../provision'
 import { _resetCapabilityCacheForTests } from '../provision-capability'
 import type { WorktreeProvisionState } from '@ion/shared/types'
 
@@ -228,5 +228,33 @@ describe('provisionWorktree — the git-status guarantee', () => {
 
     expect(existsSync(join(worktree, 'src'))).toBe(false)
     expect(git(repo, ['status', '--porcelain']).trim()).toBe('')
+  })
+})
+
+describe('cancelWorktreeProvisioning', () => {
+  // Removing a worktree while `npm ci` still wrote into it left a directory git
+  // had already forgotten. Cancelling must stop the whole command, not just
+  // its shell, before the removal starts.
+  it('stops a running setup command and everything it started', async () => {
+    const marker = join(worktree, 'late.txt').replace(/\\/g, '\\\\')
+    const started = join(worktree, 'started.txt').replace(/\\/g, '\\\\')
+    // Two commands, so the shell stays the parent of the one that writes late.
+    writeManifest({ version: 1, worktree: { seed: [], setup: `node -e "require('fs').writeFileSync('${started}','x')" && node -e "setTimeout(() => require('fs').writeFileSync('${marker}', 'x'), 1500)"` } })
+
+    const run = provisionWorktree(repo, worktree)
+    for (let i = 0; i < 100 && !existsSync(join(worktree, 'started.txt')); i++) await new Promise((r) => setTimeout(r, 50))
+    expect(existsSync(join(worktree, 'started.txt'))).toBe(true)
+
+    await cancelWorktreeProvisioning(worktree)
+    const outcome = await run
+    await new Promise((r) => setTimeout(r, 2000))
+
+    expect(outcome.state).toBe('failed')
+    expect(outcome.error).toMatch(/cancelled/)
+    expect(existsSync(join(worktree, 'late.txt'))).toBe(false)
+  }, 15_000)
+
+  it('resolves at once when nothing is running', async () => {
+    await expect(cancelWorktreeProvisioning(worktree)).resolves.toBeUndefined()
   })
 })

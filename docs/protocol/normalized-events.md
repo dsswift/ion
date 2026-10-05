@@ -148,6 +148,19 @@ These lifecycle events are incremental. On connection or reconciliation, consume
 
 ---
 
+### active_path_changed
+
+Snapshot emitted when `switch_branch` moves a conversation onto another branch of its tree. The model context now holds that path only. Consumers replace their view of the conversation with the new path; the event carries no rows, so a consumer that shows the transcript reloads it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"active_path_changed"` | Event type |
+| `conversationId` | string | Conversation whose path moved |
+| `leafId` | string | Entry the active path now ends at |
+| `previousLeafId` | string | Entry it ended at before; omitted when it had no leaf |
+
+---
+
 ### task_update
 
 An updated assistant message mid-stream.

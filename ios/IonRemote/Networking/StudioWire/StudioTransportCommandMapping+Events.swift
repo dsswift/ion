@@ -54,6 +54,14 @@ extension StudioTransportCommandMapping {
                 tabId: result["tabId"]?.stringValue ?? tabId,
                 instanceId: result["instanceId"]?.stringValue ?? instanceId, agents: agents, metadataOmitted: false)]
 
+        case .listBranches(let tabId):
+            guard let listing = Self.decode(result, as: ConversationBranches.self, what: "conversation branches") else { return [] }
+            return [.conversationBranches(tabId: tabId, listing: listing)]
+
+        case .switchBranch(let tabId, _):
+            // The new path itself arrives as a transcript replace.
+            return [.branchSwitchResult(tabId: tabId, error: nil)]
+
         case .loadAttachments(let tabId):
             let entries = Self.decode(result["attachments"] ?? .array([]), as: [TabAttachmentEntry].self, what: "tab attachments") ?? []
             return [.tabAttachments(tabId: tabId, attachments: entries)]
@@ -130,6 +138,8 @@ extension StudioTransportCommandMapping {
             return [.transcript(tabId: tabId, requestId: requestId, transcript: "", error: message)]
         case .engineRewind(let tabId, let instanceId, _, _):
             return [.engineRewindResult(tabId: tabId, instanceId: instanceId, error: message)]
+        case .switchBranch(let tabId, _):
+            return [.branchSwitchResult(tabId: tabId, error: message)]
         default:
             return Self.gitFailureEvents(for: command, call: call, message: message)
                 ?? Self.worktreeFailureEvents(for: command, message: message)

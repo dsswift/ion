@@ -148,7 +148,7 @@ export interface SettingsPlacement {
 /** The settings each section shows, by section. A key appears in one section only. */
 const KEYS_BY_SECTION: ReadonlyArray<SettingsPlacement & { keys: readonly SettingKey[] }> = [
   { page: 'appearance', section: 'appearance', keys: ['selectedTheme', 'expandToolResults', 'unifiedTurnView', 'openMarkdownInPreview', 'editorWordWrap', 'editorFontSize', 'dataViewFontSize', 'uiZoom', 'terminalFontFamily', 'terminalFontSize'] },
-  { page: 'behavior', section: 'device-behavior', keys: ['studioSurfaceSwitchMode', 'showTodoList', 'agentPanelDefaultOpen', 'soundEnabled', 'browserPreviewNetworkShield', 'showImplementClearContext', 'openAtLogin'] },
+  { page: 'behavior', section: 'device-behavior', keys: ['studioSurfaceSwitchMode', 'showTodoList', 'agentPanelDefaultOpen', 'soundEnabled', 'browserPreviewNetworkShield', 'showImplementClearContext', 'openAtLogin', 'showBuildNotice'] },
   { page: 'behavior', section: 'device-git', keys: ['gitChangesTreeView'] },
   { page: 'keyboard', section: 'shortcuts', keys: ['keyboardShortcuts'] },
   { page: 'defaults', section: 'defaults-conversation', keys: ['defaultPermissionMode', 'aiGeneratedTitles', 'bashCommandEntry', 'enableClaudeCompat', 'enableEarlyStopContinuation'] },

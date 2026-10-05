@@ -296,7 +296,6 @@ extension DiagnosticLog {
     func allLogFiles() -> [String] {
         // An unlistable directory has no segments to read or prune; the
         // current.log open failure is what records that outage.
-        // swiftlint:disable:next silent_try_optional
         let contents = (try? FileManager.default.contentsOfDirectory(atPath: logDirectory.path)) ?? []
         return contents.filter { $0.hasPrefix("session-") && $0.hasSuffix(".log") }.sorted()
     }

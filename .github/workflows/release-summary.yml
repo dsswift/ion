@@ -79,25 +79,6 @@ jobs:
       - name: Pull ion engine image
         run: docker pull ghcr.io/${{ github.repository }}/engine:${{ steps.engine-image.outputs.tag }}
 
-      - name: Materialize engine config
-        env:
-          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
-          ION_TELEMETRY_ENDPOINT: ${{ secrets.ION_TELEMETRY_ENDPOINT }}
-        run: |
-          set -euo pipefail
-          : "${ION_TELEMETRY_ENDPOINT:?ION_TELEMETRY_ENDPOINT secret is not set}"
-          mkdir -p /tmp/ion-data/.ion
-          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-engine-base.json
-          # Ship this run's engine logs, telemetry, and spans to
-          # ion-telemetry, signed in as the "Ion Headless Telemetry" app. The
-          # committed block wins over the secret config on every key it sets.
-          # The collector endpoint comes from a secret so it is not committed.
-          jq -s --arg endpoint "$ION_TELEMETRY_ENDPOINT" \
-            '.[0] * .[1] | .logging.egressOtel.endpoint = $endpoint' \
-            /tmp/ion-engine-base.json .github/ion/ci-logging.json > /tmp/ion-data/.ion/engine.json
-          rm -f /tmp/ion-engine-base.json
-          chmod 600 /tmp/ion-data/.ion/engine.json
-
       - name: Build release context document
         run: |
           set -euo pipefail
@@ -117,29 +98,21 @@ jobs:
           } > /tmp/ion-prompt.txt
           echo "Prompt size: $(wc -c < /tmp/ion-prompt.txt) bytes"
 
+      # Ships this run's engine logs, telemetry, and spans to ion-telemetry,
+      # signed in as the "Ion Headless Telemetry" app. The collector endpoint
+      # comes from a secret so it is not committed.
       - name: Generate summary with ion
         env:
+          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
+          ION_TELEMETRY_ENDPOINT: ${{ secrets.ION_TELEMETRY_ENDPOINT }}
           ION_TELEMETRY_SHIP_CLIENT_SECRET: ${{ secrets.ION_TELEMETRY_SHIP_CLIENT_SECRET }}
+          ION_PROMPT_HOSTNAME: github-actions-release-summary
         run: |
           set -euo pipefail
-          # Keep the prompt on stdin and bound the full container lifetime.
-          # ION_DATA_DIR pins the engine's data directory to where the config
-          # step wrote engine.json: the image's own default moved from
-          # $HOME/.ion to /data.
-          timeout 4m docker run --rm -i \
-            --hostname github-actions-release-summary \
-            -e ION_DATA_DIR=/data/.ion \
-            -e ION_TELEMETRY_SHIP_CLIENT_SECRET \
-            -v /tmp/ion-data:/data \
+          : "${ION_TELEMETRY_ENDPOINT:?ION_TELEMETRY_ENDPOINT secret is not set}"
+          bash .github/scripts/run-ion-prompt.sh \
             ghcr.io/${{ github.repository }}/engine:${{ steps.engine-image.outputs.tag }} \
-            prompt - \
-            --output text \
-            --no-extensions \
-            --timeout 3m \
-            --max-budget 1.00 \
-            < /tmp/ion-prompt.txt \
-            > /tmp/summary.md
-          echo "Summary size: $(wc -c < /tmp/summary.md) bytes"
+            /tmp/ion-prompt.txt /tmp/summary.md
 
       - name: Post to Discord
         env:

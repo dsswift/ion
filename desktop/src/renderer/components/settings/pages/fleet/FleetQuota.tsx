@@ -1,7 +1,7 @@
 /**
  * FleetQuota — each provider's quota across the Fleet as a card: its first
  * limit summed over its accounts, 100% per account, with one bar segment
- * per account, and its other limits under it.
+ * per account and its next few resets, and its other limits under it.
  */
 import React from 'react'
 import { fleetLimit, fleetLimitExpired, type FleetAccountRow, type FleetQuotaLimit, type FleetQuotaPool } from '@ion/shared/fleet-view'
@@ -42,11 +42,31 @@ function Segments({ limit, rows, now }: { limit: FleetQuotaLimit; rows: readonly
   )
 }
 
+/** How many upcoming resets a card lists under its headline limit. */
+const SHOWN_RESETS = 3
+
+/**
+ * The headline limit's next resets, one line each with how much it gives
+ * back. Accounts reset on their own clocks, so no one time resets the pool.
+ */
+function UpcomingResets({ limit, now }: { limit: FleetQuotaLimit; now: number }): React.JSX.Element | null {
+  const colors = useColors()
+  if (limit.resets.length === 0) return null
+  return (
+    <ul aria-label="Upcoming resets" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2, fontSize: KIT.fontTiny, color: colors.textTertiary, fontVariantNumeric: 'tabular-nums' }}>
+      {limit.resets.slice(0, SHOWN_RESETS).map((reset) => (
+        <li key={reset.at} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <span><span style={{ color: colors.textSecondary }}>{Math.round(reset.freed)}% back</span> {formatUntil(reset.at, now)}</span>
+          <span>{formatWhen(reset.at)}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function PoolCard({ pool, rows, now }: { pool: FleetQuotaPool; rows: readonly FleetAccountRow[]; now: number }): React.JSX.Element {
   const colors = useColors()
   const [first, ...rest] = pool.limits
-  const until = first ? formatUntil(first.nextReset, now) : null
-  const when = first ? formatWhen(first.nextReset) : null
   return (
     <div style={{ minWidth: 0, padding: `12px ${KIT.inset + 2}px`, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: `1px 0 0 ${colors.borderSubtle}, 0 1px 0 ${colors.borderSubtle}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -64,10 +84,8 @@ function PoolCard({ pool, rows, now }: { pool: FleetQuotaPool; rows: readonly Fl
             </div>
           </div>
           <Segments limit={first} rows={rows} now={now} />
-          <div style={{ fontSize: KIT.fontTiny, color: colors.textTertiary }}>
-            <span style={{ color: colors.textSecondary }}>{left(first)}% left</span>
-            {until && ` · resets ${until}`}{when && ` · ${when}`}
-          </div>
+          <div style={{ fontSize: KIT.fontTiny, color: colors.textSecondary }}>{left(first)}% left</div>
+          <UpcomingResets limit={first} now={now} />
           {rest.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 8, borderTop: `1px solid ${colors.borderSubtle}` }}>
               {rest.map((limit) => (

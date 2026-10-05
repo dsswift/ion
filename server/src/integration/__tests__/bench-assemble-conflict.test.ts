@@ -14,7 +14,7 @@
  *
  * Real repos rather than mocks: the behaviour under test is git's.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { GIT_FIXTURE_TIMEOUT, removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'fs'
@@ -109,7 +109,7 @@ afterEach(() => {
   removeGitFixture(root)
 })
 
-describe('assembleBench — atomic conflicts and missing members', () => {
+describe('assembleBench — atomic conflicts and missing members', GIT_FIXTURE_TIMEOUT, () => {
   it('fails the whole assembly on a conflict: bench wiped empty, others unbuilt, failure recorded', async () => {
     // a and c both touch shared.txt; b is independent and merged BEFORE the
     // conflict is hit.
@@ -202,7 +202,7 @@ describe('assembleBench — atomic conflicts and missing members', () => {
   })
 })
 
-describe('assembleBench — refuses while a resolution merge is open', () => {
+describe('assembleBench — refuses while a resolution merge is open', GIT_FIXTURE_TIMEOUT, () => {
   // The live defect this pins: AI Assisted closed the ConflictsDialog, the
   // close handler reassembled, and the assembly's `switch -C` ran against the
   // bench whose merge the resolve-once flow had DELIBERATELY left open for
@@ -277,7 +277,7 @@ describe('assembleBench — refuses while a resolution merge is open', () => {
   })
 })
 
-describe('assembleBench — rerere resolve once, replay forever', () => {
+describe('assembleBench — rerere resolve once, replay forever', GIT_FIXTURE_TIMEOUT, () => {
   /**
    * Resolve the conflict the way the resolve-once flow does: re-create the
    * merge in the bench, write the resolution, commit — which records it in the
@@ -494,7 +494,7 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
  * which differs per member — so the journal carries the reasoning instead, and
  * the failure record is where a resolver will already be looking.
  */
-describe('assembleBench — conflict reports carry prior resolutions', () => {
+describe('assembleBench — conflict reports carry prior resolutions', GIT_FIXTURE_TIMEOUT, () => {
   it('attaches journal entries for the conflicted paths, newest first', async () => {
     const a = makeWorktree('a', 'shared.txt', 'from a\n')
     const c = makeWorktree('c', 'shared.txt', 'from c\n')

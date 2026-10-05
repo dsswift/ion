@@ -79,19 +79,49 @@ func TestCliShellTools_AliasDirectiveNamesEveryTool(t *testing.T) {
 	}
 }
 
-// TestCliShellTools_PlanModeSpawnGetsNoShell pins the read-only boundary. A run
-// that spawns in plan mode has no shell today, because cliPlanModeDisallowedTools
-// strips the CLI's Bash; bridging the engine's would hand a plan run the exact
-// capability that boundary removes.
-func TestCliShellTools_PlanModeSpawnGetsNoShell(t *testing.T) {
+// TestCliShellTools_RegisteredInPlanModeAndRefusedAtTheCall pins the read-only
+// boundary for the engine's shell. The tools are registered in every mode, so
+// the tool list a run's provider caches does not change when the mode does;
+// while the session is planning, the ToolServer's plan policy refuses them.
+func TestCliShellTools_RegisteredInPlanModeAndRefusedAtTheCall(t *testing.T) {
 	key := "cli-shell-plan"
 	mgr := newCliShellTestManager(t, key)
-	opts := &types.RunOptions{ProjectPath: t.TempDir(), PlanMode: true}
+	s := sessionFor(t, mgr, key)
+	opts := &types.RunOptions{ProjectPath: t.TempDir(), PlanMode: true, PlanModeAllowedBashCommands: []string{"echo allowed"}}
 
-	mgr.wireCliShellToolServer(sessionFor(t, mgr, key), key, opts, nil)
+	mgr.stageCliPlanPolicy(s, key, opts, nil)
+	mgr.wireCliShellToolServer(s, key, opts, nil)
+	mgr.ensureCliToolServerAttached(s, key, opts)
 
-	if ts := sessionToolServer(t, mgr, key); ts != nil && ts.HasTool("Bash") {
-		t.Error("a plan-mode spawn was given a shell")
+	ts := sessionToolServer(t, mgr, key)
+	if ts == nil {
+		t.Fatal("a plan-mode spawn must still register the shell tools")
+	}
+	for _, name := range cliShellToolNames {
+		if !ts.HasTool(name) {
+			t.Errorf("%s must be registered in plan mode", name)
+		}
+	}
+
+	mgr.mu.Lock()
+	s.planMode = true
+	mgr.mu.Unlock()
+
+	invoke := func(name string, input map[string]interface{}) *types.ToolResult {
+		res, ok, err := ts.InvokeTool(context.Background(), name, input)
+		if err != nil || !ok {
+			t.Fatalf("InvokeTool(%s): ok=%v err=%v", name, ok, err)
+		}
+		return res
+	}
+	if res := invoke("Bash", map[string]interface{}{"command": "touch should-not-exist"}); !res.IsError || !strings.Contains(res.Content, "not in the allowed list") {
+		t.Errorf("a planning session ran a shell command outside its allowlist: %+v", res)
+	}
+	if res := invoke("Bash", map[string]interface{}{"command": "echo allowed ok"}); res.IsError {
+		t.Errorf("a planning session was refused an allowlisted command: %s", res.Content)
+	}
+	if res := invoke("Poll", map[string]interface{}{}); !res.IsError || !strings.HasPrefix(res.Content, "Plan mode:") {
+		t.Errorf("Poll must be refused while planning: %+v", res)
 	}
 }
 
@@ -248,9 +278,8 @@ func TestCliShellTools_ParkSeamsReportBridgedWork(t *testing.T) {
 }
 
 // TestCliShellTools_PlanModeStillWiresParkSeams pins that a plan-mode spawn
-// keeps its park seams even though it gets no shell. A plan run can be holding
-// commands an earlier auto turn started; completing it while they run would
-// abandon them for the same reason the shell-bearing case does.
+// keeps its park seams. A plan run can be holding commands an earlier auto turn
+// started; completing it while they run would abandon them.
 func TestCliShellTools_PlanModeStillWiresParkSeams(t *testing.T) {
 	key := "cli-shell-plan-seams"
 	mgr := newCliShellTestManager(t, key)

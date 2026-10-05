@@ -17,6 +17,7 @@ import { appraiseWorktree } from '../worktree/safety'
 import { predictPrunedBenches } from '../integration/bench-ops'
 import { lookupWorktreeRegistration, setWorktreeTitle } from '../worktree/inventory'
 import { announceWorktreeTitle } from '../worktree/title-announce'
+import { worktreeEphemeralDefault } from '../worktree/worktree-choice'
 import { isValidProjectPath } from '../ipc-validation'
 import { IPC } from '@ion/shared/types'
 import { log as _log, warn as _warn } from '../logger'
@@ -59,6 +60,16 @@ export const WORKTREE_GIT_HANDLERS: Record<string, (payload: any) => Promise<unk
       const prunedBenchPaths = predictPrunedBenches(worktreePath)
       log('retire preview', { worktree_path: worktreePath, pruned_benches: prunedBenchPaths.length })
       return { prunedBenchPaths }
+    },
+
+  [IPC.GIT_WORKTREE_EPHEMERAL_DEFAULT]: ({ repoPath }: { repoPath: string }) => {
+      if (!isValidProjectPath(repoPath)) {
+        warn('ephemeral default refused: invalid path', { repo_path: repoPath })
+        throw new Error('Invalid path.')
+      }
+      const result = worktreeEphemeralDefault(repoPath)
+      log('ephemeral default read', { repo_path: repoPath, ephemeral: result.ephemeral, source: result.source })
+      return result
     },
 
   [IPC.GIT_WORKTREE_SET_TITLE]: async ({

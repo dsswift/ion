@@ -118,6 +118,9 @@ export const IPC = {
   // this retire remove? Asked BEFORE the retire, so the caller can refuse when
   // an active conversation lives in a directory the retire would delete.
   GIT_WORKTREE_RETIRE_PREVIEW: "ion:git-worktree-retire-preview",
+  // What a worktree conversation cut in a project is when the create does not
+  // say: the remembered project choice, else `.ion/worktree.json`.
+  GIT_WORKTREE_EPHEMERAL_DEFAULT: "ion:git-worktree-ephemeral-default",
   // Base staleness: has the feature branch moved ahead of this worktree?
   // Worktree inventory: what worktrees exist for a repo, with the state needed
   // to describe and act on them (the re-entry surface after a tab close).

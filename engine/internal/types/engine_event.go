@@ -868,6 +868,10 @@ type EngineEvent struct {
 	PollTerminal           *PollTerminalPayload           `json:"pollTerminal,omitempty"`
 	SessionWorkStopped     *SessionWorkStoppedEvent       `json:"sessionWorkStopped,omitempty"`
 
+	// engine_active_path_changed — switch_branch moved the conversation onto
+	// another branch. See ActivePathChangedEvent.
+	ActivePathChanged *ActivePathChangedEvent `json:"activePathChanged,omitempty"`
+
 	// engine_background_work_delivered -- a background completion was durably
 	// appended to the LLM conversation. Nested payload retains typed metadata
 	// and exact delivered content without adding a scalar per work field.

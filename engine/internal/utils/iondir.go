@@ -39,6 +39,18 @@ func IonDir() string {
 	return filepath.Join(home, ".ion")
 }
 
+// HomeIonDir returns <home>/.ion, ignoring ION_DATA_DIR. It is for the few
+// files another Ion process keeps pinned to the home directory whatever data
+// root this engine runs with, so the engine reads them where that process
+// writes them. It returns "" when no home directory resolves.
+func HomeIonDir() string {
+	home, err := UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".ion")
+}
+
 // IonDirSource reports which branch IonDir() took: "env" when ION_DATA_DIR
 // is set, "home" otherwise. Startup call sites use this alongside IonDir()
 // to log the one-shot "data dir resolved" line without duplicating the

@@ -62,7 +62,7 @@
     },
     "desktop_create_tab": {
       "action": "tabs.create",
-      "args": "[{workingDirectory, profileId, useWorktree, sourceBranch, clientCmdId}] (extensions is not sent; the profile names them)",
+      "args": "[{workingDirectory, profileId, useWorktree, sourceBranch, ephemeralWorktree, rememberWorktreeChoice, clientCmdId}] (extensions is not sent; the profile names them)",
       "result": "value is {tabId}, null when the create failed; the server sends desktop_tab_created{tab, clientCmdId} as an event, so no client synthesizes it"
     },
     "desktop_create_terminal_tab": {
@@ -200,6 +200,16 @@
       "action": "session.tabAttachments",
       "args": "[{tabId}]",
       "result": "desktop_tab_attachments{tabId, attachments} from the same fields of value"
+    },
+    "desktop_list_branches": {
+      "action": "engine.listBranches",
+      "args": "[{key: tabId}]",
+      "result": "desktop_conversation_branches{tabId, listing: value}"
+    },
+    "desktop_switch_branch": {
+      "action": "engine.switchBranch",
+      "args": "[{key: tabId, leafId}]",
+      "result": "desktop_branch_switch_result{tabId, error?}; the new path arrives as a transcript replace"
     },
     "desktop_implement_plan": {
       "action": "session.implementPlan",

@@ -25,7 +25,7 @@ import { deriveChartTimelines, type ChartTimeline } from './conversation/chart-r
 import {
   groupMessages, suppressUserImageEchoes,
   MessageActions, InterruptButton,
-  QueuedMessage, EmptyState, RunDurationFooter,
+  QueuedMessage, EmptyState, RunDurationFooter, BranchSwitcher,
 } from './conversation'
 import { host } from '../host/host-instance'
 import { usePresenceStore, drivingSubjectFor } from '../stores/presence-store'
@@ -414,6 +414,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
             {!isRunning && messages.length > 0 && lastResult && (
               <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />
             )}
+            {messages.length > 0 && <BranchSwitcher tabId={tabId} messageCount={messages.length} isRunning={isRunning} />}
 
             {/* Queued prompts */}
             <AnimatePresence>

@@ -32,6 +32,10 @@ export const SYSTEM_IPC = {
   DEVICE_METRICS: 'ion:device-metrics',
   /** Renderer → main: start (`true`) or stop fast Device Metrics sampling; returns the latest sample. */
   DEVICE_METRICS_WATCH: 'ion:device-metrics-watch',
+  /** Renderer → main: the Build Notice for the running desktop build, or null when it is already acknowledged. */
+  BUILD_NOTICE_GET: 'ion:build-notice-get',
+  /** Renderer → main: record the running desktop build as acknowledged on this device. */
+  BUILD_NOTICE_ACKNOWLEDGE: 'ion:build-notice-acknowledge',
   /**
    * Main → renderer: scroll the active conversation to a chart's newest card.
    *

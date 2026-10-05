@@ -2,7 +2,8 @@
  * BehaviorPage — how Studio behaves on this device: the surface on a
  * conversation switch, the task list and agent panel, sound, the browser
  * preview's network shield, the plan card's extra action, and, in the
- * desktop app, whether Ion opens at login. The device
+ * desktop app, whether Ion opens at login and shows what's new after an
+ * update. The device
  * half of the git panel is its own section, filed under the git group.
  */
 import React from 'react'
@@ -32,6 +33,8 @@ export function BehaviorPage(): React.JSX.Element {
   const setShowImplementClearContext = p((s) => s.setShowImplementClearContext)
   const openAtLogin = p((s) => s.openAtLogin)
   const setOpenAtLogin = p((s) => s.setOpenAtLogin)
+  const showBuildNotice = p((s) => s.showBuildNotice)
+  const setShowBuildNotice = p((s) => s.setShowBuildNotice)
   // The desktop app is what a login opens; a browser tab has nothing to open.
   const desktopApp = host.capabilities().includes('nativeShell')
 
@@ -62,6 +65,7 @@ export function BehaviorPage(): React.JSX.Element {
       {desktopApp && (
         <FormGroup title="Startup">
           <ToggleRow anchor="open-at-login" label="Open Ion at login" settingKey="openAtLogin" description="Start Ion when you sign in to this computer, so it is running after a restart. A computer other devices connect to should have this on." checked={openAtLogin} onChange={setOpenAtLogin} />
+          <ToggleRow anchor="build-notice" label="Show what's new after an update" settingKey="showBuildNotice" description="The first time Ion opens after an update, show which version you are on and what is new in it." checked={showBuildNotice} onChange={setShowBuildNotice} />
         </FormGroup>
       )}
     </Stack>

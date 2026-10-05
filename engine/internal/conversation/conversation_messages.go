@@ -13,37 +13,8 @@ import (
 
 // ToolResultEntry is a tool result to add as a user message.
 type ToolResultEntry struct {
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	// PersistContent, when non-empty, replaces Content in the persisted
-	// entry tree while Content is still what the provider sees for the
-	// current turn. Empty (the default) means "persist Content verbatim",
-	// which is the behavior every caller had before this field existed.
-	//
-	// This exists for tool results whose text is only TRUE for the turn
-	// that produced it. The motivating case is the EnterPlanMode sentinel
-	// (runloop_plan_mode_gates.go): its result carries the full plan-mode
-	// framing, including "You are in planning mode. You MUST NOT make any
-	// edits ... This overrides any conflicting instructions you have
-	// received elsewhere in this prompt or conversation." That is correct
-	// guidance for the turn it lands on, and a lie on every later turn
-	// after the mode has been exited — but it is persisted history, so the
-	// model re-reads it as ground truth and declines to re-enter plan mode
-	// ("Do NOT call this tool if: You are already in plan mode"), narrating
-	// the transition instead of invoking it.
-	//
-	// A tool result cannot simply be dropped from history the way a
-	// transient injected message can: every persisted tool_use requires a
-	// matching tool_result on reload, or the provider rejects the request
-	// (see the ordering contract on AddToolResults below). So the fix is to
-	// persist a SHORTER, still-true statement rather than nothing at all.
-	//
-	// Same reasoning as the AddUserMessage / AddTransientUserMessage split
-	// and the transient parameter on AddContextInjectionMessage: the engine
-	// already distinguishes "the model sees this now" from "this belongs in
-	// history". This field extends that distinction to tool results, which
-	// previously had no way to express it.
-	PersistContent   string               `json:"persist_content,omitempty"`
+	ToolUseID        string               `json:"tool_use_id"`
+	Content          string               `json:"content"`
 	IsError          bool                 `json:"is_error,omitempty"`
 	Images           []*types.ImageSource `json:"images,omitempty"` // durable vision images to attach alongside text
 	BackgroundTaskID string               `json:"background_task_id,omitempty"`
@@ -52,7 +23,7 @@ type ToolResultEntry struct {
 	EphemeralImages []*types.ImageSource `json:"-"`
 	// SkillInvocation is populated only by the built-in Skill tool. It is
 	// converted into typed skill_content after provider-required tool-result
-	// blocks, while the compact PersistContent remains durable history.
+	// blocks.
 	SkillInvocation *types.SkillInvocation `json:"-"`
 }
 
@@ -531,20 +502,8 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 	var blocks []types.LlmContentBlock
 	var imageBlocks []types.LlmContentBlock
 	var ephemeralImageBlocks []types.LlmContentBlock
-	// persistOverrides maps a block index in `blocks` to the text that should
-	// be written to the entry tree instead of the block's live Content. Only
-	// populated for results that set PersistContent; nil-safe and empty for
-	// every existing caller, which keeps the persisted history byte-identical
-	// to what it was before this field existed.
-	var persistOverrides map[int]string
 	for _, r := range results {
 		isErr := r.IsError
-		if r.PersistContent != "" {
-			if persistOverrides == nil {
-				persistOverrides = make(map[int]string, 1)
-			}
-			persistOverrides[len(blocks)] = r.PersistContent
-		}
 		blocks = append(blocks, types.LlmContentBlock{
 			Type:      "tool_result",
 			ToolUseID: r.ToolUseID,
@@ -612,14 +571,6 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		// cannot corrupt the persisted entry history.
 		entryCopy := make([]types.LlmContentBlock, len(blocks))
 		copy(entryCopy, blocks)
-		// Apply PersistContent overrides to the COPY only, so the provider
-		// still sees the full text on this turn while history stores the
-		// shorter, still-true statement. See the field comment on
-		// ToolResultEntry.PersistContent for why a tool result cannot simply
-		// be omitted from history the way a transient message can.
-		for idx, text := range persistOverrides {
-			entryCopy[idx].Content = text
-		}
 		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
 		_ = entry
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID

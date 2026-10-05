@@ -182,6 +182,12 @@ final class SessionViewModel {
     // Tab attachment cache (from load_attachments command)
     var tabAttachmentCache: [String: [TabAttachmentEntry]] = [:]  // tabId -> attachments
 
+    /// Each conversation's branches (`listBranches`), the leaf a switch is
+    /// waiting on, and the last refusal. See SessionViewModel+Branches.swift.
+    var conversationBranches: [String: ConversationBranches] = [:]
+    var branchSwitchPending: [String: String] = [:]
+    var branchSwitchError: [String: String] = [:]
+
     // Discovered slash commands (per working directory)
     var discoveredCommands: [String: [DiscoveredSlashCommand]] = [:]
 

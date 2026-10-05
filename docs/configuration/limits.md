@@ -15,7 +15,7 @@ Resource limits control how long an agent session can run and how much it can sp
 | `maxTurns` | int | unset (unlimited) | `--max-turns N` | Maximum number of LLM turns before the agent stops. Each turn is one request-response cycle with the model. Unset or `<= 0` means no cap. |
 | `maxBudgetUsd` | float | unset (unlimited) | `--max-budget USD` | Cost ceiling in US dollars. The agent stops when estimated spend reaches this value. Unset or `<= 0` means no cap. |
 | `suppressSystemMessages` | bool | unset (`false`) | -- | When `true`, engine-injected steering messages are sent to the LLM but not persisted to session history. |
-| `disablePlanModeReminder` | bool | unset (`false`) | -- | When `true`, the plan mode sparse reminder is not injected on turn 2+. Power users who want to customize the reminder text rather than suppress it entirely should see `RunOptions.PlanModeSparseReminder` in [client-commands.md](../protocol/client-commands.md#send_prompt) or the harness-level `desktop.planModeSparseReminder` key in [settings-json.md](./settings-json.md). |
+| `disablePlanModeReminder` | bool | unset (`false`) | -- | When `true`, the periodic plan mode reminder is not sent. The enter and exit notices are unaffected. Power users who want to customize the reminder text rather than suppress it entirely should see `RunOptions.PlanModeSparseReminder` in [client-commands.md](../protocol/client-commands.md#send_prompt) or the harness-level `desktop.planModeSparseReminder` key in [settings-json.md](./settings-json.md). |
 | `planModeAutoExitOnEndTurn` | *bool | unset (defaults to `true`) | -- | Controls the deterministic plan-mode exit safety net introduced in [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md). When `true` (the engine default), a plan-mode run that ends with stop reason `end_turn` / `stop` without the assistant invoking `ExitPlanMode` or `AskUserQuestion` triggers an engine-synthesized `ExitPlanMode` so consumers always see the plan-approval card. Set to `false` to disable the synthesis — useful for strict automation policies that prefer the conversation to park rather than auto-surface when the model misroutes plan exit. Per-run overrides flow through `RunOptions.PlanModeAutoExit`; the `before_plan_mode_auto_exit` extension hook overrides both. |
 | `disableTurnLimitWarning` | bool | unset (`false`) | -- | When `true`, the turn-limit wind-down message is not injected. |
 | `disableMaxTokenContinue` | bool | unset (`false`) | -- | When `true`, the max-tokens continue prompt is not injected. |
@@ -109,7 +109,9 @@ During the agent loop, the engine injects internal user-role messages for LLM st
 
 | Type | When injected | Purpose |
 |------|--------------|---------|
-| Plan mode reminder | Turn 2+ during plan mode | Prevents LLM from drifting out of plan-mode constraints |
+| Plan mode enter | The run is planning and the model has not been told so | Gives the model the plan-mode instructions |
+| Plan mode exit | The model was told it is planning and the run is not | Ends the earlier enter notice |
+| Plan mode reminder | Five assistant turns after the last plan-mode notice, while planning | Prevents LLM from drifting out of plan-mode constraints |
 | Turn limit warning | 2 turns before `maxTurns` | Tells the LLM to wrap up |
 | Max token continue | LLM response hits `max_tokens` | Prompts the LLM to continue its truncated response |
 

@@ -19,6 +19,8 @@ import {
   sessionPlane,
 } from '../state'
 import { isValidProjectPath } from '../ipc-validation'
+import { listBranches, switchBranch } from '../engine/engine-bridge-conversations'
+import type { ConversationBranches } from '@ion/shared/conversation-branches'
 import type { Attachment, RunOptions, SteerMeta } from '@ion/shared/types'
 import type { ModelEntry, ProviderEntry } from '@ion/shared/types-models'
 import type { RelocateResult } from '../engine/engine-control-plane-relocate'
@@ -106,6 +108,16 @@ export async function engineStopBackgroundTask(key: string, taskId: string): Pro
 export function engineBranchBefore(key: string, entryId: string): Promise<void> {
   log('engine_branch_before', { key, entry_id: entryId })
   return engineBridge.branchSessionBefore(key, entryId)
+}
+
+/** Every branch of the conversation behind `key` (the tab id). */
+export function engineListBranches(key: string): Promise<ConversationBranches> {
+  return listBranches(engineBridge, key)
+}
+
+/** Moves the conversation onto the branch ending at `leafId`; the transcript reload rides `engine_active_path_changed`. */
+export function engineSwitchBranch(key: string, leafId: string): Promise<void> {
+  return switchBranch(engineBridge, key, leafId)
 }
 
 export function engineRemapSession(oldKey: string, newKey: string): void {

@@ -149,8 +149,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// early-stop telemetry) and the switch is otherwise unrecorded on disk.
 	conversation.SyncModel(conv, model, run.requestID)
 
-	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
-	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID, run)
+	// Build system prompt (may rewrite opts.Prompt)
+	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID)
+	// A run that starts in plan mode needs the harness tool list before the
+	// tool definitions are built below.
+	if run.planMode {
+		b.resolvePlanModeHarness(run, hooks, &opts)
+		b.announcePlanModeAtRunStart(run)
+	}
 
 	// Seed the nested-context dedup set now that conv.System carries the eager
 	// root/home context blocks. Scanning conv.System + conv.Messages recovers
@@ -183,11 +189,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	maxBudget := opts.MaxBudgetUsd
 
 	// Build tool definitions (built-in + external/MCP + capabilities + filters)
+	// Built once: the list does not depend on the run's mode, so a mid-run
+	// plan-mode entry changes nothing here.
 	toolDefs, serverTools := b.buildToolDefs(run, opts, provider)
-	// Latch the plan-mode state this list was built under so the turn loop
-	// can detect a mid-run flip (EnterPlanMode sentinel) and rebuild. See
-	// activeRun.toolDefsBuiltForPlanMode.
-	run.toolDefsBuiltForPlanMode = run.planMode
+	b.observePromptPrefix(run, conv.ID, model, conv.System, toolDefs, serverTools)
 
 	// Resolve context capacity once for the serving model. The proactive gate must
 	// reserve the same model output budget as prompt admission and status reporting;
@@ -255,59 +260,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			})
 		}
 
-		// Plan mode: inject sparse reminder so the LLM doesn't drift from
-		// plan-mode constraints mid-conversation. Two cases fire the reminder:
-		//   1. Turn 2+ in any plan-mode run (existing throttle, once per
-		//      planModeReminderInterval turns). Handles multi-turn runs.
-		//   2. Turn 1 of a run where the conversation already has many messages
-		//      (mature single-turn rounds). This is the mid-plan "what's next?"
-		//      case where the full prompt is ~220+ messages back and the model
-		//      needs the rule in recent context.
-		// See shouldInjectPlanModeReminderForRun in plan_mode_prompt.go for
-		// the full gate logic and planModeFirstTurnReminderThreshold rationale.
-		if run.planMode {
-			msgCount := len(conv.Messages)
-			run.mu.Lock()
-			lastReminderTurn := run.planModeReminderTurn
-			shouldInject := shouldInjectPlanModeReminderForRun(turn, lastReminderTurn, msgCount)
-			if shouldInject {
-				run.planModeReminderTurn = turn
-			}
-			run.mu.Unlock()
-			if shouldInject {
-				reminderText := buildPlanModeSparseReminder(run.planFilePath)
-				if run.planModeSparseReminderOverride != "" {
-					reminderText = run.planModeSparseReminderOverride
-				}
-				gate := "turn_gt1"
-				if turn == 1 {
-					gate = "mature_session"
-				}
-				source := "default"
-				if run.planModeSparseReminderOverride != "" {
-					source = "override"
-				}
-				b.injectSystemMessage(run, conv, hooks, opts, "plan_mode_reminder",
-					"[SYSTEM] "+reminderText,
-					turn, maxTurns)
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "reminder injected", map[string]any{
-					"run_id":    run.requestID,
-					"turn":      turn,
-					"last_turn": lastReminderTurn,
-					"interval":  planModeReminderInterval,
-					"gate":      gate,
-					"count":     msgCount,
-					"source":    source,
-				})
-			} else {
-				utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "reminder throttled", map[string]any{
-					"run_id":    run.requestID,
-					"turn":      turn,
-					"last_turn": lastReminderTurn,
-					"next_at":   lastReminderTurn + planModeReminderInterval,
-				})
-			}
-		}
+		// Bring what the model has been told about plan mode in line with the
+		// run's live mode. See reconcilePlanMode.
+		b.reconcilePlanMode(run, conv, hooks, &opts, turn, maxTurns)
 
 		// Fire turn_start hook
 		if hooks.OnTurnStart != nil {
@@ -418,33 +373,6 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			messages = append(messages, sanitized...)
 		} else {
 			messages = sanitized
-		}
-
-		// Plan mode can flip mid-run: the model calls the EnterPlanMode
-		// sentinel and interceptEnterPlanMode sets run.planMode true
-		// (runloop_plan_mode_gates.go). The tool list built before this loop
-		// is then stale — it still advertises the auto-mode set, so the model
-		// is instructed to finish via ExitPlanMode while that tool is absent
-		// from what the provider receives. Rebuild on divergence only;
-		// buildToolDefs reassembles MCP and external tool defs, so an
-		// unconditional per-turn rebuild would pay that cost every turn for a
-		// list that almost never changes.
-		if run.planMode != run.toolDefsBuiltForPlanMode {
-			toolDefs, serverTools = b.buildToolDefs(run, opts, provider)
-			run.toolDefsBuiltForPlanMode = run.planMode
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "tool defs rebuilt: plan mode flipped mid-run", map[string]any{
-				"run_id":     run.requestID,
-				"turn":       turn,
-				"plan_mode":  run.planMode,
-				"tool_count": len(toolDefs),
-			})
-		} else {
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "tool defs reused (plan mode unchanged)", map[string]any{
-				"run_id":     run.requestID,
-				"turn":       turn,
-				"plan_mode":  run.planMode,
-				"tool_count": len(toolDefs),
-			})
 		}
 
 		streamOpts := types.LlmStreamOptions{

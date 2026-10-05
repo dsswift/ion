@@ -205,6 +205,10 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
     for (const type of TRANSCRIPT_ONLY_ENGINE_EVENTS) emit(KEY, { type })
     expect(mockSend).not.toHaveBeenCalled()
   })
+  it('holds back a branch switch: the phone gets the replaced transcript instead', () => {
+    emit(KEY, { type: 'engine_active_path_changed', activePathChanged: { conversationId: 'c', leafId: 'e2' } })
+    expect(sentOfType('desktop_active_path_changed')).toHaveLength(0)
+  })
   it('still forwards an engine event that is not a transcript row', () => {
     emit(KEY, { type: 'engine_steer_interrupted_stream', steerInterruptBlocksKept: 2 })
     expect(sentOfType('desktop_steer_interrupted_stream')).toHaveLength(1)

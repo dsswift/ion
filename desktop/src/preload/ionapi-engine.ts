@@ -4,6 +4,7 @@
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
 import type { DeviceMetricsSample } from "@ion/shared/types-device-metrics";
+import type { BuildNotice } from "@ion/shared/build-notice";
 
 export interface IonEngineApi {
   fsSaveDialog(
@@ -38,6 +39,12 @@ export interface IonEngineApi {
   ): () => void;
   onUpdateStaged(callback: (info: { workerPid: number }) => void): () => void;
   onUpdateError(callback: (info: { message: string }) => void): () => void;
+
+  // ─── Build Notice (this desktop's running build) ───
+  /** The notice for a build this device has not acknowledged yet; null otherwise. */
+  getBuildNotice(): Promise<BuildNotice | null>;
+  /** Record the running build as acknowledged, so its notice does not show again. */
+  acknowledgeBuildNotice(): Promise<void>;
 
   // ─── Device Metrics (this machine's own Studio processes) ───
   /** Start (true) or stop fast sampling; resolves to the latest sample. */

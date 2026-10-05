@@ -188,6 +188,7 @@
 		QUESTNS030000000000BF01 /* QuestionsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS030000000000FR01 /* QuestionsStore.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */; };
+		B1C2D3E4F5A6048600000000 /* SessionViewModel+Branches.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6048500000000 /* SessionViewModel+Branches.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		0BC6CB37D79A89C6F0C212DB /* SessionViewModel+GitFsEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC833E1A1B9898DA38FDF04 /* SessionViewModel+GitFsEvents.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
@@ -261,7 +262,9 @@
 		A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000310AA /* GitDiffView.swift */; };
 		A1B2C3D4E5F60001000313AA /* GitGraphLaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000312AA /* GitGraphLaneView.swift */; };
 		A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000400AA /* FileTypes.swift */; };
+		B1C2D3E4F5A6048200000000 /* ConversationBranches.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6048100000000 /* ConversationBranches.swift */; };
 		A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */; };
+		B1C2D3E4F5A6048400000000 /* NormalizedEvent+Branches.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6048300000000 /* NormalizedEvent+Branches.swift */; };
 		A1B2C3D4E5F60001000405AA /* FileExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */; };
 		A1B2C3D4E5F60001000407AA /* FileExplorerRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */; };
 		A1B2C3D4E5F60001000409AA /* FileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000408AA /* FileEditorView.swift */; };
@@ -387,6 +390,8 @@
 		A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001006001AA /* ToastView.swift */; };
 		A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001007002AA /* CrashReporter.swift */; };
 		A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */; };
+		B1C2D3E4F5A6048800000000 /* ConversationBranchesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */; };
+		WBCS0000000000000001 /* WorktreeBranchChooserSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */; };
 		A1B2C3D4E5F60001008003AA /* AttachmentContentViewers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */; };
 		A1B2C3D4E5F600010080F0AA /* PlanDividerLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */; };
 		MODALSHEETBND0000000002 /* ModalSheetBoundary.swift in Sources */ = {isa = PBXBuildFile; fileRef = MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */; };
@@ -532,6 +537,7 @@
 		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
 		IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */; };
+		WCWT0000000000000001 /* WorktreeChoiceWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */; };
 		WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */; };
 		C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */; };
 		C0DEC0DE000000000001 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000000 /* FileIcon.swift */; };
@@ -1156,6 +1162,7 @@
 		QUESTNS030000000000FR01 /* QuestionsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsStore.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FsCommands.swift"; sourceTree = "<group>"; };
+		B1C2D3E4F5A6048500000000 /* SessionViewModel+Branches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Branches.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		8CC833E1A1B9898DA38FDF04 /* SessionViewModel+GitFsEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitFsEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
@@ -1229,7 +1236,9 @@
 		A1B2C3D4E5F60001000310AA /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000312AA /* GitGraphLaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphLaneView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000400AA /* FileTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTypes.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6048100000000 /* ConversationBranches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBranches.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Files.swift"; sourceTree = "<group>"; };
+		B1C2D3E4F5A6048300000000 /* NormalizedEvent+Branches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Branches.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000408AA /* FileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorView.swift; sourceTree = "<group>"; };
@@ -1342,6 +1351,8 @@
 		A1B2C3D4E5F60001006001AA /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001007002AA /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAttachmentsSheet.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBranchesSheet.swift; sourceTree = "<group>"; };
+		WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeBranchChooserSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentContentViewers.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDividerLabel.swift; sourceTree = "<group>"; };
 		MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalSheetBoundary.swift; sourceTree = "<group>"; };
@@ -1506,6 +1517,7 @@
 		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
 		IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeDefaultBranchTests.swift; sourceTree = "<group>"; };
+		WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeChoiceWireTests.swift; sourceTree = "<group>"; };
 		WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeLandAndRetireNothingToLandTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnapshotWireTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000000 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
@@ -2033,6 +2045,7 @@
 				QUESTNS020000000000FR01 /* NormalizedEvent+Questions.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
 				A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */,
+				B1C2D3E4F5A6048300000000 /* NormalizedEvent+Branches.swift */,
 				A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */,
 				A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */,
 				A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */,
@@ -2068,6 +2081,7 @@
 				D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */,
 				GITBRANCHRESP00000001 /* GitBranchesResponse.swift */,
 				A1B2C3D4E5F60001000400AA /* FileTypes.swift */,
+				B1C2D3E4F5A6048100000000 /* ConversationBranches.swift */,
 				A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */,
 				CONNHLTH00000000000001 /* ConnectionHealth.swift */,
 				A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */,
@@ -2146,6 +2160,8 @@
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
 				A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */,
+				B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */,
+				WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */,
 				A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */,
 				A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */,
 				MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */,
@@ -2310,6 +2326,7 @@
 				QUESTNS030000000000FR01 /* QuestionsStore.swift */,
 				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
 				A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */,
+				B1C2D3E4F5A6048500000000 /* SessionViewModel+Branches.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
 				B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */,
 				7ABA41758C1CD00EC3493B08 /* SessionViewModel+DispatchTranscripts.swift */,
@@ -2460,6 +2477,7 @@
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
 				IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */,
+				WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */,
 				WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */,
 				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
 				WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */,
@@ -3499,6 +3517,8 @@
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
 				A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */,
+				B1C2D3E4F5A6048800000000 /* ConversationBranchesSheet.swift in Sources */,
+				WBCS0000000000000001 /* WorktreeBranchChooserSheet.swift in Sources */,
 				A1B2C3D4E5F60001008003AA /* AttachmentContentViewers.swift in Sources */,
 				A1B2C3D4E5F600010080F0AA /* PlanDividerLabel.swift in Sources */,
 				MODALSHEETBND0000000002 /* ModalSheetBoundary.swift in Sources */,
@@ -3547,6 +3567,7 @@
 				QUESTNS030000000000BF01 /* QuestionsStore.swift in Sources */,
 				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
 				A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */,
+				B1C2D3E4F5A6048600000000 /* SessionViewModel+Branches.swift in Sources */,
 				B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E0015B /* SessionViewModel+Submit.swift in Sources */,
 				7BBA41758C1CD00EC3493B08 /* SessionViewModel+DispatchTranscripts.swift in Sources */,
@@ -3620,7 +3641,9 @@
 				A1B2C3D4E5F6000100030BAA /* GitToastView.swift in Sources */,
 				A1B2C3D4E5F60001000311AA /* GitDiffView.swift in Sources */,
 				A1B2C3D4E5F60001000401AA /* FileTypes.swift in Sources */,
+				B1C2D3E4F5A6048200000000 /* ConversationBranches.swift in Sources */,
 				A1B2C3D4E5F60001000403AA /* NormalizedEvent+Files.swift in Sources */,
+				B1C2D3E4F5A6048400000000 /* NormalizedEvent+Branches.swift in Sources */,
 				A1B2C3D4E5F60001009F01AA /* NormalizedEvent+Resource.swift in Sources */,
 				A1B2C3D4E5F600010010A1AA /* NotificationsView.swift in Sources */,
 				A1B2C3D4E5F600010010B1AA /* ResourceStore.swift in Sources */,
@@ -4218,6 +4241,7 @@
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,
 				IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */,
+				WCWT0000000000000001 /* WorktreeChoiceWireTests.swift in Sources */,
 				WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */,
 				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,
 				WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */,

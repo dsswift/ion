@@ -15,7 +15,7 @@ vi.mock('../../hooks/useAnchoredPopover', () => ({
   useAnchoredPopover: () => ({ left: 10, top: 20, ready: true, ref: () => {} }),
 }))
 vi.mock('../../components/ContextMenuItem', () => ({
-  ContextMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick(): void }) => <button onClick={onClick}>{children}</button>,
+  ContextMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick(event: React.MouseEvent): void }) => <button onClick={onClick}>{children}</button>,
 }))
 
 import { InboxProjectMenu } from './InboxProjectMenu'
@@ -42,13 +42,33 @@ describe('InboxProjectMenu', () => {
     })
 
     const buttons = [...document.querySelectorAll('button')]
-    expect(buttons.map((button) => button.textContent)).toEqual(['New conversation', 'New conversation in worktree'])
+    expect(buttons.map((button) => button.textContent)).toEqual(['New conversation', 'New conversation in worktree', 'Choose branch…'])
     await act(async () => { buttons[0].click() })
     expect(onNewConversation).toHaveBeenCalledOnce()
     expect(onClose).toHaveBeenCalledOnce()
     await act(async () => { buttons[1].click() })
-    expect(onNewWorktreeConversation).toHaveBeenCalledOnce()
+    expect(onNewWorktreeConversation).toHaveBeenLastCalledWith(false)
     expect(onClose).toHaveBeenCalledTimes(2)
+    await act(async () => { root.unmount() })
+  })
+
+  it('asks for the branch again from Choose branch or an Alt-click on the worktree row', async () => {
+    const onNewWorktreeConversation = vi.fn()
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const renderMenu = async (): Promise<HTMLButtonElement[]> => {
+      await act(async () => {
+        root.render(<InboxProjectMenu anchor={{ x: 30, y: 40 }} environmentId="local" onNewConversation={vi.fn()} onNewWorktreeConversation={onNewWorktreeConversation} onClose={vi.fn()} />)
+      })
+      return [...document.querySelectorAll('button')]
+    }
+    const buttons = await renderMenu()
+    await act(async () => { buttons[2].click() })
+    expect(onNewWorktreeConversation).toHaveBeenLastCalledWith(true)
+    await act(async () => { buttons[1].dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true })) })
+    expect(onNewWorktreeConversation).toHaveBeenLastCalledWith(true)
+    expect(onNewWorktreeConversation).toHaveBeenCalledTimes(2)
     await act(async () => { root.unmount() })
   })
 

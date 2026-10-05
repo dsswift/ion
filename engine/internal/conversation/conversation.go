@@ -136,6 +136,11 @@ type MessageData struct {
 	// absent on every legacy entry, which correctly reads as an ordinary turn.
 	InjectionKind string `json:"injectionKind,omitempty"`
 
+	// NoticePlanFile is the plan file a plan-mode notice refers to. Set only on
+	// entries whose InjectionKind is a plan-mode notice; it is how the engine
+	// tells, from the tree alone, which plan the model was last told about.
+	NoticePlanFile string `json:"noticePlanFile,omitempty"`
+
 	// DeliveryIDs identifies engine-owned deliveries represented by this message.
 	// It is persistence metadata only: providers never receive it. A retry uses
 	// these stable IDs to avoid adding an already-injected completion twice.

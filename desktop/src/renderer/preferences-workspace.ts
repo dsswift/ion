@@ -147,6 +147,7 @@ export function createProjectRegistryActions(
   | "setDefaultProject"
   | "setProjectName"
   | "setProjectProfileOverride"
+  | "setProjectWorktreeEphemeral"
 > {
   return {
     addProject: (dir) => {
@@ -209,6 +210,17 @@ export function createProjectRegistryActions(
               ? { profileOverride }
               : { profileOverride: undefined }),
           },
+        },
+      });
+    },
+    setProjectWorktreeEphemeral: (dir, ephemeral) => {
+      const key = normalizeProjectDir(dir);
+      const entry = get().projects[key];
+      if (!entry) return;
+      persist(set, {
+        projects: {
+          ...get().projects,
+          [key]: { ...entry, worktreeEphemeral: ephemeral },
         },
       });
     },

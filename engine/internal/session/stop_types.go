@@ -25,6 +25,7 @@ type stoppedSessionResources struct {
 	fsWatcherRelease  func()
 	sessionMemory     *SessionMemory
 	hookSettingsPath  string
+	permHookServer    *backend.PermissionHookServer
 	purgeExtensionDir string
 	conversationID    string
 	key               string
@@ -44,6 +45,9 @@ func (m *Manager) finishStoppedSession(resources stoppedSessionResources) {
 	}
 	if resources.toolServer != nil {
 		resources.toolServer.Stop()
+	}
+	if resources.permHookServer != nil {
+		resources.permHookServer.Close()
 	}
 	if resources.hookSettingsPath != "" {
 		if err := os.Remove(resources.hookSettingsPath); err != nil && !os.IsNotExist(err) {

@@ -83,6 +83,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventPollStarted:             &PollStartedEvent{},
 		EventPollProgress:            &PollProgressEvent{},
 		EventPollTerminal:            &PollTerminalEvent{},
+		EventActivePathChanged:       &ActivePathChangedEvent{},
 		EventSessionWorkStopped:      &SessionWorkStoppedEvent{},
 		EventBackgroundWorkDelivered: &BackgroundWorkDeliveredEvent{},
 		EventPlanContent:             &PlanContentEvent{},

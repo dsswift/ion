@@ -13,7 +13,8 @@ import type { GitConflictAlert } from './session-store-aux-types'
 import type { WorktreeProvisionState, WorkStage, BenchAssembleResult, WorktreeMoveResult, LandAndRetireResult } from '@ion/shared/types'
 
 export interface WorktreeBenchActions {
-  setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
+  /** `ephemeral` absent means the project's `ephemeralDefault`. */
+  setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean, ephemeral?: boolean) => Promise<void>
   /** Create a standalone worktree for a repository source branch. */
   createWorktree: (repoPath: string, sourceBranch: string) => Promise<{ ok: boolean; worktreePath?: string; error?: string }>
   convertToWorktree: (tabId: string) => Promise<{ ok: boolean; error?: string }>

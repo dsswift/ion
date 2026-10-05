@@ -86,6 +86,13 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     var provisionState: ProvisionState?
     /// Operator-facing reason when `provisionState` is `.failed`.
     var provisionError: String?
+    /// True while the worktree is ephemeral: removed when the conversation it
+    /// was cut for closes with nothing unlanded. Absent on the wire means an
+    /// ordinary worktree.
+    var ephemeral: Bool = false
+    /// Why that close kept a once-ephemeral worktree as an ordinary one. Nil
+    /// until a close has kept it.
+    var ephemeralKeptReason: String?
     /// Every conversation currently open in this worktree, in tab order. Empty
     /// when none are: tapping then opens a new one rather than focusing.
     ///
@@ -203,6 +210,8 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
         stage = (try c.decodeIfPresent(String.self, forKey: .stage)).flatMap(WorkStage.init(rawValue:))
         provisionState = try c.decodeIfPresent(ProvisionState.self, forKey: .provisionState)
         provisionError = try c.decodeIfPresent(String.self, forKey: .provisionError)
+        ephemeral = try c.decodeIfPresent(Bool.self, forKey: .ephemeral) ?? false
+        ephemeralKeptReason = try c.decodeIfPresent(String.self, forKey: .ephemeralKeptReason)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
         operationState = try c.decodeIfPresent(OperationState.self, forKey: .operationState)
         conflictedCount = try c.decodeIfPresent(Int.self, forKey: .conflictedCount)
@@ -437,6 +446,11 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
     /// with this branch instead of showing the branch picker; when nil, the
     /// picker is shown -- matching the desktop's own behavior.
     var defaultSourceBranch: String?
+    /// Whether a worktree conversation created here without an explicit
+    /// choice is ephemeral: the project's remembered choice, else its
+    /// `.ion/worktree.json`. The branch chooser preselects its Ephemeral
+    /// switch from it. Nil from a server that does not send it.
+    var ephemeralDefault: Bool?
 
     var id: String { repoPath }
 

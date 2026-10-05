@@ -17,6 +17,7 @@
  *   command_registry, command_result
  *   resource_snapshot, resource_delta  ← global AND session scoped
  *   engine_notification
+ *   active_path_changed  ← reloads the transcript (active-path-reload.ts)
  */
 
 import type { StoreSet, StoreGet } from '../session-store-types'
@@ -27,7 +28,8 @@ import type { ResourceItem } from '@ion/shared/types-engine'
 import { extensionCommandsByKey, dispatchActivityFoldByDispatchId } from './engine-event-slice-helpers'
 import { commitInstance } from '../conversation-instance'
 import { foldActivity, activityMessages, emptyActivityState } from '../../components/agent-dispatch-activity'
-import { rDebug, rInfo, rWarn } from '../rendererLogger'
+import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
+import { reloadActivePath } from './active-path-reload'
 
 /**
  * handleCrossNormalizedEvent — cross-cutting NormalizedEvent handler (WI-001)
@@ -50,6 +52,12 @@ export function handleCrossNormalizedEvent(
   tabId: string,
   event: import('@ion/shared/types-events').NormalizedEvent,
 ): boolean {
+  if (event.type === 'active_path_changed') {
+    reloadActivePath(set, _get, tabId, event).catch((err: unknown) => {
+      rError('engine.branch', 'active path changed: reload threw', { tab_id: tabId.slice(0, 8), error: String(err) })
+    })
+    return true
+  }
   if (event.type === 'command_registry') {
     const listings = Array.isArray(event.commands) ? event.commands : []
     if (listings.length === 0) {

@@ -1,5 +1,6 @@
 import type { EngineBridge } from './engine-bridge'
 import type { DiscoveredCommand, EngineDiscoveredCommand } from '@ion/shared/types'
+import type { ConversationBranches } from '@ion/shared/conversation-branches'
 import { log as _log, warn as _warn } from '../logger'
 import { currentPrincipal, currentClaims } from '../identity/request-principal'
 import { toSessionPrincipal } from '../identity/session-principal'
@@ -203,6 +204,35 @@ export async function rewindSession(bridge: EngineBridge, key: string, target: {
     ...(typeof target.userTurnIndex === 'number' ? { userTurnIndex: target.userTurnIndex } : {}),
     ...principalPayload(),
   })
+}
+
+/** Every branch of the conversation behind `key`. Throws when the engine refuses. */
+export async function listBranches(bridge: EngineBridge, key: string): Promise<ConversationBranches> {
+  await bridge.connect()
+  log('list_branches', { key })
+  const result = await bridge._sendWithData<ConversationBranches>({ cmd: 'list_branches', key, ...principalPayload() })
+  if (!result.ok || !result.data) {
+    warn('list_branches refused', { key, error: result.error ?? '' })
+    throw new Error(result.error ?? 'the engine did not list the branches')
+  }
+  log('list_branches: result', { key, count: result.data.branches.length, leaf_id: result.data.activeLeafId })
+  return result.data
+}
+
+/**
+ * Makes the branch ending at `leafId` the conversation's active path. The
+ * engine then emits `engine_active_path_changed`, which is what reloads every
+ * client's transcript. Throws when the engine refuses (a run is active, or
+ * the id is not a branch leaf).
+ */
+export async function switchBranch(bridge: EngineBridge, key: string, leafId: string): Promise<void> {
+  await bridge.connect()
+  log('switch_branch', { key, leaf_id: leafId })
+  const result = await bridge._sendWithData({ cmd: 'switch_branch', key, leafId, ...principalPayload() })
+  if (!result.ok) {
+    warn('switch_branch refused', { key, leaf_id: leafId, error: result.error ?? '' })
+    throw new Error(result.error ?? 'the engine refused to switch the branch')
+  }
 }
 
 export async function getConversation(bridge: EngineBridge, conversationId: string, offset = 0, limit = 50): Promise<any> {

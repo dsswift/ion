@@ -78,7 +78,7 @@ final class MergedConversationViewTests: XCTestCase {
         // exists on the type, not which file holds it or its access level.
         XCTAssertTrue(src.contains("var toolbarButtons: some View"),
             "Inline toolbarButtons must exist")
-        XCTAssertTrue(src.contains("HStack(spacing: 12)"),
+        XCTAssertTrue(src.contains("HStack(spacing: IonSpace.contentGap)"),
             "Toolbar buttons render inline in an HStack")
         for glyph in ["\"folder\"", "\"arrow.triangle.branch\"", "\"terminal\""] {
             XCTAssertTrue(src.contains(glyph), "Inline toolbar must contain \(glyph) button")

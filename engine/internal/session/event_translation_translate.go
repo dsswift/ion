@@ -115,6 +115,8 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 	case *types.BackgroundTaskTerminalEvent:
 		return types.EngineEvent{Type: "engine_background_task_terminal", BackgroundTaskTerminal: &types.BackgroundTaskTerminalPayload{TaskID: e.TaskID, Status: e.Status, ExitCode: e.ExitCode, ElapsedMs: e.ElapsedMs, Command: e.Command, OutputPath: e.OutputPath, Tail: e.Tail}}
 
+	case *types.ActivePathChangedEvent:
+		return types.EngineEvent{Type: "engine_active_path_changed", ActivePathChanged: e}
 	case *types.PollStartedEvent:
 		return types.EngineEvent{Type: "engine_poll_started", PollStarted: &e.Poll}
 	case *types.PollProgressEvent:

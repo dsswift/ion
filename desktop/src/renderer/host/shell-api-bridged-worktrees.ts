@@ -33,4 +33,12 @@ export interface BridgedWorktreesShell {
   gitWorktreeRetirePreview(
     worktreePath: string,
   ): Promise<{ prunedBenchPaths: string[] }>;
+  /**
+   * Whether a worktree conversation cut in `repoPath` is ephemeral when the
+   * create does not say: the project's remembered choice, else its
+   * `.ion/worktree.json`.
+   */
+  gitWorktreeEphemeralDefault(
+    repoPath: string,
+  ): Promise<{ ephemeral: boolean; source: "project" | "manifest" }>;
 }

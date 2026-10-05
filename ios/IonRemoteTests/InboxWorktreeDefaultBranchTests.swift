@@ -67,7 +67,9 @@ final class InboxWorktreeDefaultBranchTests: XCTestCase {
                       "the action must consult the recorded default before deciding to prompt")
         XCTAssertTrue(source.contains("viewModel.createTab(workingDirectory: effectiveDirectory, useWorktree: true, sourceBranch: defaultBranch)"),
                       "a recorded default must create the worktree conversation directly, with no picker")
-        XCTAssertTrue(source.contains("viewModel.requestGitBranches(directory: effectiveDirectory)"),
-                      "the branch picker must remain the fallback when no default is recorded")
+        XCTAssertTrue(source.contains("chooseWorktreeBranch(repoPath: effectiveDirectory)"),
+                      "the branch chooser must remain the fallback when no default is recorded")
+        XCTAssertTrue(source.contains("Label(\"Choose branch…\""),
+                      "the chooser must stay reachable when a default is recorded")
     }
 }

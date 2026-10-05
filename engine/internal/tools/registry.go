@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -34,7 +35,7 @@ func GetTool(name string) *types.ToolDef {
 	return registry[name]
 }
 
-// GetAllTools returns all registered tools.
+// GetAllTools returns all registered tools, ordered by name.
 func GetAllTools() []*types.ToolDef {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -42,6 +43,7 @@ func GetAllTools() []*types.ToolDef {
 	for _, t := range registry {
 		result = append(result, t)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
 }
 
@@ -56,6 +58,10 @@ func ExecuteTool(ctx context.Context, name string, input map[string]any, cwd str
 }
 
 // GetToolDefs returns all tools in the LLM API format (name, description, input_schema).
+//
+// The result is ordered by name. The registry is a map, and a provider's prompt
+// cache is keyed on the serialized tool list, order included: an unordered list
+// reads as a different prompt on every run and the cache never hits.
 func GetToolDefs() []types.LlmToolDef {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -68,6 +74,7 @@ func GetToolDefs() []types.LlmToolDef {
 			PlanModeSafe: t.PlanModeSafe,
 		})
 	}
+	sort.Slice(defs, func(i, j int) bool { return defs[i].Name < defs[j].Name })
 	return defs
 }
 

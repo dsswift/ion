@@ -155,6 +155,9 @@ struct WorktreeRowView: View {
         // unanswerable: guessing the source branch would land work in the
         // wrong place.
         if worktree.sourceBranch == nil { words.append("source unknown") }
+        // Closing its conversation kept a worktree that was ephemeral; say why
+        // it is still here.
+        if let reason = worktree.ephemeralKeptReason { words.append("kept: \(reason)") }
         return words
     }
 
@@ -321,6 +324,14 @@ struct WorktreeRowView: View {
                             .font(IonType.microLabel)
                             .foregroundStyle(stage.color)
                             .accessibilityLabel(stage.label)
+                    }
+                    // Ephemeral: removed when its conversation closes, unless it
+                    // holds work that has not landed. Same mark as the desktop row.
+                    if worktree.ephemeral {
+                        Image(systemName: "timer")
+                            .font(IonType.microLabel)
+                            .foregroundStyle(theme.textTertiary)
+                            .accessibilityLabel("Ephemeral: removed when its conversation closes")
                     }
                     // The bench holds older content than this worktree.
                     //

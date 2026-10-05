@@ -40,7 +40,10 @@ const creating = (tabId: string) => async () => { deps.store.activeTabId = tabId
 beforeEach(() => {
   deps.store.activeTabId = 'desk-tab'
   deps.store.createTabInDirectory.mockReset().mockImplementation(creating('t-plain'))
-  deps.store.createConversationTab.mockReset().mockImplementation(creating('t-ext'))
+  // One store entry point serves both kinds; the profile is what makes it an
+  // extension-hosted conversation.
+  deps.store.createConversationTab.mockReset().mockImplementation(async (_dir: string, opts?: { profileId?: string }) =>
+    creating(opts?.profileId ? 't-ext' : 't-plain')())
   deps.store.createTerminalTab.mockReset().mockImplementation(creating('t-term'))
   deps.store.tabs = [{ id: 't-term' }]
 })
@@ -53,28 +56,36 @@ describe('createTabForClient', () => {
 
   it('creates a plain conversation with the placement the client named, skipping the duplicate check', async () => {
     await createTabForClient({ workingDirectory: '/repo', useWorktree: true, sourceBranch: 'main' })
-    expect(deps.store.createTabInDirectory).toHaveBeenCalledWith('/repo', true, true, 'main')
+    expect(deps.store.createConversationTab).toHaveBeenCalledWith('/repo', { setActive: true, useWorktree: true, sourceBranch: 'main', ephemeralWorktree: undefined })
+    expect(deps.store.createTabInDirectory).not.toHaveBeenCalled()
+  })
+
+  it('passes an ephemeral worktree request through for both conversation kinds', async () => {
+    await createTabForClient({ workingDirectory: '/repo', useWorktree: true, sourceBranch: 'main', ephemeralWorktree: true })
+    expect(deps.store.createConversationTab).toHaveBeenLastCalledWith('/repo', expect.objectContaining({ ephemeralWorktree: true }))
+    await createTabForClient({ workingDirectory: '/repo', profileId: 'example-profile', useWorktree: true, ephemeralWorktree: false })
+    expect(deps.store.createConversationTab).toHaveBeenLastCalledWith('/repo', expect.objectContaining({ profileId: 'example-profile', ephemeralWorktree: false }))
   })
 
   it('creates an extension-hosted conversation when a profile is named', async () => {
     expect(await createTabForClient({ workingDirectory: '/repo', profileId: 'example-profile', useWorktree: true, sourceBranch: 'main' })).toBe('t-ext')
-    expect(deps.store.createConversationTab).toHaveBeenCalledWith('/repo', { profileId: 'example-profile', useWorktree: true, sourceBranch: 'main' })
+    expect(deps.store.createConversationTab).toHaveBeenCalledWith('/repo', { profileId: 'example-profile', useWorktree: true, sourceBranch: 'main', ephemeralWorktree: undefined })
     expect(deps.store.createTabInDirectory).not.toHaveBeenCalled()
   })
 
   it('falls back to the configured default directory', async () => {
     await createTabForClient({})
-    expect(deps.store.createTabInDirectory).toHaveBeenCalledWith('/base', undefined, true, undefined)
+    expect(deps.store.createConversationTab).toHaveBeenCalledWith('/base', { setActive: true, useWorktree: undefined, sourceBranch: undefined, ephemeralWorktree: undefined })
   })
 
   it('answers the first tab for a repeated clientCmdId instead of making another', async () => {
     expect(await createTabForClient({ workingDirectory: '/repo', clientCmdId: 'cmd-repeat' })).toBe('t-plain')
     expect(await createTabForClient({ workingDirectory: '/repo', clientCmdId: 'cmd-repeat' })).toBe('t-plain')
-    expect(deps.store.createTabInDirectory).toHaveBeenCalledTimes(1)
+    expect(deps.store.createConversationTab).toHaveBeenCalledTimes(1)
   })
 
   it('answers null when the store refuses', async () => {
-    deps.store.createTabInDirectory.mockRejectedValue(new Error('no such directory'))
+    deps.store.createConversationTab.mockRejectedValue(new Error('no such directory'))
     expect(await createTabForClient({ workingDirectory: '/gone' })).toBeNull()
   })
 })

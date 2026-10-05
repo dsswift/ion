@@ -102,13 +102,19 @@ const mockIon = {
     calls.push(`gitIsRepo:${dir}`)
     return { isRepo: true }
   }),
-  gitWorktreeAdd: vi.fn(async (dir: string, branch: string) => {
+  gitWorktreeAdd: vi.fn(async (dir: string, branch: string, conversation?: { ephemeral?: boolean }) => {
     calls.push(`gitWorktreeAdd:${dir}@${branch}`)
     return {
       ok: true,
       worktree: { worktreePath: WORKTREE, branchName: 'wt/abc', sourceBranch: branch, repoPath: dir },
+      ephemeral: conversation?.ephemeral === true,
     }
   }),
+  gitWorktreeSetEphemeralOwner: vi.fn(async (worktreePath: string, tabId: string) => {
+    calls.push(`gitWorktreeSetEphemeralOwner:${worktreePath}@${tabId}`)
+    return { ok: true }
+  }),
+  gitWorktreeRememberChoice: vi.fn(async (..._a: any[]) => ({ ok: true })),
   createTab: vi.fn(async (..._a: any[]) => ({ tabId: 'tab-1' })),
   adoptTab: vi.fn(async (..._a: any[]) => ({ tabId: 'tab-1' })),
   engineStart: vi.fn(async (..._a: any[]) => ({ ok: true })),
@@ -128,7 +134,9 @@ vi.mock('../host-api', () => ({
   fsExists: vi.fn(async () => ({ exists: true })),
   gitIsRepo: (...args: [string]) => mockIon.gitIsRepo(...args),
   worktreesOffered: () => mockIon.worktreesOffered(),
-  gitWorktreeAdd: (...args: [string, string]) => mockIon.gitWorktreeAdd(...args),
+  gitWorktreeAdd: (...args: [string, string, { ephemeral?: boolean }?]) => mockIon.gitWorktreeAdd(...args),
+  gitWorktreeSetEphemeralOwner: (...args: [string, string]) => mockIon.gitWorktreeSetEphemeralOwner(...args),
+  gitWorktreeRememberChoice: (...args: any[]) => mockIon.gitWorktreeRememberChoice(...args),
   createTab: (...args: any[]) => mockIon.createTab(...(args as [])),
   adoptTab: (...args: any[]) => mockIon.adoptTab(...(args as [])),
   engineStart: (...args: any[]) => mockIon.engineStart(...args),
@@ -144,6 +152,7 @@ vi.mock('../host-api', () => ({
 }))
 
 import { createTabSlice } from '../slices/tab-slice'
+import { createConversationTabAction } from '../slices/engine-slice-create'
 
 function buildHarness() {
   const state: any = {
@@ -162,7 +171,7 @@ function buildHarness() {
   const slice: any = createTabSlice(set, get)
   // Slice actions call each other through get(); wire them onto the state.
   Object.assign(state, slice)
-  return { state, slice }
+  return { state, slice, set, get }
 }
 
 describe('worktree resolution ordering', () => {
@@ -247,8 +256,35 @@ describe('worktree resolution ordering', () => {
     const tabId = await slice.createTabInDirectory(REPO, true, true, 'release')
     const tab = state.tabs.find((item: any) => item.id === tabId)
 
-    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'release')
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'release', { ephemeral: undefined })
     expect(tab.worktree).toMatchObject({ sourceBranch: 'release' })
+    // Not ephemeral, so there is no owner to bind.
+    expect(mockIon.gitWorktreeSetEphemeralOwner).not.toHaveBeenCalled()
+  })
+
+  it('binds an ephemeral worktree to the new conversation before the tab exists', async () => {
+    const { state, set, get } = buildHarness()
+
+    const tabId = await createConversationTabAction(set, get)(REPO, { useWorktree: true, ephemeralWorktree: true })
+
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main', { ephemeral: true })
+    expect(mockIon.gitWorktreeSetEphemeralOwner).toHaveBeenCalledWith(WORKTREE, tabId)
+    expect(state.tabs.find((t: any) => t.id === tabId)?.workingDirectory).toBe(WORKTREE)
+    const bindIdx = calls.findIndex((c) => c.startsWith('gitWorktreeSetEphemeralOwner:'))
+    const ensureIdx = calls.findIndex((c) => c.startsWith('ensureEngineSession:'))
+    expect(bindIdx).toBeGreaterThanOrEqual(0)
+    expect(ensureIdx === -1 || bindIdx < ensureIdx).toBe(true)
+  })
+
+  it('remembers the chosen branch and ephemeral answer only when asked to', async () => {
+    const { set, get } = buildHarness()
+
+    await createConversationTabAction(set, get)(REPO, { useWorktree: true, sourceBranch: 'release', ephemeralWorktree: false, rememberWorktreeChoice: true })
+    expect(mockIon.gitWorktreeRememberChoice).toHaveBeenCalledWith(REPO, 'release', false)
+
+    mockIon.gitWorktreeRememberChoice.mockClear()
+    await createConversationTabAction(set, get)(REPO, { useWorktree: true, sourceBranch: 'release', ephemeralWorktree: true })
+    expect(mockIon.gitWorktreeRememberChoice).not.toHaveBeenCalled()
   })
 
   it('does not create a worktree when none was requested', async () => {
@@ -270,7 +306,8 @@ describe('worktree resolution ordering', () => {
     const tabId = await slice.createTab(true)
     const tab = state.tabs.find((t: any) => t.id === tabId)
 
-    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main')
+    // createTab mints the id first, so the owner rides the create itself.
+    expect(mockIon.gitWorktreeAdd).toHaveBeenCalledWith(REPO, 'main', { ownerTabId: tabId })
     expect(tab.workingDirectory).toBe(WORKTREE)
     expect(tab.worktree).toMatchObject({ worktreePath: WORKTREE })
   })

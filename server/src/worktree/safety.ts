@@ -28,6 +28,8 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { runGit, gitExec, withGitSlot } from '../git/git-runner'
+import { isListedWorktree, isOwnCheckoutRoot, unlandedOnBranch } from './checkout-presence'
+import { lookupWorktreeRegistration } from './registry-helpers'
 import { log as _log, warn as _warn } from '../logger'
 
 /**
@@ -79,6 +81,11 @@ export interface WorktreeAppraisal {
   reason?: string
   /** Set when the appraisal itself failed (worktree unreadable, git error). */
   appraisalFailed?: boolean
+  /**
+   * Set when git no longer lists the worktree: an earlier removal unregistered
+   * it and left part of the directory behind. Only the branch is appraised.
+   */
+  checkoutRemoved?: boolean
 }
 
 /** Cap on the number of paths reported, so a huge diff stays readable. */
@@ -104,6 +111,12 @@ export async function appraiseWorktree(
     safeToDiscard: false,
     reason: 'Could not determine what this worktree contains, so it is not safe to discard.',
     appraisalFailed: true,
+  }
+
+  // Git run in a directory that is no longer a checkout answers for whatever
+  // repository encloses it, so confirm the answer would be about this one.
+  if (!(await isOwnCheckoutRoot(worktreePath))) {
+    return appraiseRemovedCheckout(worktreePath, sourceBranch, unknown)
   }
 
   let uncommittedPaths: string[]
@@ -167,6 +180,47 @@ export async function appraiseWorktree(
 }
 
 /**
+ * Appraise a registered worktree whose checkout git has already dropped. No
+ * checkout means no uncommitted work survives to lose; the branch may still
+ * hold commits the source lacks. Anything else that is not a checkout root is
+ * not a worktree this appraisal can vouch for.
+ */
+async function appraiseRemovedCheckout(
+  worktreePath: string,
+  sourceBranch: string,
+  unknown: WorktreeAppraisal,
+): Promise<WorktreeAppraisal> {
+  const registration = lookupWorktreeRegistration(worktreePath)
+  if (!registration) {
+    warn('appraisal refused: not a git worktree', { worktree_path: worktreePath })
+    return unknown
+  }
+  try {
+    if (await isListedWorktree(registration.repoPath, worktreePath)) {
+      warn('appraisal refused: git lists the worktree but it is not a checkout', { worktree_path: worktreePath })
+      return unknown
+    }
+    const { count } = await unlandedOnBranch(registration.repoPath, registration.branchName, sourceBranch)
+    const fullyLanded = count === 0
+    log('appraised worktree with removed checkout', {
+      worktree_path: worktreePath, branch: registration.branchName, source_branch: sourceBranch, unlanded: count,
+    })
+    return {
+      hasUncommittedChanges: false,
+      uncommittedPaths: [],
+      unlandedCommitCount: count,
+      fullyLanded,
+      safeToDiscard: fullyLanded,
+      checkoutRemoved: true,
+      reason: fullyLanded ? undefined : `This worktree has ${count} commit${count === 1 ? '' : 's'} not yet landed in ${sourceBranch}.`,
+    }
+  } catch (err) {
+    warn('appraisal failed for removed checkout', { worktree_path: worktreePath, error: String(err) })
+    return unknown
+  }
+}
+
+/**
  * Rescue an at-risk worktree's work before it is destroyed, by leaving a
  * recoverable trace in the repository.
  *
@@ -188,10 +242,26 @@ export async function preserveWorktreeWork(
   repoPath: string,
   worktreePath: string,
   branchName: string,
+  checkoutRemoved = false,
 ): Promise<{ refs: string[]; error?: string }> {
   const refs: string[] = []
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const safeBranch = branchName.replace(/[^a-zA-Z0-9._-]+/g, '-')
+
+  // With the checkout gone there is no HEAD to read and nothing uncommitted;
+  // the branch itself is what holds the work.
+  if (checkoutRemoved) {
+    try {
+      const tip = (await runGit(repoPath, ['rev-parse', '--verify', `refs/heads/${branchName}`])).trim()
+      const ref = `refs/ion/discarded/${safeBranch}/${stamp}/head`
+      await runGit(repoPath, ['update-ref', ref, tip])
+      log('preserved branch tip of removed checkout', { ref, sha: tip.slice(0, 7) })
+      return { refs: [ref] }
+    } catch (err) {
+      warn('could not preserve branch tip of removed checkout', { worktree_path: worktreePath, error: String(err) })
+      return { refs, error: `Could not preserve the branch tip: ${String(err)}` }
+    }
+  }
 
   // 1. The branch tip — protects committed-but-unlanded work from `branch -D`.
   try {

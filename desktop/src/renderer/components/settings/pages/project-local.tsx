@@ -4,14 +4,14 @@
  * the projects enterprise policy manages. All of it lives in this device's
  * preferences store, so it shows on the local server's Projects page only.
  */
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Folders, X } from '@phosphor-icons/react'
 import type { ManagedProject, ProjectProfileOverride } from '@ion/shared/project-registry'
 import { pickDirectoryForSession } from '@ion/server/store/remote-fs-store'
 import { useColors } from '../../../theme'
 import { usePreferencesStore } from '../../../preferences'
-import { Button, CellText, Chip, DataList, IconButton, KIT, MonoLine, Muted, Select, Stack } from '../kit'
-import { rError } from '../../../rendererLogger'
+import { Button, CellText, Chip, DataList, IconButton, KIT, MonoLine, Muted, Select, Stack, TextInput } from '../kit'
+import { rError, rInfo } from '../../../rendererLogger'
 
 const ASK_VALUE = 'ask'
 const PLAIN_VALUE = 'plain'
@@ -48,6 +48,61 @@ export function ProjectProfileSelect({ dir, displayName }: { dir: string; displa
       <option value={PLAIN_VALUE}>Plain conversation</option>
       {engineProfiles.map((profile) => <option key={profile.id} value={`profile:${profile.id}`}>{profile.name}</option>)}
     </Select>
+  )
+}
+
+const FILE_DEFAULT = 'file'
+
+/**
+ * The worktree choice New Conversation remembers for this project: the
+ * source branch, and whether the worktree is ephemeral. With no branch saved,
+ * a worktree conversation asks for one; with no ephemeral answer saved, the
+ * project's `.ion/worktree.json` decides.
+ */
+export function ProjectWorktreeDefaults({ dir, displayName }: { dir: string; displayName: string }): React.JSX.Element {
+  const savedBranch = usePreferencesStore((state) => state.worktreeBranchDefaults[dir] ?? '')
+  const ephemeral = usePreferencesStore((state) => state.projects[dir]?.worktreeEphemeral)
+  const setWorktreeBranchDefault = usePreferencesStore((state) => state.setWorktreeBranchDefault)
+  const removeWorktreeBranchDefault = usePreferencesStore((state) => state.removeWorktreeBranchDefault)
+  const setProjectWorktreeEphemeral = usePreferencesStore((state) => state.setProjectWorktreeEphemeral)
+  const [branch, setBranch] = useState(savedBranch)
+  useEffect(() => { setBranch(savedBranch) }, [savedBranch])
+  const commitBranch = (): void => {
+    const next = branch.trim()
+    if (next === savedBranch) return
+    if (next) setWorktreeBranchDefault(dir, next)
+    else removeWorktreeBranchDefault(dir)
+    rInfo('settings', 'project worktree branch changed', { project: dir, branch: next || null })
+  }
+  const ephemeralValue = ephemeral === undefined ? FILE_DEFAULT : ephemeral ? 'ephemeral' : 'kept'
+  return (
+    <Stack gap={6}>
+      <TextInput
+        aria-label={`${displayName} worktree branch`}
+        mono
+        width={200}
+        placeholder="Ask each time"
+        value={branch}
+        onChange={(event) => setBranch(event.target.value)}
+        onBlur={commitBranch}
+        onKeyDown={(event) => { if (event.key === 'Enter') commitBranch() }}
+      />
+      <Select
+        aria-label={`${displayName} worktree ephemeral`}
+        width={200}
+        value={ephemeralValue}
+        onChange={(event) => {
+          const value = event.target.value
+          const next = value === FILE_DEFAULT ? undefined : value === 'ephemeral'
+          setProjectWorktreeEphemeral(dir, next)
+          rInfo('settings', 'project worktree ephemeral changed', { project: dir, ephemeral: next ?? null })
+        }}
+      >
+        <option value={FILE_DEFAULT}>As .ion/worktree.json says</option>
+        <option value="ephemeral">Ephemeral</option>
+        <option value="kept">Kept</option>
+      </Select>
+    </Stack>
   )
 }
 

@@ -74,7 +74,9 @@ final class FakeStudioConnection: StudioConnecting, @unchecked Sendable {
     }
 }
 
-/// A mapping with one action whose outcome becomes a recognisable event.
+/// A mapping with one action whose outcome becomes a recognisable event. Its
+/// follow-up is sent but stands for no event, so a test sees exactly the
+/// primary's outcome however the two answers interleave.
 private struct EchoMapping: StudioCommandMapping {
     func request(for command: RemoteCommand) -> StudioCommandRequest? {
         if case .unpair = command { return .action(StudioActionCall(action: "echo.primary"), followUps: [StudioActionCall(action: "echo.followUp")]) }
@@ -82,11 +84,13 @@ private struct EchoMapping: StudioCommandMapping {
     }
 
     func events(for command: RemoteCommand, call: StudioActionCall, result: JSONValue) -> [RemoteEvent] {
-        [.transcript(tabId: "result", requestId: result.stringValue ?? "", transcript: "", error: nil)]
+        guard call.action == "echo.primary" else { return [] }
+        return [.transcript(tabId: "result", requestId: result.stringValue ?? "", transcript: "", error: nil)]
     }
 
     func events(for command: RemoteCommand, call: StudioActionCall, failure: StudioActionFailure) -> [RemoteEvent] {
-        [.transcript(tabId: "failure", requestId: "", transcript: "", error: failure.localizedDescription)]
+        guard call.action == "echo.primary" else { return [] }
+        return [.transcript(tabId: "failure", requestId: "", transcript: "", error: failure.localizedDescription)]
     }
 }
 
@@ -261,6 +265,8 @@ final class StudioTransportTests: XCTestCase {
         connection.answer("echo.followUp", with: .success(.string("ignored")))
         try await transport.send(.unpair)
         await waitUntil("result event") { seen.values == ["transcript:result:value-1:"] }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(seen.values, ["transcript:result:value-1:"])
         XCTAssertEqual(connection.submittedActions.map(\.action), ["echo.primary", "echo.followUp"])
     }
 
@@ -270,6 +276,8 @@ final class StudioTransportTests: XCTestCase {
         connection.answer("echo.followUp", with: .failure(StudioActionFailure.timedOut(action: "echo.followUp", seconds: 1)))
         try await transport.send(.unpair)
         await waitUntil("failure event") { seen.values == ["transcript:failure::not allowed"] }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(seen.values, ["transcript:failure::not allowed"])
         XCTAssertEqual(connection.submittedActions.map(\.action), ["echo.primary", "echo.followUp"])
     }
 

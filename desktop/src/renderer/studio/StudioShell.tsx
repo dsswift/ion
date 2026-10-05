@@ -75,6 +75,7 @@ import { NewConversationPickerHost } from "../components/NewConversationPickerHo
 import { TransferDialogHost } from "./transfer/TransferDialogHost";
 import { useTrayMenuListeners } from "../hooks/useTrayMenuListeners";
 import { UpdateDialog } from "../components/UpdateDialog";
+import { BuildNoticeDialog } from "./BuildNoticeDialog";
 import { useUpdateEvents } from "../hooks/useUpdateEvents";
 import type { PaletteEntry } from "../components/command-palette-rank";
 import { host } from '../host/host-instance'
@@ -532,6 +533,7 @@ export function StudioShell(): React.JSX.Element {
         <RemoteDirectoryPicker />
         <SavePathPromptHost />
         <UpdateDialog />
+        <BuildNoticeDialog />
       </div>
     </PopoverLayerProvider>
   );

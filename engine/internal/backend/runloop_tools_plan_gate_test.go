@@ -582,22 +582,16 @@ func TestPlanGate_BashAllowlist_MultiTokenPrefixMismatch(t *testing.T) {
 	}
 }
 
-// Empty allowlist: when run.planModeAllowedBashCommands is nil/empty,
-// the gate is a no-op — the surrounding tool execution proceeds as
-// usual. In practice Bash isn't in the plan-mode tool list when the
-// allowlist is empty, but the gate code path must still no-op safely
-// because someone could call executeTools with a Bash block and an
-// empty allowlist (e.g. a misconfigured run).
-//
-// The observable signal: no plan-mode block message in the result. We
-// pick a command (`echo`) that, if executed, would just return; the
-// assertion is on the absence of the plan-mode block, not on tool
-// execution success.
-func TestPlanGate_BashAllowlist_EmptyAllowlist_NoGate(t *testing.T) {
+// Empty allowlist: Bash is refused outright in plan mode. The tool is in the
+// list the model sees in every mode, so the refusal has to happen at the call.
+func TestPlanGate_BashAllowlist_EmptyAllowlistRefusesBash(t *testing.T) {
 	b, run, _ := bashGateHelper(t, nil)
-	results, isErr := runBashGate(t, b, run, "echo no-gate")
-	if isErr && strings.Contains(results[0].Content, "Plan mode: Bash command") {
-		t.Errorf("expected empty allowlist to skip the gate (no plan-mode block), got: %s", results[0].Content)
+	results, isErr := runBashGate(t, b, run, "echo refused")
+	if !isErr {
+		t.Fatalf("expected Bash to be refused in plan mode with no allowlist, got: %s", results[0].Content)
+	}
+	if !strings.Contains(results[0].Content, "Bash is not available while planning") {
+		t.Errorf("expected the no-allowlist refusal, got: %s", results[0].Content)
 	}
 }
 

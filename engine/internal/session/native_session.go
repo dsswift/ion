@@ -217,6 +217,10 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	workingDirectory := s.config.WorkingDirectory
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
+	// A plan-mode notice this dispatch sent but could not record at the time
+	// (no conversation on disk yet). See recordCliPlanNotice.
+	pendingPlanNotice := s.pendingCliPlanNotice
+	s.pendingCliPlanNotice = nil
 	// The provider accounting this run reported, retained from its usage
 	// events (see cli_turn_usage.go). Nil when the run reported none.
 	turnUsage := s.pendingCliUsage
@@ -284,6 +288,12 @@ func (m *Manager) persistCliTurn(key, convID string) {
 				userEntry = conversation.AddUserMessage(conv, userText)
 			}
 			conversation.ClassifyEntry(userEntry, injectionKind)
+		}
+		if pendingPlanNotice != nil {
+			conversation.AddPlanModeNotice(conv, pendingPlanNotice.kind, pendingPlanNotice.text, pendingPlanNotice.planFilePath, false)
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "cli plan notice recorded with the turn", map[string]any{
+				"key": key, "conversation_id": convID, "kind": string(pendingPlanNotice.kind),
+			})
 		}
 		// Record the model that served this delegated turn, and append a
 		// model_change entry when it differs from the model the conversation

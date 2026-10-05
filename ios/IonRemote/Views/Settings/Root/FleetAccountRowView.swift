@@ -125,6 +125,11 @@ struct FleetQuotaPoolView: View {
                     .foregroundStyle(.secondary)
                     ProgressView(value: min(limit.used, limit.capacity), total: max(limit.capacity, 1))
                         .tint(share >= 90 ? .red : share >= 70 ? .orange : theme.statusDone)
+                    if let resets = Self.resetsText(limit) {
+                        Text(resets)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -136,5 +141,17 @@ struct FleetQuotaPoolView: View {
     static func detail(_ limit: FleetQuotaLimit) -> String {
         let used = Int(limit.used.rounded())
         return "\(used)% of \(Int(limit.capacity))% used · \(max(Int(limit.capacity) - used, 0))% left"
+    }
+
+    /// How many upcoming resets a limit lists.
+    static let shownResets = 3
+
+    /// "99% back in 9 hr · 42% back in 2 days": each account resets on its
+    /// own clock, so each reset says only what it gives back. Nil when none is ahead.
+    static func resetsText(_ limit: FleetQuotaLimit) -> String? {
+        guard !limit.resets.isEmpty else { return nil }
+        return limit.resets.prefix(shownResets)
+            .map { "\(Int($0.freed.rounded()))% back \($0.at.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)))" }
+            .joined(separator: " · ")
     }
 }

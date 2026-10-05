@@ -33,6 +33,22 @@ extension TabListView {
         }
     }
 
+    /// Where a worktree conversation for `projectDirectory` is cut: the
+    /// enterprise-locked base directory when policy sets one, else the project.
+    func worktreeRepoPath(for projectDirectory: String) -> String {
+        if let policy = viewModel.enterpriseNewConversationPolicy, policy.locked, !policy.baseDirectory.isEmpty {
+            return policy.baseDirectory
+        }
+        return projectDirectory
+    }
+
+    /// Open the worktree branch chooser for `repoPath` and ask for its branches.
+    func chooseWorktreeBranch(repoPath: String) {
+        DiagnosticLog.log("worktree branch chooser opened", tag: "view.inbox", fields: ["repo_path": repoPath])
+        viewModel.pendingBranchPickerRepo = repoPath
+        viewModel.requestGitBranches(directory: repoPath)
+    }
+
     /// Lookup bridge for inbox entry points that still identify a project by
     /// directory. They never synthesize a local directory default.
     func requestNewConversation(directory: String) {

@@ -86,6 +86,10 @@ extension RemoteEvent: Codable {
             self = event
             return
         }
+        if let event = try Self.decodeBranches(type: type, container: container) {
+            self = event
+            return
+        }
         // Should be unreachable: every TypeKey must be handled by exactly one family.
         throw DecodingError.dataCorruptedError(
             forKey: .type,
@@ -112,6 +116,7 @@ extension RemoteEvent: Codable {
         if try encodeQuestions(into: &container) { return }
         if try encodeGit(into: &container) { return }
         if try encodeFiles(into: &container) { return }
+        if try encodeBranches(into: &container) { return }
         // Unreachable: every case must be encoded by exactly one family.
     }
 }

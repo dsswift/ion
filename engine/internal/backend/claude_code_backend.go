@@ -289,11 +289,9 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	}
 
 	// Build the CLI argv. Extracted to buildClaudeArgs (claude_code_args.go) so
-	// the plan-mode spawn contract — read-only bypassPermissions + the mutating
-	// tools stripped via --disallowedTools, the engine plan prompt injected, and
-	// ExitPlanMode exposed through the MCP ToolServer — is unit-testable without
-	// spawning a process.
+	// the spawn contract is unit-testable without spawning a process.
 	args := buildClaudeArgs(opts)
+	observeCliPromptPrefix(run.requestID, opts.ConversationID, args)
 
 	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "spawning", map[string]any{
 		"claude_path": claudePath,
@@ -465,8 +463,8 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 					sessionID = e.SessionID
 				}
 			case *types.TaskUpdateEvent:
-				// EnterPlanMode is engine-owned in auto mode too (see
-				// wireEnterPlanModeToolServer): scan unconditionally so a
+				// EnterPlanMode is engine-owned in every mode (see
+				// wirePlanToolServer): scan unconditionally so a
 				// call anywhere in this subprocess's stream flips
 				// run.planMode immediately, with no restart. Must run before
 				// the run.planMode-gated call below so a Write/ExitPlanMode

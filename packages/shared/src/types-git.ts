@@ -216,6 +216,12 @@ export interface WorktreeMoveResult {
   error?: string
   /** Set when the operation succeeded but a side-effect (registry persist) failed. */
   warning?: string
+  /**
+   * Set when a discard asked to remove only a worktree with nothing to lose
+   * (`onlyIfSafe`) refused because the appraisal found unlanded work. `error`
+   * carries the appraisal's reason.
+   */
+  refusedUnlanded?: boolean
 }
 
 /**
@@ -389,6 +395,17 @@ export interface WorktreeInventoryEntry {
   provisionState?: WorktreeProvisionState
   /** Operator-facing reason when `provisionState` is `failed`. */
   provisionError?: string
+  /**
+   * True while this worktree is ephemeral: it was cut for one conversation and
+   * is removed when that conversation closes with nothing unlanded. Absent on
+   * an ordinary worktree.
+   */
+  ephemeral?: true
+  /**
+   * Why closing its conversation kept a worktree that was ephemeral. Present
+   * once the close turned it into an ordinary worktree instead of removing it.
+   */
+  ephemeralKeptReason?: string
   /**
    * Canonical `host/org/repo` identity of this worktree's repo (spec 10
    * Technical Approach), lazily resolved from `git remote get-url origin`

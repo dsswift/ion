@@ -430,7 +430,6 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planModeAllowedMcpTools     []string
 	planFilePath                string
-	planModePromptSent          bool
 	// lostDispatches queues the dispatches rehydrateDispatchState resolved as
 	// lost (persisted status running/suspended with a fresh, empty registry —
 	// they died with the previous engine process). announceLostDispatches
@@ -505,9 +504,24 @@ type engineSession struct {
 	recorder            *recorder.Recorder
 	toolServer          *backend.ToolServer
 	hookSettingsPath    string
-	procRegistry        *extension.ProcessRegistry
-	pending             *pending.Broker
-	resourceBroker      *resource.Broker
+	permHookServer      *backend.PermissionHookServer
+	// cliPlanPolicy holds the plan-policy inputs staged for the current
+	// delegated-CLI prompt. See stageCliPlanPolicy.
+	cliPlanPolicy backend.PlanPolicy
+	// cliImplementationPhase records that the current delegated-CLI run is
+	// carrying out an approved plan, so its EnterPlanMode tool refuses.
+	cliImplementationPhase bool
+	// pendingCliPlanNotice is a plan-mode notice this dispatch sent to the
+	// CLI but could not yet record in the conversation. persistCliTurn writes
+	// it with the turn.
+	pendingCliPlanNotice *cliPlanNotice
+	// cliPlanNoticeMemo remembers what the model was last told about plan
+	// mode when the notice was kept out of the conversation
+	// (SuppressSystemMessages, or a system_inject hook that withheld it).
+	cliPlanNoticeMemo *cliPlanNoticeMemo
+	procRegistry      *extension.ProcessRegistry
+	pending           *pending.Broker
+	resourceBroker    *resource.Broker
 
 	// mcpConnectOnce single-flights the lazy MCP connect for this session, and
 	// mcpConnectDone records (under m.mu) that it has run.

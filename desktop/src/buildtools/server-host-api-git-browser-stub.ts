@@ -133,6 +133,26 @@ export function gitWorktreeDiscard(..._args: any[]): Promise<never> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function gitWorktreeSetEphemeralOwner(..._args: any[]): Promise<never> {
+  return reject('gitWorktreeSetEphemeralOwner')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function gitWorktreeKeepEphemeral(..._args: any[]): Promise<never> {
+  return reject('gitWorktreeKeepEphemeral')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function gitWorktreeRememberChoice(..._args: any[]): Promise<never> {
+  return reject('gitWorktreeRememberChoice')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function gitWorktreeEphemeralPolicy(..._args: any[]): Promise<never> {
+  return reject('gitWorktreeEphemeralPolicy')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function gitWorktreeAppraise(..._args: any[]): Promise<never> {
   return reject('gitWorktreeAppraise')
 }

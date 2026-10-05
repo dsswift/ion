@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   readCatalog: vi.fn(async () => [] as unknown[]),
   setDefaultProject: vi.fn(),
   setProjectProfileOverride: vi.fn(),
+  setWorktreeBranchDefault: vi.fn(),
+  removeWorktreeBranchDefault: vi.fn(),
+  setProjectWorktreeEphemeral: vi.fn(),
   addWorkspaceFolder: vi.fn(),
   removeWorkspaceFolder: vi.fn(),
   pickDirectory: vi.fn(async () => '/lib/new' as string | null),
@@ -104,10 +107,14 @@ beforeEach(() => {
   mocks.prefs = {
     projects: { '/h/src/mine': { addedManually: true, lastUsedAt: 0, isDefault: true } },
     workspaceFolders: { '/h/src/ion': ['/lib/shared'] },
+    worktreeBranchDefaults: { '/h/src/ion': 'main' },
     engineProfiles: [{ id: 'dev', name: 'Development', extensions: [] }],
     enterprisePolicy: null,
     setDefaultProject: mocks.setDefaultProject,
     setProjectProfileOverride: mocks.setProjectProfileOverride,
+    setWorktreeBranchDefault: mocks.setWorktreeBranchDefault,
+    removeWorktreeBranchDefault: mocks.removeWorktreeBranchDefault,
+    setProjectWorktreeEphemeral: mocks.setProjectWorktreeEphemeral,
     addWorkspaceFolder: mocks.addWorkspaceFolder,
     removeWorkspaceFolder: mocks.removeWorkspaceFolder,
   }
@@ -261,6 +268,37 @@ describe('ProjectsPage on this device', () => {
     expect(mocks.removeWorkspaceFolder).toHaveBeenCalledWith('/h/src/ion', '/lib/shared')
     await click(button('Add folder to ion'))
     expect(mocks.addWorkspaceFolder).toHaveBeenCalledWith('/h/src/ion', '/lib/new')
+  })
+
+  it('shows and changes the remembered worktree branch and ephemeral choice', async () => {
+    serve({ 'environment.projects.list': () => [alpha] })
+    await mount()
+    await click(row('ion'))
+    const branch = document.body.querySelector('[aria-label="ion worktree branch"]') as HTMLInputElement
+    const ephemeral = document.body.querySelector('[aria-label="ion worktree ephemeral"]') as HTMLSelectElement
+    expect(branch.value).toBe('main')
+    expect(ephemeral.value).toBe('file')
+    await act(async () => {
+      ephemeral.value = 'ephemeral'
+      ephemeral.dispatchEvent(new Event('change', { bubbles: true }))
+      await flush()
+    })
+    expect(mocks.setProjectWorktreeEphemeral).toHaveBeenCalledWith('/h/src/ion', true)
+    await act(async () => {
+      ephemeral.value = 'file'
+      ephemeral.dispatchEvent(new Event('change', { bubbles: true }))
+      await flush()
+    })
+    expect(mocks.setProjectWorktreeEphemeral).toHaveBeenLastCalledWith('/h/src/ion', undefined)
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      setValue.call(branch, '')
+      branch.dispatchEvent(new Event('input', { bubbles: true }))
+      await flush()
+      branch.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+      await flush()
+    })
+    expect(mocks.removeWorktreeBranchDefault).toHaveBeenCalledWith('/h/src/ion')
   })
 
   it('clears the default from the row menu', async () => {

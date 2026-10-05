@@ -76,41 +76,31 @@ type activeRun struct {
 	planMode          bool                     // true when this run is in plan mode
 	planFilePath      string                   // only writable file during plan mode
 	// planModeSparseReminderOverride is the harness-supplied sparse reminder text
-	// resolved once at run setup from RunOptions.PlanModeSparseReminder (highest
-	// priority) or the plan_mode_prompt hook's SparseReminder return field.
-	// Empty means "use buildPlanModeSparseReminder at injection time" (the
-	// engine default). Set in runloop_setup.go alongside planFilePath.
+	// resolved from RunOptions.PlanModeSparseReminder (highest priority) or the
+	// plan_mode_prompt hook's SparseReminder return field. Empty means "use
+	// buildPlanModeSparseReminder" (the engine default).
 	planModeSparseReminderOverride string
-	// planModeReminderTurn is the turn number on which the sparse plan-mode
-	// reminder last fired. The reminder is throttled to once per
-	// planModeReminderInterval turns to avoid the ~per-tool-round churn that
-	// previously anchored AskUserQuestion-as-turn-ender behavior in the model.
-	// Reset to 0 whenever a run re-enters plan mode via the EnterPlanMode
-	// sentinel so the throttle does not silence the first post-entry reminder.
-	planModeReminderTurn int
-	// planModeAllowedBashCommands is the set of command prefixes that the
-	// Bash tool is allowed to execute during plan mode. When non-empty,
-	// Bash is included in the plan-mode tool list but gated at execution
-	// time — only commands whose leading token(s) match one of these
-	// prefixes are permitted. Set from RunOptions.PlanModeAllowedBashCommands
-	// in buildToolDefs.
+	// planModePromptOverride is the harness-supplied plan-mode instruction
+	// text (RunOptions.PlanModePrompt, else the plan_mode_prompt hook). Empty
+	// means the engine default. Resolved once per run; see
+	// resolvePlanModeHarness.
+	planModePromptOverride string
+	// planHarnessResolved latches that resolvePlanModeHarness ran.
+	planHarnessResolved bool
+	// planNoticeMemo remembers a plan-mode notice this run delivered or
+	// withheld without writing it to the entry tree. Nil when the tree is the
+	// whole record. See reconcilePlanMode.
+	planNoticeMemo *planNoticeMemo
+	// planModeAllowedBashCommands is the set of command prefixes Bash may run
+	// while the run is planning: the session allowlist plus this prompt's
+	// additions, clamped by enterprise policy. Empty means Bash is refused in
+	// plan mode. Resolved once at run creation; it never persists to the
+	// session.
 	planModeAllowedBashCommands []string
-
-	// toolDefsBuiltForPlanMode records the plan-mode state that the run's
-	// current tool list was assembled under. runLoop builds the tool defs
-	// once before the turn loop (cheap: buildToolDefs reassembles MCP and
-	// external tool defs, so rebuilding unconditionally every turn would
-	// pay that cost for nothing). But plan mode can flip MID-run — the
-	// model calls the EnterPlanMode sentinel (runloop_plan_mode_gates.go)
-	// and run.planMode becomes true partway through the loop. When that
-	// happens the tool list the provider sees is stale: it still carries
-	// the auto-mode set (EnterPlanMode present, ExitPlanMode absent), so
-	// the model is told to finish via ExitPlanMode and has no such tool.
-	//
-	// runLoop compares this field against run.planMode at the top of every
-	// turn and rebuilds when they diverge. Both directions are covered
-	// (enter and, if a future path ever flips it back, exit).
-	toolDefsBuiltForPlanMode bool
+	// planModeTools is the read-only tool set the plan policy allows for this
+	// run: the harness-supplied list when there is one. Empty means the
+	// policy falls back to RunOptions.PlanModeTools, then defaultPlanModeTools.
+	planModeTools []string
 
 	// planModeAutoExitEnabled records the effective auto-exit setting for
 	// this run, resolved at run setup from (in precedence order):

@@ -140,6 +140,10 @@ final class ContractSyncTests: XCTestCase {
       "model_fallback":
         "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
         + "rather than decoded live, so the indicator survives reconnect.",
+      "active_path_changed":
+        "Engine-socket signal. The server reloads the conversation's history "
+        + "from the engine and republishes it as a transcript replace; the "
+        + "desktop<->iOS wire has no desktop_active_path_changed member.",
       "poll_started":
         "Engine-socket lifecycle signal. The desktop projects authoritative poll "
         + "state through RemoteTabState.activePolls and pollsWaiting; the "

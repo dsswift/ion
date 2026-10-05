@@ -44,16 +44,6 @@ jobs:
         if: steps.check-activity.outputs.has_commits == 'true'
         run: docker pull ghcr.io/${{ github.repository }}/engine:latest
 
-      - name: Materialize engine config
-        if: steps.check-activity.outputs.has_commits == 'true'
-        env:
-          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ion-data/.ion
-          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-data/.ion/engine.json
-          chmod 600 /tmp/ion-data/.ion/engine.json
-
       - name: Build highlights context document
         if: steps.check-activity.outputs.has_commits == 'true'
         env:
@@ -97,20 +87,9 @@ jobs:
 
       - name: Generate summary with ion
         if: steps.check-activity.outputs.has_commits == 'true'
-        run: |
-          set -euo pipefail
-          # Keep the prompt on stdin and bound the full container lifetime.
-          timeout 4m docker run --rm -i \
-            -v /tmp/ion-data:/data \
-            ghcr.io/${{ github.repository }}/engine:latest \
-            prompt - \
-            --output text \
-            --no-extensions \
-            --timeout 3m \
-            --max-budget 1.00 \
-            < /tmp/ion-prompt.txt \
-            > /tmp/summary.md
-          echo "Summary size: $(wc -c < /tmp/summary.md) bytes"
+        env:
+          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
+        run: bash .github/scripts/run-ion-prompt.sh ghcr.io/${{ github.repository }}/engine:latest /tmp/ion-prompt.txt /tmp/summary.md
 
       - name: Post to Discord
         if: steps.check-activity.outputs.has_commits == 'true'

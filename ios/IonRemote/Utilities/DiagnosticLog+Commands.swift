@@ -11,14 +11,18 @@ extension DiagnosticLog {
         case .sync:
             log("CMD: sync", tag: "ipc", level: .info)
 
-        case .createTab(let dir, let profileId, _, _, let useWorktree, let sourceBranch):
+        case .createTab(let dir, let profileId, _, _, let useWorktree, let sourceBranch, let ephemeral, let remember):
             if let profileId {
                 log("CMD: createTab(engine) dir=\(dir?.suffix(30) ?? "nil") profile=\(profileId)", tag: "ipc", level: .info)
             } else {
                 log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil")", tag: "ipc", level: .info)
             }
             if useWorktree == true || sourceBranch != nil {
-                log("CMD: createTab worktree source=\(sourceBranch ?? "default")", tag: "ipc", level: .info)
+                log("CMD: createTab worktree", tag: "ipc", level: .info, fields: [
+                    "source_branch": sourceBranch ?? "default",
+                    "ephemeral": ephemeral.map(String.init) ?? "default",
+                    "remember": String(remember == true),
+                ])
             }
 
         // ── Worktree + integration bench ──
@@ -316,6 +320,10 @@ extension DiagnosticLog {
 
         case .loadAttachments(let tabId):
             log("CMD: loadAttachments tab=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .listBranches(let tabId):
+            log("CMD: listBranches tab=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .switchBranch(let tabId, let leafId):
+            log("CMD: switchBranch tab=\(tabId.prefix(8)) leaf=\(leafId)", tag: "ipc", level: .info)
 
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)", tag: "ipc", level: .info)

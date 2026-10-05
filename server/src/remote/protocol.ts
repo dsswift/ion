@@ -330,6 +330,9 @@ export type RemoteEvent =
   // history, matching the desktop's pre-send gate.
   | { type: 'desktop_discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill'; origin?: 'ion' | 'claude'; clearsConversation?: boolean }> }
   | { type: 'desktop_tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
+  // Synthesized on the phone from `engine.listBranches` / `engine.switchBranch` answers.
+  | { type: 'desktop_conversation_branches'; tabId: string; listing: import('@ion/shared/conversation-branches').ConversationBranches }
+  | { type: 'desktop_branch_switch_result'; tabId: string; error?: string }
   /**
    * Request iOS diagnostic logs newer than `sinceSeq`. sinceSeq=0 requests
    * the full history; higher values request only lines whose `fields.seq`

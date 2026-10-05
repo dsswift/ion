@@ -43,3 +43,4 @@ export {
   runDurationLabel,
 } from "./RunDurationFooter";
 export { ScrollToBottomButton } from "./ScrollToBottomButton";
+export { BranchSwitcher } from "./BranchSwitcher";

@@ -28,6 +28,7 @@ import {
   appraiseRefPair, commitSubject, pruneAppraisalCache, type AppraisalCounters,
 } from './inventory-appraise'
 import { getProvisionState } from './provision-state'
+import { lookupEphemeralState } from './registry-ephemeral'
 import { probeOperationState } from '../git/operation-state'
 import {
   lookupSourceBranch, lookupWorktreeTitle, lookupWorktreeLandedAt, lookupWorktreeStage,
@@ -264,6 +265,7 @@ export async function inventoryWorktreesDetailed(
     // record (created before provisioning existed, or before a restart) simply
     // omits the field rather than claiming a state it cannot know.
     const provision = getProvisionState(wt.path)
+    const ephemeral = lookupEphemeralState(wt.path)
 
     entries.push({
       worktreePath: wt.path,
@@ -283,6 +285,8 @@ export async function inventoryWorktreesDetailed(
       conflictedPaths: operation.conflictedPaths.length > 0 ? operation.conflictedPaths : undefined,
       provisionState: provision?.state,
       provisionError: provision?.error,
+      ephemeral: ephemeral.ephemeral ? true : undefined,
+      ephemeralKeptReason: ephemeral.keptReason,
     })
   }
 

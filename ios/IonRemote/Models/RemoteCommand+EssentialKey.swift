@@ -29,6 +29,8 @@ extension RemoteCommand {
             return "loadDispatchTranscript:\(conversationId):\(dispatchId)"
         case .loadAttachments(let tabId):
             return "loadAttachments:\(tabId)"
+        case .listBranches(let tabId):
+            return "listBranches:\(tabId)"
         case .discoverCommands(let dir):
             return "discoverCommands:\(dir)"
         case .requestTerminalSnapshot(let tabId):

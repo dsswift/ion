@@ -69,6 +69,29 @@ final class StudioCommandResultTests: XCTestCase {
         XCTAssertFalse(switchTo)
     }
 
+    func testBranchesAnswerTheListingAndARefusedSwitchSaysWhy() {
+        guard case .conversationBranches(let tabId, let listing) = events(.listBranches(tabId: "t1"), "engine.listBranches", .object([
+            "activeLeafId": .string("b"),
+            "branchPoints": .array([]),
+            "branches": .array([
+                .object(["leafId": .string("a"), "timestamp": .int(1), "preview": .string("reply A"), "messageCount": .int(4), "forkPointId": .string("f"), "active": .bool(false)]),
+                .object(["leafId": .string("b"), "timestamp": .int(2), "preview": .string("reply B"), "messageCount": .int(4), "active": .bool(true)]),
+            ]),
+        ])).first else { return XCTFail("expected the branches") }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(listing.branches.map(\.leafId), ["a", "b"])
+        XCTAssertEqual(listing.branches.map(\.active), [false, true])
+
+        let command = RemoteCommand.switchBranch(tabId: "t1", leafId: "a")
+        guard case .branchSwitchResult(_, let accepted) = events(command, "engine.switchBranch", .null).first
+        else { return XCTFail("expected a switch result") }
+        XCTAssertNil(accepted)
+        let refused = mapping.events(for: command, call: .positional("engine.switchBranch"),
+                                     failure: .refused(code: "action_failed", message: "a run is active"))
+        guard case .branchSwitchResult(_, let error) = refused.first else { return XCTFail("expected a refusal") }
+        XCTAssertNotNil(error)
+    }
+
     // MARK: - Git
 
     func testAStagedFileAnswersTheOutcomeAndThenTheRefreshedChanges() {

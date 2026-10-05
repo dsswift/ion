@@ -159,8 +159,19 @@ export interface FleetQuotaLimit {
   capacity: number
   /** Percent used, summed over those accounts. A window that reset since it was read counts as unused. */
   used: number
-  /** The soonest reset still ahead among those accounts. */
-  nextReset?: string
+  /**
+   * The resets still ahead that give quota back, soonest first. Each account
+   * resets on its own clock, so one reset frees only the use of the accounts
+   * whose window ends then.
+   */
+  resets: FleetQuotaReset[]
+}
+
+/** One upcoming reset of a summed limit: when it comes and how much it gives back. */
+export interface FleetQuotaReset {
+  at: string
+  /** Percent freed: the use of every account whose window resets at `at`. */
+  freed: number
 }
 
 /** One provider's quota across the Fleet: every account of it, signed in now or seen in the last 30 days. */
@@ -191,13 +202,18 @@ export function fleetQuotaPools(rows: readonly FleetAccountRow[], now: number): 
     pool.accounts += 1
     for (const limit of row.limits) {
       if (limit.kind === 'spend') continue
-      const sum = pool.limits.get(limitKey(limit)) ?? { kind: limit.kind, label: limit.label, accounts: 0, capacity: 0, used: 0 }
+      const sum = pool.limits.get(limitKey(limit)) ?? { kind: limit.kind, label: limit.label, accounts: 0, capacity: 0, used: 0, resets: [] }
       sum.accounts += 1
       sum.capacity += 100
       if (!fleetLimitExpired(limit, now)) {
-        sum.used += Math.min(Math.max(limit.percent, 0), 100)
-        const resets = limit.resetsAt ? Date.parse(limit.resetsAt) : NaN
-        if (resets > now && (!sum.nextReset || resets < Date.parse(sum.nextReset))) sum.nextReset = limit.resetsAt
+        const used = Math.min(Math.max(limit.percent, 0), 100)
+        sum.used += used
+        const at = limit.resetsAt ? Date.parse(limit.resetsAt) : NaN
+        if (limit.resetsAt && at > now && used > 0) {
+          const same = sum.resets.find((reset) => Date.parse(reset.at) === at)
+          if (same) same.freed += used
+          else sum.resets.push({ at: limit.resetsAt, freed: used })
+        }
       }
       pool.limits.set(limitKey(limit), sum)
     }
@@ -207,7 +223,9 @@ export function fleetQuotaPools(rows: readonly FleetAccountRow[], now: number): 
     .map(([provider, pool]) => ({
       provider,
       accounts: pool.accounts,
-      limits: [...pool.limits.values()].sort((a, b) => quotaLimitOrder(a).localeCompare(quotaLimitOrder(b))),
+      limits: [...pool.limits.values()]
+        .map((limit) => ({ ...limit, resets: limit.resets.sort((a, b) => Date.parse(a.at) - Date.parse(b.at)) }))
+        .sort((a, b) => quotaLimitOrder(a).localeCompare(quotaLimitOrder(b))),
     }))
     .sort((a, b) => getProviderDisplayName(a.provider).localeCompare(getProviderDisplayName(b.provider), undefined, { sensitivity: 'base' }))
 }

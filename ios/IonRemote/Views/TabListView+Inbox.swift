@@ -172,18 +172,11 @@ extension TabListView {
             }
             if viewModel.developerSurfaces.worktrees {
             Button {
-                let effectiveDirectory: String
-                if let policy = viewModel.enterpriseNewConversationPolicy,
-                   policy.locked,
-                   !policy.baseDirectory.isEmpty {
-                    effectiveDirectory = policy.baseDirectory
-                } else {
-                    effectiveDirectory = project.id
-                }
-                // When the desktop already records a default source branch for
-                // this repo, create the worktree conversation directly with it
-                // -- exactly as the desktop does -- rather than prompting. The
-                // picker is only for a repo with no recorded default.
+                let effectiveDirectory = worktreeRepoPath(for: project.id)
+                // When the project remembers a source branch, create the
+                // worktree conversation directly with it, exactly as the
+                // desktop does. The server applies the remembered ephemeral
+                // answer. The chooser is only for a repo with no saved branch.
                 if let defaultBranch = viewModel.worktreeState(for: effectiveDirectory)?.defaultSourceBranch,
                    !defaultBranch.isEmpty {
                     DiagnosticLog.log("creating worktree conversation from recorded default", tag: "view.inbox", fields: [
@@ -192,11 +185,17 @@ extension TabListView {
                     ])
                     viewModel.createTab(workingDirectory: effectiveDirectory, useWorktree: true, sourceBranch: defaultBranch)
                 } else {
-                    viewModel.pendingBranchPickerRepo = effectiveDirectory
-                    viewModel.requestGitBranches(directory: effectiveDirectory)
+                    chooseWorktreeBranch(repoPath: effectiveDirectory)
                 }
             } label: {
                 Label("New worktree conversation", systemImage: "arrow.triangle.branch")
+            }
+            // The override: the chooser even when a branch is remembered,
+            // with that branch marked and the remembered answers preselected.
+            Button {
+                chooseWorktreeBranch(repoPath: worktreeRepoPath(for: project.id))
+            } label: {
+                Label("Choose branch…", systemImage: "arrow.triangle.pull")
             }
             }
         }

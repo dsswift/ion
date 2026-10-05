@@ -14,17 +14,16 @@ import (
 // stream (sawExitPlanMode / pendingQuestionDenials).
 //
 // Prose is not enforcement. A model that keeps going after presenting its plan
-// runs headlong into the plan-mode tool revocation: Write, Edit, and Bash are
-// stripped from a plan-mode spawn via --disallowedTools, so every subsequent
-// call returns "No such tool available: <tool>. <tool> is disabled for this
-// session". The CLI answers each one and lets the model try again, so the run
+// runs headlong into the plan-mode boundary: Write, Edit, and Bash are refused
+// while the session is planning, so every subsequent call comes back as a
+// refusal. The CLI answers each one and lets the model try again, so the run
 // burns turns and tokens on refusals until it exhausts its own limit — with a
 // transcript full of failed tool calls the operator reads as a broken engine.
 //
 // The engine owns the turn boundary, so the engine enforces it: once a
 // turn-ending tool is observed in the stream, the run is sealed and the
 // subprocess is stopped. The already-captured plan or question rides out on the
-// result event exactly as before, and no revoked-tool refusal is ever produced.
+// result event exactly as before, and no plan-mode refusal is ever produced.
 //
 // Sealing is deliberately NOT "cancel the run": the plan and question payloads
 // are captured from the assistant stream before this point, and the CLI's own

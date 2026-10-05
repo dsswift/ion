@@ -30,38 +30,58 @@ func hasFlag(args []string, flag string) bool {
 	return false
 }
 
-// TestBuildClaudeArgs_PlanModeReadOnly pins the plan-mode spawn contract: the
-// engine owns plan mode, so the CLI is spawned read-only under bypassPermissions
-// with the mutating tools stripped and the plan prompt injected — NOT under the
-// broken native "--permission-mode plan". Revert buildClaudeArgs to
-// permMode="plan" for plan mode and this goes red.
-func TestBuildClaudeArgs_PlanModeReadOnly(t *testing.T) {
-	planPath := filepath.Join(t.TempDir(), "plan.md") // does not exist -> fresh plan
-	args := buildClaudeArgs(types.RunOptions{
-		PlanMode:     true,
-		PlanFilePath: planPath,
-		McpConfig:    "/tmp/mcp.json",
-		Model:        "claude-sonnet-4-5",
-	})
+// TestBuildClaudeArgs_IsModeInvariant pins the cache contract for a claude-code
+// spawn. The arguments decide the tools and system prompt the CLI sends to its
+// provider, and that prompt is cached as a prefix, so a plan run, an auto run,
+// and an implementation run must be spawned with the same arguments.
+//
+// Plan mode reaches the run through the hook server, the MCP ToolServer, and a
+// notice on the user turn instead. Revert-check: put --disallowedTools or the
+// plan prompt back into buildClaudeArgs and this goes red.
+func TestBuildClaudeArgs_IsModeInvariant(t *testing.T) {
+	planPath := filepath.Join(t.TempDir(), "plan.md")
+	base := types.RunOptions{
+		McpConfig:          "/tmp/mcp.json",
+		HookSettingsPath:   "/tmp/settings.json",
+		Model:              "claude-sonnet-4-5",
+		AppendSystemPrompt: "Tool name aliases: ...",
+		PlanFilePath:       planPath,
+	}
+	auto := buildClaudeArgs(base)
 
-	if got := flagValue(args, "--permission-mode"); got != "bypassPermissions" {
-		t.Fatalf("plan mode --permission-mode = %q, want bypassPermissions (native plan mode is broken headless)", got)
-	}
-	disallowed := flagValue(args, "--disallowedTools")
-	if disallowed == "" {
-		t.Fatal("plan mode must pass --disallowedTools to enforce read-only")
-	}
-	for _, tool := range []string{"Write", "Edit", "Bash", "NotebookEdit"} {
-		if !strings.Contains(disallowed, tool) {
-			t.Errorf("--disallowedTools %q missing mutating tool %q", disallowed, tool)
+	plan := base
+	plan.PlanMode = true
+	plan.PlanModePrompt = "HARNESS PLAN PROMPT"
+	plan.PlanModeAllowedBashCommands = []string{"gh"}
+	implement := base
+	implement.ImplementationPhase = true
+
+	for name, opts := range map[string]types.RunOptions{"plan": plan, "implement": implement} {
+		if got := buildClaudeArgs(opts); !reflect.DeepEqual(got, auto) {
+			t.Errorf("%s spawn differs from the auto spawn:\nauto %v\n%s %v", name, auto, name, got)
 		}
 	}
-	appendPrompt := flagValue(args, "--append-system-prompt")
-	if !strings.Contains(appendPrompt, "[PLAN MODE]") {
-		t.Errorf("plan prompt not injected into --append-system-prompt: %q", appendPrompt)
+	if hasFlag(auto, "--disallowedTools") {
+		t.Errorf("no spawn may remove tools by flag; got --disallowedTools %q", flagValue(auto, "--disallowedTools"))
 	}
-	if !strings.Contains(appendPrompt, "ExitPlanMode") {
-		t.Errorf("plan prompt must instruct the model to call ExitPlanMode: %q", appendPrompt)
+	if got := flagValue(buildClaudeArgs(plan), "--append-system-prompt"); strings.Contains(got, "PLAN") {
+		t.Errorf("plan-mode text must not be in the system prompt: %q", got)
+	}
+	if got := flagValue(auto, "--permission-mode"); got != "bypassPermissions" {
+		t.Fatalf("--permission-mode = %q, want bypassPermissions (native plan mode is broken headless)", got)
+	}
+}
+
+// TestBuildClaudeArgs_PermissionModeCliOverride verifies a caller override is
+// honored, in plan mode as in any other.
+func TestBuildClaudeArgs_PermissionModeCliOverride(t *testing.T) {
+	for _, opts := range []types.RunOptions{
+		{PermissionModeCli: "acceptEdits"},
+		{PermissionModeCli: "acceptEdits", PlanMode: true},
+	} {
+		if got := flagValue(buildClaudeArgs(opts), "--permission-mode"); got != "acceptEdits" {
+			t.Fatalf("plan=%v: --permission-mode = %q, want acceptEdits", opts.PlanMode, got)
+		}
 	}
 }
 
@@ -81,10 +101,7 @@ func TestBuildClaudeArgs_AutoModeKeepsNativeTools(t *testing.T) {
 		t.Fatalf("auto mode --permission-mode = %q, want bypassPermissions", got)
 	}
 	if hasFlag(args, "--disallowedTools") {
-		t.Errorf("auto mode passed --disallowedTools %q; removal is reserved for the plan-mode boundary", flagValue(args, "--disallowedTools"))
-	}
-	if strings.Contains(flagValue(args, "--append-system-prompt"), "[PLAN MODE]") {
-		t.Error("auto mode must not inject the plan prompt")
+		t.Errorf("auto mode passed --disallowedTools %q; no spawn removes tools by flag", flagValue(args, "--disallowedTools"))
 	}
 }
 
@@ -133,21 +150,6 @@ func TestBuildClaudeArgs_McpConfigDrivesWildcard(t *testing.T) {
 	}
 	if allowed := flagValue(without, "--allowedTools"); strings.Contains(allowed, wildcard) {
 		t.Errorf("without McpConfig: --allowedTools %q must not contain the MCP wildcard", allowed)
-	}
-}
-
-// TestBuildClaudeArgs_PermissionModeCliOverride verifies a caller override is
-// honored for a non-plan run, and that plan mode always wins over it (plan mode
-// requires the engine-owned read-only spawn).
-func TestBuildClaudeArgs_PermissionModeCliOverride(t *testing.T) {
-	nonPlan := buildClaudeArgs(types.RunOptions{PermissionModeCli: "acceptEdits"})
-	if got := flagValue(nonPlan, "--permission-mode"); got != "acceptEdits" {
-		t.Fatalf("non-plan override --permission-mode = %q, want acceptEdits", got)
-	}
-
-	plan := buildClaudeArgs(types.RunOptions{PlanMode: true, PermissionModeCli: "acceptEdits"})
-	if got := flagValue(plan, "--permission-mode"); got != "bypassPermissions" {
-		t.Fatalf("plan mode must ignore PermissionModeCli, got --permission-mode = %q", got)
 	}
 }
 

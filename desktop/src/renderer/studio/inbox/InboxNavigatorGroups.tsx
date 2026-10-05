@@ -86,6 +86,7 @@ export function InboxNavigatorGroups({
     environmentId: string;
     useWorktree: boolean;
     sourceBranch?: string;
+    chooseBranch: boolean;
   } | null>(null);
   // The operation ledger is the shared source of truth for row busy and lock
   // state. Do not keep local promise state here: Studio mirrors receive ledger
@@ -159,13 +160,14 @@ export function InboxNavigatorGroups({
   };
   // `directory` is a path on `environmentId`, the header's own machine; the
   // picker opens the conversation there. The saved branch default is yours
-  // on THAT machine, keyed by a path that exists there.
-  const openProjectConversation = (directory: string, environmentId: string, useWorktree: boolean): void => {
+  // on THAT machine, keyed by a path that exists there. `chooseBranch` shows
+  // the branch step even when a branch is saved, with that branch preselected.
+  const openProjectConversation = (directory: string, environmentId: string, useWorktree: boolean, chooseBranch = false): void => {
     const sourceBranch = useWorktree
       ? serverSettingOf(environmentId, 'worktreeBranchDefaults', isStringRecord, {})[directory]
       : undefined;
-    rInfo("inbox.navigator", "project conversation requested", { directory, environment_id: environmentId, use_worktree: useWorktree });
-    setConversationPicker({ directory, environmentId, useWorktree, sourceBranch });
+    rInfo("inbox.navigator", "project conversation requested", { directory, environment_id: environmentId, use_worktree: useWorktree, choose_branch: chooseBranch, saved_branch: sourceBranch ?? null });
+    setConversationPicker({ directory, environmentId, useWorktree, sourceBranch, chooseBranch });
   };
   const parts: React.JSX.Element[] = [];
   const workingTabIds = new Set(
@@ -508,8 +510,8 @@ export function InboxNavigatorGroups({
         onNewConversation={() =>
           openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, false)
         }
-        onNewWorktreeConversation={() =>
-          openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, true)
+        onNewWorktreeConversation={(chooseBranch) =>
+          openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, true, chooseBranch)
         }
         onClose={() => setProjectMenu(null)}
       />,
@@ -523,6 +525,7 @@ export function InboxNavigatorGroups({
         initialEnvironmentId={conversationPicker.environmentId}
         initialUseWorktree={conversationPicker.useWorktree}
         initialSourceBranch={conversationPicker.sourceBranch}
+        initialChooseBranch={conversationPicker.chooseBranch}
         onClose={() => setConversationPicker(null)}
       />,
     );

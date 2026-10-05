@@ -332,6 +332,10 @@ extension DiagnosticLog {
 
         case .tabAttachments(let tabId, let attachments):
             log("EVENT: tabAttachments tab=\(tabId.prefix(8)) count=\(attachments.count)", tag: "session", level: .info)
+        case .conversationBranches(let tabId, let listing):
+            log("EVENT: conversationBranches tab=\(tabId.prefix(8)) count=\(listing.branches.count)", tag: "session", level: .info)
+        case .branchSwitchResult(let tabId, let error):
+            log("EVENT: branchSwitchResult tab=\(tabId.prefix(8)) error=\(error ?? "")", tag: "session", level: error == nil ? .info : .warn)
 
         case .requestDiagnosticLogs:
             log("EVENT: requestDiagnosticLogs", tag: "session", level: .info)

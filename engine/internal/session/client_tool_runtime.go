@@ -51,8 +51,11 @@ func boundedClientToolValidationDiagnostic(err error) string {
 //
 // Filtering applied here, before any backend adapter sees the set:
 //   - empty names (invalid declaration entries)
-//   - plan-mode safety: a plan-mode run drops tools not marked PlanModeSafe
 //   - AllowedTools (when non-nil, the run's allowlist) and SuppressTools
+//
+// The run's mode is not a filter. A client tool that is not plan-safe stays in
+// the set and is refused when a planning session calls it (backend.PlanPolicy),
+// so the set a backend advertises does not change with the mode.
 //
 // Collision handling with extension/MCP tools deliberately stays at each
 // adapter seam (wireClientTools for API, the ToolServer registration for
@@ -77,14 +80,10 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 	}
 
 	filtered := make([]types.ClientToolDef, 0, len(gateCfg.ClientTools))
-	var droppedPlanMode, droppedPolicy int
+	var droppedPolicy int
 	for _, ct := range gateCfg.ClientTools {
 		if ct.Name == "" {
 			utils.LogWithFields(utils.LevelWarn, "session.toolgate", "client tool with empty name skipped", map[string]any{"key": key})
-			continue
-		}
-		if opts.PlanMode && !ct.PlanModeSafe {
-			droppedPlanMode++
 			continue
 		}
 		if suppressed[ct.Name] || (allowed != nil && !allowed[ct.Name]) {
@@ -95,7 +94,7 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 	}
 	if len(filtered) == 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.toolgate", "client tool runtime empty after filtering", map[string]any{
-			"key": key, "declared": len(gateCfg.ClientTools), "dropped_plan_mode": droppedPlanMode, "dropped_policy": droppedPolicy,
+			"key": key, "declared": len(gateCfg.ClientTools), "dropped_policy": droppedPolicy,
 		})
 		return
 	}
@@ -141,7 +140,7 @@ func (m *Manager) buildClientToolRuntime(s *engineSession, key string, opts *typ
 	opts.ClientToolSignature = clientToolSignature(machineTools)
 
 	utils.LogWithFields(utils.LevelInfo, "session.toolgate", "client tool runtime built", map[string]any{
-		"key": key, "count": len(filtered), "dropped_plan_mode": droppedPlanMode, "dropped_policy": droppedPolicy,
+		"key": key, "count": len(filtered), "dropped_policy": droppedPolicy,
 		"signature": opts.ClientToolSignature,
 	})
 }

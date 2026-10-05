@@ -331,6 +331,18 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		tree := s.manager.GetSessionTree(cmd.Key)
 		s.sendResult(conn, cmd, nil, tree)
 
+	case "list_branches":
+		listing, err := s.manager.ListSessionBranches(cmd.Key)
+		if err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			return
+		}
+		s.sendResult(conn, cmd, nil, listing)
+
+	case "switch_branch":
+		err := s.manager.SwitchSessionBranch(cmd.Key, cmd.LeafID)
+		s.sendResult(conn, cmd, err, nil)
+
 	case "permission_response":
 		// Fire-and-forget: no response sent (matches dialog_response pattern).
 		s.manager.SendPermissionResponse(cmd.Key, cmd.QuestionID, cmd.OptionID)

@@ -29,7 +29,7 @@
 import { usePreferencesStore } from '../../persistence/preferences'
 import { rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInfo } from '@ion/shared/types'
-import { gitIsRepo, gitWorktreeAdd, worktreesOffered } from '../host-api'
+import { gitIsRepo, gitWorktreeAdd, worktreesOffered, type WorktreeAddConversation } from '../host-api'
 
 export interface WorktreeResolution {
   /**
@@ -45,10 +45,15 @@ export interface WorktreeResolution {
    * default, so the operator still has to pick a source branch.
    */
   pendingSetup: boolean
+  /** True when the created worktree is ephemeral (closes with the conversation). */
+  ephemeral: boolean
 }
 
 /**
  * Resolve the working directory for a new conversation in `dir`.
+ *
+ * `conversation` carries the ephemeral request (absent: the project's
+ * `ephemeralDefault`) and, when the caller already knows it, the owner id.
  *
  * When `useWorktree` is false, or `dir` is not a git repo, this is a no-op that
  * returns `dir` unchanged — a non-repo directory has no worktrees to cut and an
@@ -63,8 +68,9 @@ export async function resolveWorktreeForNewTab(
   dir: string,
   useWorktree: boolean | undefined,
   sourceBranch?: string,
+  conversation: WorktreeAddConversation = {},
 ): Promise<WorktreeResolution> {
-  const unchanged: WorktreeResolution = { dir, worktree: null, pendingSetup: false }
+  const unchanged: WorktreeResolution = { dir, worktree: null, pendingSetup: false, ephemeral: false }
 
   if (!useWorktree) return unchanged
 
@@ -97,19 +103,20 @@ export async function resolveWorktreeForNewTab(
   const defaultBranch = sourceBranch || usePreferencesStore.getState().worktreeBranchDefaults[dir]
   if (!defaultBranch) {
     rInfo('worktree.resolve', 'no branch selected or default recorded; deferring to the branch picker', { dir })
-    return { dir, worktree: null, pendingSetup: true }
+    return { dir, worktree: null, pendingSetup: true, ephemeral: false }
   }
 
   try {
-    const result = await gitWorktreeAdd(dir, defaultBranch)
+    const result = await gitWorktreeAdd(dir, defaultBranch, conversation)
     if (result.ok && result.worktree) {
       rInfo('worktree.resolve', 'worktree created for a new conversation', {
         dir,
         source_branch: defaultBranch,
         worktree_path: result.worktree.worktreePath,
         branch: result.worktree.branchName,
+        ephemeral: !!result.ephemeral,
       })
-      return { dir: result.worktree.worktreePath, worktree: result.worktree, pendingSetup: false }
+      return { dir: result.worktree.worktreePath, worktree: result.worktree, pendingSetup: false, ephemeral: !!result.ephemeral }
     }
     // Creation refused (dirty repo, bad branch, git error). Fall back to the
     // requested directory rather than the branch picker: the branch was known,
