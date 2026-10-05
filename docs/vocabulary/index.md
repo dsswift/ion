@@ -111,6 +111,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Environment Policy](#term-environment-policy)
 - [Environment Purge](#term-environment-purge)
 - [Environment Setting](#term-environment-setting)
+- [Ephemeral Worktree](#term-ephemeral-worktree)
 - [Event segment](#term-event-segment)
 - [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
@@ -1574,6 +1575,21 @@ A setting with one value for a whole Environment. It is stored in that server's 
 - **Contract:** `internal`
 - **Implementations:**
   - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
+
+#### Ephemeral Worktree {#term-ephemeral-worktree}
+
+A worktree cut for one conversation and removed when that conversation closes, through Retire's appraisal and relocation. If it still holds work that has not landed, the close keeps it and turns it into an ordinary worktree, and the worktree list says why. A project sets the default and whether that work may ever be discarded in .ion/worktree.json.
+
+- **ID:** `ephemeral-worktree`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export async function releaseEphemeralWorktreeOnClose` in `server/src/store/slices/ephemeral-worktree-close.ts`
+  - `studio` / `ui` / `typescript`: `export function WorktreeEphemeralBadge` in `desktop/src/renderer/components/WorktreeEphemeralBadge.tsx`
+  - `ios` / `wire` / `swift`: `var ephemeralKeptReason: String?` in `ios/IonRemote/Models/WorktreeTypes.swift`
 
 #### External Host {#term-external-host}
 
@@ -3438,6 +3454,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Environment Page | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `struct ServerPagesView` | None |
 | Environment Policy | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | None | iOS |
 | Environment Purge | `RemoveServerPanel` | `RemoveServerPanel` | `RemoveServerPanel` | None | iOS |
+| Ephemeral Worktree | None | `export function WorktreeEphemeralBadge` | None | `var ephemeralKeptReason: String?` | Overlay |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Fleet | None | `FleetPage` | None | `struct FleetView` | Overlay |
 | Fleet Deploy Record | `interface FleetDeployRecord` | `interface FleetDeployRecord`, `function FleetDeployCard` | `interface FleetDeployRecord` | None | iOS |

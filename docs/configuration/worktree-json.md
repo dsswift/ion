@@ -43,7 +43,9 @@ has to put them there.
       }
     ],
     "sharedPaths": ["docs/retros"],
-    "setup": "make bootstrap"
+    "setup": "make bootstrap",
+    "ephemeralDefault": false,
+    "ephemeralMayDiscard": false
   },
   "bench": {
     "verify": "cd engine && go build ./... && cd ../desktop && npm run typecheck",
@@ -59,6 +61,8 @@ has to put them there.
 | `version` | int | Manifest format version. Must be `1`. An unrecognised version disables provisioning rather than risking a misread. |
 | `worktree.seed` | array | Directories to materialise. See below. |
 | `worktree.sharedPaths` | string[] | Gitignored base-repo directories a worktree conversation may write into. See "Shared paths" below. |
+| `worktree.ephemeralDefault` | boolean | Whether a worktree cut for a conversation is ephemeral when the request does not say. Default `false`. See "Ephemeral worktrees" below. |
+| `worktree.ephemeralMayDiscard` | boolean | Whether closing an ephemeral worktree's conversation may remove it while it holds unlanded work. Default `false`. See "Ephemeral worktrees" below. |
 | `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. For a project Ion cloned, neither this nor any seed `build` runs until the project is trusted: with the clone (Transfer's **Clone and trust**), or later with Settings → Servers → the server → Projects → Trust project, which also provisions the worktrees it already has. |
 | `bench.verify` | string | Project-declared command that decides whether a bench merge resolution produces an acceptable tree. See "Bench verification" below. |
 | `bench.verifyTimeoutMs` | int | Timeout for `bench.verify` in milliseconds. Optional; a sane default applies when absent. |
@@ -210,6 +214,38 @@ let a corrupt file silently disable containment.
 Sibling worktrees are never shared. A gitignored path inside another
 conversation's checkout is that conversation's private build state, not a shared
 artifact directory.
+
+## Ephemeral worktrees
+
+An ephemeral worktree is cut for one conversation and removed when that
+conversation closes, as long as it holds nothing that has not landed. Two fields
+set the project's policy:
+
+```json
+{
+  "worktree": {
+    "ephemeralDefault": false,
+    "ephemeralMayDiscard": false
+  }
+}
+```
+
+- `ephemeralDefault` decides whether a worktree cut for a conversation is
+  ephemeral when the client does not say. A client can always ask either way
+  (`ephemeralWorktree` on `tabs.create`). A worktree cut from the worktree
+  list's New worktree, with no conversation, is never ephemeral.
+- `ephemeralMayDiscard` decides what happens when the conversation closes and
+  the worktree still has uncommitted files or commits that have not landed.
+  Off (the default): the worktree is kept, becomes an ordinary worktree, and the
+  worktree list shows why. On: it is removed the way Retire's discard removes
+  one, after anchoring the work under `refs/ion/discarded/`.
+
+Removal follows Retire exactly: it refuses while any conversation in the
+worktree, or in a bench its removal would prune, is still working, and it closes
+whatever is left in those directories. Another conversation still open in the
+worktree also keeps it. A field that is not a boolean is ignored, with a
+warning in `server.jsonl`, so a typo can never grant discard. Like
+`sharedPaths`, the fields are read from the base repo's committed manifest.
 
 ## Rules
 

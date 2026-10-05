@@ -73,10 +73,33 @@ package, this fails closed — a malformed manifest grants nothing. Reference:
 [`docs/configuration/worktree-json.md`](../configuration/worktree-json.md)
 § "Shared paths".
 
-Closing a conversation never removes a worktree. Removal is only the explicit
-Retire verb, which appraises what would be lost, refuses when the answer is work,
-and relocates any conversation still living there so it is not left pointed at a
-deleted directory. Retire also disenrolls the worktree from every bench. A
+Closing a conversation never removes an ordinary worktree. Removal is the
+explicit Retire verb, which appraises what would be lost, refuses when the answer
+is work, and relocates any conversation still living there so it is not left
+pointed at a deleted directory.
+
+**An ephemeral worktree closes with its conversation.** A worktree cut for a
+conversation can be marked ephemeral when it is created (`ephemeralWorktree` on
+`tabs.create` and `createConversationTab`, the fourth argument of
+`setupWorktree`). The registry ties it to that conversation
+(`server/src/worktree/registry-ephemeral.ts`). When the conversation closes, by
+settling, deleting, or closing outright, the server runs Retire's own steps on it
+(`server/src/store/slices/ephemeral-worktree-close.ts`): the pre-flight over the
+worktree and every bench its removal would prune, then Retire's removal (the
+landed cleanup for a landed worktree, otherwise Retire's discard), then Retire's
+relocation of anything left in those directories. The discard appraises inside
+the repository's mutation slot and, unless the project allows discarding,
+refuses on any uncommitted file or unlanded commit instead of preserving and
+removing. Anything that keeps the worktree (unlanded work, another conversation
+still open there, active work in a bench it would prune, a failed removal) turns
+it into an ordinary worktree for good and records why. The worktree list on
+desktop and iOS marks an ephemeral worktree and shows that reason on a kept one.
+A project sets the default and the discard permission in `.ion/worktree.json`
+(`worktree.ephemeralDefault`, `worktree.ephemeralMayDiscard`, both off). A
+worktree cut with no conversation is never ephemeral, because nothing could
+close it. Reference:
+[`docs/configuration/worktree-json.md`](../configuration/worktree-json.md)
+§ "Ephemeral worktrees". Retire also disenrolls the worktree from every bench. A
 worktree deleted outside Ion skips that step, so the bench disenrolls any member
 whose worktree directory is gone the next time it assembles or refreshes its
 staleness (`server/src/integration/bench-removed-members.ts`).

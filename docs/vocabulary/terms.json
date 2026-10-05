@@ -1924,6 +1924,38 @@
       ]
     },
     {
+      "id": "ephemeral-worktree",
+      "term": "Ephemeral Worktree",
+      "definition": "A worktree cut for one conversation and removed when that conversation closes, through Retire's appraisal and relocation. If it still holds work that has not landed, the close keeps it and turns it into an ordinary worktree, and the worktree list says why. A project sets the default and whether that work may ever be discarded in .ion/worktree.json.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function releaseEphemeralWorktreeOnClose",
+          "path": "server/src/store/slices/ephemeral-worktree-close.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function WorktreeEphemeralBadge",
+          "path": "desktop/src/renderer/components/WorktreeEphemeralBadge.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "var ephemeralKeptReason: String?",
+          "path": "ios/IonRemote/Models/WorktreeTypes.swift"
+        }
+      ]
+    },
+    {
       "id": "event-segment",
       "term": "Event segment",
       "definition": "One of the parts a conversation event is delivered as when its size exceeds the transport's negotiated maximum message size. Parts share the original event_id and full envelope and carry a payload.segment block (part, parts, field, total_bytes, sha256) naming the split string field; a consumer reassembles by concatenating the field across parts in part order and keys deduplication on (event_id, part).",
