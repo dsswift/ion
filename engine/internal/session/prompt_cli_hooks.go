@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -12,6 +13,21 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// resetCliToolServer clears the session ToolServer's registrations at the
+// start of a prompt's wiring, so the wire* helpers that follow register this
+// prompt's tools onto an empty server. See ToolServer.ResetTools.
+func (m *Manager) resetCliToolServer(s *engineSession, opts *types.RunOptions) {
+	if _, ok := mcpCapableCli(m.resolvedBackend(opts.Model)); !ok {
+		return
+	}
+	m.mu.Lock()
+	ts := s.toolServer
+	m.mu.Unlock()
+	if ts != nil {
+		ts.ResetTools()
+	}
+}
 
 // buildToolAliasDirective renders a system-prompt directive that maps bare
 // extension tool names to their MCP-prefixed forms.  The CLI backend bridges
@@ -26,9 +42,14 @@ func buildToolAliasDirective(bareNames []string, mcpServerName string) string {
 	if len(bareNames) == 0 {
 		return ""
 	}
+	// The directive is part of the system prompt, which a provider caches as a
+	// prefix. Names are listed in sorted order so the text depends on the set
+	// of tools and not on the order their sources happened to report them in.
+	names := append([]string(nil), bareNames...)
+	sort.Strings(names)
 	var b strings.Builder
 	b.WriteString("Tool name aliases: when your instructions reference a bare tool name, it is the same tool exposed under the MCP-prefixed name. Use the prefixed name when calling the tool.")
-	for _, name := range bareNames {
+	for _, name := range names {
 		fmt.Fprintf(&b, "\n- %s = mcp__%s__%s", name, mcpServerName, name)
 	}
 	return b.String()

@@ -582,6 +582,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		return m.abortPromptWithoutRail(s, key, requestID, overrides, err)
 	}
 	m.wireDelegatedPermissions(key, &opts)
+	m.resetCliToolServer(s, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
 	m.wireCliShellToolServer(s, key, &opts, permEng)
