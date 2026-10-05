@@ -18,6 +18,28 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.99.0](https://github.com/dsswift/ion/compare/engine-v1.98.0...engine-v1.99.0) (2026-10-05)
+
+### Features
+
+* **engine:** enforce plan mode at the tool call ([7363810](https://github.com/dsswift/ion/commit/7363810b151deec3e98ee991f0df0c78a7d4b958))
+* **engine:** deliver plan-mode instructions as saved notices ([5f2767b](https://github.com/dsswift/ion/commit/5f2767b1b9a80c388f4471df005c4f427e275726))
+* **engine:** keep the api tool list the same in every mode ([5604ad0](https://github.com/dsswift/ion/commit/5604ad0daafdf89390aef3955d623e8aeeb62b19))
+* **engine:** enforce plan mode at the call on claude-code ([8fb9206](https://github.com/dsswift/ion/commit/8fb9206ae04c9d44bcb80b8ddf0e2ff7ac74edf5))
+* **engine:** spawn claude-code the same in every mode ([ada8bd3](https://github.com/dsswift/ion/commit/ada8bd324d64d6c61f30ca4d77af4ea8d9611dd8))
+* **engine:** log when a conversation's prompt prefix changes ([2e8a38d](https://github.com/dsswift/ion/commit/2e8a38db262dd0a8ee18ca5e9112c0208ee3888d))
+* **engine:** list and switch conversation branches (#481) ([5a917bc](https://github.com/dsswift/ion/commit/5a917bcb2abc3c04f5312874401152d72703a715))
+
+### Bug Fixes
+
+* **engine:** give the tool list a stable order ([ab08d0c](https://github.com/dsswift/ion/commit/ab08d0c9664a9601cba031585d5c2b9264bd6175))
+* **engine:** make the claude-code permission hook fail closed ([75a5d59](https://github.com/dsswift/ion/commit/75a5d59403531940dc1e01cdf5d8d44d92bc861b))
+* **engine:** register each prompt's tools on an empty tool server ([8948ad2](https://github.com/dsswift/ion/commit/8948ad23626c132ac0cc22e0bfd2a089dd41c0a8))
+* **engine:** stop the prefix warning claiming a cache rewrite ([4b8d798](https://github.com/dsswift/ion/commit/4b8d798af3ed7b98881ef5bd53aefd89be360081))
+* **engine:** bind dispatched agents to permissions and plan mode ([67019f1](https://github.com/dsswift/ion/commit/67019f128d95caf4ca3037b2ba10327c9e8445ce))
+* **engine:** resolve the home-pinned .ion dir in one place (#483) ([a3186e5](https://github.com/dsswift/ion/commit/a3186e586270ce13f351ace947146d419ecd24bc))
+* **engine:** exit nonzero when a streamed prompt run fails ([8c7b5b3](https://github.com/dsswift/ion/commit/8c7b5b38526cedbd03eb6c8f40f3d7da7ab336e7))
+
 ## [1.98.0](https://github.com/dsswift/ion/compare/engine-v1.97.5...engine-v1.98.0) (2026-10-05)
 
 ### Features

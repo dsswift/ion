@@ -8,6 +8,25 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.11.0](https://github.com/dsswift/ion/compare/server-v1.10.0...server-v1.11.0) (2026-10-05)
+
+### Features
+
+* **server:** switch branches and reload the new path (#481) ([9d665ff](https://github.com/dsswift/ion/commit/9d665ffa3ff295fd01d6da7b73cb3f2661af5023))
+* **server:** close ephemeral worktrees with their conversation (#482) ([4cbacfe](https://github.com/dsswift/ion/commit/4cbacfe28cb761ece68c05965fcbbe639a02edc6))
+* **ios:** pick a conversation branch from the phone (#481) ([7aa5421](https://github.com/dsswift/ion/commit/7aa542133b8b6e156fd02087cad0e21aa05c781d))
+* **server:** remember a project's worktree choice (#482) ([6c6e649](https://github.com/dsswift/ion/commit/6c6e649db5d3d073011cd5bb24894b4a2d8e529c))
+* **desktop:** remember worktree choices per project (#482) ([3f80caf](https://github.com/dsswift/ion/commit/3f80caf6aa4d2b456f8a1ef71e0e597f61fd912d))
+* **server:** add build notice preference type ([4e23fd7](https://github.com/dsswift/ion/commit/4e23fd7baf22fcf0632ccde4fb2a62fe411e9793))
+
+### Bug Fixes
+
+* **server:** stop tying plan mode to the EnterPlanMode tool ([1e31953](https://github.com/dsswift/ion/commit/1e3195372f69e00257ccb9d28d7b2baec6621b94))
+* **server:** size the bench conflict tests for real git (#479) ([4c3812e](https://github.com/dsswift/ion/commit/4c3812ed801fc27f084007ac374fc49eb28a81c1))
+* **server:** keep the bench conflict test under the size cap (#479) ([a493677](https://github.com/dsswift/ion/commit/a493677a9f2fcd4f74a8f34ecd000ab0d1fb3d16))
+* **server:** keep the preferences comment on its command (#481) ([c2b6b72](https://github.com/dsswift/ion/commit/c2b6b72a648db5569e6ee13e8714817f9d1520d8))
+* **server:** finish a discard that setup interrupted ([4d42f64](https://github.com/dsswift/ion/commit/4d42f64f5234e30c9b50b61e3556fce2e7df11ed))
+
 ## [1.10.0](https://github.com/dsswift/ion/compare/server-v1.9.2...server-v1.10.0) (2026-10-05)
 
 ### Features

@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.9.0](https://github.com/dsswift/ion/compare/ios-v2.8.0...ios-v2.9.0) (2026-10-05)
+
+### Features
+
+* **ios:** account for the active path changed event (#481) ([1716bb3](https://github.com/dsswift/ion/commit/1716bb3da32e491ab5b5a9a0b44974ed8b6974c7))
+* **ios:** show ephemeral worktrees and why one was kept (#482) ([28b71e0](https://github.com/dsswift/ion/commit/28b71e0c620d5c3d562de2800acf172d7152d973))
+* **ios:** pick a conversation branch from the phone (#481) ([7aa5421](https://github.com/dsswift/ion/commit/7aa542133b8b6e156fd02087cad0e21aa05c781d))
+* **ios:** choose and remember worktree choices (#482) ([74566ee](https://github.com/dsswift/ion/commit/74566eec12205155c936805aa81e27a33321dbf5))
+
+### Bug Fixes
+
+* **ios:** update the toolbar test and stop a racy transport test (#480) ([1c33b67](https://github.com/dsswift/ion/commit/1c33b678814506e1a00c506ece9293a8ca9c0e23))
+* **desktop:** list upcoming quota resets instead of one pool reset ([a6fc454](https://github.com/dsswift/ion/commit/a6fc454be5d62c113c213d0c3d07d770bf3e09be))
+
 ## [2.8.0](https://github.com/dsswift/ion/compare/ios-v2.7.2...ios-v2.8.0) (2026-10-05)
 
 ### Features

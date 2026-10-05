@@ -10,6 +10,23 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.10.0](https://github.com/dsswift/ion/compare/desktop-v2.9.1...desktop-v2.10.0) (2026-10-05)
+
+### Features
+
+* **server:** switch branches and reload the new path (#481) ([9d665ff](https://github.com/dsswift/ion/commit/9d665ffa3ff295fd01d6da7b73cb3f2661af5023))
+* **server:** close ephemeral worktrees with their conversation (#482) ([4cbacfe](https://github.com/dsswift/ion/commit/4cbacfe28cb761ece68c05965fcbbe639a02edc6))
+* **desktop:** mark ephemeral worktrees in the worktree list (#482) ([60f92bc](https://github.com/dsswift/ion/commit/60f92bc9333908e68463cdc1b5ed8b5bf997ba3e))
+* **desktop:** pick a conversation branch in studio (#481) ([1c18bc1](https://github.com/dsswift/ion/commit/1c18bc17883e34079f6fa2866603f7bf1552aba9))
+* **server:** remember a project's worktree choice (#482) ([6c6e649](https://github.com/dsswift/ion/commit/6c6e649db5d3d073011cd5bb24894b4a2d8e529c))
+* **desktop:** remember worktree choices per project (#482) ([3f80caf](https://github.com/dsswift/ion/commit/3f80caf6aa4d2b456f8a1ef71e0e597f61fd912d))
+* **desktop:** show what's new in a build notice after updates ([a63df4b](https://github.com/dsswift/ion/commit/a63df4bd509deaa579631f5d6ef0d0280e74ccc9))
+
+### Bug Fixes
+
+* **desktop:** update stale tests for release, connect, install (#477) ([9d5beb1](https://github.com/dsswift/ion/commit/9d5beb1cd0b32077156a14e351eb35195a7cda9c))
+* **desktop:** list upcoming quota resets instead of one pool reset ([a6fc454](https://github.com/dsswift/ion/commit/a6fc454be5d62c113c213d0c3d07d770bf3e09be))
+
 ## [2.9.1](https://github.com/dsswift/ion/compare/desktop-v2.9.0...desktop-v2.9.1) (2026-10-05)
 
 ### Bug Fixes
