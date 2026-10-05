@@ -15,5 +15,20 @@
       "content": "{\"label\":\"Briefing\",\"icon\":\"Newspaper\",\"command\":\"/briefing\"}",
       "createdAt": "2026-01-01T00:00:00Z"
     }
+  },
+  "linkRoute": {
+    "kind": "ion-studio.link-route",
+    "idPattern": "^[A-Za-z0-9_-]{1,64}$",
+    "contentFields": {
+      "label": { "type": "string", "required": true, "maxLength": 80 },
+      "command": { "type": "string", "required": true, "maxLength": 200, "pattern": "^/[A-Za-z0-9_:-]+( .*)?$" }
+    },
+    "example": {
+      "id": "open-briefing",
+      "kind": "ion-studio.link-route",
+      "title": "Open briefing",
+      "content": "{\"label\":\"Open briefing\",\"command\":\"/briefing\"}",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
   }
 }

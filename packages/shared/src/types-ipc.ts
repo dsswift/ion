@@ -289,7 +289,10 @@ export const IPC = {
 } as const;
 
 export type {
+  DeepLinkActionOutcome,
   DeepLinkConfirmOwner,
   DeepLinkConfirmRequest,
   DeepLinkConfirmResult,
+  DeepLinkNavigateTarget,
+  DeepLinkOpenResult,
 } from './types-ipc-deeplink'

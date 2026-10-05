@@ -50,6 +50,14 @@
       "scope": "conversations:operate"
     },
     {
+      "action": "deeplink.confirmResult",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "deeplink.open",
+      "scope": "conversations:operate"
+    },
+    {
       "action": "entra.identity",
       "scope": "conversations:read"
     },

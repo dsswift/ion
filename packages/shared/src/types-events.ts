@@ -117,6 +117,15 @@ export type NormalizedEvent =
       enabled: boolean;
       planFilePath?: string;
       planSlug?: string;
+      /** "model_tool" | "wire" | "extension"; absent when restating state. */
+      source?: string;
+    }
+  | {
+      type: "plan_mode_change_rejected";
+      requestedEnabled: boolean;
+      /** "wire" | "extension". */
+      source: string;
+      reason?: string;
     }
   | {
       type: "plan_mode_auto_exit";

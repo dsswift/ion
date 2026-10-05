@@ -105,6 +105,8 @@ export interface ProjectedRendererTab {
   executionHost?: string
   executionMachineId?: string
   permissionMode: string
+  /** The active instance's last vetoed plan-mode change. See ConversationInstance.planModeRejection. */
+  planModeRejection?: import('./types-engine').PlanModeRejection | null
   permissionQueue: ProjectedPermissionEntry[]
   elicitationQueue: ProjectedElicitationEntry[]
   thinkingEffort?: string

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ResourceItem } from '../types-engine'
-import { COMPOSER_ACTION_KIND, STUDIO_CONTROL_KIND_PREFIX, STUDIO_FOCUS_KIND, composerActionCommandName, composerActionsFor, isStudioControlKind, isStudioTrafficKind, parseComposerAction } from '../studio-sdk-contract'
+import { COMPOSER_ACTION_KIND, LINK_ROUTE_KIND, STUDIO_CONTROL_KIND_PREFIX, STUDIO_FOCUS_KIND, composerActionCommandName, composerActionsFor, isStudioControlKind, isStudioTrafficKind, linkRouteCommandName, parseComposerAction, parseLinkRoute } from '../studio-sdk-contract'
 
 const contract = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../studio-sdk/contract.json'), 'utf8'))
 const item = (over: Partial<ResourceItem> & { contentObject?: unknown }): ResourceItem => ({
@@ -25,6 +25,7 @@ describe('studio sdk contract', () => {
 
   it('marks every ion-studio kind as a control kind, and nothing else', () => {
     expect(isStudioControlKind('ion-studio.composer-action')).toBe(true)
+    expect(isStudioControlKind(LINK_ROUTE_KIND)).toBe(true)
     expect(isStudioControlKind('briefing')).toBe(false)
     expect(isStudioControlKind(undefined)).toBe(false)
   })
@@ -59,5 +60,47 @@ describe('studio sdk contract', () => {
     const items = [item({ id: 'w', contentObject: { label: 'Brief', command: '/briefing today' } })]
     expect(composerActionsFor(items, null, new Set(['briefing'])).map((a) => a.id)).toEqual(['w'])
     expect(composerActionCommandName('/briefing today')).toBe('briefing')
+  })
+
+  describe('link routes', () => {
+    const route = (over: Partial<ResourceItem> & { contentObject?: unknown }): ResourceItem => item({
+      id: 'open-briefing',
+      kind: LINK_ROUTE_KIND,
+      content: JSON.stringify(over.contentObject ?? { label: 'Open briefing', command: '/briefing' }),
+      ...over,
+    })
+
+    it('matches the contract file every producer is pinned to', () => {
+      expect(LINK_ROUTE_KIND).toBe(contract.linkRoute.kind)
+      expect(new RegExp(contract.linkRoute.idPattern).test('open-briefing')).toBe(true)
+      expect(parseLinkRoute({ ...contract.linkRoute.example, producer: 'cos2' })).toEqual({
+        id: 'open-briefing', producer: 'cos2', label: 'Open briefing', command: '/briefing',
+      })
+    })
+
+    it('keeps the conversation a route is scoped to', () => {
+      expect(parseLinkRoute(route({ conversationId: 'conv-1' }))?.conversationId).toBe('conv-1')
+    })
+
+    it('refuses an id that is not one safe path segment', () => {
+      expect(parseLinkRoute(route({ id: 'a/b' }))).toBeNull()
+      expect(parseLinkRoute(route({ id: 'a b' }))).toBeNull()
+      expect(parseLinkRoute(route({ id: '' }))).toBeNull()
+      expect(parseLinkRoute(route({ id: 'x'.repeat(65) }))).toBeNull()
+      expect(parseLinkRoute(route({ id: 'x'.repeat(64) }))).not.toBeNull()
+    })
+
+    it('refuses an over-long label, a non-slash command, and malformed content', () => {
+      expect(parseLinkRoute(route({ contentObject: { label: 'l'.repeat(81), command: '/briefing' } }))).toBeNull()
+      expect(parseLinkRoute(route({ contentObject: { label: '', command: '/briefing' } }))).toBeNull()
+      expect(parseLinkRoute(route({ contentObject: { label: 'x', command: 'rm -rf /' } }))).toBeNull()
+      expect(parseLinkRoute(route({ contentObject: { label: 'x', command: '/' + 'c'.repeat(200) } }))).toBeNull()
+      expect(parseLinkRoute(route({ content: 'not json' }))).toBeNull()
+      expect(parseLinkRoute(route({ kind: COMPOSER_ACTION_KIND }))).toBeNull()
+    })
+
+    it('names the command a route runs, ignoring arguments', () => {
+      expect(linkRouteCommandName('/briefing today')).toBe('briefing')
+    })
   })
 })

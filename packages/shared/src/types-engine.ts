@@ -336,6 +336,12 @@ export interface ConversationInstance {
   resolvedModel?: string
   /** Permission mode for this instance */
   permissionMode: 'auto' | 'plan'
+  /**
+   * The last plan-mode change a before_plan_mode_* handler vetoed, so the
+   * conversation can say why its toggle did not move. Cleared by the next
+   * successful change. Absent when nothing was refused.
+   */
+  planModeRejection?: PlanModeRejection | null
   /** Per-instance extended-thinking effort (engine subtab). Default 'off'. Applied live on the next prompt. */
   thinkingEffort?: import('./types-session').ThinkingEffort
   /** Pending plan-ready or AskUserQuestion card (null = none). Holds only the entries `pendingUserCardDenial` keeps; a refused tool with no card never lands here. */
@@ -473,6 +479,9 @@ export interface AgentHandle {
 // re-exports a name without binding it locally.
 import type { StatusFields } from './types-engine-status'
 export type { StatusFields, SessionStatus, PollState } from './types-engine-status'
+// Plain import for ConversationInstance.planModeRejection, plus the re-export.
+import type { PlanModeRejection } from './types-engine-plan-mode'
+export type { PlanModeRejection } from './types-engine-plan-mode'
 
 /**
  * Slash-command listing carried inside engine_command_registry snapshots.

@@ -284,6 +284,17 @@ export type EngineEvent =
       planModeEnabled: boolean;
       planFilePath?: string;
       planSlug?: string;
+      /** "model_tool" | "wire" | "extension"; absent when restating state. */
+      planModeSource?: string;
+    }
+  // engine_plan_mode_change_rejected — a before_plan_mode_enter/exit handler
+  // vetoed a client's or an extension's plan-mode change. The session's mode
+  // is unchanged; a client that toggled optimistically reverts.
+  | {
+      type: "engine_plan_mode_change_rejected";
+      planModeRequestedEnabled?: boolean;
+      planModeSource?: string;
+      planModeRejectReason?: string;
     }
   // engine_oidc_login_url — delivered to the client that issued
   // oidc_begin_login. Interactive PKCE carries oidcAuthorizationUrl (open
