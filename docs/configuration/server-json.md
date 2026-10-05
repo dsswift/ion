@@ -50,6 +50,7 @@ loudly, rather than refusing to boot.
   },
   "engine": { "minVersion": "0.0.0" },
   "web": { "enabled": false },
+  "fleet": { "accountPollSeconds": 300, "hubReportSeconds": 60 },
   "tenancy": {
     "mode": "isolated",
     "unownedTabs": "hidden"
@@ -96,6 +97,8 @@ loudly, rather than refusing to boot.
 | `pairing.advertiseUrl` | `null` (derived: `http://<hostname>:<listen.tcp.port>`) | The HTTP base URL a pairing link tells the joining client to dial, as reachable *from the client*. Set it when the server sits behind a proxy or NAT, or when its hostname does not resolve on the LAN (a `.local` mDNS name is usually right on a home network). Must be `http(s)://`; anything else is ignored with a warning. |
 | `engine.minVersion` | `"0.0.0"` | Minimum engine version this server requires; `/readyz` reports `engine_incompatible` below this, and `/versionz` reports it with `engineMeetsMin`. |
 | `web.enabled` | `false` | Whether the server serves the browser Studio bundle (`server/web/`) on its HTTP listener. When `false`, `/` refuses with `{ "error": "web_disabled" }`. |
+| `fleet.accountPollSeconds` | `300` | How often the server asks the engine which account each provider CLI is signed in to and what its usage limits are, for the Provider Account Ledger a Fleet view reads. Each read starts the provider CLIs, so a value under `60` is ignored with a warning. The server also reads whenever a provider sign-in changes. |
+| `fleet.hubReportSeconds` | `60` | How often the server sends its Fleet Report to each [Fleet Hub](../deployment/fleet-hub.md) it reports to. A value under `15` is ignored with a warning. The server also sends one after each action a hub asks for. |
 | `tenancy.mode` | `"isolated"` | `"isolated"` enforces every per-principal visibility and ownership gate (a tab, conversation, or action is visible/reachable only to the principal that owns it). `"shared"` disables all of them — every connection sees every tab. Refused at boot (`/readyz` reports `tenancy_conflict`) when the connected engine's `security.principalPartitioning.enabled` is also true, since partitioned storage with shared visibility is a leak, not a feature. See [ADR-034](../architecture/adr/034-principal-isolation-and-tenancy.md). |
 | `tenancy.unownedTabs` | `"hidden"` when `oidc` is set, else `"visible"` | Visibility of a tab with no recorded `principalSubject` (a pre-partitioning legacy record) in isolated mode. Re-derived live from whether `oidc` is configured unless explicitly set — so enabling OIDC without touching this field still hides legacy unowned tabs from everyone. |
 | `tenancy.subjectMoves` | `[]` | `[{ "from": "<old subject>", "to": "<new subject>" }]`. On every boot, everything stored under `from` moves to `to`. See [Tenancy](#tenancy). |
@@ -136,8 +139,9 @@ OIDC discovery from `oidc.issuer` (falling back to
 grant is the union of `rolesToScopes[role]` for every `role` in the token's
 `roles` claim; a token whose roles map to nothing (or that carries no `roles`
 claim at all) falls back to `defaultScopes`. `allowedSubjects`, when
-non-empty, additionally restricts which `sub` values are accepted regardless
-of role. The token's `scp` claim must include `oidc.scope`.
+non-empty, additionally restricts who is accepted regardless of role: an
+entry matches the token's `sub` or its `oid` (Entra's `sub` differs per app
+registration, so a person is listed by object ID). The token's `scp` claim must include `oidc.scope`.
 
 Refusal reasons (logged, never sent on the wire — the Studio wire's
 `studio_refused` reason enum has no per-door granularity): `wrong_audience`,
@@ -290,7 +294,7 @@ ION_DATA_DIR=/var/lib/ion node dist/pair.js --label "josh laptop"      # prints 
 node dist/pair.js --scopes conversations:read,conversations:operate --json
 ```
 
-In the desktop, Settings → All servers → Add server → **Pairing link**:
+In the desktop, Settings → Fleet → Add server → **Pairing link**:
 paste the link and Pair. The desktop runs the X25519 exchange against
 `POST /auth/pair`, stores the shared secret and the server-registered
 `clientId` (encrypted, `desktop-connections.json`) under the server's

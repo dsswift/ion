@@ -19,7 +19,7 @@ Ion is engine-first. The engine is a single static binary with zero runtime depe
 | [Desktop](desktop.md) | Ion Studio for macOS. Carries its own Studio Server, so a Mac running it is an Environment other desktops can pair with. | macOS 13+ workstation, installed locally or [pushed over SSH](studio-server.md#pushing-the-desktop-to-another-mac) |
 | [iOS](ios.md) | SwiftUI companion app. | iOS 17+ device |
 
-Setting up more than one machine? [Three machines, start to finish](multi-machine-walkthrough.md) goes from nothing to one laptop driving a headless host and a second laptop. Running several already? [Fleet](fleet.md) shows every host's installs, load, and [Format Versions](../architecture/format-versions.md), which hosts can work with which, and redeploys them from one Mac.
+Setting up more than one machine? [Three machines, start to finish](multi-machine-walkthrough.md) goes from nothing to one laptop driving a headless host and a second laptop. Running several already? [Fleet](fleet.md) shows every host's installs, load, and [Format Versions](../architecture/format-versions.md), which hosts can work with which, and redeploys them from one Mac. A [Fleet Hub](fleet-hub.md) is an always-on page your servers report to, with sign-in.
 
 ## Architecture at deploy time
 
