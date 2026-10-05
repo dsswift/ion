@@ -56,6 +56,14 @@ struct ServerPagesList: View {
                             }
                         }
                     }
+                    // Not one of the server's settings pages: which hubs it reports to is the Fleet's, reached from here too.
+                    Section {
+                        NavigationLink("Fleet Hubs") {
+                            FleetHubsContent(session: session)
+                        }
+                    } footer: {
+                        Text("The always-on pages \(session.serverLabel) reports to.")
+                    }
                 }
             } else {
                 Section {
