@@ -14,12 +14,11 @@ import { rInfo, rWarn } from '../../../../rendererLogger'
 import { useSettingsPreferences, useSettingsTargetEnvironmentId } from '../../settings-target'
 import { autoSettleChangeCanSettle, isAutoSettlePreview, type AutoSettlePreview } from '../../auto-settle-change'
 import { Button, FormGroup, FormRow, Muted, NumberInput, SidePanel, ToggleRow } from '../../kit'
+import { UsageLimitsGroup } from './UsageLimitsGroup'
 
 export function InboxSection(): React.JSX.Element {
   const days = useSettingsPreferences((s) => s.inboxAutoSettleDays)
   const setDays = useSettingsPreferences((s) => s.setInboxAutoSettleDays)
-  const onMerge = useSettingsPreferences((s) => s.inboxAutoSettleOnMerge)
-  const setOnMerge = useSettingsPreferences((s) => s.setInboxAutoSettleOnMerge)
   // The sweep it previews runs on the server Settings is editing.
   const environmentId = useSettingsTargetEnvironmentId()
   const [pending, setPending] = useState<{ days: number; preview: AutoSettlePreview } | null>(null)
@@ -73,13 +72,8 @@ export function InboxSection(): React.JSX.Element {
             <NumberInput label="Days of inactivity before auto-settle" value={shown} min={1} max={90} onChange={request} />
           </FormRow>
         )}
-        <ToggleRow
-          label="Auto-settle merged pull requests" settingKey="inboxAutoSettleOnMerge"
-          description="Move conversations with merged pull requests to Settled."
-          checked={onMerge}
-          onChange={setOnMerge}
-        />
       </FormGroup>
+      <UsageLimitsGroup />
       <SidePanel
         open={pending !== null}
         title="Confirm auto-settle"

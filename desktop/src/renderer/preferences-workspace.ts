@@ -109,7 +109,10 @@ export function createInboxPreferenceActions(
 ): Pick<
   PreferencesState,
   | "setInboxAutoSettleDays"
-  | "setInboxAutoSettleOnMerge"
+  | "setUsageLimitAutoResume"
+  | "setUsageLimitResumePrompt"
+  | "setQuotaExpiryAlertHours"
+  | "setQuotaExpiryUnusedPercent"
   | "setGitWatcherIgnoredDirectories"
 > {
   return {
@@ -119,8 +122,17 @@ export function createInboxPreferenceActions(
     setInboxAutoSettleDays: (days) => {
       persist(set, { inboxAutoSettleDays: Math.min(90, Math.max(0, Math.round(days))) });
     },
-    setInboxAutoSettleOnMerge: (enabled) => {
-      persist(set, { inboxAutoSettleOnMerge: enabled });
+    setUsageLimitAutoResume: (enabled) => {
+      persist(set, { usageLimitAutoResume: enabled });
+    },
+    setUsageLimitResumePrompt: (prompt) => {
+      persist(set, { usageLimitResumePrompt: prompt });
+    },
+    setQuotaExpiryAlertHours: (hours) => {
+      persist(set, { quotaExpiryAlertHours: Math.min(72, Math.max(0, Math.round(hours))) });
+    },
+    setQuotaExpiryUnusedPercent: (percent) => {
+      persist(set, { quotaExpiryUnusedPercent: Math.min(100, Math.max(1, Math.round(percent))) });
     },
   };
 }

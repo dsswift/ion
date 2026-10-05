@@ -210,6 +210,18 @@ describe("Inbox conversation cycling", () => {
     ]);
   });
 
+  it("puts working conversations below the rest, each part in the chosen order", () => {
+    const rows = [
+      { ...tab("working-new", { status: "running" }), lastActivityAt: 40 },
+      { ...tab("idle-old"), lastActivityAt: 10 },
+      { ...tab("working-old", { status: "running" }), lastActivityAt: 20 },
+      { ...tab("idle-new"), lastActivityAt: 30 },
+    ] as TabState[];
+    const working = (row: TabState): boolean => row.status === "running";
+    expect(orderInboxTabs(rows, "activity", working).map(({ id }) => id)).toEqual(["idle-new", "idle-old", "working-new", "working-old"]);
+    expect(orderInboxTabs(rows, "activity").map(({ id }) => id)).toEqual(["working-new", "idle-new", "working-old", "idle-old"]);
+  });
+
   it("includes pinned conversations in activity order and wraps", () => {
     expect(nextInboxConversation(tabs, "tie-a")?.id).toBe("tie-b");
     expect(nextInboxConversation(tabs, "no-activity")?.id).toBe("tie-a");

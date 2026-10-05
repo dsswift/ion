@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { Check, CaretDown, Desktop, Folder, SortAscending, Broadcast, Stack } from '@phosphor-icons/react'
+import { Check, CaretDown, Desktop, Folder, Hourglass, SortAscending, Broadcast, Stack } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
@@ -24,6 +24,9 @@ interface InboxSortPickerProps {
   anchor: { x: number; y: number }
   selected: InboxSortOrder
   onSelect: (order: InboxSortOrder) => void
+  /** Working conversations sit below the rest, whatever the sort. */
+  workingLast: boolean
+  onWorkingLast: (enabled: boolean) => void
   triggerRef: React.RefObject<HTMLButtonElement | null>
   onClose: () => void
 }
@@ -171,14 +174,14 @@ export function InboxProjectScopePicker({
 }
 
 /** Rich active-list sort picker. Snoozed and settled retain lifecycle ordering. */
-export function InboxSortPicker({ anchor, selected, onSelect, triggerRef, onClose }: InboxSortPickerProps): React.JSX.Element | null {
+export function InboxSortPicker({ anchor, selected, onSelect, workingLast, onWorkingLast, triggerRef, onClose }: InboxSortPickerProps): React.JSX.Element | null {
   const options: Array<{ id: InboxSortOrder; label: string; detail: string }> = [
     { id: 'created', label: 'Newest created', detail: 'Stable inbox order' },
     { id: 'activity', label: 'Recent activity', detail: 'Latest work first' },
     { id: 'title', label: 'Title', detail: 'A to Z' },
   ]
   return (
-    <PickerRoot anchor={anchor} triggerRef={triggerRef} onClose={onClose} width={240} deps={[selected]}>
+    <PickerRoot anchor={anchor} triggerRef={triggerRef} onClose={onClose} width={240} deps={[selected, workingLast]}>
       <div style={{ padding: '3px 10px 5px', color: 'inherit', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', opacity: 0.65 }}>
         SORT ACTIVE CONVERSATIONS
       </div>
@@ -191,6 +194,13 @@ export function InboxSortPicker({ anchor, selected, onSelect, triggerRef, onClos
           </span>
         </PickerOption>
       ))}
+      <PickerOption active={workingLast} onClick={() => onWorkingLast(!workingLast)}>
+        <Hourglass size={15} />
+        <span style={{ flex: 1 }}>
+          <span style={{ display: 'block' }}>Working last</span>
+          <span style={{ display: 'block', marginTop: 1, fontSize: 10, opacity: 0.6 }}>Conversations still working sit below the rest</span>
+        </span>
+      </PickerOption>
     </PickerRoot>
   )
 }

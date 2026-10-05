@@ -11,6 +11,7 @@ import { classifyInbox, inboxUnread, wokeAt, type InboxTabView } from '@ion/shar
 import { liveBackgroundShellCount } from '@ion/shared/background-shell-counts'
 import { sortPinnedByOrder } from '@ion/shared/inbox-pin-order'
 import type { TabState } from '@ion/shared/types'
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
 import { useQuestionsStore, openWorkflowsForTab, activeQuestionsCount } from '../../stores/questions-store'
 
 export interface InboxMeta {
@@ -55,6 +56,7 @@ function viewFor(tab: TabState, pendingAskCount: number, waiting: boolean, hasPe
     pendingAskCount,
     waiting,
     failed: tab.status === 'failed',
+    limited: usageLimitedUntil(tab, Date.now()) !== null,
   }
 }
 

@@ -23,6 +23,9 @@ import { availableSnoozePresets } from './inbox-snooze-presets'
 import { isBenchDirectory, settlingIsPermanent } from '@ion/shared/worktree-conversations'
 import { classifyInbox, type InboxTabView } from '@ion/shared/inbox-classify'
 import type { TabState } from '@ion/shared/types'
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
+import { formatClock } from './usage-limit-format'
+import { moveToServerWithRoom } from './move-limited'
 import { scrollableMenuStyle } from '../../menu-viewport'
 import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeGate'
 import { useTransferGate } from '../transfer/useTransferGate'
@@ -127,6 +130,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
     pendingAskCount: 0,
     waiting: false,
     failed: tab.status === 'failed',
+    limited: usageLimitedUntil(tab, Date.now()) !== null,
   }
   const state = classifyInbox(view, Date.now(), autoSettleDays > 0 ? autoSettleDays : null)
   const canSettleInstead = state !== 'settled' && !settlesPermanently
@@ -135,6 +139,13 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
     onClose()
   }
   const store = useSessionStore
+  // A usage limit holds the conversation: offer to wait it out. A held prompt
+  // is the server's to send, so the menu can only send it now or drop it.
+  const limitedUntil = usageLimitedUntil(tab, Date.now())
+  const held = tab.deferredSend ?? null
+  // A limited conversation is at rest even when its last run reads failed, so its move is offered on that alone.
+  const canMoveLimited = limitedUntil !== null && !tab.sealPending && tab.status !== 'running' && tab.status !== 'starting' && tab.status !== 'connecting'
+  const usageItems = (limitedUntil !== null ? (held ? 0 : 1) + (state !== 'snoozed' && !inBench ? 1 : 0) + 1 : 0) + (held ? 2 : 0)
 
   const showPinAction = !inBench || tab.pinnedAt != null
   // Drives the anchored positioner's re-measure. A bench row drops Snooze and
@@ -146,6 +157,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
     + (convert.show ? 1 : 0)
     + (canFork ? 1 : 0)
     + (onPickColor ? 1 : 0)
+    + usageItems
     + 1
   const pos = useAnchoredPopover({ x, y }, { deps: [itemCount, convert.label] })
 
@@ -183,6 +195,19 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
         pointerEvents: 'auto',
       }}
     >
+      {limitedUntil !== null && !held && (
+        <MenuButton label={`Resume at reset (${formatClock(limitedUntil)})`} onSelect={() => exec(() => {
+          rInfo('inbox', 'resume at reset chosen', { tab_id: tab.id.slice(0, 8) })
+          store.getState().resumeAtLimitReset(tab.id)
+        })} />
+      )}
+      {limitedUntil !== null && state !== 'snoozed' && !inBench && (
+        <MenuButton label="Snooze until reset" onSelect={() => exec(() => store.getState().snoozeUntilLimitReset(tab.id))} />
+      )}
+      {limitedUntil !== null && <MenuButton label="Move to a server with room…" disabled={!canMoveLimited} onSelect={() => exec(() => { void moveToServerWithRoom(tab) })} />}
+      {held && <MenuButton label="Send queued prompt now" onSelect={() => exec(() => { store.getState().releaseDeferredSend(tab.id) })} />}
+      {held && <MenuButton label="Cancel queued prompt" onSelect={() => exec(() => store.getState().cancelDeferredSend(tab.id))} />}
+      {usageItems > 0 && <div style={{ height: 1, background: colors.containerBorder, margin: '4px 0' }} />}
       {state === 'snoozed' ? (
         <MenuButton label="Wake" onSelect={() => exec(() => store.getState().unsnoozeTab(tab.id))} />
       ) : inBench ? null : (

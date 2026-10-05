@@ -1,11 +1,12 @@
 import React, { useRef, useState } from 'react'
-import { CaretDown, SortAscending, Stack } from '@phosphor-icons/react'
+import { CaretDown, Compass, SortAscending, Stack } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { PickerMenu, PickerMenuOption } from './NewConversationPickerMenu'
 import type { ProjectGrouping, ProjectSortOrder } from './new-conversation-project-order'
 import { LOCAL_ENVIRONMENT_LABEL } from '../studio/connection/local-label'
+import type { PlacementMode } from '../studio/connection/placement'
 
 /**
  * The project list's sort and grouping controls.
@@ -37,6 +38,16 @@ const GROUPING_OPTIONS: Array<{ id: ProjectGrouping; label: string; detail: stri
   { id: 'local-first', label: GROUPING_LABELS['local-first'], detail: 'This machine, then the rest' },
   { id: 'by-host', label: GROUPING_LABELS['by-host'], detail: 'A collapsible section per machine' },
   { id: 'none', label: GROUPING_LABELS.none, detail: 'One flat list' },
+]
+
+const PLACEMENT_LABELS: Record<PlacementMode, string> = {
+  manual: `${LOCAL_ENVIRONMENT_LABEL} by default`,
+  auto: 'Auto machine',
+}
+
+const PLACEMENT_OPTIONS: Array<{ id: PlacementMode; label: string; detail: string }> = [
+  { id: 'manual', label: PLACEMENT_LABELS.manual, detail: 'This machine when it has the project' },
+  { id: 'auto', label: PLACEMENT_LABELS.auto, detail: 'The machine whose account has the most room' },
 ]
 
 export function sortOrderLabel(order: ProjectSortOrder): string { return SORT_LABELS[order] }
@@ -103,13 +114,18 @@ function ControlButton({ label, icon, buttonRef, open, onClick }: {
 }
 
 /** The bar under the search field: how the project list is ordered, and how it is divided. */
-export function ProjectListControls({ sort, grouping, showGrouping, onSort, onGrouping }: {
+export function ProjectListControls({ sort, grouping, showGrouping, placement, onSort, onGrouping, onPlacement }: {
   sort: ProjectSortOrder
   grouping: ProjectGrouping
+  /** True when more than one machine is connected; the machine controls only mean something then. */
   showGrouping: boolean
+  placement: PlacementMode
   onSort(order: ProjectSortOrder): void
   onGrouping(grouping: ProjectGrouping): void
+  onPlacement(mode: PlacementMode): void
 }): React.JSX.Element {
+  const placementButton = useRef<HTMLButtonElement>(null)
+  const [placementAnchor, setPlacementAnchor] = useState<{ x: number; y: number } | null>(null)
   const colors = useColors()
   const sortButton = useRef<HTMLButtonElement>(null)
   const groupButton = useRef<HTMLButtonElement>(null)
@@ -123,6 +139,8 @@ export function ProjectListControls({ sort, grouping, showGrouping, onSort, onGr
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: `1px solid ${colors.popoverBorder}` }}>
       <ControlButton label={SORT_LABELS[sort]} icon={<SortAscending size={12} />} buttonRef={sortButton} open={sortAnchor !== null} onClick={(event) => setSortAnchor(sortAnchor ? null : anchorFor(event))} />
       {showGrouping && <ControlButton label={GROUPING_LABELS[grouping]} icon={<Stack size={12} />} buttonRef={groupButton} open={groupAnchor !== null} onClick={(event) => setGroupAnchor(groupAnchor ? null : anchorFor(event))} />}
+      {showGrouping && <ControlButton label={PLACEMENT_LABELS[placement]} icon={<Compass size={12} />} buttonRef={placementButton} open={placementAnchor !== null} onClick={(event) => setPlacementAnchor(placementAnchor ? null : anchorFor(event))} />}
+      {placementAnchor && <OptionMenu anchor={placementAnchor} heading="DEFAULT MACHINE" options={PLACEMENT_OPTIONS} selected={placement} triggerEl={placementButton.current} onSelect={onPlacement} onClose={() => setPlacementAnchor(null)} />}
       {sortAnchor && <OptionMenu anchor={sortAnchor} heading="SORT PROJECTS" options={SORT_OPTIONS} selected={sort} triggerEl={sortButton.current} onSelect={onSort} onClose={() => setSortAnchor(null)} />}
       {groupAnchor && <OptionMenu anchor={groupAnchor} heading="GROUP PROJECTS" options={GROUPING_OPTIONS} selected={grouping} triggerEl={groupButton.current} onSelect={onGrouping} onClose={() => setGroupAnchor(null)} />}
     </div>

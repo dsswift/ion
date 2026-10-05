@@ -22,6 +22,8 @@ import type { TransferMode } from './useTransferPreflight'
 export interface TransferDialogRequest {
   tabId: string
   initialMode: TransferMode
+  /** The machine the dialog opens on as its destination, when the opener has one in mind. The operator can still change it. */
+  suggestedEnvironmentId?: string
 }
 
 interface OpenDialog extends TransferDialogRequest {
@@ -69,7 +71,7 @@ export function TransferDialogHost(): React.JSX.Element | null {
   const layer = usePopoverLayer()
   if (!open || !layer) return null
   return createPortal(
-    <TransferDialog key={open.key} tabId={open.tabId} initialMode={open.initialMode} onClose={closeTransferDialog} />,
+    <TransferDialog key={open.key} tabId={open.tabId} initialMode={open.initialMode} suggestedEnvironmentId={open.suggestedEnvironmentId} onClose={closeTransferDialog} />,
     layer,
   )
 }

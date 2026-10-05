@@ -1,6 +1,6 @@
 import { useEnvironmentDeveloperSurfaces } from '../connection/developer-surfaces'
 import React, { useEffect, useRef, useState } from 'react'
-import { Check, ClockCounterClockwise, Globe, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
+import { Check, ClockCounterClockwise, Globe, Hourglass, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useQuestionsStore } from '../../stores/questions-store'
 import { usePreferencesStore } from '../../preferences'
@@ -19,6 +19,8 @@ import { availableSnoozePresets } from './inbox-snooze-presets'
 import { ConversationHoverCard } from './ConversationHoverCard'
 import { inboxWorktreeFor } from './inbox-grouping'
 import { latestConversationActivityAt } from '@ion/shared/inbox-classify'
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
+import { formatClock, heldPromptLabel } from './usage-limit-format'
 import { contentRouter } from '../../lib/file-open-router'
 import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 import { host } from '../../host/host-instance'
@@ -82,9 +84,14 @@ export function InboxRow({
     return abbreviateProfileName(profile?.name)
   })
 
+  // A usage limit holds the conversation until its reset. It outranks Failed:
+  // the failed run is the limit, and the row says when it lifts.
+  const limitedUntil = usageLimitedUntil(tab, Date.now())
+  const held = tab.deferredSend ?? null
   const status = pendingAsk ? 'Approval'
     : waiting === 'plan-ready' ? 'Plan Ready'
     : waiting ? 'Input'
+    : limitedUntil !== null ? 'Limited'
     : tab.status === 'failed' ? 'Failed'
     : tab.status === 'starting' ? 'Connecting'
     : backgroundLiveness === 'monitoring' ? 'Monitoring'
@@ -92,12 +99,13 @@ export function InboxRow({
     : unread ? 'Done'
     : null
   const statusColor = status === 'Failed' ? colors.dangerFg
+    : status === 'Limited' ? colors.statusPermission
     : status === 'Approval' ? colors.statusPermission
     : status === 'Input' || status === 'Plan Ready' ? colors.accent
     : status === 'Working' || status === 'Monitoring' ? colors.statusRunning
     : status === 'Connecting' ? colors.textTertiary
     : colors.statusComplete
-  const quiet = !isActive && !selected && !unread && !woke && (status === null || status === 'Connecting' || status === 'Working' || status === 'Monitoring')
+  const quiet = !isActive && !selected && !unread && !woke && (status === null || status === 'Connecting' || status === 'Working' || status === 'Monitoring' || (status === 'Limited' && held !== null))
   const title = tab.customTitle || tab.title || 'Untitled'
   // Worktree and branch labels are developer surfaces of the machine the
   // conversation is on.
@@ -107,6 +115,7 @@ export function InboxRow({
   const latestActivityAt = latestConversationActivityAt(tab)
   const rightLabel = compact && tab.snoozedUntil != null && tab.snoozedUntil > Date.now()
     ? availableSnoozePresets(new Date()).find((preset) => preset.until === tab.snoozedUntil)?.label ?? formatRelativeShort(tab.snoozedUntil)
+    : limitedUntil !== null && !held ? `resets ${formatClock(limitedUntil)}`
     : latestActivityAt != null ? formatRelativeShort(latestActivityAt) : ''
 
   // Badges ride the second line, after the directory, so the title line
@@ -204,6 +213,7 @@ export function InboxRow({
             : <Terminal size={12} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
         </Tooltip>}
         {tab.settledOverride === 'auto' && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.textTertiary }}><ClockCounterClockwise size={10} />Auto</span>}
+        {held && <Tooltip text={held.text}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.textSecondary, whiteSpace: 'nowrap' }}><Hourglass size={10} />{heldPromptLabel(held.release, limitedUntil)}</span></Tooltip>}
         {woke && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, color: colors.statusPermission }}><WarningCircle size={11} />Woke</span>}
         {status ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 9, fontWeight: 600, color: statusColor }}>
           {status === 'Done' && <Check size={11} />}{status}

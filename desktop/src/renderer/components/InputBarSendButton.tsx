@@ -5,6 +5,8 @@ import { useColors } from '../theme'
 import { useInteractiveState } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 
+const MOD = navigator.platform.toLowerCase().includes('mac') ? 'Cmd' : 'Ctrl'
+
 export interface SendButtonProps {
   visible: boolean
   isBusy: boolean
@@ -68,7 +70,7 @@ export function SendButton({ visible, isBusy, disabled = false, colors, onClick 
               // so it must re-list box-shadow for the focus ring to animate.
               transition: `background ${transitions.base}, box-shadow ${transitions.base}, transform ${transitions.fast}`,
             }}
-            title={isBusy ? 'Queue message' : 'Send (Enter)'}
+            title={isBusy ? 'Queue message' : `Send (Enter)\n${MOD}+Enter: send, then open a new conversation like this one\n${MOD}+Shift+Enter: send when the account has spare quota`}
           >
             <ArrowUp size={16} weight="bold" />
           </button>

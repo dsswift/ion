@@ -34,7 +34,7 @@ const { QuickToolsSection } = await import('../workflow/QuickToolsSection')
 const store = useSettingsPreferences as unknown as { setState(s: object, replace?: boolean): void; getState(): Record<string, unknown> }
 const setters = {
   setGitOpsMode: vi.fn(), setWorktreeCompletionStrategy: vi.fn(), setWorktreeSkipPrTitle: vi.fn(), removeWorktreeBranchDefault: vi.fn(),
-  setCommitCommand: vi.fn(), setGitWatcherIgnoredDirectories: vi.fn(), setInboxAutoSettleDays: vi.fn(), setInboxAutoSettleOnMerge: vi.fn(),
+  setCommitCommand: vi.fn(), setGitWatcherIgnoredDirectories: vi.fn(), setInboxAutoSettleDays: vi.fn(), setUsageLimitAutoResume: vi.fn(), setUsageLimitResumePrompt: vi.fn(), setQuotaExpiryAlertHours: vi.fn(), setQuotaExpiryUnusedPercent: vi.fn(),
   addQuickTool: vi.fn(), updateQuickTool: vi.fn(), removeQuickTool: vi.fn(),
 }
 
@@ -45,7 +45,7 @@ beforeEach(() => {
   store.setState({
     ...setters,
     gitOpsMode: 'worktree', worktreeCompletionStrategy: 'merge', worktreeSkipPrTitle: false, worktreeBranchDefaults: {},
-    commitCommand: '', gitWatcherIgnoredDirectories: [], inboxAutoSettleDays: 0, inboxAutoSettleOnMerge: false, quickTools: [],
+    commitCommand: '', gitWatcherIgnoredDirectories: [], inboxAutoSettleDays: 0, usageLimitAutoResume: false, usageLimitResumePrompt: 'Continue.', quotaExpiryAlertHours: 12, quotaExpiryUnusedPercent: 25, quickTools: [],
   }, true)
   h = createHarness()
 })
@@ -137,15 +137,15 @@ describe('InboxSection', () => {
     expect(text()).toContain('Could not check what this would settle, so nothing was changed.')
   })
 
-  it('turning it off needs no preview; merged pull requests toggle directly', async () => {
+  it('turning it off needs no preview; resume at reset toggles directly', async () => {
     store.setState({ inboxAutoSettleDays: 5 })
     await h.render(<InboxSection />)
     expect(h.container.querySelector('input[aria-label="Days of inactivity before auto-settle"]')).not.toBeNull()
     await h.click('Auto-settle inactive conversations')
     expect(hostAction).not.toHaveBeenCalled()
     expect(setters.setInboxAutoSettleDays).toHaveBeenCalledWith(0)
-    await h.click('Auto-settle merged pull requests')
-    expect(setters.setInboxAutoSettleOnMerge).toHaveBeenCalledWith(true)
+    await h.click('Resume when a usage limit resets')
+    expect(setters.setUsageLimitAutoResume).toHaveBeenCalledWith(true)
   })
 })
 
