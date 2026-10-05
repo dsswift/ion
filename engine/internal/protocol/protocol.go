@@ -48,6 +48,7 @@ type ClientCommand struct {
 	AllowedTools  []string `json:"allowedTools,omitempty"`
 	EntryID       string   `json:"entryId,omitempty"`
 	TargetID      string   `json:"targetId,omitempty"`
+	LeafID        string   `json:"leafId,omitempty"` // switch_branch target; fork_session copies that branch
 	ExtensionDir  string   `json:"extensionDir,omitempty"`
 	Extensions    []string `json:"extensions,omitempty"`
 	NoExtensions  bool     `json:"noExtensions,omitempty"`
@@ -515,6 +516,8 @@ var validCommands = map[string]bool{
 	"rewind_session":       true,
 	"navigate_tree":        true,
 	"get_tree":             true,
+	"list_branches":        true,
+	"switch_branch":        true,
 	"shutdown":             true,
 	"permission_response":  true,
 	"list_stored_sessions": true,

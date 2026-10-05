@@ -110,7 +110,7 @@ func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 		"stop_background_task", "steer_agent", "dialog_response", "command", "stop_session",
 		"settle_session", "resume_session",
 		"fork_session", "set_plan_mode", "branch", "branch_before",
-		"rewind_session", "navigate_tree", "get_tree",
+		"rewind_session", "navigate_tree", "get_tree", "list_branches", "switch_branch",
 		"permission_response", "tool_gate_response",
 		"elicitation_response", "early_stop_decision_response",
 		"reconcile_state", "query_session_status", "get_agent_state",

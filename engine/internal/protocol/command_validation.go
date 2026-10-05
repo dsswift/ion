@@ -123,7 +123,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasString(raw, "command")
 	case "fork_session":
 		return hasNonEmptyString(raw, "key") && (hasNumber(raw, "messageIndex") ||
-			(hasNonEmptyString(raw, "newKey") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex"))))
+			(hasNonEmptyString(raw, "newKey") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex") || hasNonEmptyString(raw, "leafId"))))
 	case "set_plan_mode":
 		return hasNonEmptyString(raw, "key") && hasBool(raw, "enabled")
 	case "branch":
@@ -137,6 +137,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex"))
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
+	case "list_branches":
+		return hasNonEmptyString(raw, "key")
+	case "switch_branch":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "leafId")
 	case "permission_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "questionId") && hasNonEmptyString(raw, "optionId")
 	case "list_sessions", "shutdown", "list_stored_sessions", "health", "get_system_metrics":

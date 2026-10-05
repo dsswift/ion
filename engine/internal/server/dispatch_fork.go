@@ -14,7 +14,9 @@ func (s *Server) dispatchForkSession(conn net.Conn, cmd *protocol.ClientCommand)
 	}
 	var newKey, conversationID string
 	var err error
-	if cmd.EntryID != "" || cmd.UserTurnIndex != nil {
+	if cmd.LeafID != "" {
+		newKey, conversationID, err = s.manager.ForkSessionAtLeaf(cmd.Key, cmd.NewKey, cmd.LeafID)
+	} else if cmd.EntryID != "" || cmd.UserTurnIndex != nil {
 		if cmd.UserTurnIndex != nil {
 			idx = *cmd.UserTurnIndex
 		}

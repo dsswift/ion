@@ -93,7 +93,10 @@ const (
 	EventPollStarted            = "poll_started"
 	EventPollProgress           = "poll_progress"
 	EventPollTerminal           = "poll_terminal"
-	EventSessionWorkStopped     = "session_work_stopped"
+	// EventActivePathChanged fires when switch_branch moves a conversation
+	// onto another branch. See ActivePathChangedEvent.
+	EventActivePathChanged  = "active_path_changed"
+	EventSessionWorkStopped = "session_work_stopped"
 	// EventBackgroundWorkDelivered fires when a background bash completion is
 	// successfully delivered into a session -- steered into an active run or
 	// injected as a wake prompt. Distinct from EventBackgroundTaskComplete,

@@ -1,5 +1,10 @@
 {
   "normalizedEvents": {
+    "active_path_changed": [
+      "conversationId",
+      "leafId",
+      "previousLeafId"
+    ],
     "agent_state": [
       "agents"
     ],
@@ -318,6 +323,7 @@
   },
   "engineEvent": [
     "active",
+    "activePathChanged",
     "agents",
     "assistantEntryIds",
     "asyncDecl",
