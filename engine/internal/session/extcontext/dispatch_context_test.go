@@ -98,8 +98,10 @@ func (a *dispatchContextTestAccessor) SetSessionMemory(content string) {}
 func (a *dispatchContextTestAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *dispatchContextTestAccessor) SetPlanMode(enabled bool, source string) {}
-func (a *dispatchContextTestAccessor) GetPlanModeState() (bool, string)        { return false, "" }
+func (a *dispatchContextTestAccessor) SetPlanMode(enabled bool, source string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
+func (a *dispatchContextTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *dispatchContextTestAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	return state.ID
 }

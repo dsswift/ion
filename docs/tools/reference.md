@@ -194,7 +194,17 @@ Skills can be placed in the roots above in two formats:
 - **Flat file**: `<name>.md` -- the skill name comes from the `name` frontmatter key, falling back to the filename stem.
 - **Subdirectory**: `<name>/SKILL.md` -- the skill name is always the directory name. This is the industry-standard layout used by most third-party skill repositories.
 
-Both formats coexist in the same directory. Frontmatter supports single-line values (`key: value`) and YAML block scalars (`key: >` for folded, `key: |` for literal).
+Both formats coexist in the same directory. Frontmatter supports single-line values (`key: value`), YAML block scalars (`key: >` for folded, `key: |` for literal), and YAML sequences (`key:` followed by `  - item` lines).
+
+#### Arguments, shell injection, and pre-approved tools
+
+These apply the same way on both invocation paths (the Skill tool and `/<skill>`):
+
+- **Arguments.** `$ARGUMENTS` is the full argument string, `$ARGUMENTS[N]` and `$N` the Nth whitespace-split argument. A body with no placeholder gets a trailing `ARGUMENTS: <args>` line. `${ION_SKILL_DIR}` and `${CLAUDE_SKILL_DIR}` are the skill's directory.
+- **Shell injection.** `` !`cmd` `` (the `!` at line start or after whitespace) and a block opened by a ```` ```! ```` line are run when the skill is invoked, in the skill's directory, with a two-minute timeout. Each placeholder is replaced by the command's output (stdout then stderr), capped with a truncation note. Output is never scanned again, so a command cannot inject another. A placeholder inside an ordinary ```` ``` ```` code block stays as written. A non-zero exit or a timeout aborts the invocation with the command, its exit code, and the end of its output; append `|| true` when a non-zero exit is expected.
+- **Policy.** Each command is checked by the permission engine as a `Bash` call before it runs. `deny` aborts; `ask` aborts unless the skill's own `allowed-tools` covers the command. `limits.disableSkillShellExecution: true` replaces every placeholder with `[shell command execution disabled by policy]`, and an enterprise `limits.disableSkillShellExecution` seals it on.
+- **`allowed-tools`.** Pre-approves tools for the run that invoked the skill: `Bash(git add *)` grants matching Bash commands, `Read(docs/**)` matching paths, a bare `Read` the whole tool. A grant settles a permission `ask` as `allow` (audited with layer `skill_grant`); it never overrides `deny`, and it ends with the run.
+- **Hook.** `skill_load` fires before anything runs and may veto the skill, replace its body, or append content. See [hooks reference](../hooks/reference.md#skills).
 
 #### Skill context lifecycle
 

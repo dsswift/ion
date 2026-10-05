@@ -246,8 +246,8 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 			sa.SetSessionMemory(content)
 			return nil
 		},
-		SetPlanMode: func(enabled bool, source string) {
-			sa.SetPlanMode(enabled, source)
+		SetPlanMode: func(enabled bool, source string) extension.PlanModeOutcome {
+			return sa.SetPlanMode(enabled, source)
 		},
 		GetPlanMode: func() (bool, string) {
 			return sa.GetPlanModeState()

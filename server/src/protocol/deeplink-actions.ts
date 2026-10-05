@@ -15,6 +15,7 @@
  */
 import { markDeepLinkConfirmationReady, markDeepLinkConfirmationUnavailable, rejectAllDeepLinkConfirmations, resolveDeepLinkConfirmation } from '../deeplink/confirm'
 import { handleDeepLink, markDeepLinksReady } from '../deeplink/dispatch'
+import { openDeepLinkForConnection, settleRemoteConfirmation } from '../deeplink/remote'
 import { isLocalDesktop } from './lifecycle-actions'
 import type { Connection } from './connection'
 import { log as _log, warn as _warn } from '../logger'
@@ -89,6 +90,22 @@ export const DEEPLINK_ACTIONS: Record<string, MiscActionSpec> = {
       return ok
     },
   },
+  // [{ url }]: a remote client (phone, browser) opened an `ion://` link. A
+  // navigation link answers with its target; an action link answers with a
+  // confirmation for the caller to show, answered by confirmResult with
+  // owner 'remote'. Any connection may call it; nothing runs without that answer.
+  'deeplink.open': {
+    requiredScope: 'conversations:operate',
+    handler: async (conn, args) => {
+      const url = (args[0] as { url?: unknown } | null)?.url
+      if (typeof url !== 'string' || !url || url.length > 32768) {
+        warn('deeplink.open ignored: bad url', { connection_id: conn.id })
+        return { ok: true, value: { kind: 'error', reason: 'url required' } }
+      }
+      log('deeplink.open requested', { connection_id: conn.id, transport: conn.transport, url_length: url.length })
+      return { ok: true, value: await openDeepLinkForConnection(conn, url) }
+    },
+  },
   // [{ id, owner, approved, tabId? }]
   'deeplink.confirmResult': {
     requiredScope: 'conversations:operate',
@@ -97,8 +114,14 @@ export const DEEPLINK_ACTIONS: Record<string, MiscActionSpec> = {
       if (typeof payload !== 'object' || payload === null) { warn('confirm result ignored: payload is not an object', { connection_id: conn.id }); return ok }
       const { id, owner: resultOwner, approved, tabId } = payload as { id?: unknown; owner?: unknown; approved?: unknown; tabId?: unknown }
       if (typeof id !== 'string' || !id || id.length > 128) { warn('confirm result ignored: bad id', { connection_id: conn.id }); return ok }
-      if (resultOwner !== 'overlay' && resultOwner !== 'studio') { warn('confirm result ignored: invalid owner', { connection_id: conn.id, id }); return ok }
+      if (resultOwner !== 'overlay' && resultOwner !== 'studio' && resultOwner !== 'remote') { warn('confirm result ignored: invalid owner', { connection_id: conn.id, id }); return ok }
       if (typeof approved !== 'boolean') { warn('confirm result ignored: approved is not a boolean', { connection_id: conn.id, id }); return ok }
+      // A remote confirmation runs its action now and answers with the outcome.
+      if (resultOwner === 'remote') {
+        const outcome = await settleRemoteConfirmation(conn, id, approved)
+        log('remote confirm result settled', { connection_id: conn.id, id, approved, ok: outcome?.ok ?? false })
+        return { ok: true, value: outcome ?? { ok: false, error: 'not a remote confirmation' } }
+      }
       if (tabId !== undefined && (typeof tabId !== 'string' || !tabId || tabId.length > 200)) { warn('confirm result ignored: bad tab id', { connection_id: conn.id, id }); return ok }
       log('confirm result received', { connection_id: conn.id, id, approved, owner: resultOwner })
       resolveDeepLinkConfirmation({ id, owner: resultOwner, approved, tabId })

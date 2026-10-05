@@ -169,7 +169,9 @@ func (a *dispatchCountSpyAccessor) SetSessionMemory(_ string) {}
 func (a *dispatchCountSpyAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *dispatchCountSpyAccessor) SetPlanMode(_ bool, _ string)     {}
+func (a *dispatchCountSpyAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *dispatchCountSpyAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *dispatchCountSpyAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
 	a.mu.Lock()

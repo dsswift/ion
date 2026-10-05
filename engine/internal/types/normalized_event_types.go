@@ -23,8 +23,10 @@ const (
 	EventUsage             = "usage"
 	EventPermissionRequest = "permission_request"
 	EventPlanModeChanged   = "plan_mode_changed"
-	EventPlanProposal      = "plan_proposal"
-	EventPlanModeAutoExit  = "plan_mode_auto_exit"
+	// EventPlanModeChangeRejected reports a vetoed plan-mode change request.
+	EventPlanModeChangeRejected = "plan_mode_change_rejected"
+	EventPlanProposal           = "plan_proposal"
+	EventPlanModeAutoExit       = "plan_mode_auto_exit"
 	// EventPlanFileWritten is emitted the moment a Write/Edit successfully
 	// lands on the canonical plan file during plan mode. It is distinct from
 	// EventPlanModeChanged (which fires on plan-mode *entry*, before any file

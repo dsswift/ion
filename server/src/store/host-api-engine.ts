@@ -234,6 +234,8 @@ export async function closeTab(tabId: string): Promise<void> {
   }
   const { composerActionsBoard } = await import('../engine/composer-actions-wiring')
   composerActionsBoard.forgetTab(tabId)
+  const { linkRoutesBoard } = await import('../engine/link-routes-wiring')
+  linkRoutesBoard.forgetTab(tabId)
 }
 
 export function stopTab(tabId: string): Promise<boolean> {

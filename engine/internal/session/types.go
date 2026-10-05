@@ -473,8 +473,14 @@ type engineSession struct {
 	// by m.mu.
 	manualCompactStdinActive bool
 	hasExitedPlanMode        bool // set when ExitPlanMode fires; enables reentry detection
-	promptQueue              []pendingPrompt
-	maxQueueDepth            int // default 32
+	// planModeHookDispatching is true while a before_plan_mode_enter or
+	// before_plan_mode_exit hook is running for this session. A plan-mode
+	// change requested while it is set (a handler calling
+	// ctx.enterPlanMode) transitions without firing the hook again, which is
+	// what keeps a handler from recursing into itself. Guarded by m.mu.
+	planModeHookDispatching bool
+	promptQueue             []pendingPrompt
+	maxQueueDepth           int // default 32
 	// rootDispatchCompletions is the FIFO durable outbox for top-level child
 	// terminal results. A delivery stays here until a classified prompt is
 	// accepted by the normal session path; queue backpressure never drops it.
@@ -671,6 +677,12 @@ type engineSession struct {
 	// attach slashCommand/slashArgs provenance. Consumed (cleared) on the next
 	// SendPrompt so it applies exactly once.
 	pendingSlashInvocation *conversation.SlashInvocation
+
+	// slashRenderCancel cancels a slash skill's shell commands while they
+	// run, before the backend run exists. SendAbortScoped calls it, since a
+	// backend cancel by requestID cannot reach work that has not started a
+	// run. Nil when no slash skill is rendering.
+	slashRenderCancel context.CancelFunc
 
 	// temporaryAutoPlan is non-nil while a plan-mode command is temporarily using auto-mode tools.
 	temporaryAutoPlan *temporaryAutoPlanWorkflow

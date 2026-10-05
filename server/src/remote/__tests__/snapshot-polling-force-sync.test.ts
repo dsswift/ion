@@ -183,7 +183,7 @@ describe('sendSync — single snapshot sender with force semantics', () => {
     state.remoteWorktreeStates.set('/repo', { repoPath: '/repo', worktrees: [], benches: [], ephemeralDefault: false })
     await sendSync(collector)
     const snap = collected.find((event) => event.type === 'desktop_snapshot')
-    expect(snap.worktreeStates).toEqual([{ repoPath: '/repo', worktrees: [], benches: [] }])
+    expect(snap.worktreeStates).toEqual([{ repoPath: '/repo', worktrees: [], benches: [], ephemeralDefault: false }])
     expect(snap.settledTabs).toEqual([])
     state.remoteWorktreeStates.clear()
   })

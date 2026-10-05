@@ -77,6 +77,7 @@ func (h *Host) registerHookForwarders() {
 	h.registerBeforePlanModeExitForwarder()
 	h.registerBeforePlanModeAutoExitForwarder()
 	h.registerBeforeRunRecoveryForwarder()
+	h.registerSkillLoadForwarder()
 
 	// Block-checking hooks: parse result.block and result.reason.
 	h.registerBlockForwarder(HookToolCall)

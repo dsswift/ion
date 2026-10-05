@@ -350,18 +350,19 @@ type Context struct {
 	// summarization strategies, overriding the engine's background summarizer.
 	SetSessionMemory func(content string) error
 
-	// SetPlanMode imperatively enables or disables plan mode for this session.
-	// The engine flips session state, emits PlanModeChangedEvent so consumers
-	// can mirror the new state, and (when enabled) ensures a planFilePath is
-	// allocated. When disabled, the plan file path is preserved so a
-	// subsequent re-enable reuses it (same plan ID semantics as any other
-	// harness-initiated toggle). Nil when not wired (e.g. in child-dispatch
-	// sessions that have no plan-mode capability).
+	// SetPlanMode enables or disables plan mode for this session through the
+	// same transition a client toggle takes: before_plan_mode_enter /
+	// before_plan_mode_exit fire with source "extension" and may veto it; an
+	// allowed change emits PlanModeChangedEvent and reaches a live run in the
+	// current turn; a veto emits PlanModeChangeRejectedEvent. A request for
+	// the current mode is a no-op that reports allowed. When disabled, the
+	// plan file path is preserved so a later re-enable reuses it. Nil when
+	// not wired (e.g. in child-dispatch sessions with no plan-mode
+	// capability).
 	//
-	// source is a free-form string logged for observability (e.g.
-	// "extension", "slash_command", "session_start"). It does not affect
-	// plan-mode semantics.
-	SetPlanMode func(enabled bool, source string)
+	// source is a free-form label logged for observability (e.g.
+	// "safety_gate"). The hooks always see "extension".
+	SetPlanMode func(enabled bool, source string) PlanModeOutcome
 
 	// SetRunRecovery applies an extension-owned per-session recovery override.
 	// It is available from session_start after session defaults resolve.

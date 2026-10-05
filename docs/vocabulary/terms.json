@@ -2971,6 +2971,31 @@
       ]
     },
     {
+      "id": "link-route",
+      "term": "Link Route",
+      "definition": "A named deep-link target an extension registers through the Studio SDK. A link ion://ext/<routeId> runs the slash command the route names, with the link's args appended, in a conversation whose extension owns that command. Like every deep-link action it passes the trust gate first.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface LinkRoute",
+          "path": "packages/shared/src/studio-sdk-contract.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export class LinkRoutesBoard",
+          "path": "server/src/engine/link-routes.ts"
+        }
+      ]
+    },
+    {
       "id": "local-principal",
       "term": "Local Principal",
       "definition": "The Session Principal a server stamps for the local, same-machine caller: subject local:<os-username>, provider os, kind local. Requires no sign-in.",
@@ -3739,6 +3764,31 @@
           "language": "swift",
           "symbol": "static func mostRoomServerId",
           "path": "ios/IonRemote/Models/Admin/FleetSummary.swift"
+        }
+      ]
+    },
+    {
+      "id": "plan-mode-change-rejection",
+      "term": "Plan-Mode Change Rejection",
+      "definition": "A client's or an extension's plan-mode change that a before_plan_mode_enter or before_plan_mode_exit handler vetoed. The mode does not move; the engine emits engine_plan_mode_change_rejected with the reason, and clients revert the toggle and show why.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type PlanModeChangeRejectedEvent",
+          "path": "engine/internal/types/normalized_event_plan_mode.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (m *Manager) TransitionPlanMode",
+          "path": "engine/internal/session/plan_mode_transition.go"
         }
       ]
     },
@@ -4850,6 +4900,49 @@
           "language": "swift",
           "symbol": "struct ServerPagesView",
           "path": "ios/IonRemote/Views/Settings/Server/ServerPagesView.swift"
+        }
+      ]
+    },
+    {
+      "id": "skill-grant",
+      "term": "Skill Grant",
+      "definition": "A tool pre-approval from the allowed-tools of a skill the run invoked. It settles a permission ask as allow for the rest of that run and never overrides a deny.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func MatchGrant",
+          "path": "engine/internal/permissions/engine.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func ParseAllowedTools",
+          "path": "engine/internal/skills/allowed_tools.go"
+        }
+      ]
+    },
+    {
+      "id": "skill-shell-injection",
+      "term": "Skill Shell Injection",
+      "definition": "Shell commands written in a skill body as !`cmd` or a ```! block. The engine runs them when the skill is invoked, in the skill's directory, and replaces each placeholder with the output, so the model sees data and never the command. Each command passes the permission policy, a failure aborts the skill, and limits.disableSkillShellExecution turns it off.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func Render",
+          "path": "engine/internal/skills/render.go"
         }
       ]
     },

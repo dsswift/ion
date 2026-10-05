@@ -450,6 +450,8 @@ export interface WalkContextFilesOpts {
   includeGlobal?: boolean;
   includeProject?: boolean;
   claudeCompat?: boolean;
+  /** Cap on `@`-include hops per file. Omit for the engine default (5). */
+  includeMaxDepth?: number;
 }
 
 export interface DispatchAgentResult {
@@ -2207,25 +2209,34 @@ export interface IonContext extends DispatchControlContext {
   ): Promise<RunOnceResult<T>>;
 
   /**
-   * Programmatically enter plan mode for this session. The engine flips the
-   * session into plan mode, allocates a plan file if needed, and emits
-   * `engine_plan_mode_changed` so all subscribers see the transition.
-   * Fires the existing `before_plan_mode_enter` hook so observation-only
-   * extensions receive the same signal they would from a client-initiated
-   * plan-mode entry. No-op when the session is already in plan mode.
+   * Request plan mode for this session. The request takes the same path a
+   * client toggle does: `before_plan_mode_enter` fires with
+   * `source: "extension"` and any handler may veto it. An allowed change
+   * allocates a plan file if needed, emits `engine_plan_mode_changed`, and
+   * applies to a run already in flight in the current turn. A veto emits
+   * `engine_plan_mode_change_rejected`.
+   *
+   * Resolves to `allowed`: `false` when a handler vetoed (the reason is in
+   * the result of `ext/set_plan_mode`; see {@link PlanModeOutcome}). Calling
+   * it while already in plan mode is a no-op that resolves `true`. Called
+   * from inside a `before_plan_mode_*` handler, the change is made without
+   * firing the hook again.
    *
    * Useful for safety-gated workflows, approval loops, and headless sessions
    * that want to capture a plan before execution.
    */
-  enterPlanMode(): Promise<void>;
+  enterPlanMode(): Promise<boolean>;
 
   /**
-   * Programmatically exit plan mode for this session. The engine transitions
-   * the session back to normal mode and emits `engine_plan_mode_changed`.
-   * Fires the existing `before_plan_mode_exit` hook. No-op when the session
-   * is already not in plan mode.
+   * Request that this session leave plan mode. Fires
+   * `before_plan_mode_exit` with `source: "extension"`; a handler may veto.
+   * Same outcome rules as {@link IonContext.enterPlanMode}. Calling it while
+   * not in plan mode is a no-op that resolves `true`.
    */
-  exitPlanMode(): Promise<void>;
+  exitPlanMode(): Promise<boolean>;
+
+  /** Whether this session is in plan mode. Same as `getPlanMode().enabled`. */
+  isInPlanMode(): Promise<boolean>;
 
   /**
    * Query the current plan-mode state for this session.
@@ -2259,6 +2270,16 @@ export interface SessionListEntry {
 }
 
 /** Result returned by {@link IonContext.getPlanMode}. */
+/** Result of `ext/set_plan_mode`, behind `enterPlanMode` / `exitPlanMode`. */
+export interface PlanModeOutcome {
+  ok: boolean;
+  /** `false` when a `before_plan_mode_*` handler vetoed the change. */
+  allowed: boolean;
+  /** `true` when the session's mode actually flipped. */
+  changed: boolean;
+  reason?: string;
+}
+
 export interface PlanModeState {
   /** Whether plan mode is currently active for this session. */
   enabled: boolean;
@@ -2692,10 +2713,18 @@ export interface SlashModelBoundaryResult {
   apply?: boolean | null;
 }
 
-/** Payload for `context_discover`. */
+/**
+ * Payload for `context_discover`. Return `true` to exclude the file. The hook
+ * fires for duplicates too; a duplicate is skipped whatever the handler
+ * returns.
+ */
 export interface ContextDiscoverInfo {
   path: string;
   source: string;
+  /** The already-loaded file this candidate duplicates, when it is one. */
+  duplicateOf?: string;
+  /** `"symlink"` or `"content"` when `duplicateOf` is set. */
+  duplicateReason?: "symlink" | "content";
 }
 
 /** Payload for `context_load` and `instruction_load`. */
@@ -3044,6 +3073,37 @@ export interface PeerExtensionInfo {
 }
 
 /**
+ * Payload for the `skill_load` hook. Fired when a skill is invoked (the Skill
+ * tool or a user-typed `/<skill>`), before its shell commands run and before
+ * its body reaches the model. Return a {@link SkillLoadResult} to veto,
+ * replace the body, or append content.
+ */
+export interface SkillLoadInfo {
+  name: string;
+  /** Path of the SKILL.md. */
+  source: string;
+  /** Directory holding the SKILL.md. */
+  baseDir: string;
+  args?: string;
+  invocation: "tool" | "slash";
+  frontmatter?: Record<string, unknown>;
+  /** Shell commands the body would run, in order. */
+  commands?: string[];
+}
+
+/** Optional answer from a `skill_load` handler. */
+export interface SkillLoadResult {
+  /** `false` vetoes the skill. Omit to abstain. Last non-null wins. */
+  allow?: boolean | null;
+  /** Shown to the model when `allow` is `false`. */
+  reason?: string;
+  /** Replaces the skill body before its commands are found and run. */
+  content?: string;
+  /** Added after the rendered body, verbatim. */
+  appendContent?: string;
+}
+
+/**
  * Payload for the `before_plan_mode_enter` hook. Fired when the LLM calls
  * the EnterPlanMode tool (or any future mechanism that requests a
  * model-initiated transition into plan mode). Handlers may return a
@@ -3054,10 +3114,17 @@ export interface PeerExtensionInfo {
  */
 export interface PlanModeEnterInfo {
   /**
-   * Identifies what triggered the request. `"model_tool"` when the LLM
-   * called the EnterPlanMode sentinel tool directly.
+   * Identifies what triggered the request: `"model_tool"` (the model called
+   * EnterPlanMode), `"wire"` (a client sent `set_plan_mode`), or
+   * `"extension"` (an extension called `ctx.enterPlanMode()`).
    */
   source: string;
+  /**
+   * The requester's own label: the `source` a client sent on
+   * `set_plan_mode` (for example `"plan_approved"` or `"session_start"`), or
+   * the label an extension passed. Absent for `"model_tool"`.
+   */
+  clientSource?: string;
 }
 
 /**
@@ -3074,24 +3141,27 @@ export interface BeforePlanModeEnterResult {
    */
   allow?: boolean | null;
   /**
-   * Optional human-readable explanation returned to the LLM in the tool
-   * result when `allow` is `false`.
+   * Optional explanation when `allow` is `false`. A `"model_tool"` request
+   * returns it to the model in the tool result; a `"wire"` or `"extension"`
+   * request carries it on `engine_plan_mode_change_rejected`.
    */
   reason?: string;
 }
 
 /**
- * Payload for the `before_plan_mode_exit` hook. Fired when the LLM calls
- * the ExitPlanMode sentinel tool, before the run is terminated and the
- * plan-ready card is surfaced to the user. Handlers may return a
- * {@link BeforePlanModeExitResult} to veto the exit (e.g. send the model
- * back for more planning) or to allow it.
+ * Payload for the `before_plan_mode_exit` hook. Fired before every
+ * transition out of plan mode: the model calling ExitPlanMode, a client
+ * sending `set_plan_mode`, or an extension calling `ctx.exitPlanMode()`.
+ * Handlers may return a {@link BeforePlanModeExitResult} to veto the exit
+ * (e.g. send the model back for more planning) or to allow it.
  */
 export interface BeforePlanModeExitInfo {
-  /** Path of the plan file being submitted for review. */
+  /** Path of the session's plan file. */
   planFilePath: string;
-  /** Always `"model_tool"` today; future kinds may include `"extension"`. */
+  /** `"model_tool"`, `"wire"`, or `"extension"`; see {@link PlanModeEnterInfo}. */
   source: string;
+  /** The requester's own label; see {@link PlanModeEnterInfo.clientSource}. */
+  clientSource?: string;
 }
 
 /**
@@ -3476,6 +3546,9 @@ export interface HookPayloadMap {
   before_plan_mode_enter: PlanModeEnterInfo;
   before_plan_mode_exit: BeforePlanModeExitInfo;
   before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo;
+
+  // Skills -- fired before a skill's shell commands run.
+  skill_load: SkillLoadInfo;
 
   // System inject -- fired before the engine injects any system message.
   // The `kind` discriminator carries the reason (plan_mode_enter,
@@ -3906,7 +3979,7 @@ export interface WebhookRoute {
   /**
    * Handler invoked for each matching request. The ctx is freshly
    * built per fire; ctx.dispatchAgent / sendPrompt / emit /
-   * setPlanMode / etc. all work normally.
+   * enterPlanMode / etc. all work normally.
    *
    * Return the response shape or void (treated as `{status: 200}`).
    */

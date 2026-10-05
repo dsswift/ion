@@ -540,4 +540,7 @@ type WalkContextFilesOpts struct {
 	IncludeGlobal  *bool  `json:"includeGlobal,omitempty"`
 	IncludeProject *bool  `json:"includeProject,omitempty"`
 	ClaudeCompat   *bool  `json:"claudeCompat,omitempty"`
+	// IncludeMaxDepth caps @-include hops per file. Zero uses the engine
+	// default.
+	IncludeMaxDepth int `json:"includeMaxDepth,omitempty"`
 }

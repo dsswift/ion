@@ -759,6 +759,16 @@ ion.registerCommand('rename', {
 
 The wire protocol promotes this to `engine_elicitation_request` / `elicitation_response` so socket-only consumers (desktop, iOS) can present the prompt. See [Server Events](../protocol/server-events.md).
 
+**`enterPlanMode()` / `exitPlanMode()`** -- ask to move this session into or out of plan mode. The request takes the same path as a client toggle: `before_plan_mode_enter` / `before_plan_mode_exit` fire with `source: "extension"`, and any handler may veto it. Each resolves `true` when the change was allowed (or the session was already in that mode) and `false` on a veto; `engine_plan_mode_change_rejected` carries the handler's reason. An allowed change made while a run is in flight switches that run in the current turn.
+
+**`isInPlanMode()`** -- resolves `true` when the session is in plan mode. **`getPlanMode()`** resolves `{ enabled, planFilePath }`; `planFilePath` stays set after plan mode is turned off, so a later re-entry reuses the plan.
+
+```typescript
+if (!(await ctx.isInPlanMode()) && !(await ctx.enterPlanMode())) {
+  log.info('plan mode refused by a handler')
+}
+```
+
 **`suppressTool(name)`** -- hide a built-in tool from the model on the current turn. Resolves when the suppression has been applied. Use sparingly — repeated suppression across turns becomes confusing for the model.
 
 ```typescript

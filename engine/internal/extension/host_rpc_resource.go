@@ -322,9 +322,9 @@ func (h *Host) handleSendToSession(id int64, raw []byte) {
 }
 
 // handleSetPlanMode handles ext/set_plan_mode: an extension calls
-// ctx.enterPlanMode() or ctx.exitPlanMode() and the engine toggles
-// plan-mode state for the session, emitting PlanModeChangedEvent so
-// all subscribers (desktop, iOS) see the transition.
+// ctx.enterPlanMode() or ctx.exitPlanMode(). The change takes the shared
+// plan-mode transition (hooks, veto, live-run switch) and the response
+// carries {ok, allowed, changed, reason}.
 func (h *Host) handleSetPlanMode(id int64, raw []byte) {
 	var req struct {
 		Params struct {
@@ -349,9 +349,18 @@ func (h *Host) handleSetPlanMode(id int64, raw []byte) {
 	if source == "" {
 		source = "extension"
 	}
-	ctx.SetPlanMode(req.Params.Enabled, source)
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/set_plan_mode", map[string]any{"model": h.name_(), "enabled": req.Params.Enabled, "source": source})
-	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+	outcome := ctx.SetPlanMode(req.Params.Enabled, source)
+	utils.LogWithFields(utils.LevelInfo, "extension", "ext/set_plan_mode", map[string]any{"extension": h.name_(), "enabled": req.Params.Enabled, "source": source, "allowed": outcome.Allowed, "changed": outcome.Changed})
+	body, err := json.Marshal(struct {
+		OK bool `json:"ok"`
+		PlanModeOutcome
+	}{OK: true, PlanModeOutcome: outcome})
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "extension", "ext/set_plan_mode: marshal error", map[string]any{"error": err})
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32603, Message: "marshal error"})
+		return
+	}
+	h.sendResponse(id, body, nil)
 }
 
 // handleGetPlanMode handles ext/get_plan_mode: an extension calls

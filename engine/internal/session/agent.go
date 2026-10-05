@@ -98,6 +98,13 @@ type steerable interface {
 	SteerWithKind(requestID, message, kind string) backend.SteerResult
 }
 
+// planModeSwitchable is a backend that can switch a live run into or out of
+// plan mode mid-turn. Kept off RunBackend for the same reason as steerable.
+// A backend without it (a delegated CLI) changes mode at the next run.
+type planModeSwitchable interface {
+	SetRunPlanMode(requestID string, enabled bool, planFilePath, source string) bool
+}
+
 // steerableWithClientID is the optional extension of steerable that also
 // accepts a client correlation id. Asserted separately (rather than folded
 // into steerable) so a backend or test double that predates the correlation-id

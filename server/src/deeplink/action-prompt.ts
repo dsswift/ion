@@ -72,7 +72,7 @@ export async function runPromptAction(req: PromptRequest): Promise<ActionOutcome
       submitted: req.submit,
       text_length: req.text.length,
     })
-    return { ok: true }
+    return { ok: true, tabId }
   } catch (err) {
     warn('prompt action threw', { dir: req.dir, error: String(err) })
     return { ok: false, error: String(err) }

@@ -28,15 +28,20 @@
  */
 
 import { log as _log, warn as _warn } from '../logger'
-import { parseDeepLink } from './parse'
+import { broadcast } from '../broadcast'
+import { isNavigation, parseDeepLink } from './parse'
 import { consumeHandoff } from './handoff'
 import { isTrustedToken } from './token'
-import { runTerminalAction } from './action-terminal'
-import { runPromptAction } from './action-prompt'
+import { resolveExt, type ResolvedExt } from './action-ext'
+import { executeDeepLinkAction } from './execute'
+import { resolveNavigation } from './navigate'
 import { requestDeepLinkConfirmation } from './confirm'
 import type { DeepLinkPayload } from './parse'
 import type { ActionOutcome } from './action-terminal'
 import type { DeepLinkConfirmOwner } from '@ion/shared/types-ipc'
+
+/** The local desktop's Studio window moves its view to a navigation link's target. */
+export const DEEPLINK_NAVIGATE_CHANNEL = 'ion:deeplink-navigate'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('deeplink', msg, fields)
@@ -113,6 +118,25 @@ export async function handleDeepLink(rawUrl: string): Promise<ActionOutcome> {
     transport = 'inline'
   }
 
+  // A navigation link runs nothing, so trust does not apply: resolve it and
+  // hand the target to the desktop's window.
+  if (isNavigation(payload)) {
+    const nav = await resolveNavigation(payload)
+    if (!nav.ok) return { ok: false, error: nav.reason }
+    broadcast(DEEPLINK_NAVIGATE_CHANNEL, nav.target)
+    log('navigation link sent to the desktop', { route: nav.target.route, transport })
+    return { ok: true }
+  }
+
+  // An ext link is resolved before the trust gate so the confirmation shows
+  // the real command.
+  let ext: ResolvedExt | null = null
+  if (payload.action === 'ext') {
+    const resolution = resolveExt(payload)
+    if (!resolution.ok) return { ok: false, error: resolution.error }
+    ext = resolution.ext
+  }
+
   const trusted = isTrustedToken(token)
   log('deep link received', {
     action: payload.action,
@@ -130,7 +154,7 @@ export async function handleDeepLink(rawUrl: string): Promise<ActionOutcome> {
       return { ok: false, error: 'No Ion window is available to approve this request.' }
     }
     const selectTab = payload.action === 'terminal' && !payload.tabId
-    const confirmation = await requestDeepLinkConfirmation(payload, owner, selectTab)
+    const confirmation = await requestDeepLinkConfirmation(payload, owner, selectTab, ext)
     if (!confirmation.approved) {
       log('deep link declined by operator', { action: payload.action, transport })
       return { ok: false, error: 'declined' }
@@ -146,9 +170,7 @@ export async function handleDeepLink(rawUrl: string): Promise<ActionOutcome> {
 
   let outcome: ActionOutcome
   try {
-    outcome = payload.action === 'terminal'
-      ? await runTerminalAction(payload)
-      : await runPromptAction(payload)
+    outcome = await executeDeepLinkAction(payload, ext)
   } catch (err) {
     warn('deep link action failed', {
       action: payload.action,

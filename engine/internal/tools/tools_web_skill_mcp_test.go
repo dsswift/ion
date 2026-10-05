@@ -482,7 +482,7 @@ func TestSkillToolWithArgs(t *testing.T) {
 	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "param1 param2") {
 		t.Errorf("expected args in metadata, got %#v", result.SkillInvocation)
 	}
-	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "Arguments:") {
+	if result.SkillInvocation == nil || !strings.Contains(result.SkillInvocation.Content, "ARGUMENTS: param1 param2") {
 		t.Errorf("expected argument label in metadata, got %#v", result.SkillInvocation)
 	}
 }

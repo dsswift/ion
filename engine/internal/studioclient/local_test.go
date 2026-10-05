@@ -61,7 +61,7 @@ func TestConnectLocal_SaysHelloWithTheLocalCredential(t *testing.T) {
 		}
 	})
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go server.Serve(listener) //nolint:errcheck // ends with the listener
+	go server.Serve(listener)            //nolint:errcheck // ends with the listener
 	t.Cleanup(func() { server.Close() }) //nolint:errcheck // test teardown
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

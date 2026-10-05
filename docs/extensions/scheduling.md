@@ -564,8 +564,7 @@ at entry:
 
 ```ts
 handler: async (ctx) => {
-  const [planMode] = ctx.getPlanMode()
-  if (planMode) return // skip this tick
+  if (await ctx.isInPlanMode()) return // skip this tick
   // ... normal work
 },
 ```

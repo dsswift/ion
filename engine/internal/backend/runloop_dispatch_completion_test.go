@@ -27,14 +27,14 @@ func TestCompletedChildDispatch_EndTurnForcesContinuation(t *testing.T) {
 				return nil, func() {}
 			}
 			return []types.BackgroundWorkDelivery{{
-					Content: "[Agent reviewer completed]\nresult",
-					Work:    types.BackgroundWorkInfo{Kind: string(types.InjectionKindAgentCompletion), DeliveryMode: "steer", Items: []types.BackgroundWorkItem{{ID: "dispatch-reviewer", Source: types.BackgroundWorkSourceAgent, Label: "reviewer", Status: "completed", ExitCode: 0}}},
-				}}, func() {
-					mu.Lock()
-					defer mu.Unlock()
-					pending = false
-					acked++
-				}
+				Content: "[Agent reviewer completed]\nresult",
+				Work:    types.BackgroundWorkInfo{Kind: string(types.InjectionKindAgentCompletion), DeliveryMode: "steer", Items: []types.BackgroundWorkItem{{ID: "dispatch-reviewer", Source: types.BackgroundWorkSourceAgent, Label: "reviewer", Status: "completed", ExitCode: 0}}},
+			}}, func() {
+				mu.Lock()
+				defer mu.Unlock()
+				pending = false
+				acked++
+			}
 		},
 	}
 

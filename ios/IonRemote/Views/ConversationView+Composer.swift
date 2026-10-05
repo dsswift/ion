@@ -148,6 +148,7 @@ extension ConversationView {
                 showStatusDrawer = true
             },
             hasEngineExtension: tabHasExtensions,
+            planModeRejection: viewModel.tab(for: tabId)?.planModeRejection,
             thinkingEffort: activeInst?.thinkingEffort ?? "off",
             onSelectThinkingEffort: { level in
                 viewModel.setThinkingEffort(tabId: tabId, effort: level)

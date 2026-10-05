@@ -133,8 +133,10 @@ func (a *steerSelfAccessor) SetSessionMemory(content string) {}
 func (a *steerSelfAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *steerSelfAccessor) SetPlanMode(enabled bool, source string) {}
-func (a *steerSelfAccessor) GetPlanModeState() (bool, string)        { return false, "" }
+func (a *steerSelfAccessor) SetPlanMode(enabled bool, source string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
+func (a *steerSelfAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *steerSelfAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	return state.ID
 }

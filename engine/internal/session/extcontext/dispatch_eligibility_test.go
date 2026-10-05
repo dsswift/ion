@@ -84,7 +84,9 @@ func (a *eligibilityTestAccessor) SetSessionMemory(_ string)                    
 func (a *eligibilityTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *eligibilityTestAccessor) SetPlanMode(_ bool, _ string)     {}
+func (a *eligibilityTestAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *eligibilityTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *eligibilityTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string {
 	return ""

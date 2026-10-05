@@ -214,9 +214,10 @@ type SessionAccessor interface {
 	// so test coverage is unchanged.
 	TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent
 
-	// SetPlanMode flips the session's plan mode state. source is a free-form
-	// string for log observability (e.g. "extension", "slash_command").
-	SetPlanMode(enabled bool, source string)
+	// SetPlanMode requests a plan-mode change with source "extension". It
+	// fires the plan-mode before-hooks, honors a veto, and switches a live
+	// run. source is a free-form label for logs.
+	SetPlanMode(enabled bool, source string) extension.PlanModeOutcome
 
 	// GetPlanModeState returns (planModeEnabled, planFilePath) for the session.
 	GetPlanModeState() (bool, string)

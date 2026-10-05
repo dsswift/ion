@@ -232,17 +232,10 @@ func interceptEnterPlanMode(
 	}
 	// Allowed: flip the run into plan mode so the plan policy applies from
 	// the next tool call.
-	run.mu.Lock()
-	run.planMode = true
-	run.planFilePath = planFilePath
-	run.mu.Unlock()
+	run.applyPlanModeTransition(true, planFilePath)
 	// Emit the state-transition event so consumers can mirror the
 	// new plan-mode-enabled state.
-	emit(run, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
-		Enabled:      true,
-		PlanFilePath: planFilePath,
-		PlanSlug:     types.PlanSlugFromPath(planFilePath),
-	}})
+	emit(run, planModeChangedEvent(true, planFilePath, PlanModeSourceModelTool))
 	// The result is the one durable fact: plan mode was entered, and which
 	// plan file. The instructions follow as a plan_mode_enter notice at the
 	// top of the next turn (reconcilePlanMode), which is what the model reads

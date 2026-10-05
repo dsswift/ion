@@ -30,8 +30,8 @@
 //  5. The subprocess handler continues running (Node has no preemption).
 //  6. Handler calls ctx.dispatchAgent() → ext/dispatch_agent RPC arrives at Go.
 //  7. handleExtRequest resolves ctxStack.Current() → nil → -32000 "dispatch not available".
-//  8. TS runtime.ts:778: pending.reject(new Error(msg.error.message || 'RPC error'))
-//     → the -32000 code is DROPPED; only the message string reaches the handler.
+//  8. The SDK runtime rejects the pending request with an IonRpcError that
+//     carries the -32000 code alongside the message.
 //  9. Handler emits "sched_timeout_probe_result" event; Go routes it to
 //     persistentEmit (not ctx.Emit) because ctxStack is still empty.
 //
@@ -128,8 +128,8 @@ func waitProbeEvent(t *testing.T, bus *probeEventBus, deadline time.Duration) ty
 //     handler, asserting it arrives AFTER FireAsync returned (not before).
 //  7. Asserts the event's EventMessage is "dispatch not available" — the error
 //     the handler received from its post-timeout ext/dispatch_agent RPC.
-//  8. Asserts the -32000 code did NOT survive as a .code property on the Error
-//     object thrown inside the handler (TypeScript runtime.ts:778 drops it).
+//  8. Asserts the error thrown inside the handler is an IonRpcError carrying
+//     the -32000 code.
 //  9. Asserts no cancel or abort frame was sent by confirming the subprocess is
 //     still alive (further RPC completes successfully).
 //
@@ -232,17 +232,20 @@ func TestScheduleFireTimeout_EndToEnd(t *testing.T) {
 
 	// ── Step 5: assert TypeScript error shape ───────────────────────────────
 	//
-	// PROVEN (TypeScript, observed via emit):
-	// runtime.ts:778 does: new Error(msg.error.message || 'RPC error')
-	// The .code property is never set on a plain Error. Verify it was not present.
-	if probeEv.Metadata != nil {
-		if hasCode, _ := probeEv.Metadata["errorHasCodeProperty"].(bool); hasCode {
-			t.Errorf("TS Error had a .code property — the -32000 code survived, which would mean runtime.ts changed; update the analysis")
-		}
-		// The error name should be 'Error' (plain Error, not a custom subclass).
-		if name, ok := probeEv.Metadata["errorName"].(string); ok && name != "" && name != "Error" {
-			t.Logf("note: TS error name = %q (expected 'Error' for a plain new Error(msg))", name)
-		}
+	// PROVEN (TypeScript, observed via emit): the SDK runtime rejects an
+	// engine JSON-RPC error with an IonRpcError, so the handler can branch on
+	// the -32000 code instead of matching the message text.
+	if probeEv.Metadata == nil {
+		t.Fatal("probe event carried no metadata")
+	}
+	if name, _ := probeEv.Metadata["errorName"].(string); name != "IonRpcError" {
+		t.Errorf("TS error name = %q, want IonRpcError", name)
+	}
+	if hasCode, _ := probeEv.Metadata["errorHasCodeProperty"].(bool); !hasCode {
+		t.Error("TS error lost the .code property; the -32000 code must survive")
+	}
+	if code, _ := probeEv.Metadata["errorCode"].(string); code != "-32000" {
+		t.Errorf("TS error code = %q, want -32000", code)
 	}
 
 	// ── Step 6: assert no cancel frame was sent ──────────────────────────────

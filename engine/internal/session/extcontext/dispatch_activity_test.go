@@ -190,7 +190,9 @@ func (a *activityRecordingAccessor) SetSessionMemory(_ string) {}
 func (a *activityRecordingAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *activityRecordingAccessor) SetPlanMode(_ bool, _ string)                  {}
+func (a *activityRecordingAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *activityRecordingAccessor) GetPlanModeState() (bool, string)              { return false, "" }
 func (a *activityRecordingAccessor) ResourceBroker() *resource.Broker              { return nil }
 func (a *activityRecordingAccessor) GlobalResourceBroker() *resource.Broker        { return nil }

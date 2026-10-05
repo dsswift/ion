@@ -19,7 +19,7 @@ import { rInfo, rWarn } from '../rendererLogger'
 export interface PlanModeCtx {
   tabId: string
   /** The active instance snapshot at reducer entry (read-only here). */
-  inst0: { planFilePath?: string | null; permissionMode?: 'auto' | 'plan'; permissionDenied?: ConversationInstance['permissionDenied'] } | null
+  inst0: { planFilePath?: string | null; permissionMode?: 'auto' | 'plan'; permissionDenied?: ConversationInstance['permissionDenied']; planModeRejection?: ConversationInstance['planModeRejection'] } | null
   /** Working copy of the active instance's messages (reassigned on append). */
   messages: Message[]
   /** Per-conversation patch object the parent commits onto the instance. */
@@ -70,7 +70,36 @@ export function handlePlanModeEvent(ctx: PlanModeCtx, event: any): boolean {
         ctx.instPatch.planFilePath = event.planFilePath
         ctx.instTouched = true
       }
+      // A client toggle or an extension that turned plan mode OFF is a
+      // confirmed state change, unlike the model's ExitPlanMode proposal
+      // above, which never arrives as Enabled:false with a source.
+      if (!event.planModeEnabled && (event.planModeSource === 'wire' || event.planModeSource === 'extension')) {
+        ctx.instPatch.permissionMode = 'auto'
+        ctx.instTouched = true
+      }
+      // Any applied change supersedes an earlier refusal.
+      if (ctx.inst0?.planModeRejection) {
+        ctx.instPatch.planModeRejection = null
+        ctx.instTouched = true
+      }
       return true
+
+    case 'engine_plan_mode_change_rejected': {
+      // A before_plan_mode_* handler vetoed a toggle. The engine did not move,
+      // so the instance goes back to the mode it is actually in, and keeps the
+      // reason for the conversation to show.
+      const requested = event.planModeRequestedEnabled === true
+      ctx.instPatch.permissionMode = requested ? 'auto' : 'plan'
+      ctx.instPatch.planModeRejection = {
+        requestedEnabled: requested,
+        reason: typeof event.planModeRejectReason === 'string' ? event.planModeRejectReason : '',
+        source: typeof event.planModeSource === 'string' ? event.planModeSource : '',
+        at: Date.now(),
+      }
+      ctx.instTouched = true
+      rInfo('plan-mode', 'plan-mode change rejected', { tab_id: ctx.tabId, requested_enabled: requested, source: event.planModeSource ?? '' })
+      return true
+    }
 
     case 'engine_plan_file_written': {
       // The engine confirmed a Write/Edit landed on the canonical plan file.

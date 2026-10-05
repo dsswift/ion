@@ -14,8 +14,9 @@ import { engineBridge } from "../state";
 import { broadcast } from "../broadcast";
 import { resourceCatalog } from "./resource-catalog";
 import { restoreConversationCharts } from "./chart-restore";
-import { COMPOSER_ACTION_KIND, STUDIO_FOCUS_KIND } from "@ion/shared/studio-sdk-contract";
+import { COMPOSER_ACTION_KIND, LINK_ROUTE_KIND, STUDIO_FOCUS_KIND } from "@ion/shared/studio-sdk-contract";
 import { composerActionsBoard } from "./composer-actions-wiring";
+import { linkRoutesBoard } from "./link-routes-wiring";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("main", msg, fields);
@@ -107,6 +108,19 @@ export function handleResourceEngineEvent(
     if (event.type === "engine_resource_delta" && event.resourceDelta) {
       log("resource_delta: composer action kept server-side", { key, op: event.resourceDelta.op, id: event.resourceDelta.item?.id });
       composerActionsBoard.applyDelta(key, event.resourceDelta);
+      return;
+    }
+  }
+  // Link routes stop at the server too: only the deep-link dispatcher reads them.
+  if (event.resourceKind === LINK_ROUTE_KIND) {
+    if (event.type === "engine_resource_snapshot") {
+      log("resource_snapshot: link routes kept server-side", { key, items: (event.resourceItems ?? []).length });
+      linkRoutesBoard.applySnapshot(key, event.resourceItems ?? []);
+      return;
+    }
+    if (event.type === "engine_resource_delta" && event.resourceDelta) {
+      log("resource_delta: link route kept server-side", { key, op: event.resourceDelta.op, id: event.resourceDelta.item?.id });
+      linkRoutesBoard.applyDelta(key, event.resourceDelta);
       return;
     }
   }

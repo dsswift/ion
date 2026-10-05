@@ -47,6 +47,8 @@ export interface ActionOutcome {
   error?: string
   /** Instance id of the created pane, for the caller's log line. */
   instanceId?: string
+  /** The conversation the action ran in, so a remote caller can open it. */
+  tabId?: string
 }
 
 /** Launches under way, by `<tabId>\0<key>`. */

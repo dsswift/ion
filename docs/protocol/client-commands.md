@@ -336,6 +336,12 @@ Toggle plan mode for a session. In plan mode, the agent plans without executing 
 {"cmd":"set_plan_mode","key":"abc-123","enabled":true,"allowedTools":["Read","Glob"],"planModeAllowedBashCommands":["gh","git log","git diff"],"requestId":"r7"}
 ```
 
+A change of mode fires `before_plan_mode_enter` / `before_plan_mode_exit` with `source: "wire"`, and a handler's veto holds: the mode does not move and the engine emits `engine_plan_mode_change_rejected` with the reason. An allowed change emits `engine_plan_mode_changed` with `planModeSource: "wire"`; when a run is in flight it switches that run in the current turn. A request for the mode the session is already in fires no hook and no event (the other fields still apply). The `ServerResult` data reports the outcome:
+
+```json
+{"allowed":true,"changed":true,"planFilePath":"/Users/a/.ion/conversations/c1/plans/calm-river.md","liveRun":true}
+```
+
 **`planModeAllowedBashCommands` semantics.** The field is tri-valued and uses JSON's nil-vs-empty distinction to disambiguate intent without a new wire field:
 
 | Wire value | Meaning |

@@ -207,7 +207,7 @@ func TestProcessIncludes(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "included.md"), []byte("included content"), 0o644)
 
 	content := "line1\n@included.md\nline3"
-	result := ProcessIncludes(content, dir, "@", nil)
+	result := ProcessIncludes(content, dir, "@", nil, 0)
 
 	if !strings.Contains(result, "included content") {
 		t.Errorf("expected included content in result, got: %s", result)
@@ -222,7 +222,7 @@ func TestProcessIncludesCircular(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.md"), []byte("@b.md"), 0o644)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("@a.md"), 0o644)
 
-	result := ProcessIncludes("@a.md", dir, "@", nil)
+	result := ProcessIncludes("@a.md", dir, "@", nil, 0)
 	if !strings.Contains(result, "circular include") {
 		t.Errorf("expected circular include comment, got: %s", result)
 	}
@@ -230,7 +230,7 @@ func TestProcessIncludesCircular(t *testing.T) {
 
 func TestProcessIncludesMissing(t *testing.T) {
 	dir := t.TempDir()
-	result := ProcessIncludes("@nonexistent.md", dir, "@", nil)
+	result := ProcessIncludes("@nonexistent.md", dir, "@", nil, 0)
 	if !strings.Contains(result, "include not found") {
 		t.Errorf("expected 'include not found' comment, got: %s", result)
 	}

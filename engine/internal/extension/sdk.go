@@ -183,6 +183,12 @@ const (
 	HookBeforePlanModeAutoExit = "before_plan_mode_auto_exit"
 	HookSystemInject           = "system_inject"
 
+	// HookSkillLoad fires when a skill is invoked, before its shell commands
+	// run and before its body reaches the model, for both the Skill tool and
+	// a user-typed /<skill>. A handler may veto the skill, replace its body,
+	// or append content.
+	HookSkillLoad = "skill_load"
+
 	// HookBeforeConversationEvent fires immediately before the engine emits
 	// each conversation.* telemetry event (conversation.user_message,
 	// conversation.assistant_message, conversation.tool_call,

@@ -5,6 +5,7 @@ package integration
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -482,33 +483,61 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 	_ = convDir // suppress unused
 }
 
-// addPlanModeSafeTools marks every registered tool carrying PlanModeSafe=true as
-// expected in a plan-mode tool list. buildToolDefs admits such tools through the
-// plan-mode filter regardless of the allowlist (`allowed[td.Name] ||
-// td.PlanModeSafe` in runloop_setup.go), which is the documented seam for a
-// strictly read-only tool — pinned by
-// TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools.
-//
-// Derived from the registry rather than hand-listed: a hardcoded name set makes
-// every future PlanModeSafe tool fail this test for conforming to the contract,
-// which is exactly how WorkspaceAttribution first broke it.
-func addPlanModeSafeTools(expected map[string]bool) map[string]bool {
-	for _, td := range tools.GetAllTools() {
-		if td.PlanModeSafe {
-			expected[td.Name] = true
-		}
+// callToolNames lists a provider call's tool names in the order they were sent.
+func callToolNames(call types.LlmStreamOptions) []string {
+	names := make([]string, 0, len(call.Tools))
+	for _, td := range call.Tools {
+		names = append(names, td.Name)
 	}
-	return expected
+	return names
 }
 
-func TestApiBackendPlanMode(t *testing.T) {
+// messagesText concatenates the text of every message a provider call carried.
+func messagesText(call types.LlmStreamOptions) string {
+	var sb strings.Builder
+	for _, msg := range call.Messages {
+		switch c := msg.Content.(type) {
+		case string:
+			sb.WriteString(c)
+		case []types.LlmContentBlock:
+			for _, block := range c {
+				sb.WriteString(block.Text)
+			}
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// firstCallOf runs one prompt on a fresh backend and returns the first
+// provider call it made.
+func firstCallOf(t *testing.T, requestID string, opts types.RunOptions) types.LlmStreamOptions {
+	t.Helper()
 	mp := setupMockProvider(t)
 	mp.SetResponse(helpers.TextResponse("Here is my plan."))
 
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
+	b.StartRun(requestID, opts)
+	be.waitForExit(t, mockRunExitTimeout)
 
-	b.StartRun("run-plan", types.RunOptions{
+	calls := mp.Calls()
+	if len(calls) == 0 {
+		t.Fatal("expected at least one provider call")
+	}
+	return calls[0]
+}
+
+// TestApiBackendPlanMode pins plan mode's effect on the provider request: the
+// tool list and system prompt are the same as an auto-mode run's, so a mode
+// change never rewrites the provider's cached prompt prefix. The plan-mode
+// instructions travel as a notice in the messages instead.
+func TestApiBackendPlanMode(t *testing.T) {
+	auto := firstCallOf(t, "run-auto", types.RunOptions{
+		Prompt: "Plan how to refactor",
+		Model:  "mock-model",
+	})
+	plan := firstCallOf(t, "run-plan", types.RunOptions{
 		Prompt:        "Plan how to refactor",
 		Model:         "mock-model",
 		PlanMode:      true,
@@ -516,62 +545,48 @@ func TestApiBackendPlanMode(t *testing.T) {
 		PlanFilePath:  "/tmp/test-plan.md",
 	})
 
-	be.waitForExit(t, mockRunExitTimeout)
-
-	// Verify the provider was called with the right system prompt containing PLAN MODE
-	calls := mp.Calls()
-	if len(calls) == 0 {
-		t.Fatal("expected at least one provider call")
+	autoNames, planNames := callToolNames(auto), callToolNames(plan)
+	if strings.Join(planNames, ",") != strings.Join(autoNames, ",") {
+		t.Errorf("plan-mode tool list differs from auto mode:\n plan: %v\n auto: %v", planNames, autoNames)
 	}
-
-	// Check that only allowed tools + Write/Edit + ExitPlanMode were passed
-	firstCall := calls[0]
-	allowedSet := addPlanModeSafeTools(map[string]bool{
-		"Read": true, "Grep": true, "Glob": true,
-		"Write": true, "Edit": true, "ExitPlanMode": true,
-		// AskUserQuestion is injected unconditionally by runloop_setup.go
-		// (see engine/internal/backend/runloop_setup.go:144) so the LLM can
-		// pause to ask a clarifying question from any run, including plan
-		// mode. Mirrors the unit-test expectation in
-		// engine/internal/backend/runloop_setup_test.go.
-		"AskUserQuestion": true,
-	})
-	for _, tool := range firstCall.Tools {
-		if !allowedSet[tool.Name] {
-			t.Errorf("unexpected tool in plan mode: %s", tool.Name)
+	for _, name := range []string{tools.ExitPlanModeName, tools.EnterPlanModeName, "Bash"} {
+		if !slices.Contains(planNames, name) {
+			t.Errorf("tool list should carry %s in plan mode", name)
 		}
 	}
-	// Verify ExitPlanMode is present
-	hasExit := false
-	for _, tool := range firstCall.Tools {
-		if tool.Name == "ExitPlanMode" {
-			hasExit = true
-			break
-		}
+
+	if plan.System != auto.System {
+		t.Error("plan mode must not change the system prompt")
 	}
-	if !hasExit {
-		t.Error("expected ExitPlanMode tool to be injected")
+	if strings.Contains(plan.System, "PLAN MODE") {
+		t.Error("plan-mode instructions must not be in the system prompt")
 	}
 
-	// Verify system prompt has PLAN MODE marker
-	if !strings.Contains(firstCall.System, "PLAN MODE") {
-		t.Error("expected system prompt to contain 'PLAN MODE'")
+	notice := messagesText(plan)
+	if !strings.Contains(notice, "PLAN MODE") {
+		t.Error("expected a plan-mode notice in the messages")
 	}
-
-	// Verify plan file path is mentioned in system prompt
-	if !strings.Contains(firstCall.System, "/tmp/test-plan.md") {
-		t.Error("expected system prompt to mention the plan file path")
+	if !strings.Contains(notice, "/tmp/test-plan.md") {
+		t.Error("expected the plan-mode notice to name the plan file path")
+	}
+	if strings.Contains(messagesText(auto), "PLAN MODE") {
+		t.Error("an auto-mode run must carry no plan-mode notice")
 	}
 }
 
-func TestApiBackendPlanModeDefaultTools(t *testing.T) {
+// TestApiBackendPlanModeRefusesBashAtCall pins where the read-only boundary now
+// lives: Bash stays in the tool list, and the plan policy refuses the call.
+func TestApiBackendPlanModeRefusesBashAtCall(t *testing.T) {
 	mp := setupMockProvider(t)
-	mp.SetResponse(helpers.TextResponse("Planning..."))
+	mp.SetResponse(helpers.ToolCallResponse("Bash", "bash-001", map[string]interface{}{
+		"command": "touch /tmp/plan-mode-should-not-run",
+	}))
+	mp.SetResponse(helpers.TextResponse("Bash is refused while planning."))
 
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	// No PlanModeTools specified -- engine should default to read-only set
+	// No PlanModeTools: the engine's default plan policy applies.
 	b.StartRun("run-plan-default", types.RunOptions{
 		Prompt:       "Plan something",
 		Model:        "mock-model",
@@ -585,30 +600,18 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 	if len(calls) == 0 {
 		t.Fatal("expected at least one provider call")
 	}
+	if !slices.Contains(callToolNames(calls[0]), "Bash") {
+		t.Error("Bash should stay in the tool list in plan mode")
+	}
 
-	// Default set: Read, Grep, Glob, Agent, AgentStatus, WebFetch, WebSearch, Skill + Write, Edit + ExitPlanMode
-	// AskUserQuestion is also injected universally (see runloop_setup.go:144).
-	// Skill is part of defaultPlanModeTools (plan_mode_prompt.go): invoking a
-	// skill is read-only, and without it skills are unusable while planning.
-	// Registered PlanModeSafe tools are added by addPlanModeSafeTools — they
-	// survive the filter on the PlanModeSafe flag, not on the allowlist.
-	expectedTools := addPlanModeSafeTools(map[string]bool{
-		"Read": true, "Grep": true, "Glob": true,
-		"Agent": true, "AgentStatus": true, "WebFetch": true, "WebSearch": true,
-		"Skill": true,
-		"Write": true, "Edit": true, "ExitPlanMode": true,
-		"AskUserQuestion": true,
-	})
-	for _, tool := range calls[0].Tools {
-		if !expectedTools[tool.Name] {
-			t.Errorf("unexpected tool in default plan mode: %s", tool.Name)
+	refused := false
+	for _, ev := range be.getNormalized() {
+		if tr, ok := ev.Data.(*types.ToolResultEvent); ok && tr.ToolID == "bash-001" {
+			refused = tr.IsError
 		}
 	}
-	// Should NOT have Bash
-	for _, tool := range calls[0].Tools {
-		if tool.Name == "Bash" {
-			t.Error("Bash should not be available in plan mode")
-		}
+	if !refused {
+		t.Error("expected the plan policy to refuse the Bash call")
 	}
 }
 

@@ -135,6 +135,7 @@
     "before_plan_mode_enter": {
       "payloadKind": "object",
       "payloadFields": [
+        "clientSource",
         "source"
       ],
       "result": "structured",
@@ -146,6 +147,7 @@
     "before_plan_mode_exit": {
       "payloadKind": "object",
       "payloadFields": [
+        "clientSource",
         "planFilePath",
         "source"
       ],
@@ -233,6 +235,8 @@
     "context_discover": {
       "payloadKind": "object",
       "payloadFields": [
+        "duplicateOf",
+        "duplicateReason",
         "path",
         "source"
       ],
@@ -575,6 +579,25 @@
     "session_start": {
       "payloadKind": "none",
       "result": "none"
+    },
+    "skill_load": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "args",
+        "baseDir",
+        "commands",
+        "frontmatter",
+        "invocation",
+        "name",
+        "source"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "allow",
+        "appendContent",
+        "content",
+        "reason"
+      ]
     },
     "slash_command_resolved": {
       "payloadKind": "object",

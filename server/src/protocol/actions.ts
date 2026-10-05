@@ -33,8 +33,7 @@ import { TERMINAL_ACTIONS } from './terminal-actions'
 import { PORT_ACTIONS } from './port-actions'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
-import { tabOwnedBySubject, principalSubjectForConversation } from './tabs-index'
-import { unownedTabsVisible, isSharedTenancy } from '../config/current'
+import { connOwnsConversation, connOwnsTab } from './ownership'
 import { setDriving } from './presence'
 import { lockableActionGroup, computeSettingsHiddenGroups } from './settings-visibility'
 import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
@@ -100,17 +99,6 @@ function actionOwnsTargetTab(conn: Connection, action: string, args: unknown[]):
   const tabId = args[tabIdAt]
   if (typeof tabId !== 'string') return true // malformed shape is refused downstream by validForwardedAction
   return connOwnsTab(conn, tabId)
-}
-
-function connOwnsTab(conn: Connection, tabId: string): boolean {
-  return tabOwnedBySubject(tabId, conn.principal?.subject ?? null)
-}
-
-function connOwnsConversation(conn: Connection, conversationId: string): boolean {
-  if (isSharedTenancy()) return true
-  const owner = principalSubjectForConversation(conversationId)
-  if (!owner) return unownedTabsVisible()
-  return conn.principal !== null && owner === conn.principal.subject
 }
 
 /**

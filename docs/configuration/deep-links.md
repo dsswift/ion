@@ -1,17 +1,28 @@
 ---
 title: Deep Links (ion://)
-description: Open a terminal pane or start a conversation in Ion Desktop from a link, a script, or another application.
+description: Open a conversation, a setting, a file, or a terminal pane, or start a conversation, from a link on the desktop, a phone, or a browser.
 sidebar_position: 7
 ---
 
 # Deep Links (`ion://`)
 
-Ion Desktop registers the `ion://` URL scheme. Anything that can open a URI — a
-shell script, a Makefile, a build tool, an intranet page — can ask Ion to open a
-terminal pane or start a conversation.
+Ion Desktop and Ion Remote on iOS register the `ion://` URL scheme. Anything that
+can open a URI — a shell script, a Makefile, a build tool, an intranet page, a
+chat message — can ask Ion to open a conversation, a settings page, or a file,
+open a terminal pane, start a conversation, or run an extension's link route.
 
 Opening an `ion://` link launches Ion if it is not already running, then performs
 the request.
+
+There are two kinds of link:
+
+- **Navigation** (`conversation`, `settings`, `file`) only moves your view. It runs
+  nothing, so it never asks first.
+- **Action** (`terminal`, `prompt`, `ext`) runs something, so it passes the
+  [trust](#trust) gate.
+
+The Studio server parses and checks every link. A client never interprets one
+itself: it hands the URL to its server and acts on what comes back.
 
 ### Scheme registration
 
@@ -25,9 +36,18 @@ no longer there, and the next install overwrites it.
 On macOS the equivalent registration is Launch Services, driven by the app
 bundle rather than a registry key.
 
-:::info Desktop only
-This is a desktop surface. The engine has no PTYs and no conversation panes, so
-there is no `ion://` handler on iOS or in the engine daemon.
+:::info Where links open
+- **Desktop.** The OS hands the URL to Ion Desktop, which passes it to its local
+  Studio server.
+- **iPhone.** Ion Remote registers `ion` (beside its `ion-studio` pairing scheme)
+  and sends the URL to the server it is paired with. A conversation, setting,
+  or file opens on the phone; an action runs on the server host after you
+  approve it on the phone.
+- **Browser.** A Studio server answers `https://<server>/open/<route>?<query>`,
+  the same link in `https` form, for places that strip custom schemes. It opens
+  the browser build of Studio, which opens the link the same way.
+
+The engine has no `ion://` handler.
 :::
 
 ## Actions
@@ -122,6 +142,56 @@ link that opens the right repository and asks the right question. Links from tho
 places carry no token, so the recipient sees the prompt and approves it before
 anything runs.
 
+### `ion://conversation`
+
+Open a conversation. A conversation that is saved but not open is reopened in a
+new tab.
+
+| Parameter | Required | Description |
+|---|---|---|
+| `id` | yes | The conversation id. |
+
+### `ion://settings`
+
+Open a settings page or one of its sections.
+
+| Parameter | Required | Description |
+|---|---|---|
+| `panel` | yes | A page id or a section id from the settings taxonomy, e.g. `git-access` or `defaults-thinking`. |
+
+On a phone, a page whose settings the phone can show opens there; any other
+page shows a note that it is only on the desktop.
+
+### `ion://file`
+
+Open a file in Ion's editor.
+
+| Parameter | Required | Description |
+|---|---|---|
+| `dir` | yes | An absolute directory. |
+| `path` | yes | The file, absolute or relative to `dir`. It must stay inside `dir` and must exist. |
+
+### `ion://ext/<routeId>`
+
+Run a link route an extension registered (see
+[Studio SDK › Link routes](../extensions/studio-sdk.md)). The route names a
+slash command; the link's `args` are appended to it.
+
+| Parameter | Required | Description |
+|---|---|---|
+| `args` | no | Text appended to the route's command. |
+| `conversation` | no | Run in this conversation. The route must be one that conversation can run. |
+| `dir` | when no `conversation` | Open a new conversation here and run the command in it. |
+| `token` | no | Capability token. See [Trust](#trust). |
+
+The confirmation shows the route's name and the full command that would run.
+
+### Copying a link
+
+**Copy link** is on a conversation's row menu, a settings page's header, and a
+file editor tab's menu, and on the phone's conversation row menu. The desktop
+copies the `ion://` form; Studio in a browser copies the `https` form.
+
 ## Transports
 
 The parameters can travel two ways. Both produce the same request.
@@ -195,13 +265,20 @@ The confirmation dialog shows the real command or the real prompt text, the
 directory, and whether the prompt would send immediately. Approve only links whose
 origin you recognise. Escape or clicking outside declines.
 
+A link opened on a phone or in a browser is always treated as untrusted, token or
+not: the token is a secret on the server host, and a link that reached another
+device came from somewhere else. The confirmation goes back to that device alone,
+and only that device can approve it. A [handoff file](#handoff-file) link only
+works on the host that wrote the file.
+
 ## Logging
 
-Every request is logged to `~/.ion/desktop.jsonl` with its action, transport, trust
-tier, target conversation, and outcome:
+Every request is logged by the Studio server that resolved it, to
+`<ION_DATA_DIR>/server.jsonl` (`~/.ion/server.jsonl` by default), with its action,
+transport, trust tier, target, and outcome:
 
 ```bash
-jq -c 'select(.tag=="deeplink")' ~/.ion/desktop.jsonl
+jq -c 'select(.tag=="deeplink")' ~/.ion/server.jsonl
 ```
 
 A refused request logs the reason, so a link that appears to do nothing can be

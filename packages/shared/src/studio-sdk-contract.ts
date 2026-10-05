@@ -1,9 +1,10 @@
 /**
  * Studio SDK contract — the consuming side.
  *
- * An extension can ask Ion Studio to show something (today: a Composer Action
- * in the composer's `+` menu). The engine must stay blind to user interfaces,
- * so the request does not travel as engine vocabulary. It travels as a
+ * An extension can ask Ion Studio to show something (a Composer Action in the
+ * composer's `+` menu) or to know something (a Link Route a deep link names).
+ * The engine must stay blind to user interfaces, so the request does not
+ * travel as engine vocabulary. It travels as a
  * resource: the engine's generic, content-opaque publish/subscribe pipe. The
  * extension publishes an item whose kind starts with `ion-studio.`; the engine
  * forwards it like any other resource; Studio recognises the kind and acts.
@@ -16,12 +17,15 @@ import type { ResourceItem } from './types-engine'
 /** Kinds under this prefix are Studio control messages, never content to show a person. */
 export const STUDIO_CONTROL_KIND_PREFIX = 'ion-studio.'
 export const COMPOSER_ACTION_KIND = 'ion-studio.composer-action'
+export const LINK_ROUTE_KIND = 'ion-studio.link-route'
 
 const MAX_LABEL = 80
 const MAX_ICON = 40
 const MAX_COMMAND = 200
 /** A Composer Action runs a slash command the extension registered; nothing else. */
 const COMMAND_PATTERN = /^\/[A-Za-z0-9_:-]+( .*)?$/
+/** A Link Route id is one path segment of an `ion://ext/<routeId>` link. */
+const ROUTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
 /**
  * The Environment's operator focus, which Studio publishes for extensions that
@@ -108,4 +112,42 @@ export function composerActionsFor(
     actions.push(action)
   }
   return actions.sort((a, b) => a.producer.localeCompare(b.producer) || a.label.localeCompare(b.label))
+}
+
+export interface LinkRoute {
+  /** Unique per producer; the `<routeId>` of an `ion://ext/<routeId>` link. */
+  id: string
+  /** The extension that contributed it (engine-assigned, not self-declared). */
+  producer: string
+  label: string
+  /** The slash command the route runs, with the link's args appended. */
+  command: string
+  /** Set when the route belongs to one conversation; absent for every conversation whose extension command registry owns `command`. */
+  conversationId?: string
+}
+
+/** Strict, like {@link parseComposerAction}: a malformed item yields null, so a bad extension cannot register a route. */
+export function parseLinkRoute(item: ResourceItem): LinkRoute | null {
+  if (item.kind !== LINK_ROUTE_KIND || typeof item.id !== 'string' || !ROUTE_ID_PATTERN.test(item.id)) return null
+  let content: unknown
+  try {
+    content = JSON.parse(item.content)
+  } catch {
+    return null // silent-ok: the caller logs the count of refused items
+  }
+  const c = content as { label?: unknown; command?: unknown } | null
+  if (!c || typeof c.label !== 'string' || c.label.length === 0 || c.label.length > MAX_LABEL) return null
+  if (typeof c.command !== 'string' || c.command.length > MAX_COMMAND || !COMMAND_PATTERN.test(c.command)) return null
+  return {
+    id: item.id,
+    producer: item.producer ?? '',
+    label: c.label,
+    command: c.command,
+    ...(item.conversationId ? { conversationId: item.conversationId } : {}),
+  }
+}
+
+/** The bare command name a Link Route runs: `/briefing today` is `briefing`. */
+export function linkRouteCommandName(command: string): string {
+  return composerActionCommandName(command)
 }

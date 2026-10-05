@@ -17,9 +17,10 @@ func TestHandleSetPlanMode_Enter(t *testing.T) {
 	var gotEnabled bool
 	var gotSource string
 	h.ctxStack.Push(&Context{
-		SetPlanMode: func(enabled bool, source string) {
+		SetPlanMode: func(enabled bool, source string) PlanModeOutcome {
 			gotEnabled = enabled
 			gotSource = source
+			return PlanModeOutcome{Allowed: true, Changed: true}
 		},
 	})
 
@@ -56,7 +57,10 @@ func TestHandleSetPlanMode_Exit(t *testing.T) {
 
 	var gotEnabled bool
 	h.ctxStack.Push(&Context{
-		SetPlanMode: func(enabled bool, _ string) { gotEnabled = enabled },
+		SetPlanMode: func(enabled bool, _ string) PlanModeOutcome {
+			gotEnabled = enabled
+			return PlanModeOutcome{Allowed: true}
+		},
 	})
 
 	raw, _ := json.Marshal(map[string]interface{}{
@@ -83,7 +87,7 @@ func TestHandleSetPlanMode_DefaultSource(t *testing.T) {
 
 	var gotSource string
 	h.ctxStack.Push(&Context{
-		SetPlanMode: func(_ bool, source string) { gotSource = source },
+		SetPlanMode: func(_ bool, source string) PlanModeOutcome { gotSource = source; return PlanModeOutcome{Allowed: true} },
 	})
 
 	raw, _ := json.Marshal(map[string]interface{}{
@@ -181,5 +185,33 @@ func TestHandleGetPlanMode_NoCtx(t *testing.T) {
 	errObj, _ := resp["error"].(map[string]interface{})
 	if code, _ := errObj["code"].(float64); int(code) != -32603 {
 		t.Errorf("error code = %v, want -32603", errObj)
+	}
+}
+
+// A veto reaches the extension: the response carries allowed=false and the
+// handler's reason alongside ok.
+func TestHandleSetPlanMode_ReportsOutcome(t *testing.T) {
+	t.Parallel()
+
+	h := NewHost()
+	ch := attachStdout(h)
+	h.ctxStack.Push(&Context{
+		SetPlanMode: func(bool, string) PlanModeOutcome {
+			return PlanModeOutcome{Allowed: false, Reason: "vetoed"}
+		},
+	})
+	raw, _ := json.Marshal(map[string]interface{}{"params": map[string]interface{}{"enabled": true}}) //nolint:errcheck // static map
+	h.handleSetPlanMode(1, raw)
+
+	resp := readResponse(t, ch, time.Second)
+	result, _ := resp["result"].(map[string]interface{})
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("ok must stay true: %v", result)
+	}
+	if allowed, present := result["allowed"].(bool); !present || allowed {
+		t.Fatalf("allowed must be false: %v", result)
+	}
+	if result["reason"] != "vetoed" {
+		t.Fatalf("reason missing: %v", result)
 	}
 }

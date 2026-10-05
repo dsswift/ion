@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -30,6 +31,12 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 		utils.LogWithFields(utils.LevelDebug, "session", "setplanmode: session not found (not yet started?)", map[string]any{"key": key})
 		return
 	}
+	setPlanModeLocked(s, key, enabled, allowedTools, source, planFilePath)
+}
+
+// setPlanModeLocked writes the session's plan-mode state. Caller holds m.mu.
+// It fires no hook and touches no live run; TransitionPlanMode adds both.
+func setPlanModeLocked(s *engineSession, key string, enabled bool, allowedTools []string, source, planFilePath string) {
 	was := s.planMode
 	s.planMode = enabled
 	s.planModeTools = allowedTools
@@ -117,8 +124,11 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	// Fire before_plan_mode_enter hook (outside the lock — hook handlers must
 	// not call back into the manager under lock or a deadlock results).
 	if extGroup != nil && !extGroup.IsEmpty() {
-		ctx := m.newExtContextForKey(key)
-		a, r := extGroup.FireBeforePlanModeEnter(ctx, extension.PlanModeEnterInfo{Source: "model_tool"})
+		var a bool
+		var r string
+		m.withPlanModeHookDispatching(key, func() {
+			a, r = extGroup.FireBeforePlanModeEnter(m.newExtContextForKey(key), extension.PlanModeEnterInfo{Source: backend.PlanModeSourceModelTool})
+		})
 		if !a {
 			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: denied by hook", map[string]any{"key": key, "r": r})
 			return false, r, ""
@@ -200,10 +210,13 @@ func (m *Manager) RequestPlanModeExit(key string, planFilePath string) (allowed 
 		return true, ""
 	}
 
-	ctx := m.newExtContextForKey(key)
-	a, r := extGroup.FireBeforePlanModeExit(ctx, extension.BeforePlanModeExitInfo{
-		PlanFilePath: planFilePath,
-		Source:       "model_tool",
+	var a bool
+	var r string
+	m.withPlanModeHookDispatching(key, func() {
+		a, r = extGroup.FireBeforePlanModeExit(m.newExtContextForKey(key), extension.BeforePlanModeExitInfo{
+			PlanFilePath: planFilePath,
+			Source:       backend.PlanModeSourceModelTool,
+		})
 	})
 	if !a {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeexit: denied by hook", map[string]any{"key": key, "r": r})

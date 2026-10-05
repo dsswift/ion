@@ -134,7 +134,9 @@ func (a *idTestAccessor) SetSessionMemory(_ string) {}
 func (a *idTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *idTestAccessor) SetPlanMode(_ bool, _ string)                  {}
+func (a *idTestAccessor) SetPlanMode(_ bool, _ string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
 func (a *idTestAccessor) GetPlanModeState() (bool, string)              { return false, "" }
 func (a *idTestAccessor) ResourceBroker() *resource.Broker              { return nil }
 func (a *idTestAccessor) GlobalResourceBroker() *resource.Broker        { return nil }

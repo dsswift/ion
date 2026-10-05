@@ -100,8 +100,10 @@ func (a *depthTestAccessor) SetSessionMemory(content string) {}
 func (a *depthTestAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *depthTestAccessor) SetPlanMode(enabled bool, source string) {}
-func (a *depthTestAccessor) GetPlanModeState() (bool, string)        { return false, "" }
+func (a *depthTestAccessor) SetPlanMode(enabled bool, source string) extension.PlanModeOutcome {
+	return extension.PlanModeOutcome{}
+}
+func (a *depthTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
 func (a *depthTestAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	return state.ID
 }

@@ -109,6 +109,9 @@ export const EVENT_CHANNELS: readonly EventChannelSpec[] = [
   { name: 'ion:deeplink-present', scope: 'environment' },
   { name: 'ion:deeplink-confirm-request', scope: 'environment' },
   { name: 'ion:deeplink-confirm-settled', scope: 'environment' },
+  // A navigation link the local desktop received from its OS, resolved by
+  // the server: the desktop's window moves its view to the target.
+  { name: 'ion:deeplink-navigate', scope: 'environment' },
   { name: 'ion:update-downloaded', scope: 'environment' },
   { name: 'ion:update-progress', scope: 'environment' },
   { name: 'ion:update-staged', scope: 'environment' },

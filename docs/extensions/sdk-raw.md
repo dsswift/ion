@@ -932,7 +932,7 @@ Response:
 
 ### ext/set_plan_mode
 
-Enter or exit plan mode for the current session. Emits `engine_plan_mode_changed` to all subscribers. No-op when the session is already in the requested state.
+Enter or exit plan mode for the current session. The request takes the same path as a client's `set_plan_mode`: `before_plan_mode_enter` / `before_plan_mode_exit` fire with `source: "extension"` (and this call's `source` as `clientSource`), and any handler may veto it. An allowed change emits `engine_plan_mode_changed` and switches a run in flight in the current turn. A veto leaves the mode where it is and emits `engine_plan_mode_change_rejected`. A request for the mode the session is already in fires nothing and reports `allowed: true, changed: false`.
 
 | Param     | Type    | Required | Description                                                                                                                      |
 | --------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -948,7 +948,37 @@ Enter or exit plan mode for the current session. Emits `engine_plan_mode_changed
 }
 ```
 
-Response: `{"jsonrpc":"2.0","id":100020,"result":{"ok":true}}`
+Response: `{"jsonrpc":"2.0","id":100020,"result":{"ok":true,"allowed":true,"changed":true}}`
+
+| Field     | Type    | Description |
+| --------- | ------- | ----------- |
+| `ok`      | boolean | Always `true` when the request was handled |
+| `allowed` | boolean | `false` when a `before_plan_mode_*` handler vetoed the change. An engine that predates the veto omits it; treat absent as `true` |
+| `changed` | boolean | `true` when the session's mode actually flipped |
+| `reason`  | string  | The vetoing handler's explanation (omitempty) |
+
+### ext/walk_context_files
+
+Walk the context files (AGENTS.md, ION.md, CLAUDE.md, and their `.ion/` / `.claude/` forms) the engine would load from a directory, without injecting anything. Fires no hooks.
+
+| Param             | Type    | Required | Description |
+| ----------------- | ------- | -------- | ----------- |
+| `cwd`             | string  | yes      | Directory to walk from. An empty `cwd` returns `[]` |
+| `includeGlobal`   | boolean | no       | Include the home roots (`~/.ion`, and `~/.claude` with `claudeCompat`). Default `true` |
+| `includeProject`  | boolean | no       | Include `cwd` and its parents. Default `true` |
+| `claudeCompat`    | boolean | no       | Also match the Claude-compat names. Default `false` |
+| `includeMaxDepth` | number  | no       | Cap on `@`-include hops per file. Omitted or `0` uses the engine default (5) |
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100023,
+  "method": "ext/walk_context_files",
+  "params": { "cwd": "/repo", "includeMaxDepth": 2 }
+}
+```
+
+Response: an array of files, each `{"Path":…,"Content":…,"Source":…,"Level":…}`. `Content` has its includes expanded; `Level` is 0 for `cwd`, 1 for its parent, and so on.
 
 ### ext/set_run_recovery
 

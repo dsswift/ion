@@ -15,6 +15,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
@@ -272,7 +273,17 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		if cmd.PlanFilePath != "" {
 			utils.LogWithFields(utils.LevelInfo, "server", "set plan mode", map[string]any{"session_id": cmd.Key, "count": enabled, "path": cmd.PlanFilePath})
 		}
-		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools, cmd.Source, cmd.PlanFilePath)
+		// Every client toggle goes through the same transition as an
+		// extension's: the before-hook fires with source "wire" and may veto
+		// it, and a live run switches mid-turn. The result rides the command
+		// response; a veto also emits engine_plan_mode_change_rejected.
+		transition := s.manager.TransitionPlanMode(cmd.Key, session.PlanModeTransitionRequest{
+			Enabled:             enabled,
+			Source:              backend.PlanModeSourceWire,
+			AllowedTools:        cmd.AllowedTools,
+			ClientSource:        cmd.Source,
+			RestorePlanFilePath: cmd.PlanFilePath,
+		})
 		// Tri-valued PlanModeAllowedBashCommands per the protocol doc:
 		//   - nil   (JSON omitted): no change to existing allowlist
 		//   - []    (JSON []):      clear allowlist
@@ -287,7 +298,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		if cmd.PlanModeAllowedMcpTools != nil {
 			s.manager.SetPlanModeMcpAllowlist(cmd.Key, cmd.PlanModeAllowedMcpTools)
 		}
-		s.sendResult(conn, cmd, nil, nil)
+		s.sendResult(conn, cmd, nil, transition)
 
 	case "branch":
 		err := s.manager.BranchSession(cmd.Key, cmd.EntryID)

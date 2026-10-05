@@ -396,6 +396,14 @@ type EngineEvent struct {
 	// render a human-readable plan identifier. See PlanModeChangedEvent
 	// for the legacy-hex round-trip note.
 	PlanModeSlug string `json:"planSlug,omitempty"`
+	// PlanModeSource mirrors PlanModeChangedEvent.Source on
+	// engine_plan_mode_changed, and PlanModeChangeRejectedEvent.Source on
+	// engine_plan_mode_change_rejected.
+	PlanModeSource string `json:"planModeSource,omitempty"`
+
+	// engine_plan_mode_change_rejected
+	PlanModeRequestedEnabled bool   `json:"planModeRequestedEnabled,omitempty"`
+	PlanModeRejectReason     string `json:"planModeRejectReason,omitempty"`
 
 	// engine_plan_file_written — emitted when a Write/Edit successfully lands
 	// on the canonical plan file during plan mode. PlanModeFilePath

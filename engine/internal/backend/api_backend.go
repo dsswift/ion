@@ -164,6 +164,7 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		opts:                           &options,
 		cfg:                            cfg,
 		progressWatchdogStop:           make(chan struct{}),
+		skillGrants:                    append([]types.PermissionRule(nil), options.SkillGrants...),
 	}
 	// Seed the watchdog clock with "started just now". Without this the
 	// watchdog's first tick (~30s in) would compare against the zero

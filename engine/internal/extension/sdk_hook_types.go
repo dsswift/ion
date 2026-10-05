@@ -136,32 +136,6 @@ type PerToolCallResult struct {
 	Mutate map[string]interface{} `json:"mutate,omitempty"`
 }
 
-// ContextDiscoverInfo describes a context file discovery event.
-type ContextDiscoverInfo struct {
-	Path   string `json:"path"`
-	Source string `json:"source"`
-}
-
-// ContextLoadInfo describes a context file load event.
-type ContextLoadInfo struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Source  string `json:"source"`
-}
-
-// ContextInjectInfo is the payload for the context_inject hook.
-type ContextInjectInfo struct {
-	WorkingDirectory string                    `json:"workingDirectory"`
-	DiscoveredPaths  []string                  `json:"discoveredPaths"`
-	Workspace        *workspaces.PromptContext `json:"workspace,omitempty"`
-}
-
-// ContextEntry is a single piece of context content to inject into the system prompt.
-type ContextEntry struct {
-	Label   string `json:"label"`   // identifier shown in prompt (e.g. file path)
-	Content string `json:"content"` // raw content to inject
-}
-
 // CapabilityMode controls how a capability is surfaced to the LLM.
 type CapabilityMode int
 
@@ -636,17 +610,25 @@ type EarlyStopDecisionResult struct {
 }
 
 // PlanModeEnterInfo is the payload for the before_plan_mode_enter hook.
-// Fired when the LLM calls the EnterPlanMode tool (or any future mechanism
-// that requests a model-initiated transition into plan mode). Handlers can
-// return BeforePlanModeEnterResult to deny the transition. Default is allow.
+// Fired before every transition into plan mode: the model calling the
+// EnterPlanMode tool, a client sending set_plan_mode, or an extension calling
+// ctx.enterPlanMode. Handlers can return BeforePlanModeEnterResult to deny the
+// transition whatever its source. Default is allow. The hook does not fire
+// again for a change requested from inside a running plan-mode hook.
 //
 // Field stability: this struct is part of the published hook contract. New
 // fields may be added with zero-value defaults; existing fields must not be
 // removed or renamed.
 type PlanModeEnterInfo struct {
-	// Source identifies what triggered the request. "model_tool" when the LLM
-	// called the EnterPlanMode sentinel tool directly.
+	// Source identifies what triggered the request: "model_tool" (the model
+	// called EnterPlanMode), "wire" (a client sent set_plan_mode), or
+	// "extension" (an extension called ctx.enterPlanMode).
 	Source string `json:"source"`
+	// ClientSource is the free-form label the requester attached: the
+	// `source` a client sent on set_plan_mode (for example "plan_approved"
+	// or "session_start"), or the label an extension passed. Empty for
+	// model_tool.
+	ClientSource string `json:"clientSource,omitempty"`
 }
 
 // BeforePlanModeEnterResult is the optional return value from a
@@ -661,24 +643,28 @@ type BeforePlanModeEnterResult struct {
 	// Allow controls whether plan mode entry is permitted. nil = defer to
 	// engine default (allow). &true = explicitly allow. &false = deny.
 	Allow *bool `json:"allow,omitempty"`
-	// Reason is an optional human-readable explanation returned to the LLM
-	// in the tool result when Allow is &false.
+	// Reason explains a denial. It reaches the model in the tool result for a
+	// "model_tool" request, and the client on engine_plan_mode_change_rejected
+	// for a "wire" or "extension" request.
 	Reason string `json:"reason,omitempty"`
 }
 
 // BeforePlanModeExitInfo is the payload for the before_plan_mode_exit hook.
-// Fired when the LLM calls the ExitPlanMode sentinel tool, before the run is
-// terminated and the plan-ready card is surfaced to the user. Handlers may
-// return BeforePlanModeExitResult to veto the exit (e.g. to send the model
-// back for more planning) or to allow it.
+// Fired before every transition out of plan mode: the model calling the
+// ExitPlanMode tool (before the run ends and the plan is surfaced), a client
+// sending set_plan_mode, or an extension calling ctx.exitPlanMode. Handlers
+// may return BeforePlanModeExitResult to veto the exit whatever its source
+// (e.g. to send the model back for more planning) or to allow it.
 //
 // Field stability: new fields may be added with zero-value defaults; existing
 // fields must not be removed or renamed.
 type BeforePlanModeExitInfo struct {
 	// PlanFilePath is the path of the plan file being submitted for review.
 	PlanFilePath string `json:"planFilePath"`
-	// Source is always "model_tool" for now (future: "extension").
+	// Source is "model_tool", "wire", or "extension"; see PlanModeEnterInfo.
 	Source string `json:"source"`
+	// ClientSource is the requester's own label; see PlanModeEnterInfo.
+	ClientSource string `json:"clientSource,omitempty"`
 }
 
 // BeforePlanModeExitResult is the optional return value from a
@@ -691,8 +677,9 @@ type BeforePlanModeExitResult struct {
 	// Allow controls whether the plan mode exit proceeds. nil = defer to
 	// default (allow). &false = deny (keep the model in plan mode).
 	Allow *bool `json:"allow,omitempty"`
-	// Reason is returned to the LLM in the tool result when Allow is &false,
-	// explaining why the exit was denied and what it should do instead.
+	// Reason explains a denial: to the model in the tool result for a
+	// "model_tool" request (say what it should do instead), and to the client
+	// on engine_plan_mode_change_rejected for a "wire" or "extension" one.
 	Reason string `json:"reason,omitempty"`
 }
 

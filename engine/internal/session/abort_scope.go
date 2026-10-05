@@ -102,6 +102,11 @@ func (m *Manager) SendAbortScoped(key string, scope AbortScope) {
 		s.temporaryAutoPlan = nil
 	}
 	s.pendingSlashInvocation = nil
+	if s.slashRenderCancel != nil {
+		s.slashRenderCancel()
+		s.slashRenderCancel = nil
+		utils.LogWithFields(utils.LevelInfo, "session", "slash skill render cancelled by abort", map[string]any{"key": key, "abort_scope": string(scope)})
+	}
 	// Discard any prompts queued behind the in-flight run. Pressing Stop
 	// means "abandon the pending work", so prompts the user queued *before*
 	// the abort must not be resurrected when the cancelled run unwinds and

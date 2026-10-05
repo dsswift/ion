@@ -1,11 +1,13 @@
 package session
 
 import (
-	"github.com/dsswift/ion/engine/internal/session/agents"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/session/agents"
+	"github.com/dsswift/ion/engine/internal/skills"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -168,9 +170,9 @@ func TestSubstituteArguments(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := substituteArguments(c.body, c.args)
+			got := skills.SubstituteArguments(c.body, c.args)
 			if got != c.want {
-				t.Errorf("substituteArguments(%q,%q) = %q want %q", c.body, c.args, got, c.want)
+				t.Errorf("skills.SubstituteArguments(%q,%q) = %q want %q", c.body, c.args, got, c.want)
 			}
 		})
 	}

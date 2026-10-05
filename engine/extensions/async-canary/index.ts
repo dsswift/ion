@@ -81,9 +81,8 @@ ion.schedule.interval({
 
     // Now issue ctx.dispatchAgent. This sends ext/dispatch_agent to Go.
     // Go's handleExtRequest calls ctxStack.Current() → nil → -32000.
-    // The TS runtime.ts:778 rejects the pending promise with:
-    //   new Error(msg.error.message || 'RPC error')
-    // so the code field (-32000) is dropped; only the message string survives.
+    // The SDK runtime rejects the pending promise with an IonRpcError that
+    // carries the -32000 code alongside the message.
     let errorMessage = ''
     let errorHasCodeProperty = false
     let errorName = ''
@@ -96,8 +95,7 @@ ion.schedule.interval({
       err = caught
       errorMessage = String(caught?.message ?? caught ?? 'unknown error')
       errorName = String(caught?.name ?? '')
-      // Check whether the -32000 code survived into the thrown Error object.
-      // runtime.ts:778 uses only msg.error.message, so code is lost.
+      // Record whether the -32000 code survived into the thrown error.
       errorHasCodeProperty = 'code' in Object(caught)
     }
 

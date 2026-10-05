@@ -50,6 +50,10 @@ type CheckInfo struct {
 	// harness chooses. Empty when no classifier ran. Consulted by Check
 	// against PermissionPolicy.TierRules before per-rule matching.
 	Tier string
+	// Grants are turn-scoped pre-approvals (a skill's `allowed-tools`). A
+	// grant that matches turns an "ask" into "allow" with layer
+	// "skill_grant". It never changes a "deny" or an "allow".
+	Grants []types.PermissionRule
 }
 
 // CheckResult is the output of a permission evaluation.
@@ -62,8 +66,8 @@ type CheckResult struct {
 	Tier string
 	// Layer names the evaluation stage that produced this decision, e.g.
 	// "allow_mode", "dangerous_pattern", "sensitive_path", "read_only_path",
-	// "tier_rule", "explicit_rule", "safe_command", "llm_classifier", or
-	// "mode_default". Surfaced on the AuditEntry so observers can see which
+	// "tier_rule", "explicit_rule", "safe_command", "llm_classifier",
+	// "mode_default", or "skill_grant". Surfaced on the AuditEntry so observers can see which
 	// rail decided a call. Empty only for results constructed outside Check.
 	Layer string
 }
@@ -78,7 +82,7 @@ type CheckResult struct {
 //  6. Mode-based default: deny blocks, ask prompts user.
 func (e *Engine) Check(info CheckInfo) *CheckResult {
 	// Capture the check start so audit() can record decision latency. Every
-	// return path below routes through e.audit(info, result, checkStart).
+	// return path below routes through e.finish(info, result, checkStart).
 	checkStart := time.Now()
 
 	// Unwrap the engine's own MCP bridge prefix once, here, so every rail below
@@ -99,7 +103,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 	// In allow mode, skip all checks -- harness engineer opted out of engine-level enforcement
 	if e.policy.Mode == "allow" {
 		result := &CheckResult{Decision: "allow", Reason: "default allow", Layer: "allow_mode"}
-		e.audit(info, result, checkStart)
+		e.finish(info, result, checkStart)
 		return result
 	}
 
@@ -112,7 +116,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 					Reason:   reason,
 					Layer:    "dangerous_pattern",
 				}
-				e.audit(info, result, checkStart)
+				e.finish(info, result, checkStart)
 				return result
 			}
 		}
@@ -126,7 +130,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				Reason:   "access to sensitive path: " + path,
 				Layer:    "sensitive_path",
 			}
-			e.audit(info, result, checkStart)
+			e.finish(info, result, checkStart)
 			return result
 		}
 	}
@@ -141,7 +145,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 						Reason:   "path is read-only: " + path,
 						Layer:    "read_only_path",
 					}
-					e.audit(info, result, checkStart)
+					e.finish(info, result, checkStart)
 					return result
 				}
 			}
@@ -159,7 +163,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				Tier:     info.Tier,
 				Layer:    "tier_rule",
 			}
-			e.audit(info, result, checkStart)
+			e.finish(info, result, checkStart)
 			return result
 		}
 	}
@@ -177,7 +181,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				Rule:     rule,
 				Layer:    "explicit_rule",
 			}
-			e.audit(info, result, checkStart)
+			e.finish(info, result, checkStart)
 			return result
 		}
 	}
@@ -201,7 +205,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 						Reason:   "safe command auto-approved",
 						Layer:    "safe_command",
 					}
-					e.audit(info, result, checkStart)
+					e.finish(info, result, checkStart)
 					return result
 				}
 				// G01: Use LLM classifier for ambiguous bash commands
@@ -213,7 +217,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 							Reason:   "LLM classifier: " + cr.Reason,
 							Layer:    "llm_classifier",
 						}
-						e.audit(info, result, checkStart)
+						e.finish(info, result, checkStart)
 						return result
 					}
 				}
@@ -237,7 +241,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 			Layer:    "mode_default",
 		}
 	}
-	e.audit(info, result, checkStart)
+	e.finish(info, result, checkStart)
 	return result
 }
 
@@ -279,6 +283,35 @@ type AuditEntry struct {
 // OnAudit registers a callback for permission audit logging (G48).
 func (e *Engine) OnAudit(fn func(AuditEntry)) {
 	e.auditFn = fn
+}
+
+// finish settles a decision and audits it. Every return path of Check routes
+// through here, so a turn-scoped grant is applied to every "ask" whichever
+// layer produced it, and the audit records the settled decision.
+func (e *Engine) finish(info CheckInfo, result *CheckResult, checkStart time.Time) {
+	if result.Decision == "ask" {
+		if grant := MatchGrant(info.Grants, info); grant != nil {
+			utils.LogWithFields(utils.LevelInfo, "permissions", "ask settled by skill grant", map[string]any{"tool": info.Tool, "grant_tool": grant.Tool, "replaced_layer": result.Layer})
+			result.Decision = "allow"
+			result.Reason = "pre-approved by the invoking skill's allowed-tools"
+			result.Layer = "skill_grant"
+			result.Rule = grant
+		}
+	}
+	e.audit(info, result, checkStart)
+}
+
+// MatchGrant returns the first grant that covers the call, or nil. A grant
+// matches on tool name and, when it carries patterns, on the command or path
+// exactly as a policy rule does.
+func MatchGrant(grants []types.PermissionRule, info CheckInfo) *types.PermissionRule {
+	for i := range grants {
+		g := &grants[i]
+		if matchTool(g.Tool, NormalizeToolName(info.Tool)) && matchRule(g, info) {
+			return g
+		}
+	}
+	return nil
 }
 
 func (e *Engine) audit(info CheckInfo, result *CheckResult, checkStart time.Time) {

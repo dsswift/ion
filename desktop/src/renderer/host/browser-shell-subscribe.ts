@@ -100,6 +100,8 @@ export const SHELL_SUBSCRIBE: Record<string, ShellSubscribeSpec> = {
   // An `ion://` link awaiting the operator's decision, and its settlement.
   onDeepLinkConfirmRequest: { channel: 'ion:deeplink-confirm-request' },
   onDeepLinkConfirmSettled: { channel: 'ion:deeplink-confirm-settled' },
+  // A navigation link from the local desktop's OS, resolved by its server.
+  onDeepLinkNavigate: { channel: 'ion:deeplink-navigate' },
   // Published as `broadcast(channel, projectPath, payload)`, so spread. The
   // graph is a picture of a directory in the Environment the active tab is
   // connected to.

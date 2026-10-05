@@ -145,6 +145,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [LAN Discovery](#term-lan-discovery)
 - [Limited Conversation](#term-limited-conversation)
 - [Link Integrity Scan](#term-link-integrity-scan)
+- [Link Route](#term-link-route)
 - [Local Principal](#term-local-principal)
 - [Manage-Only Server](#term-manage-only-server)
 - [Managed Config Projection](#term-managed-config-projection)
@@ -175,6 +176,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Placement](#term-placement)
 - [Plan Mode Notice](#term-plan-mode-notice)
 - [Plan Policy](#term-plan-policy)
+- [Plan-Mode Change Rejection](#term-plan-mode-change-rejection)
 - [Policy Failure](#term-policy-failure)
 - [Policy Override Notice](#term-policy-override-notice)
 - [Poll](#term-poll)
@@ -212,6 +214,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Settings Policy](#term-settings-policy)
 - [Settings Side Panel](#term-settings-side-panel)
 - [Settings Taxonomy](#term-settings-taxonomy)
+- [Skill Grant](#term-skill-grant)
+- [Skill Shell Injection](#term-skill-shell-injection)
 - [Slash command](#term-slash-command)
 - [Status Drawer](#term-status-drawer)
 - [Steer](#term-steer)
@@ -886,6 +890,33 @@ The engine releasing a quiescent session, one that has no run, no pending work, 
   - `engine` / `code` / `go`: `func (m *Manager) evaluateIdleRelease` in `engine/internal/session/idle_release.go`
   - `engine` / `doc` / `markdown`: `Idle release` in `docs/sessions/lifecycle.md`
 
+#### Skill Grant {#term-skill-grant}
+
+A tool pre-approval from the allowed-tools of a skill the run invoked. It settles a permission ask as allow for the rest of that run and never overrides a deny.
+
+- **ID:** `skill-grant`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func MatchGrant` in `engine/internal/permissions/engine.go`
+  - `engine` / `code` / `go`: `func ParseAllowedTools` in `engine/internal/skills/allowed_tools.go`
+
+#### Skill Shell Injection {#term-skill-shell-injection}
+
+Shell commands written in a skill body as !`cmd` or a ```! block. The engine runs them when the skill is invoked, in the skill's directory, and replaces each placeholder with the output, so the model sees data and never the command. Each command passes the permission policy, a failure aborts the skill, and limits.disableSkillShellExecution turns it off.
+
+- **ID:** `skill-shell-injection`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func Render` in `engine/internal/skills/render.go`
+
 #### Steer {#term-steer}
 
 One instruction delivered into a run that is already in flight. The engine buffers it and injects it at the next turn boundary, because a provider request already sent cannot have a message added to it. An operator typing into a running turn and a harness bubbling a completion into that turn both arrive as steers, distinguished by their injection kind.
@@ -1177,6 +1208,20 @@ The engine's typed inner event union. Each variant carries one shape. The engine
   - `engine` / `wire` / `go`: `type NormalizedEvent struct` in `engine/internal/types/normalized_event.go`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
 - **Notes:** Bare internal names never reach a consumer. Semantics such as snapshot versus incremental are part of the contract.
+
+#### Plan-Mode Change Rejection {#term-plan-mode-change-rejection}
+
+A client's or an extension's plan-mode change that a before_plan_mode_enter or before_plan_mode_exit handler vetoed. The mode does not move; the engine emits engine_plan_mode_change_rejected with the reason, and clients revert the toggle and show why.
+
+- **ID:** `plan-mode-change-rejection`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type PlanModeChangeRejectedEvent` in `engine/internal/types/normalized_event_plan_mode.go`
+  - `engine` / `code` / `go`: `func (m *Manager) TransitionPlanMode` in `engine/internal/session/plan_mode_transition.go`
 
 #### Policy Override Notice {#term-policy-override-notice}
 
@@ -3190,6 +3235,20 @@ What one Studio server says about itself for a Fleet view, answered to the `flee
   - `desktop` / `code` / `typescript`: `interface FleetReport` in `packages/shared/src/types-fleet.ts`
   - `ios` / `wire` / `swift`: `struct FleetReport` in `ios/IonRemote/Models/Admin/FleetReport.swift`
 
+#### Link Route {#term-link-route}
+
+A named deep-link target an extension registers through the Studio SDK. A link ion://ext/<routeId> runs the slash command the route names, with the link's args appended, in a conversation whose extension owns that command. Like every deep-link action it passes the trust gate first.
+
+- **ID:** `link-route`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export interface LinkRoute` in `packages/shared/src/studio-sdk-contract.ts`
+  - `server` / `code` / `typescript`: `export class LinkRoutesBoard` in `server/src/engine/link-routes.ts`
+
 #### On Host {#term-on-host}
 
 Whether a Studio wire connection runs on its server's own host, meaning it arrived on the local socket. Sent as studio_welcome.onHost. A sign-in that finishes on a loopback callback on the host can only finish for such a connection; the server refuses host-only sign-ins to any other and hands browser sign-ins back to the requester to finish with auth.completeSignIn. Keyed on the connection, never on an environment id. Absent from an older server, which reads as not on the host.
@@ -3495,6 +3554,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
 | LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |
 | Limited Conversation | `interface TabUsageLimit` | `interface TabUsageLimit` | `interface TabUsageLimit` | `static func limitedUntil` | None |
+| Link Route | None | `export interface LinkRoute` | None | None | Overlay, iOS |
 | Local Principal | `localPrincipal` | `localPrincipal` | `localPrincipal` | None | iOS |
 | Manage-Only Server | `isManageOnlyTarget` | `isManageOnlyTarget` | `isManageOnlyTarget` | None | iOS |
 | Managed Default | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `function decideManagedDefault`, `function reconcileManagedDefaults` | `enum ManagedDefault` | None |

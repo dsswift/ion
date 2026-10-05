@@ -11,6 +11,12 @@
 //   permission_classify    -> always returns "CRITICAL" (lets tests verify tier flows through)
 //   permission_request     -> stores last payload (lets tests verify tier appears on payload)
 //   capability_match       -> when input matches a name we have queued via canary_promote, register the spec
+//   context_discover       -> records every candidate, duplicates included; canary_context_discover returns them
+//   skill_load             -> logs each skill invocation and the shell commands it would run
+//   before_plan_mode_enter -> records each request's source; canary_plan_mode returns them
+//
+// canary_plan_mode calls ctx.enterPlanMode() / exitPlanMode() and reports the
+// outcome, exercising the extension source of the shared plan-mode transition.
 
 import {
   createIon,
@@ -20,6 +26,7 @@ import {
   type ErrorInfo,
   type AgentSpec,
   type PermissionRequestInfo,
+  type ContextDiscoverInfo,
 } from '../sdk/ion-sdk'
 
 const ion = createIon()
@@ -37,6 +44,54 @@ ion.on('permission_classify', (_ctx, payload) => {
 
 ion.on('permission_request', (_ctx, payload) => {
   lastPermissionRequest = payload
+})
+
+const discoveredContext: ContextDiscoverInfo[] = []
+
+ion.on('context_discover', (_ctx, payload) => {
+  discoveredContext.push(payload)
+  if (payload.duplicateOf) {
+    log.info('context file skipped as duplicate', { path: payload.path, duplicate_of: payload.duplicateOf, reason: payload.duplicateReason })
+  }
+  return false
+})
+
+ion.registerTool({
+  name: 'canary_context_discover',
+  description: 'Return every context_discover payload this extension has seen',
+  parameters: { type: 'object', properties: {} },
+  execute: async () => ({ content: JSON.stringify(discoveredContext) }),
+})
+
+ion.on('skill_load', (_ctx, payload) => {
+  log.info('skill load observed', {
+    name: payload.name,
+    invocation: payload.invocation,
+    commands: payload.commands?.length ?? 0,
+  })
+  return undefined
+})
+
+const planModeSources: string[] = []
+
+ion.on('before_plan_mode_enter', (_ctx, payload) => {
+  planModeSources.push(payload.source)
+  return undefined
+})
+
+ion.registerTool({
+  name: 'canary_plan_mode',
+  description: 'Enter or exit plan mode through ctx and report the outcome plus every before_plan_mode_enter source seen',
+  parameters: {
+    type: 'object',
+    properties: { enter: { type: 'boolean' } },
+    required: ['enter'],
+  },
+  execute: async (params, ctx) => {
+    const allowed = params.enter ? await ctx.enterPlanMode() : await ctx.exitPlanMode()
+    const inPlanMode = await ctx.isInPlanMode()
+    return { content: JSON.stringify({ allowed, inPlanMode, sources: planModeSources }) }
+  },
 })
 
 ion.on('capability_match', (ctx, payload) => {

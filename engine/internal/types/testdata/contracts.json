@@ -168,10 +168,16 @@
       "sessionId",
       "stopReason"
     ],
+    "plan_mode_change_rejected": [
+      "reason",
+      "requestedEnabled",
+      "source"
+    ],
     "plan_mode_changed": [
       "enabled",
       "planFilePath",
-      "planSlug"
+      "planSlug",
+      "source"
     ],
     "plan_proposal": [
       "kind",
@@ -507,6 +513,9 @@
     "planModeAutoExitSessionId",
     "planModeAutoExitStopReason",
     "planModeEnabled",
+    "planModeRejectReason",
+    "planModeRequestedEnabled",
+    "planModeSource",
     "planProposalKind",
     "planSlug",
     "planWriteOperation",

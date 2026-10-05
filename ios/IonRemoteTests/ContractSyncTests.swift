@@ -163,6 +163,9 @@ final class ContractSyncTests: XCTestCase {
       "extension_died": "Extension-host lifecycle; no iOS surface renders it.",
       "extension_respawned": "Extension-host lifecycle; no iOS surface renders it.",
       "plan_file_written": "Desktop-only affordance (reveals the file on disk).",
+      "plan_mode_change_rejected":
+        "The server reverts permissionMode and projects the refusal onto "
+        + "RemoteTabState.planModeRejection; iOS reads it from the snapshot.",
       "session_init": "Desktop owns engine session lifecycle; iOS attaches to tabs.",
       "stream_reset": "Desktop-side stream bookkeeping; iOS renders from message events.",
       "task_suspend":

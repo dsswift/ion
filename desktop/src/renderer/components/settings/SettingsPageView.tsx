@@ -5,7 +5,11 @@
  */
 import React, { useEffect, useRef } from 'react'
 import { canManageEnvironment, useEnvironmentSettingsStore } from '../../studio/state/environment-settings-store'
-import { Notice, Page, PageHeader, revealSettingsAnchor } from './kit'
+import { LinkSimple } from '@phosphor-icons/react'
+import { settingsLink } from '@ion/shared/deeplink-url'
+import { IconButton, Notice, Page, PageHeader, revealSettingsAnchor } from './kit'
+import { copyDeepLink } from '../../deeplink-client'
+import { rWarn } from '../../rendererLogger'
 import type { SettingsPage, SettingsSection } from './settings-catalog'
 
 export interface SettingsPageViewProps {
@@ -36,7 +40,17 @@ export function SettingsPageView({ page, sections, environment, anchor }: Settin
     <div ref={root}>
       <Page wide={page.wide}>
         <div>
-          <PageHeader title={page.label} description={environment ? (page.description ? `${environment.label} · ${page.description}` : environment.label) : page.description} />
+          <PageHeader
+            title={page.label}
+            description={environment ? (page.description ? `${environment.label} · ${page.description}` : environment.label) : page.description}
+            actions={(
+              <IconButton
+                icon={LinkSimple}
+                label="Copy link to this page"
+                onClick={() => { copyDeepLink(settingsLink(page.id)).catch((error: unknown) => rWarn('settings', 'copy link failed', { page_id: page.id, error: String(error) })) }}
+              />
+            )}
+          />
           {environment && known && !canManage && (
             <Notice>You can change what is yours on {environment.label}. Server-wide settings need a device with admin access there.</Notice>
           )}

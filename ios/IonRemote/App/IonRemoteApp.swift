@@ -38,14 +38,17 @@ struct IonRemoteApp: App {
                     viewModel.resumeTransport()
                 }
                 .onOpenURL { url in
-                    guard StudioPairingLink.looksLikeLink(url.absoluteString) else {
-                        DiagnosticLog.log("opened url ignored, not a pairing link", tag: "app", level: .warn, fields: [
+                    if StudioPairingLink.looksLikeLink(url.absoluteString) {
+                        DiagnosticLog.log("opened a studio pairing link", tag: "app")
+                        viewModel.pairWithStudioLink(url.absoluteString)
+                    } else if DeepLinkURL.isDeepLink(url) {
+                        DiagnosticLog.log("opened an ion deep link", tag: "deeplink", fields: ["route": url.host ?? ""])
+                        viewModel.openDeepLink(url)
+                    } else {
+                        DiagnosticLog.log("opened url ignored, not a pairing or deep link", tag: "app", level: .warn, fields: [
                             "scheme": url.scheme ?? ""
                         ])
-                        return
                     }
-                    DiagnosticLog.log("opened a studio pairing link", tag: "app")
-                    viewModel.pairWithStudioLink(url.absoluteString)
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
@@ -138,6 +141,7 @@ struct ContentView: View {
                 TabListView()
             }
         }
+        .modifier(DeepLinkPresenter())
         .overlay { ProviderSubscriptionPromptOverlay() }
         .overlay(alignment: .top) {
             ToastOverlay(

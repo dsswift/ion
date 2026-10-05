@@ -9,6 +9,9 @@ import { useSessionStore, FileEditorTab } from '@ion/server/store/sessionStore'
 import { isMarkdownFile } from './FileEditorShared'
 import { FileEditorTabContextMenu } from './FileEditorTabContextMenu'
 import { host } from '../host/host-instance'
+import { copyDeepLink } from '../deeplink-client'
+import { fileLink } from '@ion/shared/deeplink-url'
+import { rWarn } from '../rendererLogger'
 
 /**
  * Icon button in the tab bar (new scratch, preview/read-only/word-wrap
@@ -209,6 +212,11 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
                 ? tabCtxMenu.file.filePath.slice(dir.length + 1)
                 : tabCtxMenu.file.filePath
               void navigator.clipboard.writeText(rel)
+            }
+          }}
+          onCopyLink={() => {
+            if (tabCtxMenu.file.filePath) {
+              copyDeepLink(fileLink(dir, tabCtxMenu.file.filePath)).catch((error: unknown) => rWarn('file-editor', 'copy link failed', { error: String(error) }))
             }
           }}
           onRevealInFinder={() => {
