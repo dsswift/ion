@@ -41,6 +41,20 @@ struct ProviderAPIKeySection: View {
                     confirmingRemoval = true
                 }
                 .disabled(!allowed || model.busy)
+                // One row carries this, so it attaches once rather than once per row of the section.
+                .confirmationDialog(
+                    provider.removesKeyOutright ? "Remove the saved \(provider.label) key?" : "Reset the \(provider.label) key?",
+                    isPresented: $confirmingRemoval,
+                    titleVisibility: .visible
+                ) {
+                    Button(provider.removesKeyOutright ? "Remove Key" : "Reset Key", role: .destructive) {
+                        Task { await model.removeKey() }
+                    }
+                } message: {
+                    Text(provider.removesKeyOutright
+                         ? "\(session.serverLabel) stops using this key. Conversations that need \(provider.label) fail until it has another credential."
+                         : "\(session.serverLabel) goes back to the credential under this override.")
+                }
             } else if provider.isServedByCli {
                 LabeledContent("API key", value: "None")
                 Button("Add API Key") { editing = true }
@@ -52,19 +66,6 @@ struct ProviderAPIKeySection: View {
             Text("API Key")
         } footer: {
             footer
-        }
-        .confirmationDialog(
-            provider.removesKeyOutright ? "Remove the saved \(provider.label) key?" : "Reset the \(provider.label) key?",
-            isPresented: $confirmingRemoval,
-            titleVisibility: .visible
-        ) {
-            Button(provider.removesKeyOutright ? "Remove Key" : "Reset Key", role: .destructive) {
-                Task { await model.removeKey() }
-            }
-        } message: {
-            Text(provider.removesKeyOutright
-                 ? "\(session.serverLabel) stops using this key. Conversations that need \(provider.label) fail until it has another credential."
-                 : "\(session.serverLabel) goes back to the credential under this override.")
         }
     }
 

@@ -5,11 +5,19 @@ import Foundation
 extension SessionViewModel {
 
 
-    func unpairDevice(_ device: PairedDevice) {
+    /// Forgets a pairing on this phone and on the server. The active server
+    /// is told over the live connection. Any other server is told over its
+    /// own admin connection, which needs the pairing's credentials, so those
+    /// are dropped only once the server has answered or could not be reached.
+    /// Returns the task that drops them then, or nil when they are already gone.
+    @MainActor
+    @discardableResult
+    func unpairDevice(_ device: PairedDevice) -> Task<Void, Never>? {
         let isActive = device.id == activeDevice?.id
-        // Only send unpair to the desktop if this device is the active connection.
+        let deviceId = device.id
+        let serverId = studioRecord(for: device)?.clientId
+        var revoke: Task<Void, Never>?
         if isActive {
-            let deviceId = device.id
             Task {
                 do {
                     try await transport?.send(.unpair)
@@ -20,20 +28,21 @@ extension SessionViewModel {
                     ])
                 }
             }
+        } else if let session = adminSession(for: device) {
+            let client = session.client
+            revoke = Task { await Self.revokePairing(on: client, deviceId: deviceId) }
         }
-        if let serverId = studioRecord(for: device)?.clientId {
-            Task { @MainActor [weak self] in self?.dropAdminSession(serverId: serverId) }
-        }
-        pairedDevices.removeAll { $0.id == device.id }
+        forgetLocally(deviceId: device.id)
         savePairedDevices()
-        LayoutCache.delete(deviceId: device.id)
-        deviceOnlineStatus.removeValue(forKey: device.id)
-        relayIdentityMismatch.remove(device.id)
-        // Drop this pairing's token manager AND its Keychain refresh token.
-        // A refresh token is long-lived: leaving it behind would keep a usable
-        // credential for a tenant the user has just walked away from sitting on
-        // the device indefinitely.
-        oidcRegistry.remove(deviceId: device.id)
+        var cleanup: Task<Void, Never>?
+        if let revoke {
+            cleanup = Task { @MainActor [weak self] in
+                await revoke.value
+                self?.dropCredentials(deviceId: deviceId, serverId: serverId)
+            }
+        } else {
+            dropCredentials(deviceId: deviceId, serverId: serverId)
+        }
 
         if pairedDevices.isEmpty {
             activeDeviceId = nil
@@ -42,6 +51,103 @@ extension SessionViewModel {
             // Auto-switch to the next device.
             let nextId = pairedDevices.first!.id
             switchToDevice(id: nextId)
+        }
+        return cleanup
+    }
+
+    /// Removes a pairing from the list and drops what this phone cached for it.
+    /// The caller saves the list.
+    func forgetLocally(deviceId: String) {
+        pairedDevices.removeAll { $0.id == deviceId }
+        LayoutCache.delete(deviceId: deviceId)
+        deviceOnlineStatus.removeValue(forKey: deviceId)
+        relayIdentityMismatch.remove(deviceId)
+    }
+
+    /// Drops what reaching an unpaired server needed: its admin session, its
+    /// stored Studio credential, its token manager, and its Keychain refresh
+    /// token. A refresh token is long-lived: leaving it behind would keep a
+    /// usable credential for a tenant the user has just walked away from
+    /// sitting on the device.
+    @MainActor
+    func dropCredentials(deviceId: String, serverId: String?) {
+        if let serverId {
+            dropAdminSession(serverId: serverId)
+            removeStudioRecords(clientIds: [serverId], store: StudioServerKeychainStore())
+        }
+        oidcRegistry.remove(deviceId: deviceId)
+    }
+
+    /// Takes the named records out of the stored Studio servers. False when
+    /// the store could not be read or written.
+    @discardableResult
+    func removeStudioRecords(clientIds: Set<String>, store: any StudioServerStoring) -> Bool {
+        do {
+            let records = try store.load()
+            let kept = records.filter { !clientIds.contains($0.clientId) }
+            guard kept.count != records.count else { return true }
+            try store.save(kept)
+            DiagnosticLog.log("studio servers: credentials removed", tag: "pairing", fields: [
+                "removed": String(records.count - kept.count), "remaining": String(kept.count)
+            ])
+            return true
+        } catch {
+            DiagnosticLog.log("studio servers: credentials could not be removed", tag: "pairing", level: .error, fields: [
+                "count": String(clientIds.count), "error": String(describing: error)
+            ])
+            return false
+        }
+    }
+
+    /// Drops every pairing a newer pairing to the same server replaced: its
+    /// list entry, its cache, and its stored Studio credential. When the
+    /// selected pairing is one of them, the selection moves to the pairing
+    /// that replaced it. Returns what was dropped.
+    @discardableResult
+    func dropSupersededPairings(store: any StudioServerStoring = StudioServerKeychainStore()) -> [SupersededPairings.Stale] {
+        let records: [StudioServerRecord]
+        do {
+            records = try store.load()
+        } catch {
+            DiagnosticLog.log("superseded pairings: stored servers unreadable, nothing dropped", tag: "pairing", level: .error, fields: [
+                "error": String(describing: error)
+            ])
+            return []
+        }
+        let stale = SupersededPairings.find(devices: pairedDevices, records: records)
+        guard !stale.isEmpty else {
+            DiagnosticLog.log("superseded pairings: none", tag: "pairing", level: .debug, fields: [
+                "devices": String(pairedDevices.count)
+            ])
+            return []
+        }
+        // The credential goes first. A pairing whose credential could not be
+        // removed stays listed, so it can still be unpaired by hand.
+        guard removeStudioRecords(clientIds: Set(stale.map(\.clientId)), store: store) else { return [] }
+        for entry in stale {
+            if activeDeviceId == entry.deviceId { activeDeviceId = entry.keptDeviceId }
+            forgetLocally(deviceId: entry.deviceId)
+            DiagnosticLog.log("superseded pairings: older pairing dropped", tag: "pairing", fields: [
+                "device": String(entry.deviceId.prefix(8)), "client_id": entry.clientId,
+                "kept": String(entry.keptDeviceId.prefix(8))
+            ])
+        }
+        savePairedDevices()
+        return stale
+    }
+
+    /// Asks a server to forget this phone's pairing. A server that cannot be
+    /// reached keeps the pairing until it is revoked from another device.
+    static func revokePairing(on client: ServerAdminClient, deviceId: String) async {
+        do {
+            try await client.forgetThisPhone()
+            DiagnosticLog.log("unpair: server forgot this phone", tag: "pairing", fields: [
+                "device": String(deviceId.prefix(8)), "server": client.serverLabel
+            ])
+        } catch {
+            DiagnosticLog.log("unpair: server could not be told, pairing stays on it", tag: "pairing", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)), "server": client.serverLabel, "error": String(describing: error)
+            ])
         }
     }
 
@@ -322,6 +428,7 @@ extension SessionViewModel {
             self?.normalizeServerAccessRecords()
         }
         StudioServerMigration.run(devices: pairedDevices, store: StudioServerKeychainStore())
+        dropSupersededPairings()
         hydrateRelayConfig()
     }
 

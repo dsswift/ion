@@ -69,8 +69,7 @@ extension SessionViewModel {
             ])
             return nil
         }
-        let derived = StudioServerRecord.clientId(forSecret: device.sharedSecret)
-        return records.first { $0.pairedDeviceId == device.id } ?? records.first { $0.clientId == derived }
+        return StudioServerRecord.record(for: device, in: records)
     }
 
     // MARK: - Pair
@@ -156,6 +155,11 @@ extension SessionViewModel {
 
         addOrUpdateDevice(device)
         savePairedDevices()
+        // Pairing again with a server this phone already holds replaces the
+        // older pairing instead of listing the server twice.
+        for stale in dropSupersededPairings() {
+            dropCredentials(deviceId: stale.deviceId, serverId: stale.clientId)
+        }
         activeDeviceId = device.id
         pairingState = .paired
         DiagnosticLog.log("studio pairing complete", tag: "pairing", fields: [

@@ -25,6 +25,26 @@ struct DefaultModelsAdminSection: View {
         Group {
             if let preferred = model.preferredModel, model.catalog != nil {
                 pickerRow("Default conversation model", value: model.label(for: preferred)) { picking = .conversation }
+                    // One row carries this, so it attaches once rather than once per row of the section.
+                    .sheet(item: $picking) { which in
+                        switch which {
+                        case .conversation:
+                            ModelPickerSheet(
+                                models: model.pickerModels,
+                                selectedModelId: model.preferredModel ?? "",
+                                preferredModelId: model.preferredModel ?? "",
+                                onSelect: { id, _ in Task { await model.setPreferredModel(id) } }
+                            )
+                        case .engine:
+                            ModelPickerSheet(
+                                models: model.pickerModels,
+                                selectedModelId: model.engineDefaultModel ?? "",
+                                preferredModelId: model.preferredModel ?? "",
+                                inheritOption: .init(label: Self.followsConversation, value: ""),
+                                onSelect: { id, _ in Task { await model.setEngineDefaultModel(id) } }
+                            )
+                        }
+                    }
                 let engine = model.engineDefaultModel ?? ""
                 pickerRow("Default engine model", value: engine.isEmpty ? Self.followsConversation : model.label(for: engine)) { picking = .engine }
                 if let error = model.error { AdminErrorRow(message: error) }
@@ -36,25 +56,6 @@ struct DefaultModelsAdminSection: View {
         }
         .task { await model.load() }
         .reloadsWithServerPage("ai") { [model] in await model.load() }
-        .sheet(item: $picking) { which in
-            switch which {
-            case .conversation:
-                ModelPickerSheet(
-                    models: model.pickerModels,
-                    selectedModelId: model.preferredModel ?? "",
-                    preferredModelId: model.preferredModel ?? "",
-                    onSelect: { id, _ in Task { await model.setPreferredModel(id) } }
-                )
-            case .engine:
-                ModelPickerSheet(
-                    models: model.pickerModels,
-                    selectedModelId: model.engineDefaultModel ?? "",
-                    preferredModelId: model.preferredModel ?? "",
-                    inheritOption: .init(label: Self.followsConversation, value: ""),
-                    onSelect: { id, _ in Task { await model.setEngineDefaultModel(id) } }
-                )
-            }
-        }
     }
 
     private func pickerRow(_ title: String, value: String, action: @escaping () -> Void) -> some View {

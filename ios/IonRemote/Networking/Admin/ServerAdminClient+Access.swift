@@ -107,4 +107,10 @@ extension ServerAdminClient {
         let answer: Answer = try await call(.entraIdentity)
         return answer.identity
     }
+
+    /// Has the server revoke the pairing this call arrives on, and close
+    /// every connection riding it.
+    func forgetThisPhone() async throws {
+        try await callVoid(.authForgetSelf, timeoutSeconds: 8)
+    }
 }

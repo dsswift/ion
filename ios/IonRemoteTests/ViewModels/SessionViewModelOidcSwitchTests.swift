@@ -112,14 +112,16 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     // MARK: - Unpair cleanup
 
     @MainActor
-    func testUnpairRemovesManagerAndRefreshToken() throws {
+    func testUnpairRemovesManagerAndRefreshToken() async throws {
         let vm = makeViewModel()
         vm.activeDeviceId = personalId
         let work = try XCTUnwrap(vm.pairedDevices.first { $0.id == workId })
         _ = vm.oidcRegistry.manager(for: work)
         KeychainHelper.set("work-refresh", service: OIDCTokenManager.refreshKey(deviceId: workId))
 
-        vm.unpairDevice(work)
+        // A pairing with a stored Studio credential is revoked on its server
+        // first; its credentials go once that has been tried.
+        await vm.unpairDevice(work)?.value
 
         XCTAssertNil(vm.oidcRegistry.existing(deviceId: workId))
         XCTAssertNil(KeychainHelper.get(OIDCTokenManager.refreshKey(deviceId: workId)),

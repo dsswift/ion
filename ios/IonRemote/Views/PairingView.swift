@@ -24,9 +24,11 @@ struct PairingView: View {
             .navigationTitle("Pair Device")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                DiagnosticLog.log("pairing view: appeared", tag: "view.pairing", fields: ["servers": String(viewModel.pairedDevices.count)])
                 browser.startBrowsing()
             }
             .onDisappear {
+                DiagnosticLog.log("pairing view: disappeared", tag: "view.pairing")
                 browser.stopBrowsing()
             }
             .sheet(item: $selectedService) { service in

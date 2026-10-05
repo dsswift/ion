@@ -84,4 +84,14 @@ final class AccessClientCallTests: XCTestCase {
             .init(action: "entra.identity", args: []),
         ])
     }
+
+    /// Removing a server this phone is not chatting on tells that server to
+    /// forget the pairing, through the server's own connection.
+    func testRevokingAPairingCallsForgetSelfOnThatServer() async {
+        let caller = FakeActionCaller(scopes: ["conversations:read"])
+
+        await SessionViewModel.revokePairing(on: ServerAdminClient(serverLabel: "linux", caller: caller), deviceId: "device-1")
+
+        XCTAssertEqual(caller.calls, [.init(action: "auth.forgetSelf", args: [])])
+    }
 }

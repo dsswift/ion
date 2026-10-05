@@ -36,6 +36,13 @@ struct StudioServerRecord: Codable, Equatable, Identifiable, Sendable {
     static func clientId(forSecret secret: Data) -> String {
         String(E2ECrypto.deriveChannelId(sharedSecret: SymmetricKey(data: secret)).prefix(16))
     }
+
+    /// The record among `records` for a paired device: the one migrated from
+    /// it, or the one whose id its secret derives.
+    static func record(for device: PairedDevice, in records: [StudioServerRecord]) -> StudioServerRecord? {
+        let derived = clientId(forSecret: device.sharedSecret)
+        return records.first { $0.pairedDeviceId == device.id } ?? records.first { $0.clientId == derived }
+    }
 }
 
 /// Where `StudioServerRecord`s are kept. The whole list is one Keychain item,
