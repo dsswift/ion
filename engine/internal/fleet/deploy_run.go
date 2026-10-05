@@ -24,6 +24,12 @@ type Result struct {
 	Error   string   `json:"error,omitempty"`
 	LogPath string   `json:"logPath"`
 	Receipt *Receipt `json:"receipt,omitempty"`
+	// Tidy says what was cleaned up on a Mac that installed its desktop on
+	// itself, or why it was not; empty when there was nothing to clean up.
+	Tidy string `json:"tidy,omitempty"`
+	// FellBack says the host failed to install on itself and was installed
+	// over SSH instead, and why.
+	FellBack string `json:"fellBack,omitempty"`
 	// After is the host's status read once the deploy finished.
 	After *HostStatus `json:"after,omitempty"`
 }
@@ -37,14 +43,28 @@ type artifact struct {
 	err   error
 }
 
-// artifactKey names what a target installs: its component on its platform.
+// artifactKey names what a target installs: its component on its platform,
+// and that it is the release when the target installs one, so a build and a
+// release of one platform in one deploy are two artifacts.
 func artifactKey(t Target) string {
-	return t.Component + "/" + t.GOOS + "/" + t.GOARCH
+	key := t.Component + "/" + t.GOOS + "/" + t.GOARCH
+	if t.Source == SourceRelease {
+		key += "@release"
+	}
+	return key
+}
+
+// logName is an artifact key as part of a file name.
+func logName(key string) string {
+	return strings.NewReplacer("/", "-", "@", "-").Replace(key)
 }
 
 // Run builds once per platform, deploys the hosts that need no terminal in
-// parallel, then the ones whose sudo asks for a password, one at a time, and
-// reads every target's status again. One host failing never stops another.
+// parallel, then the ones whose sudo asks for a password, one at a time, then
+// installs over SSH each host that failed to install on itself, then tidies
+// the Macs that installed on themselves, and reads every target's status
+// again. One host failing never stops another, and a target that cannot be
+// deployed is reported failed without holding up the rest.
 func (d *Deployer) Run(ctx context.Context, p *Prepared) ([]Result, error) {
 	if p.Preflight.Blocks() && !p.Request.AllowDowngrade {
 		return nil, errors.New("this deploy lowers a stored-data format on a host; rerun with --allow-downgrade to go ahead")
@@ -55,18 +75,26 @@ func (d *Deployer) Run(ctx context.Context, p *Prepared) ([]Result, error) {
 	stamp := time.Now().Format("20060102-150405")
 	d.resetArchive()
 	defer d.resetArchive()
-	for _, t := range p.Targets {
+	results := make([]Result, len(p.Targets))
+	for i, t := range p.Targets {
+		if t.Refusal != "" {
+			results[i] = Result{Host: t.Host.Name, Error: t.Refusal}
+			d.emit(t.Host.Name, StageFailed, t.Refusal)
+			continue
+		}
 		d.emit(t.Host.Name, StageQueued, "")
 	}
 	keys, keyErrs := d.relayKeys(ctx, p.Targets)
 	arts := d.prepareArtifacts(ctx, p, stamp)
 
-	results := make([]Result, len(p.Targets))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, d.Config.ConcurrencyOrDefault())
 	var interactive []int
 	for i, t := range p.Targets {
-		if t.Host.AskSudo && t.Component == ComponentDesktop && t.GOOS == "darwin" {
+		if t.Refusal != "" {
+			continue
+		}
+		if !t.Self && t.Host.AskSudo && t.Component == ComponentDesktop && t.GOOS == "darwin" {
 			interactive = append(interactive, i)
 			d.emit(t.Host.Name, StageWaiting, "runs after the others, on this terminal")
 			continue
@@ -82,6 +110,17 @@ func (d *Deployer) Run(ctx context.Context, p *Prepared) ([]Result, error) {
 	wg.Wait()
 	for _, i := range interactive {
 		results[i] = d.deployOne(ctx, p, p.Targets[i], arts, keys, keyErrs, stamp, true)
+	}
+	// One at a time: an SSH install may ask for a sudo password on this terminal.
+	for _, i := range fallbackTargets(ctx, p.Targets, results) {
+		results[i] = d.fallBack(ctx, p, p.Targets[i], results[i], arts, keys, keyErrs, stamp)
+	}
+	// One at a time and last: a tidy may ask for a sudo password on this terminal.
+	for _, i := range tidyTargets(p.Targets, results) {
+		d.tidyMac(ctx, p, p.Targets[i], &results[i])
+		if results[i].Tidy != "" {
+			d.emit(p.Targets[i].Host.Name, StageDone, results[i].Tidy)
+		}
 	}
 
 	var hosts []Host
@@ -134,8 +173,8 @@ func (d *Deployer) prepareArtifacts(ctx context.Context, p *Prepared, stamp stri
 	seen := map[string]bool{}
 	for _, t := range p.Targets {
 		key := artifactKey(t)
-		if seen[key] || (t.Component == ComponentServer && p.Request.Source == SourceRelease) {
-			continue // the host updates itself
+		if t.Refusal != "" || seen[key] || ((t.Component == ComponentServer || t.Self) && p.sourceOf(t) == SourceRelease) {
+			continue // not deployed, or the host updates itself
 		}
 		seen[key] = true
 		if b, ok := p.buildFor(key); ok && b.Builder != nil && !p.Request.NoBuild {
@@ -145,7 +184,7 @@ func (d *Deployer) prepareArtifacts(ctx context.Context, p *Prepared, stamp stri
 				d.emitFor(p.Targets, key, StageBuilding, "building on "+b.Builder.Name)
 				report := func(detail string) { d.emitFor(p.Targets, key, StageBuilding, detail) }
 				var a artifact
-				a.err = d.withLog("build-"+strings.ReplaceAll(key, "/", "-")+"-on-"+b.Builder.Name, stamp, report, func(log io.Writer) error {
+				a.err = d.withLog("build-"+logName(key)+"-on-"+b.Builder.Name, stamp, b.Hosts, report, func(log io.Writer) error {
 					var err error
 					a, err = d.buildOnHost(ctx, b, p.Request.Checkout, log, report)
 					return err
@@ -164,6 +203,13 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 	req := p.Request
 	given := req.Artifact
 	report := func(detail string) { d.emitFor(p.Targets, key, StageBuilding, detail) }
+	var hosts []string
+	for _, other := range p.Targets {
+		if artifactKey(other) == key {
+			hosts = append(hosts, other.Host.Name)
+		}
+	}
+	release := p.sourceOf(t) == SourceRelease
 	switch {
 	case given != "":
 		if t.Component == ComponentServer {
@@ -173,11 +219,11 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 			return artifact{err: fmt.Errorf("%s does not install on %s", filepath.Base(given), t.GOOS)}
 		}
 		return artifact{path: given, archs: d.Artifacts.PackageArchs(req.Checkout, given)}
-	case req.Source == SourceRelease && t.GOOS == "windows":
+	case release && t.GOOS == "windows":
 		d.emitFor(p.Targets, key, StageBuilding, "downloading desktop "+p.Latest.Desktop+" for Windows "+t.GOARCH)
 		path, err := d.Artifacts.DesktopReleaseSetup(ctx, p.Latest, t.GOARCH)
 		return artifact{path: path, err: err}
-	case req.Source == SourceRelease:
+	case release:
 		d.emitFor(p.Targets, key, StageBuilding, "downloading desktop "+p.Latest.Desktop)
 		path, err := d.Artifacts.DesktopReleasePkg(ctx, p.Latest)
 		return artifact{path: path, err: err}
@@ -185,7 +231,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 		return d.Artifacts.existingBuild(req.Checkout, t, key)
 	case t.Component == ComponentServer:
 		d.emitFor(p.Targets, key, StageBuilding, "packaging the Studio Server bundle for "+t.GOOS+"/"+t.GOARCH)
-		if err := d.withLog("build-server-"+t.GOOS+"-"+t.GOARCH, stamp, report, func(log io.Writer) error {
+		if err := d.withLog("build-server-"+t.GOOS+"-"+t.GOARCH, stamp, hosts, report, func(log io.Writer) error {
 			return d.Artifacts.BuildServer(ctx, req.Checkout, t.GOOS, t.GOARCH, log)
 		}); err != nil {
 			return artifact{err: fmt.Errorf("the %s/%s bundle did not build: %w", t.GOOS, t.GOARCH, err)}
@@ -194,7 +240,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 	case t.GOOS == "windows":
 		d.emitFor(p.Targets, key, StageBuilding, "building the Windows desktop installer (make.ps1 installer)")
 		var exe string
-		err := d.withLog("build-desktop-windows-"+t.GOARCH, stamp, report, func(log io.Writer) error {
+		err := d.withLog("build-desktop-windows-"+t.GOARCH, stamp, hosts, report, func(log io.Writer) error {
 			var buildErr error
 			exe, buildErr = d.Artifacts.BuildWindowsDesktop(ctx, req.Checkout, t.GOARCH, log)
 			return buildErr
@@ -203,7 +249,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 	default:
 		d.emitFor(p.Targets, key, StageBuilding, "building the desktop installer (make desktop-pkg)")
 		var pkg string
-		err := d.withLog("build-desktop", stamp, report, func(log io.Writer) error {
+		err := d.withLog("build-desktop", stamp, hosts, report, func(log io.Writer) error {
 			var buildErr error
 			pkg, buildErr = d.Artifacts.BuildDesktop(ctx, req.Checkout, log)
 			return buildErr
@@ -214,7 +260,7 @@ func (d *Deployer) artifactFor(ctx context.Context, p *Prepared, t Target, key, 
 
 func (d *Deployer) emitFor(targets []Target, key, stage, detail string) {
 	for _, t := range targets {
-		if artifactKey(t) == key {
+		if t.Refusal == "" && artifactKey(t) == key {
 			d.emit(t.Host.Name, stage, detail)
 		}
 	}
@@ -223,14 +269,14 @@ func (d *Deployer) emitFor(targets []Target, key, stage, detail string) {
 // withLog runs fn with a log file for a build step. Every line of the log
 // carries the time and the time since the step began, and report hears a
 // heartbeat while the step runs, so a slow build and a hung one look
-// different.
-func (d *Deployer) withLog(name, stamp string, report func(detail string), fn func(io.Writer) error) error {
+// different. hosts are the hosts the step is for.
+func (d *Deployer) withLog(name, stamp string, hosts []string, report func(detail string), fn func(io.Writer) error) error {
 	f, err := os.OpenFile(d.logPath(name, stamp), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // log file; the step's own error is the one reported
-	sw := newStampWriter(d.echoed(f, name))
+	sw := newStampWriter(d.echoed(f, name, hosts))
 	defer heartbeat(name, "", sw, true, report)()
 	started := time.Now()
 	err = fn(sw)
@@ -247,12 +293,38 @@ func (d *Deployer) withLog(name, stamp string, report func(detail string), fn fu
 	return err
 }
 
-// echoed copies a log to Echo too, each line prefixed with its source.
-func (d *Deployer) echoed(log io.Writer, source string) io.Writer {
-	if d.Echo == nil {
-		return log
+// echoed copies a log to Echo too, each line prefixed with its source, and
+// to LogLine with the hosts it is about.
+func (d *Deployer) echoed(log io.Writer, source string, hosts []string) io.Writer {
+	out := log
+	if d.Echo != nil {
+		out = io.MultiWriter(out, &prefixWriter{w: d.Echo, prefix: source + ": "})
 	}
-	return io.MultiWriter(log, &prefixWriter{w: d.Echo, prefix: source + ": "})
+	if d.LogLine != nil {
+		out = io.MultiWriter(out, &lineWriter{line: func(line string) { d.LogLine(hosts, line) }})
+	}
+	return out
+}
+
+// lineWriter hands on whole lines.
+type lineWriter struct {
+	mu      sync.Mutex
+	line    func(string)
+	partial []byte
+}
+
+func (l *lineWriter) Write(b []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.partial = append(l.partial, b...)
+	for {
+		i := bytes.IndexByte(l.partial, '\n')
+		if i < 0 {
+			return len(b), nil
+		}
+		l.line(strings.TrimRight(string(l.partial[:i]), "\r"))
+		l.partial = l.partial[i+1:]
+	}
 }
 
 // prefixWriter writes whole lines, each with a prefix.
@@ -281,7 +353,11 @@ func (p *prefixWriter) Write(b []byte) (int, error) {
 
 func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts map[string]artifact, keys map[string]string, keyErrs map[string]error, stamp string, interactive bool) Result {
 	h := t.Host
-	res := Result{Host: h.Name, LogPath: d.logPath(h.Name, stamp)}
+	logName := h.Name
+	if t.fallback {
+		logName += "-over-ssh"
+	}
+	res := Result{Host: h.Name, LogPath: d.logPath(logName, stamp)}
 	fail := func(err error) Result {
 		res.Error = err.Error()
 		d.emit(h.Name, StageFailed, res.Error)
@@ -294,7 +370,7 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 	defer logFile.Close() //nolint:errcheck // log file; the deploy's own error is the one reported
 	d.emit(h.Name, StageDeploying, "")
 	started := time.Now()
-	sw := newStampWriter(d.echoed(logFile, h.Name))
+	sw := newStampWriter(d.echoed(logFile, h.Name, []string{h.Name}))
 	var step atomic.Value
 	stopBeat := heartbeat("deploy to "+h.Name, h.Name, nil, false, func(string) {
 		cur, ok := step.Load().(string)
@@ -313,7 +389,27 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 		sw.note(fmt.Sprintf("deploy to %s took %s", h.Name, formatElapsed(time.Since(started))))
 	}()
 
-	if t.Component == ComponentServer && p.Request.Source == SourceRelease {
+	if t.Self {
+		version, err := d.deploySelf(ctx, p, t, arts, sw, func(s string) {
+			step.Store(s)
+			d.emit(h.Name, StageDeploying, s)
+		})
+		if err != nil {
+			return fail(fmt.Errorf("%w; see %s", err, res.LogPath))
+		}
+		// The host installed itself, with nothing run over SSH. Its settings
+		// file is reached only over SSH, so "Open Ion at login" is turned on
+		// when the host has an SSH target; a host with none keeps what it has.
+		if t.Component == ComponentDesktop && h.SSH != "" {
+			if opts, optErr := d.installOptions(p, t, keys, keyErrs, interactive); optErr == nil {
+				desktopOpenAtLogin(ctx, d.Runner, h, false, "'"+macAppIon+"'", opts, newInstallLog(sw, h.Name, opts))
+			}
+		}
+		res.OK = true
+		d.emit(h.Name, StageDone, version)
+		return res
+	}
+	if t.Component == ComponentServer && p.sourceOf(t) == SourceRelease {
 		out, err := runIon(ctx, d.Runner, h, []string{"studio", "update", "--yes"}, nil)
 		logFile.Write(out) //nolint:errcheck // log copy of the host's output
 		if err != nil {
@@ -336,6 +432,7 @@ func (d *Deployer) deployOne(ctx context.Context, p *Prepared, t Target, arts ma
 		step.Store(s)
 		d.emit(h.Name, StageDeploying, s)
 	}
+	d.noticeInstall(ctx, t)
 	r := terminalRunner{Runner: d.Runner, exec: d.exec}
 	var rec Receipt
 	switch {
@@ -365,6 +462,7 @@ func (d *Deployer) installOptions(p *Prepared, t Target, keys map[string]string,
 	h := t.Host
 	o := p.Request.Install
 	o.AskSudo = o.AskSudo || h.AskSudo
+	o.QuitIon = o.QuitIon || t.fallback
 	o.Interactive = interactive && p.Request.Terminal
 	if o.SudoHint == "" {
 		o.SudoHint = fmt.Sprintf(`set "askSudo": true on host %q in %s to be asked for the password on this terminal`, h.Name, DefaultPath())

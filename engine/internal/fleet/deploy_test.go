@@ -297,15 +297,23 @@ func TestDeploy_RefusesWhatCannotWork(t *testing.T) {
 	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev}); err == nil || !strings.Contains(err.Error(), "--source PATH") {
 		t.Errorf("a dev deploy without a checkout must say how to give one: %v", err)
 	}
-	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceRelease}); err == nil || !strings.Contains(err.Error(), "no Studio Server release") {
-		t.Errorf("a release deploy with nothing published must say so: %v", err)
+	refusal := func(req Request) string {
+		t.Helper()
+		p, err := d.Prepare(context.Background(), req)
+		if err != nil {
+			t.Fatalf("a host that cannot be deployed is a refused target, not an error: %v", err)
+		}
+		return p.Targets[0].Refusal
 	}
-	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: t.TempDir(), Component: ComponentDesktop}); err == nil {
-		t.Error("a server host must not take the desktop component")
+	if got := refusal(Request{Hosts: cfg.Hosts, Source: SourceRelease}); !strings.Contains(got, "no Studio Server release") {
+		t.Errorf("a release deploy with nothing published must say so: %q", got)
+	}
+	if got := refusal(Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: t.TempDir(), Component: ComponentDesktop}); !strings.Contains(got, "it takes the server component") {
+		t.Errorf("a server host must not take the desktop component: %q", got)
 	}
 	f.platform["a"] = "Windows arm64"
-	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "no Studio Server bundle") {
-		t.Errorf("a Windows host must not take a server bundle: %v", err)
+	if got := refusal(Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: t.TempDir()}); !strings.Contains(got, "no Studio Server bundle") {
+		t.Errorf("a Windows host must not take a server bundle: %q", got)
 	}
 }
 

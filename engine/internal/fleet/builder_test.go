@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/studiostatus"
 )
 
 // builderFixture is a deploy fixture whose hosts answer a tools check and a
@@ -110,13 +112,33 @@ func TestPlanBuilds_HereWhenItCanElseTheFirstHostWithTheTools(t *testing.T) {
 	}
 }
 
+// A build folder Defender scans stops the host building; the host is not
+// deployed, and the plan names the command that fixes it.
 func TestPlanBuilds_RefusesABuildFolderDefenderScans(t *testing.T) {
 	onMac(t)
 	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "win", SSH: "win", Kind: KindDesktop}}}
-	f, d := builderFixture(t, cfg, map[string]string{"win": "defender:C:\\Users\\u\\.ion\\fleet-build\\ion\\\n"})
+	f, d := builderFixture(t, cfg, map[string]string{"win": "defender:C:\\Users\\Some User\\.ion\\fleet-build\\ion\\\r\n"})
 	f.platform["win"] = "Windows arm64"
-	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout}); err == nil || !strings.Contains(err.Error(), `which Microsoft Defender scans`) || !strings.Contains(err.Error(), `set "buildDir" on host "win"`) {
-		t.Fatalf("err = %v", err)
+	p, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.Targets[0].Refusal, "nothing can build the Windows desktop for arm64") || !strings.Contains(p.Targets[0].Refusal, "which Microsoft Defender scans") {
+		t.Fatalf("refusal = %q", p.Targets[0].Refusal)
+	}
+	candidates := p.Builds[0].Candidates
+	if len(candidates) != 2 || candidates[0].Problems[0].Code != ProblemWrongPlatform || candidates[1].Host != "win" {
+		t.Fatalf("candidates = %+v", candidates)
+	}
+	problem := candidates[1].Problems[0]
+	if problem.Code != ProblemDefender || !problem.Fixable || problem.Dir != `C:\Users\Some User\.ion\fleet-build\ion\` {
+		t.Errorf("problem = %+v", problem)
+	}
+	plan := strings.Join(p.PlanLines(), "\n")
+	for _, want := range []string{"Not deployed:", "win: nothing can build the Windows desktop for arm64", "`ion fleet builder win --exclude-build-dir`", "--release-for win"} {
+		if !strings.Contains(plan, want) {
+			t.Errorf("plan lacks %q:\n%s", want, plan)
+		}
 	}
 	if got := psBuildDir(`C:\dev\ion-fleet`); got != `'C:\dev\ion-fleet'` {
 		t.Errorf("an absolute Windows folder = %s", got)
@@ -126,26 +148,77 @@ func TestPlanBuilds_RefusesABuildFolderDefenderScans(t *testing.T) {
 	}
 }
 
+// Missing tools stop a host building. On Windows winget installs them, so the
+// problem is one the fleet can fix; without winget it is not.
 func TestPlanBuilds_NothingCanBuild(t *testing.T) {
 	onMac(t)
-	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "win", SSH: "win", Kind: KindDesktop}}}
-	f, d := builderFixture(t, cfg, map[string]string{"win": "go\nnode\n"})
-	f.platform["win"] = "Windows arm64"
-	if _, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout}); err == nil || !strings.Contains(err.Error(), "win lacks go, node") {
-		t.Fatalf("err = %v", err)
+	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "win", SSH: "win", Kind: KindDesktop}, {Name: "bare", SSH: "bare", Kind: KindDesktop}}}
+	f, d := builderFixture(t, cfg, map[string]string{"win": "go\nnode\n", "bare": "npm\nnowinget\n"})
+	f.platform["win"], f.platform["bare"] = "Windows arm64", "Windows arm64"
+	p, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range p.Targets {
+		if !strings.Contains(target.Refusal, "win lacks go, node") || !strings.Contains(target.Refusal, "bare lacks npm") {
+			t.Errorf("%s refusal = %q", target.Host.Name, target.Refusal)
+		}
+	}
+	win, bare := p.Builds[0].Candidates[1].Problems[0], p.Builds[0].Candidates[2].Problems[0]
+	if win.Code != ProblemMissingTools || !win.Fixable || strings.Join(win.Tools, ",") != "go,node" {
+		t.Errorf("win = %+v", win)
+	}
+	if bare.Fixable || strings.Join(bare.Tools, ",") != "npm" {
+		t.Errorf("a host with no winget cannot be fixed from here: %+v", bare)
+	}
+	if plan := strings.Join(p.PlanLines(), "\n"); !strings.Contains(plan, "`ion fleet builder win --install-tools` installs them") || strings.Contains(plan, "ion fleet builder bare") {
+		t.Errorf("plan:\n%s", plan)
 	}
 }
 
-// This machine builds what it can, and refuses up front when it lacks a tool
-// for that build rather than failing partway through it.
-func TestPlanBuilds_RefusesWhenThisMachineLacksATool(t *testing.T) {
+// When this machine is the right platform but lacks a tool, a host of that
+// platform builds instead.
+func TestPlanBuilds_AHostBuildsWhenThisMachineLacksATool(t *testing.T) {
 	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "mac", SSH: "mac", Kind: KindServer}}}
 	f, d := builderFixture(t, cfg, nil)
 	f.platform["mac"] = "Darwin arm64"
 	pretendLocal(t, Platform{GOOS: "darwin", GOARCH: "arm64"}, []string{"npm"})
-	_, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
-	if err == nil || !strings.Contains(err.Error(), "this machine builds the darwin/arm64 server but lacks npm") {
-		t.Fatalf("err = %v", err)
+	p, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := p.Builds[0]; b.Builder == nil || b.Builder.Name != "mac" || b.Refusal != "" || p.Targets[0].Refusal != "" {
+		t.Fatalf("build = %+v", b)
+	}
+}
+
+// A host that is not a target builds when no target can: it only builds, and
+// installs nothing.
+func TestPlanBuilds_AnyHostOfThePlatformBuilds(t *testing.T) {
+	onMac(t)
+	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{
+		{Name: "win1", SSH: "win1", Kind: KindDesktop},
+		{Name: "spare", SSH: "spare", Kind: KindDesktop},
+		{Name: "intel", SSH: "intel", Kind: KindDesktop},
+	}}
+	f, d := builderFixture(t, cfg, map[string]string{"win1": "go\n", "intel": ""})
+	f.platform["win1"], f.platform["spare"], f.platform["intel"] = "Windows arm64", "Windows arm64", "Windows arm64"
+	report := func(arch string) *studiostatus.Report {
+		return &studiostatus.Report{SchemaVersion: 1, Kind: studiostatus.KindDesktop, Platform: "win32", Arch: arch}
+	}
+	known := []HostStatus{{Host: cfg.Hosts[0], Report: report("arm64")}, {Host: cfg.Hosts[1], Report: report("arm64")}, {Host: cfg.Hosts[2], Report: report("x64")}}
+	p, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts[:1], Source: SourceDev, Checkout: cfg.Checkout, Known: known})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := p.Builds[0]; b.Builder == nil || b.Builder.Name != "spare" || p.Targets[0].Refusal != "" {
+		t.Fatalf("build = %+v, target = %+v", b, p.Targets[0])
+	}
+	if len(f.scriptsFor("intel")) != 0 {
+		t.Error("a host of another CPU must not be asked to build")
+	}
+	if plan := strings.Join(p.PlanLines(), "\n"); !strings.Contains(plan, "builds once on spare") {
+		t.Errorf("plan:\n%s", plan)
 	}
 }
 

@@ -48,17 +48,39 @@ function Get-Ion { Get-Process -Name Ion -ErrorAction SilentlyContinue | Where-O
 // psStartInUserSession defines Start-InUserSession: it runs a program in the
 // signed-in user's desktop session through a one-shot interactive scheduled
 // task. An ssh session is not that session, and a GUI started from it is
-// never shown.
+// never shown. A task with the default settings never starts on a laptop
+// running on battery: it stays Queued and the program never runs, so the
+// task allows batteries and the function fails when the task is still
+// Queued after 15 seconds.
 const psStartInUserSession = `function Start-InUserSession([string]$program, [string]$arguments) {
   $name = 'Ion Fleet ' + [guid]::NewGuid()
   if ($arguments) { $action = New-ScheduledTaskAction -Execute $program -Argument $arguments }
   else { $action = New-ScheduledTaskAction -Execute $program }
   $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
-  Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null
-  try { Start-ScheduledTask -TaskName $name; Start-Sleep -Seconds 2 }
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+  Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+  try {
+    Start-ScheduledTask -TaskName $name
+    $deadline = (Get-Date).AddSeconds(15)
+    while (((Get-ScheduledTask -TaskName $name).State -eq 'Queued') -and ((Get-Date) -lt $deadline)) { Start-Sleep -Milliseconds 250 }
+    if ((Get-ScheduledTask -TaskName $name).State -eq 'Queued') {
+      throw "Windows did not start $program in the signed-in user's session: its task is still queued"
+    }
+    Start-Sleep -Seconds 2
+  }
   finally { Unregister-ScheduledTask -TaskName $name -Confirm:$false }
 }
 `
+
+// psAwaitDesktop fails when Ion is not running 30 seconds after a launch.
+const psAwaitDesktop = `$deadline = (Get-Date).AddSeconds(30)
+while ((-not (Get-Ion)) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Milliseconds 500 }
+if (-not (Get-Ion)) { [Console]::Error.WriteLine('Ion did not start within 30 seconds of its launch'); exit 9 }
+`
+
+// psStartDesktop starts Ion in the user's session and waits for it.
+const psStartDesktop = psDesktopExe + psStartInUserSession + `Start-InUserSession $exe ''
+` + psAwaitDesktop
 
 // psQuitDesktop quits a running Ion: the desktop's forced quit (a second
 // launch with --ion-force-quit stops its sessions and engine, no dialog),
@@ -75,7 +97,7 @@ const psQuitDesktop = `if (Get-Ion) {
 // psRestartDesktop quits Ion the way a deploy does and starts it again in
 // the user's session.
 const psRestartDesktop = psDesktopExe + psStartInUserSession + psQuitDesktop + `Start-InUserSession $exe ''
-`
+` + psAwaitDesktop
 
 // psDesktopRunning prints yes or no.
 const psDesktopRunning = psDesktopExe + `if (Get-Ion) { 'yes' } else { 'no' }

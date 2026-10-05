@@ -12,6 +12,8 @@ const InstallArgsUsage = `  --quit-ion             Quit a running desktop first 
   --ask-sudo             A Mac's sudo asks for a password: run its installer on this terminal
   --backup               Copy the host's ~/.ion aside first, and check the copy
   --open                 Make sure the desktop runs afterwards
+  --no-open-at-login     Leave a desktop host's "Open Ion at login" setting alone. Without it a
+                         deploy turns the setting on where nobody on the host has chosen
   --pair [label]         Mint a pairing link once the host's server is up (label: this machine's name)
   --relay URL            Put the host on this relay. --relay-oidc when the relay signs its operator in;
                          otherwise the relay's key comes from ION_RELAY_KEY or --relay-key-file PATH,
@@ -44,6 +46,8 @@ func ParseInstallArgs(args []string, o InstallOptions) (InstallOptions, []string
 			o.Backup = true
 		case "--open":
 			o.Open = true
+		case "--no-open-at-login":
+			o.NoOpenAtLogin = true
 		case "--system":
 			o.System = true
 		case "--relay-oidc":

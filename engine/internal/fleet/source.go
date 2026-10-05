@@ -21,7 +21,7 @@ func ResolveSource(source string, cfg Config) (kind, checkout string, err error)
 		return "", "", errors.New(`name a source: --source dev, --source release, or --source PATH ("." builds this folder)`)
 	case SourceDev:
 		if cfg.Checkout == "" {
-			return "", "", errors.New(`a dev deploy builds from a checkout: set "checkout" in ~/.ion/fleet.json, or pass --source PATH (--source . builds this folder)`)
+			return "", "", errors.New("a dev deploy builds from a checkout: name it with `ion fleet checkout PATH`, or pass --source PATH (--source . builds this folder)")
 		}
 		return SourceDev, cfg.Checkout, IsCheckout(cfg.Checkout)
 	case SourceRelease:

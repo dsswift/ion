@@ -25,10 +25,6 @@ func runFleetDashboard(flags map[string]string) {
 		fmt.Fprintf(os.Stderr, "ion fleet: %s\n", err)
 		os.Exit(1)
 	}
-	if len(cfg.Hosts) == 0 {
-		fmt.Print("The fleet has no hosts yet. Add one:\n\n  ion fleet add NAME SSH --kind server|desktop\n\n" + fleetUsage)
-		return
-	}
 	defaultSource, devCheckout := dashboardDefaultSource(flagValue(flags, "source"), cfg)
 	var program *tea.Program
 	send := func(msg tea.Msg) { program.Send(msg) }
@@ -49,9 +45,11 @@ func runFleetDashboard(flags map[string]string) {
 		},
 		Run: func(ctx context.Context, p *fleet.Prepared, progress func(fleet.Event)) ([]fleet.Result, error) {
 			deployer.Progress = progress
-			return deployer.Run(ctx, p)
+			reporter := fleet.NewDeployReporter()
+			defer reporter.Close()
+			return deployer.RunTracked(ctx, p, fleet.NewDeployID(), reporter.Post)
 		},
-		Restart: func(ctx context.Context, h fleet.Host) error { return fleet.Restart(ctx, fleet.ExecRunner{}, h) },
+		Restart: fleetOps(false).Restart,
 		SetRelay: func(ctx context.Context, h fleet.Host, p fleet.Profile) error {
 			return fleet.SetRelay(ctx, fleet.ExecRunner{}, h, p)
 		},
