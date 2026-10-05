@@ -18,4 +18,9 @@ export interface NewConversationPickerTarget {
   initialUseWorktree?: boolean
   /** Branch selected before the conversation-type picker opens. */
   initialSourceBranch?: string
+  /**
+   * Show the branch step even though `initialSourceBranch` is set. That
+   * branch, the project's remembered one, is then only preselected.
+   */
+  initialChooseBranch?: boolean
 }

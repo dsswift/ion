@@ -426,6 +426,7 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
     pack: (args) => [{ worktreePath: args[0], sourceBranch: args[1] }],
   },
   gitWorktreeRetirePreview: { action: 'git.worktreeRetirePreview', pack: named('worktreePath') },
+  gitWorktreeEphemeralDefault: { action: 'git.worktreeEphemeralDefault', pack: named('repoPath') },
   gitWorktreeRebase: {
     action: 'git.worktreeRebase',
     pack: (args) => [{ worktreePath: args[0], sourceBranch: args[1] }],

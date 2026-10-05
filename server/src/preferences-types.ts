@@ -221,6 +221,8 @@ export interface PreferencesState {
   setDefaultProject: (dir: string | null) => void
   setProjectName: (dir: string, name: string | null) => void
   setProjectProfileOverride: (dir: string, override: ProjectProfileOverride | undefined) => void
+  /** Save or clear (undefined) the project's remembered worktree ephemeral answer. */
+  setProjectWorktreeEphemeral: (dir: string, ephemeral: boolean | undefined) => void
   /**
    * Resource kinds the user has chosen to hide from the global/workspace
    * notification tray. Blocklist semantics: empty (the default) shows every

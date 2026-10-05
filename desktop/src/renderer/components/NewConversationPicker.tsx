@@ -15,6 +15,7 @@ import { useProjectsByEnvironment, buildMergedProjects, defaultRowEnvironment, r
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { filterBranches } from './new-conversation-workspaces'
 import { BranchRows, ProfileRows, ProjectRows } from './NewConversationPickerRows'
+import { WorktreeChoiceOptions } from './NewConversationWorktreeOptions'
 import { ProjectListControls } from './NewConversationPickerControls'
 import { flattenProjectGroups, groupProjectRows, isProjectGrouping, isProjectSortOrder, type ProjectGrouping, type ProjectSortOrder } from './new-conversation-project-order'
 import { resolveConversationProfileAction } from './new-conversation-routing'
@@ -63,14 +64,19 @@ function savedCollapsedGroups(): Set<string> {
   }
 }
 /** `environmentId` is the machine `directory` is a path on; every call about this workspace goes there. */
-type WorkspaceChoice = { directory: string; projectDirectory: string; environmentId: string; useWorktree?: boolean; sourceBranch?: string }
+type WorkspaceChoice = {
+  directory: string; projectDirectory: string; environmentId: string; useWorktree?: boolean; sourceBranch?: string
+  /** Set on the branch step; absent lets the server use the project's remembered answer or its manifest. */
+  ephemeralWorktree?: boolean
+  rememberWorktreeChoice?: boolean
+}
 
 interface NewConversationPickerProps extends NewConversationPickerTarget {
   onClose(): void
 }
 
 /** Selects a controlled Project and conversation type. Worktree creation is explicit. */
-export function NewConversationPicker({ initialDirectory, initialEnvironmentId = LOCAL_ENVIRONMENT_ID, initialUseWorktree = false, initialSourceBranch, forceProfilePicker = false, onClose }: NewConversationPickerProps): React.JSX.Element | null {
+export function NewConversationPicker({ initialDirectory, initialEnvironmentId = LOCAL_ENVIRONMENT_ID, initialUseWorktree = false, initialSourceBranch, initialChooseBranch = false, forceProfilePicker = false, onClose }: NewConversationPickerProps): React.JSX.Element | null {
   const colors = useColors()
   const layer = usePopoverLayer()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -85,11 +91,11 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   const managedProjects = useMemo<ManagedProject[]>(() => (fullEnterprisePolicy?.newConversationDefaults?.projects ?? []).map((project) => ({ directory: project.directory, name: project.name, isDefault: project.default, profileAction: project.profileName ? 'profile' : 'ask', profileSource: project.profileName ? 'enterprise-project' : undefined })), [fullEnterprisePolicy])
   const effectiveProjectList = useMemo(() => effectiveProjects(registry, managedProjects), [managedProjects, registry])
   const [view, setView] = useState<PickerView>(() => {
-    if (initialDirectory) return initialUseWorktree && worktreesOfferedOn(initialEnvironmentId) && !initialSourceBranch ? 'branches' : 'profiles'
+    if (initialDirectory) return initialUseWorktree && worktreesOfferedOn(initialEnvironmentId) && (!initialSourceBranch || initialChooseBranch) ? 'branches' : 'profiles'
     return defaultProject(registry, managedProjects) ? 'profiles' : 'projects'
   })
   const [workspace, setWorkspace] = useState<WorkspaceChoice | null>(() => {
-    if (initialDirectory) return { directory: initialDirectory, projectDirectory: initialDirectory, environmentId: initialEnvironmentId, useWorktree: initialUseWorktree && worktreesOfferedOn(initialEnvironmentId), sourceBranch: initialSourceBranch }
+    if (initialDirectory) return { directory: initialDirectory, projectDirectory: initialDirectory, environmentId: initialEnvironmentId, useWorktree: initialUseWorktree && worktreesOfferedOn(initialEnvironmentId), sourceBranch: initialChooseBranch ? undefined : initialSourceBranch }
     // The starred Project comes from this machine's own registry.
     const project = defaultProject(registry, managedProjects)
     return project ? { directory: project.dir, projectDirectory: project.dir, environmentId: LOCAL_ENVIRONMENT_ID } : null
@@ -103,6 +109,10 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   const [branchLoading, setBranchLoading] = useState(false)
   const [branchError, setBranchError] = useState<string | null>(null)
   const [highlighted, setHighlighted] = useState(0)
+  // The branch step's two choices. `worktreeEphemeral` is null until the
+  // project's default has been read from the server that holds it.
+  const [worktreeEphemeral, setWorktreeEphemeral] = useState<boolean | null>(null)
+  const [rememberWorktree, setRememberWorktree] = useState(true)
   const [environmentCatalog, setEnvironmentCatalog] = useState<EnvironmentCatalogEntry[]>([])
   useEffect(() => {
     void readConversationCatalog().then(setEnvironmentCatalog).catch((error: unknown) =>
@@ -242,14 +252,39 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     setBranchLoading(true); setBranchError(null)
     void withTargetEnvironment(workspace.environmentId, () => host.shell.gitFetch(workspace.projectDirectory)).catch((error: unknown) => rError('new-conversation-picker', 'branch fetch failed', { project_path: workspace.projectDirectory, error: String(error) }))
     void withTargetEnvironment(workspace.environmentId, () => host.shell.gitBranches(workspace.projectDirectory)).then((result) => {
-      setBranches(result.branches.filter((branch) => !branch.isRemote).map((branch) => branch.name))
+      const names = result.branches.filter((branch) => !branch.isRemote).map((branch) => branch.name)
+      setBranches(names)
       setCurrentBranch(result.current)
+      // A remembered branch being chosen again starts highlighted.
+      if (initialSourceBranch && names.includes(initialSourceBranch)) setHighlighted(names.indexOf(initialSourceBranch))
       rInfo('new-conversation-picker', 'branches loaded', { project_path: workspace.projectDirectory, count: result.branches.length })
     }).catch((error: unknown) => {
       setBranches([]); setBranchError(String(error))
       rError('new-conversation-picker', 'branch load failed', { project_path: workspace.projectDirectory, error: String(error) })
     }).finally(() => setBranchLoading(false))
+  }, [initialSourceBranch, view, workspace])
+
+  useEffect(() => {
+    if (view !== 'branches' || !workspace) return
+    let active = true
+    setWorktreeEphemeral(null)
+    void withTargetEnvironment(workspace.environmentId, () => host.shell.gitWorktreeEphemeralDefault(workspace.projectDirectory)).then((result) => {
+      if (!active) return
+      setWorktreeEphemeral(result.ephemeral)
+      rInfo('new-conversation-picker', 'worktree ephemeral default read', { project_path: workspace.projectDirectory, ephemeral: result.ephemeral, source: result.source })
+    }).catch((error: unknown) => {
+      // The control stays disabled and the create leaves the answer to the server.
+      rError('new-conversation-picker', 'worktree ephemeral default read failed', { project_path: workspace.projectDirectory, environment_id: workspace.environmentId, error: String(error) })
+    })
+    return () => { active = false }
   }, [view, workspace])
+
+  const chooseBranch = (branch: string): void => {
+    if (!workspace) return
+    rInfo('new-conversation-picker', 'worktree branch chosen', { project_path: workspace.projectDirectory, source_branch: branch, ephemeral: worktreeEphemeral ?? 'server-default', remember: rememberWorktree })
+    setWorkspace({ ...workspace, useWorktree: true, sourceBranch: branch, ephemeralWorktree: worktreeEphemeral ?? undefined, rememberWorktreeChoice: rememberWorktree })
+    setQuery(''); setView('profiles')
+  }
 
   const [environmentError, setEnvironmentError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -269,12 +304,15 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     const directory = locked && enterprisePolicy.baseDirectory ? enterprisePolicy.baseDirectory : choice.directory
     const profileId = locked ? enterprisePolicy.engineProfileId : profile?.id ?? (resolvedAction.kind === 'profile' ? resolvedAction.profileId : '')
     const workspaceChanged = directory !== choice.directory
+    const useWorktree = !workspaceChanged && choice.useWorktree && worktreesOfferedOn(targetEnvironmentId)
     const opts = {
       ...(profileId ? { profileId } : {}),
-      ...(!workspaceChanged && { useWorktree: choice.useWorktree && worktreesOfferedOn(targetEnvironmentId), sourceBranch: choice.sourceBranch }),
+      ...(!workspaceChanged && { useWorktree, sourceBranch: choice.sourceBranch }),
+      ...(useWorktree && choice.ephemeralWorktree !== undefined ? { ephemeralWorktree: choice.ephemeralWorktree } : {}),
+      ...(useWorktree && choice.rememberWorktreeChoice ? { rememberWorktreeChoice: true } : {}),
       projectDirectory: choice.projectDirectory,
     }
-    rInfo('new-conversation-picker', 'conversation creation resolved', { directory, project_directory: choice.projectDirectory, profile_id: profileId, source: locked ? 'enterprise-lock' : profile ? 'explicit-profile' : resolvedAction.source, use_worktree: !!opts.useWorktree, environment_id: targetEnvironmentId })
+    rInfo('new-conversation-picker', 'conversation creation resolved', { directory, project_directory: choice.projectDirectory, profile_id: profileId, source: locked ? 'enterprise-lock' : profile ? 'explicit-profile' : resolvedAction.source, use_worktree: !!opts.useWorktree, ephemeral_worktree: choice.ephemeralWorktree ?? 'default', remember_worktree_choice: !!choice.rememberWorktreeChoice, environment_id: targetEnvironmentId })
     // `createConversationTab` is a forwarded action with no tab to route by,
     // so the workspace's Environment is named explicitly: the action is sent
     // to the server that has the directory, the new tab arrives on its
@@ -353,7 +391,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   const count = view === 'projects' ? flatRows.length : view === 'branches' ? branchMatches.length : profileMatches.length + 1
   const selectHighlighted = (): void => {
     if (view === 'projects') { const entry = flatRows[highlighted]; if (entry) chooseProject(entry.row, actingEnvironmentFor(entry.row, entry.environmentId)); return }
-    if (view === 'branches') { const branch = branchMatches[highlighted]; if (branch && workspace) { setWorkspace({ ...workspace, useWorktree: true, sourceBranch: branch }); setQuery(''); setView('profiles') }; return }
+    if (view === 'branches') { const branch = branchMatches[highlighted]; if (branch) chooseBranch(branch); return }
     if (!workspace) return
     if (highlighted === 0) createConversation(workspace)
     else { const profile = profileMatches[highlighted - 1]; if (profile) createConversation(workspace, profile) }
@@ -373,12 +411,13 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   return createPortal(<motion.div data-ion-ui role="dialog" aria-modal="true" aria-label="New conversation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 10001, pointerEvents: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 'max(16px, 10vh) 16px 16px', boxSizing: 'border-box', background: colors.scrim }}>
     <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4, scale: 0.99 }} transition={{ duration: 0.14 }} onMouseDown={(event) => event.stopPropagation()} style={{ width: 560, maxWidth: '100%', maxHeight: '100%', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.popoverBg, border: `1px solid ${colors.popoverBorder}`, borderRadius: 12, boxShadow: colors.popoverShadow }}>
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${colors.popoverBorder}`, padding: '8px 10px', gap: 8 }}><button aria-label="Back" className="ion-focusable" onClick={handleBack} style={{ display: 'flex', alignItems: 'center', padding: 4, border: 'none', borderRadius: 5, background: 'transparent', color: colors.textSecondary, cursor: 'pointer' }}><ArrowLeft size={16} /></button><MagnifyingGlass size={16} color={colors.textTertiary} /><input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleInputKey} placeholder={placeholder} spellCheck={false} aria-label="New conversation search" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary, fontSize: 14 }} /></div>
+      {view === 'branches' && <WorktreeChoiceOptions ephemeral={worktreeEphemeral} remember={rememberWorktree} colors={colors} onEphemeral={setWorktreeEphemeral} onRemember={setRememberWorktree} />}
       {view === 'projects' && <ProjectListControls sort={sortOrder} grouping={grouping} showGrouping={multi} onSort={chooseSortOrder} onGrouping={chooseGrouping} placement={placementMode} onPlacement={choosePlacementMode} />}
       <div style={{ overflowY: 'auto', minWidth: 0, minHeight: 0, padding: 8 }}>
         {environmentError && <div role="alert" style={{ padding: '4px 10px', fontSize: 11, color: colors.statusError }}>{environmentError}</div>}
         {creating && <div role="status" style={{ padding: '4px 10px', fontSize: 11, color: colors.textSecondary }}>Opening the conversation…</div>}
         {view === 'projects' && <ProjectRows groups={projectGroups} collapsed={collapsedGroups} indexOf={indexOfRow} highlighted={highlighted} colors={colors} showMachines={multi} actingEnvironment={actingEnvironmentFor} onHover={setHighlighted} onChoose={chooseProject} onToggleGroup={toggleGroup} />}
-        {view === 'branches' && <BranchRows branches={branchMatches} highlighted={highlighted} loading={branchLoading} error={branchError} currentBranch={currentBranch} colors={colors} onHover={setHighlighted} onChoose={(branch) => { if (workspace) { setWorkspace({ ...workspace, useWorktree: true, sourceBranch: branch }); setQuery(''); setView('profiles') } }} />}
+        {view === 'branches' && <BranchRows branches={branchMatches} highlighted={highlighted} loading={branchLoading} error={branchError} currentBranch={currentBranch} colors={colors} onHover={setHighlighted} onChoose={chooseBranch} />}
         {view === 'profiles' && workspace && <ProfileRows profiles={profileMatches} highlighted={highlighted} colors={colors} onHover={setHighlighted} onPlain={() => createConversation(workspace)} onProfile={(profileId) => { const profile = profiles.find((item) => item.id === profileId); if (profile) createConversation(workspace, profile) }} />}
       </div>
       <div style={{ borderTop: `1px solid ${colors.popoverBorder}`, padding: '8px 12px', color: colors.textTertiary, fontSize: 11 }}>Use ↑ ↓ and Enter to select{view === 'projects' && multi && effectiveGrouping !== 'by-host' ? ', ← → to pick the machine' : ''}{view === 'projects' && multi && placementMode === 'auto' ? '. Auto opens each project on the machine with the most room' : ''}. Backspace returns to the prior step.</div>

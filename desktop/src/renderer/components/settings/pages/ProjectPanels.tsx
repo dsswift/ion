@@ -10,7 +10,7 @@ import type { EnvironmentJob, EnvironmentProject } from '@ion/shared/types-envir
 import { useSettingsEnvironment } from '../settings-servers'
 import { Button, ErrorText, FormGroup, FormRow, MonoLine, Muted, SidePanel, Stack, Switch } from '../kit'
 import { DirectoryPicker } from './DirectoryPicker'
-import { ProjectProfileSelect, WorkspaceFolders, useDefaultProject } from './project-local'
+import { ProjectProfileSelect, ProjectWorktreeDefaults, WorkspaceFolders, useDefaultProject } from './project-local'
 import { setupBlockedReason, type ProjectOperations, type ProjectVerbs, type RemovalChoice } from './project-operation'
 
 interface PanelBase { project: EnvironmentProject; ops: ProjectOperations; verbs: ProjectVerbs; onClose(): void }
@@ -77,6 +77,9 @@ export function ProjectDetailPanel({ project, job, ops, verbs, onClose, onMove, 
             </FormRow>
             <FormRow label="Profile" description="What New Conversation starts with in this project." anchor="project-profile">
               <ProjectProfileSelect dir={project.dir} displayName={project.displayName} />
+            </FormRow>
+            <FormRow label="Worktree" description="The branch and ephemeral choice a new worktree conversation uses. An empty branch asks each time; ephemeral worktrees are removed when the conversation closes, unless they have unlanded work." anchor="project-worktree">
+              <ProjectWorktreeDefaults dir={project.dir} displayName={project.displayName} />
             </FormRow>
             <FormRow label="Workspace folders" settingKey="workspaceFolders" description="Folders every checkout of this project mounts beside it." stacked anchor="workspace-folders">
               <WorkspaceFolders dir={project.dir} displayName={project.displayName} />
