@@ -334,6 +334,9 @@ describe('a reported capability is only as true as the bridge', () => {
     // has none; the Environment page gates them on `nativeShell`.
     'deviceMetricsWatch', 'onDeviceMetrics',
     'installUpdate', 'restartForUpdate', 'startupReport',
+    // The Build Notice describes this desktop's own installed build. A
+    // browser tab has none; the dialog gates on the `updates` capability.
+    'getBuildNotice', 'acknowledgeBuildNotice',
     // Opens a separate native Electron window; the verbs behind that window
     // are the `worktree.overlap.*` actions and are bridged.
     'openWorktreeOverlap', 'getWorktreeOverlapContext',

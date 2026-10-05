@@ -12,6 +12,7 @@ import {
   type EmittedBundleFile,
 } from "./src/buildtools/workspace-bundle-guard";
 import { serverBrowserStubsPlugin, mainServerLoggerPlugin } from "./src/buildtools/renderer-server-stubs";
+import { whatsNewFor } from "../packages/shared/src/build-notice";
 
 function localDevelopmentVersion(): string {
   const manifest = JSON.parse(readFileSync(resolve(__dirname, "../release-please-manifest.json"), "utf8")) as { desktop: string };
@@ -22,6 +23,30 @@ function localDevelopmentVersion(): string {
 }
 
 const desktopVersion = process.env.ION_DESKTOP_VERSION || localDevelopmentVersion();
+
+/**
+ * When this bundle was built, for the Build Notice (`@ion/shared/build-notice`).
+ * It makes every build distinct, even two of one commit with one version.
+ */
+const desktopBuiltAt = new Date().toISOString();
+
+/**
+ * This version's "What's new" highlights from `whats-new.json`, written by the
+ * release pipeline (`.github/scripts/write-whats-new.mjs`). A version with no
+ * entry, which is every local build, has none. A malformed file costs the
+ * notes, never the build.
+ */
+function desktopWhatsNew(version: string): string[] {
+  const file = resolve(__dirname, "whats-new.json");
+  try {
+    const notes = whatsNewFor(JSON.parse(readFileSync(file, "utf8")), version);
+    if (notes) return notes;
+    console.warn(`[electron.vite.config] ${file} is not an object of string arrays; this build has no What's new notes`);
+  } catch (err) {
+    console.warn(`[electron.vite.config] cannot read ${file}; this build has no What's new notes: ${(err as Error).message}`);
+  }
+  return [];
+}
 
 /**
  * Every emitted JavaScript artifact under an out dir, with its source text,
@@ -152,6 +177,8 @@ export default defineConfig({
   main: {
     define: {
       __ION_DESKTOP_VERSION__: JSON.stringify(desktopVersion),
+      __ION_DESKTOP_BUILT_AT__: JSON.stringify(desktopBuiltAt),
+      __ION_DESKTOP_WHATS_NEW__: JSON.stringify(desktopWhatsNew(desktopVersion)),
     },
     plugins: [mainServerLoggerPlugin(__dirname), workspaceBundleGuard()],
     build: {

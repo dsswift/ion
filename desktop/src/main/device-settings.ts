@@ -42,6 +42,7 @@ export const DEVICE_SETTINGS_DEFAULTS = {
   selectedTheme: 'ion-dark',
   soundEnabled: true,
   openAtLogin: false,
+  showBuildNotice: true,
   showDirLabel: true,
   preferredOpenWith: 'cli',
   expandToolResults: false,

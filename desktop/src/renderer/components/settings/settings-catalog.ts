@@ -101,6 +101,7 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
     item('sound', 'Notification sound', 'notification sound alert audio task complete', ['soundEnabled']),
     item('network-shield', 'Browser preview network shield', 'browser preview network shield block', ['browserPreviewNetworkShield']),
     item('open-at-login', 'Open Ion at login', 'open launch start at login startup boot autostart sign in', ['openAtLogin']),
+    item('build-notice', "Show what's new after an update", 'update updated whats new release notes version dialog notice popup', ['showBuildNotice']),
     item('implement-clear', 'Show “Implement, clear context”', 'clear context implement plan button', ['showImplementClearContext']),
   ] },
   'device-git': { component: P.DeviceGitSection, items: [

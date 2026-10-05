@@ -71,6 +71,10 @@ export const systemApi = {
     return () => ipcRenderer.removeListener(IPC.UPDATE_ERROR, handler);
   },
 
+  // ─── Build Notice ───
+  getBuildNotice: () => ipcRenderer.invoke(IPC.BUILD_NOTICE_GET),
+  acknowledgeBuildNotice: () => ipcRenderer.invoke(IPC.BUILD_NOTICE_ACKNOWLEDGE),
+
   // ─── Device Metrics (this machine's own Studio processes) ───
   deviceMetricsWatch: (on) => ipcRenderer.invoke(IPC.DEVICE_METRICS_WATCH, on),
   onDeviceMetrics: (callback) => {
