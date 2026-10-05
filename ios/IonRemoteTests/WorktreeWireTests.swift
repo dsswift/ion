@@ -313,6 +313,36 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertNil(states[0].worktrees[0].sourceBranch)
     }
 
+    /// An ephemeral worktree closes with its conversation; one that close kept
+    /// carries the reason instead. Both ride the worktree list, and an ordinary
+    /// worktree sends neither field, which must decode as "not ephemeral".
+    func testEphemeralStateDecodes() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/e","branchName":"wt/e","label":"e","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
+          "needsSync":false,"safeToDiscard":true,"ephemeral":true},{
+          "worktreePath":"/wt/k","branchName":"wt/k","label":"k","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":2,
+          "needsSync":false,"safeToDiscard":false,
+          "ephemeralKeptReason":"This worktree has 2 commits not yet landed in josh. It was kept so nothing is lost."},{
+          "worktreePath":"/wt/o","branchName":"wt/o","label":"o","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
+          "needsSync":false,"safeToDiscard":true}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let worktrees = states[0].worktrees
+        XCTAssertTrue(worktrees[0].ephemeral)
+        XCTAssertNil(worktrees[0].ephemeralKeptReason)
+        XCTAssertFalse(worktrees[1].ephemeral)
+        XCTAssertEqual(worktrees[1].ephemeralKeptReason, "This worktree has 2 commits not yet landed in josh. It was kept so nothing is lost.")
+        XCTAssertFalse(worktrees[2].ephemeral)
+        XCTAssertNil(worktrees[2].ephemeralKeptReason)
+    }
+
     /// A worktree created before provisioning existed carries no `provisionState`
     /// at all. Absent must decode as nil — "Ion has no record" — and the row
     /// renders nothing. Treating absence as a failure would put an error badge on
