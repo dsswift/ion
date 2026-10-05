@@ -170,21 +170,20 @@ extension TabListView {
                     }
                 )
             }
-            .confirmationDialog(
-                "Choose source branch",
-                isPresented: Binding(get: { viewModel.pendingBranchPickerRepo != nil }, set: { if !$0 { viewModel.pendingBranchPickerRepo = nil } }),
-                titleVisibility: .visible
-            ) {
-                if let repo = viewModel.pendingBranchPickerRepo,
-                   let branches = viewModel.gitBranches[repo]?.branches {
-                    ForEach(branches, id: \.self) { branch in
-                        Button(branch) {
-                            viewModel.pendingBranchPickerRepo = nil
-                            viewModel.createTab(workingDirectory: repo, useWorktree: true, sourceBranch: branch)
-                        }
+            .sheet(isPresented: Binding(get: { viewModel.pendingBranchPickerRepo != nil }, set: { if !$0 { viewModel.pendingBranchPickerRepo = nil } })) {
+                if let repo = viewModel.pendingBranchPickerRepo {
+                    let state = viewModel.worktreeState(for: repo)
+                    WorktreeBranchChooserSheet(
+                        repoPath: repo,
+                        branches: viewModel.gitBranches[repo]?.branches,
+                        savedBranch: state?.defaultSourceBranch,
+                        ephemeralDefault: state?.ephemeralDefault ?? false
+                    ) { branch, ephemeral, remember in
+                        viewModel.pendingBranchPickerRepo = nil
+                        viewModel.createTab(workingDirectory: repo, useWorktree: true, sourceBranch: branch,
+                                            ephemeralWorktree: ephemeral, rememberWorktreeChoice: remember)
                     }
                 }
-                Button("Cancel", role: .cancel) { viewModel.pendingBranchPickerRepo = nil }
             }
             // returns `.showPicker` — i.e. multiple profiles exist and no default is set.
             // Includes "Plain conversation" at top (matches desktop picker behaviour).

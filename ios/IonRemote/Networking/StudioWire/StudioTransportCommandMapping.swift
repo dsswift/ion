@@ -57,11 +57,14 @@ struct StudioTransportCommandMapping: StudioCommandMapping {
             ]))
 
         // ── Conversations ──
-        case .createTab(let workingDirectory, let profileId, _, let clientCmdId, let useWorktree, let sourceBranch):
+        case .createTab(let workingDirectory, let profileId, _, let clientCmdId, let useWorktree, let sourceBranch,
+                        let ephemeralWorktree, let rememberWorktreeChoice):
             // `extensions` is not sent: the profile the server resolves names them.
             return .action(.fields("tabs.create", [
                 "workingDirectory": workingDirectory.map(JSONValue.string), "profileId": profileId.map(JSONValue.string),
                 "useWorktree": useWorktree.map(JSONValue.bool), "sourceBranch": sourceBranch.map(JSONValue.string),
+                "ephemeralWorktree": ephemeralWorktree.map(JSONValue.bool),
+                "rememberWorktreeChoice": rememberWorktreeChoice.map(JSONValue.bool),
                 "clientCmdId": clientCmdId.map(JSONValue.string),
             ]))
         case .createTerminalTab(let workingDirectory, let clientCmdId):

@@ -446,6 +446,11 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
     /// with this branch instead of showing the branch picker; when nil, the
     /// picker is shown -- matching the desktop's own behavior.
     var defaultSourceBranch: String?
+    /// Whether a worktree conversation created here without an explicit
+    /// choice is ephemeral: the project's remembered choice, else its
+    /// `.ion/worktree.json`. The branch chooser preselects its Ephemeral
+    /// switch from it. Nil from a server that does not send it.
+    var ephemeralDefault: Bool?
 
     var id: String { repoPath }
 

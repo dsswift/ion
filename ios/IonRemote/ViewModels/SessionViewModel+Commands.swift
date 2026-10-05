@@ -143,7 +143,10 @@ extension SessionViewModel {
     }
 
 
-    func createTab(workingDirectory: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
+    func createTab(
+        workingDirectory: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil,
+        ephemeralWorktree: Bool? = nil, rememberWorktreeChoice: Bool? = nil
+    ) {
         let dir = workingDirectory
         // Route through the confirm-or-resend tracker rather than a fire-once
         // `send(_:intent: .userInitiated)`: a create dropped into a wedged
@@ -159,7 +162,9 @@ extension SessionViewModel {
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
         sendTrackedCreate(
-            .createTab(workingDirectory: dir, profileId: profileId, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch),
+            .createTab(workingDirectory: dir, profileId: profileId, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch,
+                       ephemeralWorktree: useWorktree == true ? ephemeralWorktree : nil,
+                       rememberWorktreeChoice: useWorktree == true ? rememberWorktreeChoice : nil),
             clientCmdId: clientCmdId
         )
     }

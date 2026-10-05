@@ -391,6 +391,7 @@
 		A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001007002AA /* CrashReporter.swift */; };
 		A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */; };
 		B1C2D3E4F5A6048800000000 /* ConversationBranchesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */; };
+		WBCS0000000000000001 /* WorktreeBranchChooserSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */; };
 		A1B2C3D4E5F60001008003AA /* AttachmentContentViewers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */; };
 		A1B2C3D4E5F600010080F0AA /* PlanDividerLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */; };
 		MODALSHEETBND0000000002 /* ModalSheetBoundary.swift in Sources */ = {isa = PBXBuildFile; fileRef = MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */; };
@@ -536,6 +537,7 @@
 		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
 		IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */; };
+		WCWT0000000000000001 /* WorktreeChoiceWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */; };
 		WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */; };
 		C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */; };
 		C0DEC0DE000000000001 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000000 /* FileIcon.swift */; };
@@ -1350,6 +1352,7 @@
 		A1B2C3D4E5F60001007002AA /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAttachmentsSheet.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBranchesSheet.swift; sourceTree = "<group>"; };
+		WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeBranchChooserSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentContentViewers.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDividerLabel.swift; sourceTree = "<group>"; };
 		MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalSheetBoundary.swift; sourceTree = "<group>"; };
@@ -1514,6 +1517,7 @@
 		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
 		IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeDefaultBranchTests.swift; sourceTree = "<group>"; };
+		WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeChoiceWireTests.swift; sourceTree = "<group>"; };
 		WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeLandAndRetireNothingToLandTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnapshotWireTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000000 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
@@ -2157,6 +2161,7 @@
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
 				A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */,
 				B1C2D3E4F5A6048700000000 /* ConversationBranchesSheet.swift */,
+				WBCS0000000000000002 /* WorktreeBranchChooserSheet.swift */,
 				A1B2C3D4E5F60001008002AA /* AttachmentContentViewers.swift */,
 				A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */,
 				MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */,
@@ -2472,6 +2477,7 @@
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
 				IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */,
+				WCWT0000000000000002 /* WorktreeChoiceWireTests.swift */,
 				WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */,
 				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
 				WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */,
@@ -3512,6 +3518,7 @@
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
 				A1B2C3D4E5F60001008001AA /* ConversationAttachmentsSheet.swift in Sources */,
 				B1C2D3E4F5A6048800000000 /* ConversationBranchesSheet.swift in Sources */,
+				WBCS0000000000000001 /* WorktreeBranchChooserSheet.swift in Sources */,
 				A1B2C3D4E5F60001008003AA /* AttachmentContentViewers.swift in Sources */,
 				A1B2C3D4E5F600010080F0AA /* PlanDividerLabel.swift in Sources */,
 				MODALSHEETBND0000000002 /* ModalSheetBoundary.swift in Sources */,
@@ -4234,6 +4241,7 @@
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,
 				IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */,
+				WCWT0000000000000001 /* WorktreeChoiceWireTests.swift in Sources */,
 				WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */,
 				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,
 				WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */,

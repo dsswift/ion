@@ -44,7 +44,8 @@ enum StudioCommandSamples {
 
     static let all: [RemoteCommand] = [
         .sync,
-        .createTab(workingDirectory: "s", profileId: "s", extensions: ["s"], clientCmdId: "s", useWorktree: true, sourceBranch: "s"),
+        .createTab(workingDirectory: "s", profileId: "s", extensions: ["s"], clientCmdId: "s", useWorktree: true, sourceBranch: "s",
+                   ephemeralWorktree: true, rememberWorktreeChoice: true),
         .createTerminalTab(workingDirectory: "s", clientCmdId: "s"),
         .closeTab(tabId: "s"),
         .resetTabSession(tabId: "s"),

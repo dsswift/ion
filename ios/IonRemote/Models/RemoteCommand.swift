@@ -20,10 +20,15 @@ enum RemoteCommand: Sendable {
   /// until the desktop echoes this id back on `desktop_tab_created`. The
   /// desktop dedupes by it so a resend re-emits the existing tab, never a
   /// duplicate. Absent (nil) for any non-tracked caller.
+  ///
+  /// With `useWorktree`: `ephemeralWorktree` nil leaves the answer to the
+  /// project's remembered choice, then its `.ion/worktree.json`;
+  /// `rememberWorktreeChoice` saves the branch and that answer for the project.
   case createTab(
     workingDirectory: String?, profileId: String? = nil,
     extensions: [String]? = nil, clientCmdId: String? = nil,
-    useWorktree: Bool? = nil, sourceBranch: String? = nil)
+    useWorktree: Bool? = nil, sourceBranch: String? = nil,
+    ephemeralWorktree: Bool? = nil, rememberWorktreeChoice: Bool? = nil)
   case createTerminalTab(workingDirectory: String?, clientCmdId: String? = nil)
   case closeTab(tabId: String)
   case resetTabSession(tabId: String)

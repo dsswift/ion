@@ -11,14 +11,18 @@ extension DiagnosticLog {
         case .sync:
             log("CMD: sync", tag: "ipc", level: .info)
 
-        case .createTab(let dir, let profileId, _, _, let useWorktree, let sourceBranch):
+        case .createTab(let dir, let profileId, _, _, let useWorktree, let sourceBranch, let ephemeral, let remember):
             if let profileId {
                 log("CMD: createTab(engine) dir=\(dir?.suffix(30) ?? "nil") profile=\(profileId)", tag: "ipc", level: .info)
             } else {
                 log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil")", tag: "ipc", level: .info)
             }
             if useWorktree == true || sourceBranch != nil {
-                log("CMD: createTab worktree source=\(sourceBranch ?? "default")", tag: "ipc", level: .info)
+                log("CMD: createTab worktree", tag: "ipc", level: .info, fields: [
+                    "source_branch": sourceBranch ?? "default",
+                    "ephemeral": ephemeral.map(String.init) ?? "default",
+                    "remember": String(remember == true),
+                ])
             }
 
         // ── Worktree + integration bench ──
