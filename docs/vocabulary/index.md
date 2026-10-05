@@ -58,6 +58,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Automation Editor](#term-automation-editor)
 - [Backend](#term-backend)
 - [Branch](#term-branch)
+- [Build Notice](#term-build-notice)
 - [Builder Host](#term-builder-host)
 - [Channel](#term-channel)
 - [Chart Output](#term-chart-output)
@@ -2166,6 +2167,21 @@ The shared Settings surface for Desktop Automation: one panel with three labeled
   - `desktop` / `code` / `typescript`: `AUTOMATION_TRIGGERS` in `packages/shared/src/automation-catalog.ts`
   - `ios` / `ui` / `swift`: `struct AutomationEditorView` in `ios/IonRemote/Views/Settings/Server/Automations/AutomationEditorView.swift`
 
+#### Build Notice {#term-build-notice}
+
+The dialog Studio shows on the desktop the first time it opens on a build this device has not acknowledged. It names the running build by version and build time, and the build it replaced. A released build also lists its What's new notes: plain-language bullets the release pipeline writes into desktop/whats-new.json under that version. A build is its version plus the moment it was built, so a rebuild of the same commit is a new build. Dismissing it acknowledges the build; until then it shows on every launch. Unpackaged dev runs and browser Studio have no notice.
+
+- **ID:** `build-notice`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `buildNoticeFor` in `packages/shared/src/build-notice.ts`
+  - `desktop` / `code` / `typescript`: `currentBuildNotice` in `desktop/src/main/build-notice.ts`
+  - `studio` / `ui` / `typescript`: `BuildNoticeDialog` in `desktop/src/renderer/studio/BuildNoticeDialog.tsx`
+
 #### Conversation Status Bar {#term-conversation-status-bar}
 
 The conversation's inline controls, rendered in the controls row of the Input Bar: the model picker, the permission mode, the thinking effort, and the context indicator.
@@ -3417,6 +3433,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
 | Automation Editor | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `struct AutomationEditorView` | None |
+| Build Notice | `buildNoticeFor`, `currentBuildNotice` | `buildNoticeFor`, `currentBuildNotice`, `BuildNoticeDialog` | `buildNoticeFor`, `currentBuildNotice` | None | iOS |
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |

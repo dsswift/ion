@@ -386,6 +386,38 @@
       ]
     },
     {
+      "id": "build-notice",
+      "term": "Build Notice",
+      "definition": "The dialog Studio shows on the desktop the first time it opens on a build this device has not acknowledged. It names the running build by version and build time, and the build it replaced. A released build also lists its What's new notes: plain-language bullets the release pipeline writes into desktop/whats-new.json under that version. A build is its version plus the moment it was built, so a rebuild of the same commit is a new build. Dismissing it acknowledges the build; until then it shows on every launch. Unpackaged dev runs and browser Studio have no notice.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "buildNoticeFor",
+          "path": "packages/shared/src/build-notice.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "currentBuildNotice",
+          "path": "desktop/src/main/build-notice.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "BuildNoticeDialog",
+          "path": "desktop/src/renderer/studio/BuildNoticeDialog.tsx"
+        }
+      ]
+    },
+    {
       "id": "builder-host",
       "term": "Builder Host",
       "definition": "The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. Any host of the fleet with an SSH target can be one, a target of the deploy or not. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform that takes it. A host that cannot build is told what stops it, and `ion fleet builder` fixes what the fleet can: missing build tools, and a build folder Microsoft Defender scans.",

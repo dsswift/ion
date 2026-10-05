@@ -27,6 +27,16 @@ Three lanes start at once. None waits for another.
 
 Nothing is manual. A commit with a `docs` scope, or under a path `release.yml` does not list, releases nothing.
 
+When the push releases the desktop, `release.yml` also writes its "What's new" notes before the version commit. Every person who runs Ion Studio reads them, so `.github/scripts/write-whats-new.mjs` passes them through three gates:
+
+1. The Ion engine image drafts plain-language bullets from the commits that ship in the app (desktop, server, engine), following `.github/ion/whats-new-prompt.md`.
+2. `lintHighlight` drops any bullet that carries engineering text: technical words, code, file names, links, commit ids, issue numbers.
+3. A second, separate run follows `.github/ion/whats-new-review-prompt.md` and keeps or drops each remaining bullet: accurate, plain, appropriate for everyone, and clear on its own. An answer that is not one verdict per bullet keeps none.
+
+Only kept bullets are written into `desktop/whats-new.json` under the new version. The version commit carries that file, so the desktop build of that version bakes the entry in and the Build Notice shows it. A release with nothing a person would notice gets no entry. The notes never hold a release: an engine failure or an unclear answer is a warning, and the version ships without notes. Edit the file by hand to correct an entry; a build already shipped keeps the text it was built with.
+
+Every CI job that asks Ion to write something runs it through `.github/scripts/run-ion-prompt.sh`, which points the engine image at the `ION_ENGINE_CONFIG_B64` config and fails on an engine error or an empty answer.
+
 Two pushes close together do not race: `release.yml` runs under a concurrency group that queues the second run until the first has pushed its version commit.
 
 ### The build lane

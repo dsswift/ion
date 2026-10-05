@@ -114,6 +114,12 @@ Ion does not open by itself after a restart unless **Open Ion at login** is on: 
 
 An organization can fix it either way with the device settings policy, key `openAtLogin`: sealed with `true` to force it on, or with `false` so people start Ion themselves. See [Settings policy](../enterprise/settings-policy.md).
 
+## What's new after an update
+
+The first time Ion opens on a new version, it shows which version is now running, which one it replaced, and what is new in it. Dismiss it and it does not show again until the next update. Turn it off in Settings → Behavior → Startup, **Show what's new after an update**.
+
+An organization can fix it either way with the device settings policy, key `showBuildNotice`: sealed with `false` to hide it on every update, or with `true` so people cannot turn it off. See [Settings policy](../enterprise/settings-policy.md).
+
 ## Updating
 
 **Self-service: let the app update itself.** Release builds ship a built-in auto-updater that checks GitHub Releases on launch and every four hours, downloads a newer signed build in the background, stages a detached installer, and prompts you to restart. This is the supported update path.
