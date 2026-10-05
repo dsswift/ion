@@ -25,6 +25,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -236,22 +237,14 @@ func TestHookLatencyAttribution_EndToEnd_RealLifecycle(t *testing.T) {
 // Local to this test file to avoid coupling to backend-package test helpers.
 func toolUseResponse(toolName, toolID string, input map[string]interface{}) []types.LlmStreamEvent {
 	stopReason := "tool_use"
-	inputJSON := "{"
-	first := true
-	for k, v := range input {
-		if !first {
-			inputJSON += ","
-		}
-		first = false
-		if sv, ok := v.(string); ok {
-			inputJSON += `"` + k + `":"` + sv + `"`
-		}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		panic("toolUseResponse: marshal input: " + err.Error())
 	}
-	inputJSON += "}"
 	return []types.LlmStreamEvent{
 		{Type: "message_start", MessageInfo: &types.LlmStreamMessageInfo{ID: "m-tool", Model: "mock", Usage: types.LlmUsage{InputTokens: 10}}},
 		{Type: "content_block_start", BlockIndex: 0, ContentBlock: &types.LlmStreamContentBlock{Type: "tool_use", ID: toolID, Name: toolName}},
-		{Type: "content_block_delta", BlockIndex: 0, Delta: &types.LlmStreamDelta{Type: "input_json_delta", PartialJSON: inputJSON}},
+		{Type: "content_block_delta", BlockIndex: 0, Delta: &types.LlmStreamDelta{Type: "input_json_delta", PartialJSON: string(inputJSON)}},
 		{Type: "content_block_stop", BlockIndex: 0},
 		{Type: "message_delta", Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason}, DeltaUsage: &types.LlmUsage{OutputTokens: 8}},
 		{Type: "message_stop"},

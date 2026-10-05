@@ -215,7 +215,7 @@ func runCommand(ctx context.Context, in RenderInput, command string) (string, er
 		return "", &RenderError{Kind: "command_failed", Command: command, Message: fmt.Sprintf("Skill %q command exited %d: %s\n%s", in.Name, res.ExitCode, command, tail(res.Output, 2000))}
 	}
 	utils.LogWithFields(utils.LevelInfo, "skills.render", "skill command ran", map[string]any{"skill": in.Name, "command": command, "duration_ms": time.Since(started).Milliseconds(), "bytes": len(res.Output)})
-	return capOutput(strings.TrimRight(res.Output, "\n"), in.OutputBudget), nil
+	return capOutput(strings.TrimRight(res.Output, "\r\n"), in.OutputBudget), nil
 }
 
 // ExtractCommands lists the shell commands a body would run, in order.

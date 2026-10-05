@@ -90,3 +90,14 @@ func TestEnterDataDir_RedirectsStoreAndKeepsHome(t *testing.T) {
 		t.Fatalf("temp data root %q not removed after restore (stat err: %v)", dir, err)
 	}
 }
+
+// The rail tests rely on this failing on every OS, Windows included.
+func TestUnwritableTempDir_FailsTempFileCreation(t *testing.T) {
+	testhome.UnwritableTempDir(t)
+	f, err := os.CreateTemp("", "probe-*")
+	if err == nil {
+		f.Close()           //nolint:errcheck // test cleanup
+		os.Remove(f.Name()) //nolint:errcheck // test cleanup
+		t.Fatalf("created %s in what should be an unwritable temp dir", f.Name())
+	}
+}

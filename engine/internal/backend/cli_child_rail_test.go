@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/testhome"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -253,7 +254,7 @@ func TestDelegatedChild_PlanToolsOutsidePlanMode(t *testing.T) {
 // A child whose rail cannot be set up is not wired at all, so the caller has
 // nothing to start.
 func TestDelegatedChild_NoRailNoChild(t *testing.T) {
-	t.Setenv("TMPDIR", "/nonexistent-ion-child-rail-test-dir")
+	testhome.UnwritableTempDir(t)
 	var sp, rt bool
 	opts := &types.RunOptions{Model: "claude-opus-4-8", Prompt: "do the work"}
 	ts, err := BuildDelegatedChildToolServer(NewClaudeCodeBackend(), "child-norail", childCfgWithTools(&sp, &rt), opts)

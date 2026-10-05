@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/testhome"
 )
 
 // A claude-code child whose permission rail cannot be set up is not started,
@@ -20,7 +21,7 @@ func TestDispatch_DelegatedCliChildWithoutRailIsNotStarted(t *testing.T) {
 	// The rail's settings file is written to the temp dir; an unwritable one
 	// makes the rail fail after the child's tool server is already up. Set
 	// after the session exists, which resolves its own working directory.
-	t.Setenv("TMPDIR", "/nonexistent-ion-dispatch-rail-test-dir")
+	testhome.UnwritableTempDir(t)
 	mgr.mu.Lock()
 	s := mgr.sessions["rail-dispatch"]
 	mgr.mu.Unlock()
