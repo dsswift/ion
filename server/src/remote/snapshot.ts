@@ -27,7 +27,7 @@ import { filterDeletedResources, isResourceRead } from '../engine/event-wiring-r
 import { log, debug, warn } from '../logger'
 import type { RemoteTabState } from './protocol'
 import type { TabStatus } from '@ion/shared/types'
-import { classifyInbox, inboxUnread, wokeAt, type InboxState, type InboxTabView } from '@ion/shared/inbox-classify'
+import { classifyInbox, inboxQuiet, inboxUnread, wokeAt, type InboxState, type InboxTabView } from '@ion/shared/inbox-classify'
 import type { RemoteTabStatesPayload, ProjectedRendererTab, ResourceManifest } from '@ion/shared/remote-projection-types'
 import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
@@ -335,6 +335,10 @@ function coldInboxFields(t: Record<string, unknown>, status: TabStatus, autoSett
   settledAt: number | null
   settledOverride: 'settled' | 'active' | 'auto' | null
   wokeAt: number | null
+  limitedUntil: number | null
+  limitType: string | undefined
+  deferredRelease: 'limit-reset' | 'spare-quota' | undefined
+  quiet: boolean
 } {
   const now = Date.now()
   // The persisted record is untyped JSON, so every field is narrowed at the
@@ -360,7 +364,16 @@ function coldInboxFields(t: Record<string, unknown>, status: TabStatus, autoSett
     waiting: false,
     failed: status === 'failed',
   }
+  const limit = t.usageLimit && typeof t.usageLimit === 'object' ? t.usageLimit as { limitType?: unknown; resetsAt?: unknown } : null
+  const limitedUntil = limit && typeof limit.resetsAt === 'number' && limit.resetsAt > now ? limit.resetsAt : null
+  view.limited = limitedUntil !== null
+  const held = t.deferredSend && typeof t.deferredSend === 'object' ? (t.deferredSend as { release?: unknown }).release : undefined
+  const deferredRelease = held === 'limit-reset' || held === 'spare-quota' ? held : undefined
   return {
+    limitedUntil,
+    limitType: limitedUntil !== null && typeof limit?.limitType === 'string' ? limit.limitType : undefined,
+    deferredRelease,
+    quiet: inboxQuiet(view, now, { deferred: deferredRelease !== undefined }),
     inboxState: classifyInbox(view, now, autoSettleDays),
     unread: inboxUnread(view),
     snoozedUntil: view.snoozedUntil,
@@ -474,6 +487,10 @@ function coldStartSnapshot(): RemoteTabSnapshot {
         settledAt: inbox.settledAt ?? undefined,
         settledOverride: inbox.settledOverride ?? undefined,
         wokeAt: inbox.wokeAt ?? undefined,
+        limitedUntil: inbox.limitedUntil ?? undefined,
+        limitType: inbox.limitType,
+        deferredRelease: inbox.deferredRelease,
+        quiet: inbox.quiet || undefined,
         idleSince: typeof t.idleSince === 'number' ? t.idleSince : undefined,
         // Worktree identity persists on the tab record; carry it cold so the
         // iOS inbox groups correctly before the renderer's first push.

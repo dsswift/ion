@@ -30,6 +30,7 @@ import { hostName } from '../host-name'
 import type { StoreApi } from 'zustand'
 import { autoSettleBlocked } from '@ion/shared/inbox-classify'
 import { isPersistedSettled } from '@ion/shared/tab-predicates'
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
 import type { RelayPushMeta } from '@ion/shared/studio-wire/relay-envelope'
 import { ringOfflineThinClients } from '../thin-view/push-doorbell'
 import { pushConversationTitle } from '../thin-view/push-title'
@@ -84,6 +85,8 @@ interface PendingRest {
 export function finishedPushBlocker(state: State, tab: Tab): string | null {
   if (tab.isTerminalOnly) return 'terminal_only'
   if (isPersistedSettled(tab)) return 'settled'
+  // It rang for its limit, and it is not finished: it stopped part way.
+  if (usageLimitedUntil(tab, Date.now()) !== null) return 'usage_limited'
   if (tab.status !== 'idle' && tab.status !== 'completed') return `status_${tab.status}`
   // Every instance, not just the active one: a background agent dispatched
   // from any instance means the conversation is still working.

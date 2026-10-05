@@ -8,6 +8,7 @@ import {
   type WorktreeStageChange,
 } from "../worktree/stage-change-trigger";
 import { setWorktreeLifecycleAutomationTrigger } from "../worktree/lifecycle-automation-trigger";
+import { setUsageAutomationTrigger } from "../fleet/usage-automation-trigger";
 import { setBenchAutomationTrigger } from "../integration/bench-automation-trigger";
 import { enterprisePolicyCache } from "../state";
 import {
@@ -24,6 +25,7 @@ import {
 import type { WorkStage, WorktreePinAdvance } from "@ion/shared/types-git";
 import { AutomationService } from "./service";
 import { runAutomationRendererCommand } from "./renderer-command";
+import { joinBench } from "./bench-join";
 
 type AutomationBroadcast = (event: AutomationRuntimeEvent) => void;
 
@@ -239,6 +241,9 @@ export class AutomationRuntime {
           },
         });
         return;
+      case "bench:join":
+        await joinBench(context);
+        return;
       case "record":
         return;
       default:
@@ -374,6 +379,9 @@ export function wireAutomationRuntime(): AutomationRuntime {
     setWorktreeLifecycleAutomationTrigger({
       onWorktreeLifecycleEvent: (type, payload) =>
         runtime?.trigger({ type, payload }),
+    });
+    setUsageAutomationTrigger({
+      onUsageEvent: (type, payload) => runtime?.trigger({ type, payload }),
     });
     setBenchAutomationTrigger({
       onBenchEvent: (type, payload) => runtime?.trigger({ type, payload }),

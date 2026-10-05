@@ -50,7 +50,10 @@ function benchPaths(state: State): string[] {
 
 /** Owner-durable inbox actions. Studio forwards all mutations to this slice. */
 export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
-  const settle = async (tabId: string, provenance: 'settled' | 'auto'): Promise<void> => {
+  // `basis` is why an automatic settlement is due: the idle clock, or the
+  // conversation's worktree landing. Both refuse a conversation with work or
+  // a decision still pending.
+  const settle = async (tabId: string, provenance: 'settled' | 'auto', basis: 'clock' | 'landed' = 'clock'): Promise<void> => {
     const startingTab = get().tabs.find((candidate) => candidate.id === tabId)
     // A record already carrying a settled marker is either mid-transition or,
     // far more commonly, a settled-history record spliced into `tabs` for
@@ -88,7 +91,7 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
     if (provenance === 'auto') {
       const view = automaticSettlementView(get(), tabId)
       if (!view) return
-      if (!effectiveSettled(view, Date.now(), usePreferencesStore.getState().inboxAutoSettleDays || null)) {
+      if (basis === 'clock' && !effectiveSettled(view, Date.now(), usePreferencesStore.getState().inboxAutoSettleDays || null)) {
         rDebug('inbox', 'automatic settlement skipped because clock no longer qualifies', { tab_id: tabId.slice(0, 8) })
         return
       }
@@ -106,7 +109,7 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return
     }
     rInfo('inbox', 'settlement requested', {
-      tab_id: tabId.slice(0, 8), provenance, pending_plan: input.hasPendingPlan,
+      tab_id: tabId.slice(0, 8), provenance, basis, pending_plan: input.hasPendingPlan,
       pending_asks: input.pendingAskCount, waiting_for_decision: input.waiting,
     })
     try {
@@ -158,6 +161,7 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
     closeInboxPanel: () => set({ inboxPanelOpen: false }),
     settleTab: async (tabId) => settle(tabId, 'settled'),
     autoSettleTab: async (tabId) => settle(tabId, 'auto'),
+    settleLandedTab: async (tabId) => settle(tabId, 'auto', 'landed'),
     restoreSettledHistoryTab: async (tabId) => {
       const record = get().settledHistory.find((tab) => tab.id === tabId)
       if (!record) {

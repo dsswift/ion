@@ -258,6 +258,20 @@ export function createWorktreeRefreshActions(
           });
         }
       }
+      // A landed worktree's work is done, so its conversations leave the
+      // Inbox, as they do when the land also removes the checkout. Each one
+      // settles by the same rules as the idle clock, so a pending plan or
+      // question keeps it in view.
+      for (const tab of tabs) {
+        if (tab.isTerminalOnly) continue;
+        await get().settleLandedTab(tab.id).catch((err: unknown) =>
+          rWarn("worktree.inventory", "could not settle a landed worktree conversation", {
+            worktree_path: worktreePath,
+            tab_id: tab.id.slice(0, 8),
+            error: String(err),
+          }),
+        );
+      }
     },
   };
 }

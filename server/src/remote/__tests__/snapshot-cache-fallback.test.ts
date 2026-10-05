@@ -105,6 +105,8 @@ function projectedTab(
     snoozedUntil: null,
     settledAt: null,
     wokeAt: null,
+    limitedUntil: null,
+    quiet: false,
     pillColor: null,
     ...overrides,
   };

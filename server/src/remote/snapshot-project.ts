@@ -68,6 +68,10 @@ export interface RendererTabInput {
   settledOverride?: 'settled' | 'active' | 'auto' | null
   canRestoreSettled?: boolean
   wokeAt?: number | null
+  limitedUntil?: number | null
+  limitType?: string
+  deferredRelease?: RemoteTabState['deferredRelease']
+  quiet?: boolean
   pinnedAt?: number | null
   pinOrderKey?: string | null
   backgroundLiveness?: 'working' | 'monitoring'
@@ -173,6 +177,10 @@ export function projectRendererTab(
     settledOverride: t.settledOverride || undefined,
     canRestoreSettled: t.canRestoreSettled,
     wokeAt: t.wokeAt || undefined,
+    limitedUntil: t.limitedUntil || undefined,
+    limitType: t.limitType || undefined,
+    deferredRelease: t.deferredRelease,
+    quiet: t.quiet || undefined,
     pinnedAt: t.pinnedAt || undefined,
     pinOrderKey: t.pinOrderKey || undefined,
     backgroundLiveness: t.backgroundLiveness,

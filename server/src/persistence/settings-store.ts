@@ -130,7 +130,13 @@ export const SETTINGS_DEFAULTS = {
   // Inbox auto-settle: days of inactivity before an idle conversation
   // files itself. 0 = off. Projectable (user preference, group 'tabs').
   inboxAutoSettleDays: 0,
-  inboxAutoSettleOnMerge: true,
+  // Usage limits: whether a conversation its account's limit stopped resumes
+  // by itself at the reset, with which prompt, and when unused weekly quota
+  // counts as about to expire (0 hours = never).
+  usageLimitAutoResume: false,
+  usageLimitResumePrompt: 'Continue where you left off.',
+  quotaExpiryAlertHours: 12,
+  quotaExpiryUnusedPercent: 25,
   // Project registry (G1): known base dirs, auto-populated from
   // conversation tabs + manual adds. Machine-local paths — never
   // projectable (iOS derives chips from tab workingDirectory).

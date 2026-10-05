@@ -2,6 +2,7 @@ import type { InboxTabView } from '@ion/shared/inbox-classify'
 import { liveBackgroundShellCount } from '@ion/shared/background-shell-counts'
 import { activeInstance } from './conversation-instance'
 import { activeQuestionsCount } from './questions-read'
+import { usageLimitedUntil } from '@ion/shared/usage-limit'
 import type { State } from './session-store-types'
 
 /**
@@ -35,5 +36,6 @@ export function inboxTabView(state: State, tab: State['tabs'][number]): InboxTab
     pendingAskCount,
     waiting: instance?.permissionDenied != null,
     failed: tab.status === 'failed',
+    limited: usageLimitedUntil(tab, Date.now()) !== null,
   }
 }

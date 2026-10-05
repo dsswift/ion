@@ -151,6 +151,8 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.snoozedAt ? { snoozedAt: t.snoozedAt } : {}),
         ...(t.lastVisitedAt ? { lastVisitedAt: t.lastVisitedAt } : {}),
         ...(t.manualUnread ? { manualUnread: true } : {}),
+        ...(t.usageLimit ? { usageLimit: t.usageLimit } : {}),
+        ...(t.deferredSend ? { deferredSend: t.deferredSend } : {}),
         ...(t.lastResult ? { lastResult: t.lastResult } : {}),
         ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
         ...(t.inputLocked ? { inputLocked: true } : {}),

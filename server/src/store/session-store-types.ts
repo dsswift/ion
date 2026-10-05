@@ -349,6 +349,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   settleTab: (tabId: string) => Promise<void>;
   /** Inbox: auto-settle an idle conversation with the same hard lock as manual settlement. */
   autoSettleTab: (tabId: string) => Promise<void>;
+  /** Inbox: auto-settle a conversation because its worktree landed. Refuses one with work or a decision pending. */
+  settleLandedTab: (tabId: string) => Promise<void>;
   /** Inbox: unseal a conversation and resume the saved engine session. */
   unsettleTab: (tabId: string, reason: "user" | "activity") => Promise<boolean>;
   /** Materialize a cold settled record for read-only history review when its execution directory still exists. */
@@ -356,6 +358,18 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   /** Inbox: snooze until the given wall-clock ms. */
   snoozeTab: (tabId: string, untilMs: number) => void;
   unsnoozeTab: (tabId: string) => void;
+  /**
+   * Hold a prompt for this conversation; the server sends it by itself once
+   * `release` is met. Replaces any prompt already held. False when refused.
+   */
+  deferSend: (tabId: string, text: string, release: import("@ion/shared/usage-limit").DeferredRelease) => boolean;
+  /** Hold this server's resume prompt for a limited conversation until its limit resets. False when refused. */
+  resumeAtLimitReset: (tabId: string) => boolean;
+  cancelDeferredSend: (tabId: string) => void;
+  /** Send the held prompt now. False when there is none or the send was refused. */
+  releaseDeferredSend: (tabId: string) => boolean;
+  /** Inbox: snooze a conversation its account's usage limit stopped until that limit resets. */
+  snoozeUntilLimitReset: (tabId: string) => void;
   /** Inbox: force the unread dot until the next visit. */
   markTabUnread: (tabId: string) => void;
   markTabRead: (tabId: string) => void;
