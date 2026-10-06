@@ -1,5 +1,5 @@
 /**
- * FR-04's credential precedence resolver: admin > exchange > user. The first
+ * FR-04's credential precedence resolver: admin > exchange > user > host. The first
  * source in {@link defaultSources} to answer non-null for a `(subject, host)`
  * pair wins -- an operator-managed `admin` ref always overrides an
  * OAuth-exchanged or self-supplied credential for the same pair, and an
@@ -22,13 +22,14 @@
  * test in THIS file from ever needing to know about provider-credential
  * sources or vice versa.
  */
-import type { GitCredentialSourceProvider, ResolvedGitCredential } from './types'
+import type { GitCredentialKind, GitCredentialSourceProvider, ResolvedGitCredential } from './types'
 import { adminRefsSource } from '../../credentials/sources/admin-refs'
 import { resolveFromSourceList } from '../../credentials/principal-source'
 import { userSuppliedSource } from './sources/user-supplied'
 import { adoExchangeSource } from './sources/exchange-ado'
 import { gitlabExchangeSource } from './sources/exchange-gitlab'
 import { githubExchangeSource } from './sources/exchange-github'
+import { hostCredentialSource } from './sources/host'
 import { currentServerConfig } from '../../config/current'
 
 function defaultSources(): GitCredentialSourceProvider[] {
@@ -97,14 +98,42 @@ export function _resetResolverSourcesForTest(): void {
   sources.length = 0
   sources.push(...defaultSources())
   userSourceInserted = false
+  hostSource = defaultHostSource()
+}
+
+/**
+ * The lowest-precedence `host` source. Kept out of {@link sources}: it only
+ * joins a walk whose caller can use a token (see {@link GitCredentialQuery}).
+ */
+let hostSource: GitCredentialSourceProvider = defaultHostSource()
+
+function defaultHostSource(): GitCredentialSourceProvider {
+  return hostCredentialSource({ enabled: () => currentServerConfig().git.hostCredentials })
+}
+
+/** TEST ONLY. Replaces the `host` source; `_resetResolverSourcesForTest` restores the real one. */
+export function _setHostSourceForTest(source: GitCredentialSourceProvider): void {
+  hostSource = source
+}
+
+/** What the caller can use, which narrows the walk. */
+export interface GitCredentialQuery {
+  /** Only a credential of this kind answers; a source holding the other kind is passed over. */
+  kind?: GitCredentialKind
+  /** How git reaches the remote. `https` lets the host's signed-in CLI answer when no Ion credential does. */
+  transport?: 'ssh' | 'https' | 'other'
 }
 
 /** Resolves the credential for `(subject, host)` by precedence, or null when no source has one. */
-export async function resolveGitCredential(subject: string, host: string): Promise<ResolvedGitCredential | null> {
+export async function resolveGitCredential(subject: string, host: string, query: GitCredentialQuery = {}): Promise<ResolvedGitCredential | null> {
   ensureUserSource()
+  const tokenUsable = query.kind === 'https-token' || (query.kind === undefined && query.transport === 'https')
   const found = await resolveFromSourceList(
-    sources,
-    (source) => source.resolve(subject, host),
+    tokenUsable ? [...sources, hostSource] : sources,
+    async (source) => {
+      const cred = await source.resolve(subject, host)
+      return cred && query.kind && cred.kind !== query.kind ? null : cred
+    },
     { subject, git_host: host },
   )
   return found?.result ?? null

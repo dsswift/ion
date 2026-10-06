@@ -263,7 +263,7 @@ export function defaultServerConfig(): ServerConfig {
     tenancy: {},
     tenancyDefault: personal ? 'shared' : 'isolated',
     discovery: defaultDiscoveryConfig(),
-    git: { credentials: [], publicOrigin: '', exchange: { ado: { enabled: false }, gitlab: null, github: null } },
+    git: { credentials: [], hostCredentials: true, hosts: [], publicOrigin: '', exchange: { ado: { enabled: false }, gitlab: null, github: null } },
     providerCredentials: [],
     logLevel: 'DEBUG',
     logging: defaultLoggingConfig(),

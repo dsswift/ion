@@ -4,7 +4,7 @@ import { dataDir } from '../paths'
 import { log as _log, warn as _warn } from '../logger'
 import { gitExec, withGitSlot, withCliPath } from './git-exec'
 import { currentPrincipal } from '../identity/request-principal'
-import { hostForGitInvocation } from './identity/remote-host'
+import { remoteForGitInvocation } from './identity/remote-host'
 import { resolveGitCredential } from './identity/resolver'
 import { materializeGitCredential } from './identity/materialize'
 
@@ -118,9 +118,9 @@ async function principalGitEnv(directory: string, args: string[]): Promise<Recor
   if (!subcommand || !NETWORK_GIT_SUBCOMMANDS.has(subcommand)) return authorEnv
 
   try {
-    const host = await hostForGitInvocation(directory, args)
-    if (!host) return authorEnv
-    const cred = await resolveGitCredential(principal.subject, host)
+    const remote = await remoteForGitInvocation(directory, args)
+    if (!remote) return authorEnv
+    const cred = await resolveGitCredential(principal.subject, remote.host, { transport: remote.transport })
     if (!cred) return authorEnv
     const credEnv = await materializeGitCredential(principal.subject, cred)
     return { ...authorEnv, ...credEnv }

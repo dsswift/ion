@@ -12,8 +12,8 @@
  * `engine-bridge-start-session.ts`).
  */
 
-/** Where a resolved credential came from — surfaced to clients so Settings can show provenance, and used to enforce resolver precedence (admin > exchange > user). */
-export type GitCredentialSource = 'admin' | 'exchange-ado' | 'exchange-gitlab' | 'exchange-github' | 'user'
+/** Where a resolved credential came from — surfaced to clients so Settings can show provenance, and used to enforce resolver precedence (admin > exchange > user > host). */
+export type GitCredentialSource = 'admin' | 'exchange-ado' | 'exchange-gitlab' | 'exchange-github' | 'user' | 'host'
 
 /** The two credential shapes git actually consumes. */
 export type GitCredentialKind = 'ssh' | 'https-token'

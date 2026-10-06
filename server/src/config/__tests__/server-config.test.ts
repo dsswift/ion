@@ -247,7 +247,7 @@ describe('loadServerConfig: tenancy.mode (FR-02)', () => {
 describe('loadServerConfig: git', () => {
   it('defaults to no credentials and every exchange disabled', () => {
     const config = loadServerConfig(dir)
-    expect(config.git).toEqual({ credentials: [], publicOrigin: '', exchange: { ado: { enabled: false }, gitlab: null, github: null } })
+    expect(config.git).toEqual({ credentials: [], hostCredentials: true, hosts: [], publicOrigin: '', exchange: { ado: { enabled: false }, gitlab: null, github: null } })
   })
 
   it('resolves an admin credential entry, keyRef/tokenRef past secretstore:', () => {

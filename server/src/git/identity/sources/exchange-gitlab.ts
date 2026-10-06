@@ -18,7 +18,8 @@ function log(msg: string, fields?: Record<string, unknown>): void {
   _log('git-identity-exchange-gitlab', msg, fields)
 }
 
-const SCOPE = 'read_repository write_repository'
+/** `api` covers git over HTTPS and the project-creation call (`git/hosting/providers/gitlab.ts`); GitLab has no narrower scope that can create a project. */
+const SCOPE = 'api'
 const flow = new OAuthCodeFlow('gitlab')
 
 function stripTrailingSlash(url: string): string {

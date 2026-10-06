@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { testRemote, readAuthor, writeAuthor, listHostSshKeys } from '../git-access'
+import { testRemote, readAuthor, writeAuthor } from '../git-access'
 
 let root: string
 const originalHome = process.env.HOME
@@ -34,16 +34,6 @@ describe('testRemote', () => {
     const bad = await testRemote(join(root, 'missing'))
     expect(bad.ok).toBe(false)
     expect(bad.error).toMatch(/does not appear to be a git repository|not found|No such file/)
-  })
-})
-
-describe('listHostSshKeys', () => {
-  it('lists public keys with type and comment, and an absent ~/.ssh yields none', () => {
-    expect(listHostSshKeys(process.env.HOME)).toEqual([])
-    mkdirSync(join(process.env.HOME!, '.ssh'))
-    writeFileSync(join(process.env.HOME!, '.ssh', 'id_ed25519.pub'), 'ssh-ed25519 AAAAC3 user@example.org\n')
-    writeFileSync(join(process.env.HOME!, '.ssh', 'id_ed25519'), 'private')
-    expect(listHostSshKeys(process.env.HOME)).toEqual([{ file: 'id_ed25519.pub', type: 'ssh-ed25519', comment: 'user@example.org' }])
   })
 })
 
