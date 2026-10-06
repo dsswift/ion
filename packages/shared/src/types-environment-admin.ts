@@ -101,10 +101,14 @@ export interface EnvironmentServerInfo {
 
 export type EnvironmentLogFile = 'engine' | 'server'
 
-/** A background job the Environment runs on a project: a clone, a setup, or a purge. */
+/**
+ * A background job the Environment runs on a project: a clone, a setup, a
+ * purge, or a create (`gitHosting.startProject`: a new repository, its
+ * clone, and a conversation opened in it).
+ */
 export interface EnvironmentJob {
   id: string
-  kind: 'clone' | 'setup' | 'purge'
+  kind: 'clone' | 'setup' | 'purge' | 'create'
   /** The project directory the job produces or acts on. */
   dir: string
   phase: 'running' | 'done' | 'failed' | 'cancelled'
@@ -119,6 +123,22 @@ export interface EnvironmentJob {
   endedAt?: number
   /** For a clone: the URL it clones. */
   url?: string
+  /** For a create: the conversation it opened, once it is open. */
+  tabId?: string
+}
+
+/** What a running job of each kind is doing, as a lowercase verb phrase. */
+export const ENVIRONMENT_JOB_VERB: Record<EnvironmentJob['kind'], string> = {
+  clone: 'cloning',
+  setup: 'setting up',
+  purge: 'purging',
+  create: 'creating',
+}
+
+/** `ENVIRONMENT_JOB_VERB` for `kind`, capitalized to open a sentence. */
+export function environmentJobTitle(kind: EnvironmentJob['kind']): string {
+  const verb = ENVIRONMENT_JOB_VERB[kind]
+  return verb.charAt(0).toUpperCase() + verb.slice(1)
 }
 
 /** `environment.git.test` result for one URL. */
