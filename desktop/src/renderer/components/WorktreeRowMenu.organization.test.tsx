@@ -183,6 +183,7 @@ describe('WorktreeRowMenu organization', () => {
       'Retire (nothing to land)Commit changes first',
       // A whole worktree moves as a clean unit, so a dirty one refuses.
       'Transfer worktree…Commit changes first',
+      'Copy path',
       'Reveal in Finder',
       'Re-provision',
       'Discard worktree…',
@@ -211,6 +212,17 @@ describe('WorktreeRowMenu organization', () => {
     const row = [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Transfer worktree…'))!
     expect(row.textContent).toContain('No conversation in it to carry')
     expect(row.disabled).toBe(true)
+  })
+
+  it('copies the worktree path to the clipboard and closes', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render()
+
+    await press('Copy path')
+
+    expect(writeText).toHaveBeenCalledWith(WT)
+    expect(closed).toBe(1)
   })
 
   it('opens a confirmation before discarding a worktree', async () => {

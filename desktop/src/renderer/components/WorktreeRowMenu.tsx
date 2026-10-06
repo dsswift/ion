@@ -252,6 +252,14 @@ export function WorktreeRowMenu({
         openTransferDialog({ tabId: first.tabId, initialMode: "worktree" });
         onClose();
       },
+      onCopyPath: () => {
+        void navigator.clipboard
+          .writeText(entry.worktreePath)
+          .then(() => rInfo("worktree.menu", "worktree path copied", { worktree_path: entry.worktreePath }))
+          .catch((err: unknown) =>
+            rWarn("worktree.menu", "copy path failed", { worktree_path: entry.worktreePath, error: String(err) }),
+          );
+      },
       onReveal: () => {
         // Reveal needs a Finder/Explorer; a browser client has neither.
         if (!host.capabilities().includes("nativeShell")) return;
