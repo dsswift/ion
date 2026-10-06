@@ -4,7 +4,7 @@ import "testing"
 
 func TestPollDispatchOptionsSuppressContextAndMutationTools(t *testing.T) {
 	manager := &Manager{}
-	opts := manager.pollDispatchOptions("session", "poll-1", "judge evidence", "model", t.TempDir())
+	opts := manager.pollDispatchOptions("session", "poll-1", "judge evidence", "model", t.TempDir(), 0)
 
 	if opts.ContextPolicy == nil ||
 		opts.ContextPolicy.IncludeGlobalContext == nil || *opts.ContextPolicy.IncludeGlobalContext ||

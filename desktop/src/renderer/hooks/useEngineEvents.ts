@@ -7,6 +7,7 @@ import {
 import { createFlushScheduler, type FlushScheduler } from './engine-event-flush-scheduler'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
 import { host } from '../host/host-instance'
+import { startTerminalActivitySync } from './terminal-activity-sync'
 
 /**
  * Subscribes to the single normalized-event stream (ion:normalized-event),
@@ -27,37 +28,8 @@ import { host } from '../host/host-instance'
  */
 export function useEngineEvents() {
   useEffect(() => {
-    // `terminal.activitySnapshot` is a server read and `ion:terminal-activity`
-    // a tab-scoped channel, so every host bootstraps the same way.
-    let live = true
-    const receivedKeys = new Set<string>()
-    void host.shell.terminalActivitySnapshot()
-      .then((activities) => {
-        if (!live) return
-        useSessionStore.setState((state) => {
-          const terminalActivities = new Map(activities.map((activity) => [activity.key, activity]))
-          for (const key of receivedKeys) {
-            const current = state.terminalActivities.get(key)
-            if (current) terminalActivities.set(key, current)
-            else terminalActivities.delete(key)
-          }
-          return { terminalActivities }
-        })
-      })
-      .catch((err) => rWarn('terminal', 'terminal activity snapshot failed', { error: String(err) }))
-    const unsubscribe = host.shell.onTerminalActivity((activity) => {
-      receivedKeys.add(activity.key)
-      useSessionStore.setState((state) => {
-        const terminalActivities = new Map(state.terminalActivities)
-        if (activity.active) terminalActivities.set(activity.key, activity)
-        else terminalActivities.delete(activity.key)
-        return { terminalActivities }
-      })
-    })
-    return () => {
-      live = false
-      unsubscribe()
-    }
+    // Every Environment's terminals, read on connect and kept live.
+    return startTerminalActivitySync()
   }, [])
   const handleNormalizedEvent = useSessionStore((s) => s.handleNormalizedEvent)
   const handleStatusChange = useSessionStore((s) => s.handleStatusChange)

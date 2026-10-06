@@ -27,7 +27,12 @@ type activePoll struct {
 	deadline     time.Time
 	maxAttempts  int
 	timer        *time.Timer
-	cwd          string
+	// deadlineTimer ends the poll when its deadline passes, whatever state
+	// its attempts are in. Without it the deadline was only read when an
+	// attempt started, so a poll with no attempt scheduled lived forever and
+	// held its session in pending work.
+	deadlineTimer *time.Timer
+	cwd           string
 	// owner is the dispatch ID of the run that started this poll, or "" for
 	// the root session. A run parks only on the polls it started (see
 	// OutstandingPollIDsFor).
@@ -60,6 +65,17 @@ type pollChildAnswer struct {
 // dispatching a poll-check child, and a session-wide park set made that child
 // park on the very poll it was dispatched to resolve.
 func (m *Manager) startPoll(s *engineSession, key, owner string, request tools.PollRequest, cwd string) (string, error) {
+	id, err := m.registerPoll(s, key, owner, request, cwd)
+	if err != nil {
+		return "", err
+	}
+	m.runPollAttempt(key, id)
+	return id, nil
+}
+
+// registerPoll records a poll on the session and arms its deadline. It runs
+// no attempt.
+func (m *Manager) registerPoll(s *engineSession, key, owner string, request tools.PollRequest, cwd string) (string, error) {
 	cfg := m.pollConfig()
 	m.mu.Lock()
 	if len(s.activePolls) >= cfg.MaxActivePerSession {
@@ -85,11 +101,11 @@ func (m *Manager) startPoll(s *engineSession, key, owner string, request tools.P
 		s.activePolls = make(map[string]*activePoll)
 	}
 	s.activePolls[id] = poll
+	poll.deadlineTimer = time.AfterFunc(deadline, func() { m.expirePoll(key, id) })
 	m.mu.Unlock()
 	m.emit(key, types.EngineEvent{Type: "engine_poll_started", PollStarted: &poll.state})
 	m.emitPollStatus(key, "poll_started")
 	utils.LogWithFields(utils.LevelInfo, "session.poll", "poll registered", map[string]any{"session_id": key, "poll_id": id, "owner_dispatch_id": owner, "interval_ms": interval.Milliseconds(), "deadline_ms": deadline.Milliseconds(), "max_attempts": attempts})
-	m.runPollAttempt(key, id)
 	return id, nil
 }
 
@@ -156,13 +172,19 @@ var pollEvidenceTools = []string{
 	"WorktreeList", "WorktreeCommits", "WorktreeDiff",
 }
 
-func (m *Manager) pollDispatchOptions(key, id, prompt, model, cwd string) extension.DispatchAgentOpts {
+// ownerDepth is the depth of the run that started the poll (0 for the root).
+func (m *Manager) pollDispatchOptions(key, id, prompt, model, cwd string, ownerDepth int) extension.DispatchAgentOpts {
 	includeContext := false
 	return extension.DispatchAgentOpts{
 		Name: "poll-check", Task: prompt, Model: model, ProjectPath: cwd,
 		DisplayName: "Poll check", Detached: true, Background: true,
 		AllowedTools:   append([]string(nil), pollEvidenceTools...),
 		SubAgentPolicy: "allowlist", AllowedSubAgents: []string{},
+		// The judge is how a poll ends, so it must launch for any caller the
+		// depth guard let run, including one at the deepest allowed level. It
+		// may dispatch nothing itself, so granting it exactly its own level
+		// adds one leaf and loosens nothing else.
+		MaxDispatchDepth: extcontext.LeafDispatchDepthCap(ownerDepth),
 		// Poll is a bounded evidence judge. pollChildPrompt already carries its
 		// complete intent, check command, raw evidence, and verdict vocabulary.
 		// Repository contribution rules and global workflow prose cannot change
@@ -259,9 +281,30 @@ func (m *Manager) runPollAttempt(key, id string) {
 		"session_id": key, "poll_id": id, "parent_dispatch_id": owner, "count": pollDepth, "child_depth": pollDepth + 1, "attempt": attempt,
 	})
 	dispatch := extcontext.BuildDispatchAgentFunc(acc, registry, pollDepth, owner)
-	result, err := dispatch(m.pollDispatchOptions(key, id, prompt, model, cwd))
+	result, err := dispatch(m.pollDispatchOptions(key, id, prompt, model, cwd, pollDepth))
 	if err != nil {
 		m.finishPoll(key, id, pollChildAnswer{Verdict: types.PollVerdictStuck, Evidence: err.Error(), Reason: "poll dispatch failed"})
+		return
+	}
+	m.recordPollCheckLaunch(key, id, attempt, result)
+}
+
+// recordPollCheckLaunch ties a launched judge to its poll, or ends the poll
+// when no judge started.
+//
+// A dispatch guard can refuse without an error: it returns a result that
+// names no dispatch. No judge means no OnComplete, OnError, or OnRecall, so
+// nothing would ever re-arm or finish the poll.
+func (m *Manager) recordPollCheckLaunch(key, id string, attempt int, result *extension.DispatchAgentResult) {
+	if result == nil || result.DispatchID == "" {
+		evidence := "The poll check agent was not launched."
+		if result != nil && result.Output != "" {
+			evidence = result.Output
+		}
+		utils.LogWithFields(utils.LevelWarn, "session.poll", "poll check not launched; ending poll", map[string]any{
+			"session_id": key, "poll_id": id, "attempt": attempt, "error": evidence,
+		})
+		m.finishPoll(key, id, pollChildAnswer{Verdict: types.PollVerdictStuck, Evidence: evidence, Reason: "poll check not launched"})
 		return
 	}
 	m.mu.Lock()
@@ -358,6 +401,7 @@ func (m *Manager) handlePollResult(key, id, output string) {
 	poll := s.activePolls[id]
 	if poll == nil {
 		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session.poll", "poll result arrived after poll ended; dropped", map[string]any{"session_id": key, "poll_id": id, "verdict": answer.Verdict})
 		return
 	}
 	poll.state.LatestEvidence = answer.Evidence
@@ -386,9 +430,7 @@ func (m *Manager) finishPoll(key, id string, answer pollChildAnswer) {
 		m.mu.Unlock()
 		return
 	}
-	if poll.timer != nil {
-		poll.timer.Stop()
-	}
+	poll.stopTimers()
 	delete(s.activePolls, id)
 	result := types.PollTerminalPayload{PollState: poll.state, Verdict: answer.Verdict, Evidence: answer.Evidence, Reason: answer.Reason}
 	m.mu.Unlock()

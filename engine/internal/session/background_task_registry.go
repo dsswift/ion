@@ -160,9 +160,7 @@ func (m *Manager) clearOutstandingBackgroundTasks(key string) {
 	}
 	s.outstandingBackgroundTasks = nil
 	for _, poll := range s.activePolls {
-		if poll.timer != nil {
-			poll.timer.Stop()
-		}
+		poll.stopTimers()
 	}
 	s.activePolls = nil
 	s.parked = nil

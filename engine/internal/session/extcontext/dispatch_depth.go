@@ -46,6 +46,14 @@ func resolveMaxDispatchDepth(perDispatch int, engineCfg int) int {
 	return DefaultMaxDispatchDepth
 }
 
+// LeafDispatchDepthCap is the per-dispatch depth cap that admits exactly one
+// child below a caller at callerDepth and nothing below that child. It is for
+// engine-owned leaf work, such as a poll judge, that must launch for any
+// caller the guard let run, including one at the deepest allowed level.
+func LeafDispatchDepthCap(callerDepth int) int {
+	return callerDepth + 2
+}
+
 // remainingDepthBudget reports child dispatch levels available to an agent at
 // currentDepth under effectiveCap. A cap reached by the next child reports 0.
 func remainingDepthBudget(effectiveCap, currentDepth int) int {
