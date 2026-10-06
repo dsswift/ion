@@ -1,6 +1,6 @@
 import type { ConversationPane } from "@ion/shared/types-engine";
 import type { TabState } from "@ion/shared/types";
-import type { InboxSortOrder } from "./InboxControls";
+import type { InboxSortOrder } from "./inbox-sort";
 import { sortPinnedByOrder } from "@ion/shared/inbox-pin-order";
 import { inboxActivityOrder } from "@ion/shared/inbox-classify";
 import { evaluateSessionBusyGuard } from "@ion/server/store/slices/session-busy-guard";

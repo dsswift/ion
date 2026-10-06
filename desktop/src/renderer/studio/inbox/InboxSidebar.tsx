@@ -11,7 +11,8 @@ import { tabMatchesEnvironmentFilter } from '../connection/view-filter'
 import { fuzzyMatchCommand } from '@ion/shared/fuzzy-match'
 import { NewConversationPicker } from '../../components/NewConversationPicker'
 import { NewProjectPanel, type ProjectCheckout } from '../new-project/NewProjectPanel'
-import { InboxControlButton, InboxEnvironmentPicker, InboxProjectScopePicker, InboxSortPicker, type InboxSortOrder } from './InboxControls'
+import { InboxControlButton, InboxEnvironmentPicker, InboxProjectScopePicker, InboxSortPicker } from './InboxControls'
+import { DEFAULT_INBOX_SORT_ORDER, parseInboxSortOrder, type InboxSortOrder } from './inbox-sort'
 import { inboxProjectFor } from './inbox-grouping'
 import { partitionSettled } from './settled-history'
 import { SettledHistoryView } from './SettledHistoryView'
@@ -53,8 +54,7 @@ function savedSet(key: string): Set<string> {
 }
 function savedProjectFilter(): InboxProjectSelection { return loadProjectSelection(localStorage.getItem(PROJECT_FILTER_KEY)) }
 function savedSortOrder(): InboxSortOrder {
-  const value = localStorage.getItem(SORT_ORDER_KEY)
-  return value === 'created' || value === 'title' || value === 'activity' ? value : 'activity'
+  return parseInboxSortOrder(localStorage.getItem(SORT_ORDER_KEY))
 }
 function settledOrder(tabs: readonly TabState[]): TabState[] {
   return [...tabs].sort((left, right) => (right.settledAt ?? 0) - (left.settledAt ?? 0) || left.id.localeCompare(right.id))
@@ -171,7 +171,13 @@ export function InboxSidebar(): React.JSX.Element {
   useEffect(() => { localStorage.setItem(SNOOZED_COLLAPSED_KEY, JSON.stringify([...snoozedCollapsed])) }, [snoozedCollapsed])
   useEffect(() => { localStorage.setItem(SNOOZED_EXPANDED_KEY, String(snoozedOpen)) }, [snoozedOpen])
   useEffect(() => { localStorage.setItem(SETTLED_EXPANDED_KEY, String(settledOpen)) }, [settledOpen])
-  useEffect(() => { localStorage.setItem(SORT_ORDER_KEY, sortOrder) }, [sortOrder])
+  // Saved only when the operator picks one, so an install that never chose
+  // keeps following the default instead of freezing it into storage.
+  const chooseSortOrder = useCallback((order: InboxSortOrder) => {
+    localStorage.setItem(SORT_ORDER_KEY, order)
+    rInfo('inbox', 'sort order chosen', { sort_order: order })
+    setSortOrder(order)
+  }, [])
   useEffect(() => { localStorage.setItem(WORKING_LAST_KEY, String(workingLast)) }, [workingLast])
   useEffect(() => {
     const stored = saveProjectSelection(projectFilter)
@@ -300,10 +306,10 @@ export function InboxSidebar(): React.JSX.Element {
         />
         <InboxControlButton
           buttonRef={sortButton}
-          active={sortOrder !== 'created'}
+          active={sortOrder !== DEFAULT_INBOX_SORT_ORDER}
           icon={<SortAscending size={13} />}
           title={`Sort: ${sortName}`}
-          label={sortOrder !== 'created' ? sortName : null}
+          label={sortOrder !== DEFAULT_INBOX_SORT_ORDER ? sortName : null}
           onClick={() => {
             setEnvironmentAnchor(null)
             setProjectAnchor(null)
@@ -323,7 +329,7 @@ export function InboxSidebar(): React.JSX.Element {
       {newProjectCheckout && <NewConversationPicker initialDirectory={newProjectCheckout.directory} initialEnvironmentId={newProjectCheckout.environmentId} onClose={() => setNewProjectCheckout(null)} />}
       {projectAnchor && <InboxProjectScopePicker anchor={projectAnchor} projects={projectOptions} selected={projectFilter} onSelect={setProjectFilter} triggerRef={projectButton} onClose={() => setProjectAnchor(null)} />}
       {environmentAnchor && <InboxEnvironmentPicker anchor={environmentAnchor} environments={environmentOptions} selected={environmentFilter} onSelect={(next) => { rInfo('inbox', 'environment view filter changed', { filter: next }); setEnvironmentFilter(next) }} triggerRef={environmentButton} onClose={() => setEnvironmentAnchor(null)} />}
-      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} workingLast={workingLast} onWorkingLast={setWorkingLast} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}
+      {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={chooseSortOrder} workingLast={workingLast} onWorkingLast={setWorkingLast} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}
     </div>
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px' }}>
       {searching ? (searchRows.length ? searchRows.map((tab) => tab.settledAt != null ? settledRow(tab) : row(tab, 'card', inboxProjectFor(tab, benches).name)) : <div style={emptyText(colors)}>No conversations found.</div>) : <>
