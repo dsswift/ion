@@ -5,7 +5,7 @@
  */
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -15,7 +15,7 @@ let tools = { ...empty }
 const runQuickTool = vi.fn(async (_tab: string, _tool: string) => undefined)
 vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { activeTabId: string }) => unknown) => selector({ activeTabId: 'tab-1' }),
+    (selector: (s: { activeTabId: string; tabs: { id: string }[] }) => unknown) => selector({ activeTabId: 'tab-1', tabs: [{ id: 'tab-1' }] }),
     { getState: () => ({ runQuickTool }) },
   ),
 }))
@@ -42,10 +42,14 @@ vi.mock('../QuickToolsTray', () => ({
 }))
 
 import { ComposerQuickToolsButton } from './ComposerQuickToolsButton'
+import { useEnvironmentSettingsStore } from '../../studio/state/environment-settings-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 describe('ComposerQuickToolsButton', () => {
   let container: HTMLDivElement
   let root: Root
+  // A full-view connection: the server granted it the terminal scope.
+  beforeEach(() => { useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate']) })
   afterEach(() => { act(() => root.unmount()); container.remove(); tools = { ...empty }; vi.clearAllMocks() })
 
   function mount(): void {

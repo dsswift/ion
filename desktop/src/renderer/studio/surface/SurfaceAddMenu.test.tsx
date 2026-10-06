@@ -38,6 +38,8 @@ vi.mock('../../host/host-instance', () => ({
 }))
 
 import { SurfaceAddMenu } from './SurfaceAddMenu'
+import { useEnvironmentSettingsStore } from '../state/environment-settings-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 describe('SurfaceAddMenu availability filtering', () => {
   let container: HTMLDivElement
@@ -50,6 +52,8 @@ describe('SurfaceAddMenu availability filtering', () => {
     graphStoreState.available = false
     caps.list = ['browser']
     caps.portForward = null
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   })
 
   afterEach(() => {

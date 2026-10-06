@@ -5,11 +5,13 @@ import { Tooltip } from '../../components/git/Tooltip'
 import { ConflictsDialog } from '../../components/git/ConflictsDialog'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rError } from '../../rendererLogger'
+import { useEnvironmentTerminalAccess } from '../connection/terminal-access'
 import type { DirConversation } from '@ion/shared/worktree-conversations'
 import type { IntegrationWorkspace } from '@ion/shared/types'
 
 /** The compact Inbox header for one integration bench. */
 export function InboxBenchBar({
+  environmentId,
   workspace,
   conversations,
   terminalTabId,
@@ -25,6 +27,8 @@ export function InboxBenchBar({
   onAssemble,
   assembling,
 }: {
+  /** The server the bench lives on; it decides whether a terminal is offered. */
+  environmentId: string
   workspace: IntegrationWorkspace
   conversations: readonly DirConversation[]
   terminalTabId?: string
@@ -46,6 +50,7 @@ export function InboxBenchBar({
   assembling: boolean
 }): React.JSX.Element {
   const colors = useColors()
+  const terminalAccess = useEnvironmentTerminalAccess(environmentId)
   const [conflictDirectory, setConflictDirectory] = useState<string | null>(null)
   // The open merge is the bench's own state, so its door is on the bench bar:
   // no member row has to report a conflict for it to be reachable.
@@ -80,11 +85,11 @@ export function InboxBenchBar({
       </Tooltip>
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Bench · {workspace.sourceBranch}</span>
       {conversations.length > 0 && <span data-testid="inbox-bench-conversation-count" style={{ color: colors.textTertiary, fontSize: 10 }}>{conversations.length}</span>}
-      <button
+      {terminalAccess && <button
         aria-label={terminalTabId ? 'Go to bench terminal' : 'Open bench terminal'}
         onClick={(event) => { event.stopPropagation(); onOpenTerminal() }}
         style={buttonStyle(colors)}
-      ><Terminal size={13} /></button>
+      ><Terminal size={13} /></button>}
       <button
         aria-label="Bench actions"
         onClick={(event) => { event.stopPropagation(); onMenu({ x: event.clientX, y: event.clientY }) }}

@@ -3,6 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IntegrationWorkspace } from '@ion/shared/types'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { useEnvironmentSettingsStore } from '../state/environment-settings-store'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -50,11 +52,13 @@ let onClose: ReturnType<typeof vi.fn<() => void>>
 
 async function renderMenu(): Promise<void> {
   await act(async () => {
-    root.render(<InboxBenchMenu repoPath="/repo" workspace={workspace} anchor={{ x: 20, y: 20 }} onClose={onClose} />)
+    root.render(<InboxBenchMenu environmentId={LOCAL_ENVIRONMENT_ID} repoPath="/repo" workspace={workspace} anchor={{ x: 20, y: 20 }} onClose={onClose} />)
   })
 }
 
 beforeEach(() => {
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   vi.clearAllMocks()
   host = document.createElement('div')
   outside = document.createElement('button')
@@ -91,5 +95,14 @@ describe('InboxBenchMenu dismissal', () => {
 
     expect(benchResolveConflict).toHaveBeenCalledWith('/repo', 'main')
     expect(document.querySelector('[data-testid="conflicts-dialog"]')?.textContent).toBe('/integration/repo-main')
+  })
+
+  it('offers Open Bench Terminal only to a connection with terminal:operate', async () => {
+    await renderMenu()
+    expect(host.ownerDocument.body.textContent).toContain('Open Bench Terminal')
+    await act(async () => { useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate']) })
+    await renderMenu()
+    expect(host.ownerDocument.body.textContent).not.toContain('Open Bench Terminal')
+    expect(host.ownerDocument.body.textContent).toContain('Open Bench Conversation')
   })
 })

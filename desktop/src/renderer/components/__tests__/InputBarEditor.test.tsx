@@ -5,7 +5,7 @@
  */
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -166,6 +166,8 @@ vi.mock("../ImageModelNotice", () => ({ ImageModelNotice: () => null }));
 
 import { EditorView } from "@codemirror/view";
 import { InputBar, useBashModeStore } from "../InputBar";
+import { useEnvironmentSettingsStore } from "../../studio/state/environment-settings-store";
+import { LOCAL_ENVIRONMENT_ID } from "@ion/shared/types-environments";
 
 describe("InputBar on the CodeMirror editor", () => {
   let container: HTMLDivElement;
@@ -182,6 +184,11 @@ describe("InputBar on the CodeMirror editor", () => {
     act(() => view.dispatch(view.state.replaceSelection(text)));
   const key = (view: EditorView, init: KeyboardEventInit): void =>
     act(() => { view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init })); });
+
+  // A full-view connection: the server granted it the terminal scope, so `!` enters bash mode.
+  beforeEach(() => {
+    useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ["conversations:read", "conversations:operate", "terminal:operate"]);
+  });
 
   afterEach(async () => {
     await act(async () => root.unmount());

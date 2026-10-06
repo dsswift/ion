@@ -10,6 +10,7 @@ import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, slashMenuEnterAction, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { useActiveTerminalAccess } from '../studio/connection/terminal-access'
 import { selectedConversationModel } from '@ion/shared/conversation-model'
 import type { DiscoveredCommand } from '@ion/shared/types'
 import { getRendererExtensionCommands } from '@ion/server/store/slices/engine-event-slice'
@@ -84,7 +85,10 @@ export function InputBar() {
   const bashExecuting = tab?.bashExecuting ?? false
   const tabsReady = useSessionStore((s) => s.tabsReady)
   const initProgress = useSessionStore((s) => s.initProgress)
-  const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
+  // `!` runs a shell command on the server, which refuses it without terminal access.
+  const bashEntryPreference = usePreferencesStore((s) => s.bashCommandEntry)
+  const terminalAccess = useActiveTerminalAccess()
+  const bashCommandEntry = bashEntryPreference && terminalAccess
   const colors = useColors()
 
   // Determine whether the active conversation instance has an image-generation

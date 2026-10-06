@@ -1,11 +1,16 @@
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rDebug, rWarn } from '../rendererLogger'
+import { terminalAccessForTab } from './connection/terminal-access'
 
 /** Add a shell to the active conversation through the owner-forwarded action. */
 export function addActiveConversationShell(): void {
   const state = useSessionStore.getState()
   const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
   if (!tab) return
+  if (!terminalAccessForTab(tab.id)) {
+    rDebug('studio.terminal', 'conversation shell not added: this connection has no terminal access', { tab_id: tab.id })
+    return
+  }
 
   void state.addTerminalInstance(tab.id, 'user', tab.workingDirectory).then((instanceId) => {
     rDebug('studio.terminal', 'conversation shell added', {
@@ -27,6 +32,10 @@ export function toggleActiveConversationTerminal(): void {
   const state = useSessionStore.getState()
   const tabId = state.activeTabId
   if (!tabId) return
+  if (!terminalAccessForTab(tabId)) {
+    rDebug('studio.terminal', 'conversation terminal not toggled: this connection has no terminal access', { tab_id: tabId })
+    return
+  }
   const opening = !state.terminalOpenTabIds.has(tabId)
 
   void state.toggleTerminal(tabId).then(() => {

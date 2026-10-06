@@ -23,9 +23,13 @@ vi.mock('../../../preferences', () => ({
 import { resetSurfaceHydrationForTests, useSurfaceStore } from '../surface-store'
 import { QUESTIONS_SURFACE_ID } from '@ion/shared/studio-surface-types'
 import { serializeSurface } from '@ion/shared/studio-surface-persistence'
+import { useEnvironmentSettingsStore } from '../../state/environment-settings-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 const studioSetSetting = vi.fn().mockResolvedValue(true)
 beforeEach(() => {
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   ;(window as unknown as { ion: unknown }).ion = {
     studioSetSetting,
     studioGetSettings: vi.fn().mockResolvedValue(null),

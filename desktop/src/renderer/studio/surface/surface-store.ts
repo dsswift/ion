@@ -51,6 +51,7 @@ import {
 } from "@ion/shared/studio-surface-ordering";
 import { rDebug, rInfo } from "../../rendererLogger";
 import { surfaceTabOfferedNow } from "./surface-tab-offer";
+import { activeTerminalAccess } from "../connection/terminal-access";
 import { createRuntimePanelActions } from "./surface-runtime-panel-actions";
 import { scratchTabsForProject } from "./surface-scratch";
 import { createScratchSurfaceActions } from "./surface-scratch-actions";
@@ -512,6 +513,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   }),
 
   openTerminalTab: (cwd) => {
+    if (!activeTerminalAccess()) {
+      rInfo("studio.surface", "terminal tab not opened: this connection has no terminal access");
+      return;
+    }
     const instanceId = crypto.randomUUID();
     const id = terminalTabId(instanceId);
     updateCurrent(set, get, (current) => ({
