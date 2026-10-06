@@ -3,6 +3,7 @@ import { FolderOpen } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
 import { pickDirectoryForSession } from '@ion/server/store/remote-fs-store'
+import { useNewConversationLock } from '../../lib/new-conversation-lock'
 import { rError } from '../../rendererLogger'
 import { useShallow } from 'zustand/shallow'
 
@@ -13,6 +14,8 @@ export function EmptyState() {
     useShallow((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isTerminalOnly ?? false),
   )
   const colors = useColors()
+  // A lock that names a directory already decided where this conversation lives.
+  if (useNewConversationLock()?.foldersLocked) return null
 
   const handleChooseFolder = async () => {
     const dir = await pickDirectoryForSession({ isTerminalOnly })

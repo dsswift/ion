@@ -18,8 +18,9 @@ vi.mock("@ion/server/store/sessionStore", () => {
   useSessionStore.getState = () => sessionState;
   return { useSessionStore };
 });
+const preferences = { projects: {} as Record<string, never>, enterpriseNewConversationDefaults: null as null | { locked: boolean; baseDirectory: string; engineProfileId: string } };
 vi.mock("../../preferences", () => ({
-  usePreferencesStore: (selector: (state: { projects: Record<string, never> }) => unknown) => selector({ projects: {} }),
+  usePreferencesStore: (selector: (state: typeof preferences) => unknown) => selector(preferences),
 }));
 vi.mock("../../theme", () => ({
   useColors: () => ({
@@ -55,6 +56,7 @@ beforeEach(() => {
   useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, FULL_VIEW);
 });
 afterEach(() => {
+  preferences.enterpriseNewConversationDefaults = null;
   act(() => root?.unmount());
   root = null;
   document.body.replaceChildren();
@@ -122,5 +124,29 @@ describe("StudioTitleBar native chrome", () => {
     expect(labels).not.toContain("Toggle terminal");
     expect(labels).toContain("Toggle sidebar");
     expect(labels).toContain("Toggle canvas panel");
+  });
+});
+
+describe("StudioTitleBar project breadcrumb", () => {
+  async function renderBar(): Promise<HTMLDivElement> {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<StudioTitleBar panes={{ leftSidebarVisible: false, leftSidebarWidth: 0, terminalVisible: false, surfaceVisible: false, onToggleSidebar: vi.fn(), onToggleTerminal: vi.fn(), onToggleSurface: vi.fn() }} />);
+    });
+    return host;
+  }
+
+  it("is a button that opens the new-conversation picker when nothing locks the folder", async () => {
+    const host = await renderBar();
+    expect(host.querySelector('button[aria-label="Start a new conversation"]')).not.toBeNull();
+  });
+
+  it("is a plain label, with no picker to open, under a directory lock", async () => {
+    preferences.enterpriseNewConversationDefaults = { locked: true, baseDirectory: "/work/project", engineProfileId: "orion" };
+    const host = await renderBar();
+    expect(host.querySelector('button[aria-label="Start a new conversation"]')).toBeNull();
+    expect(host.querySelector('[data-testid="studio-title-bar-project"]')?.textContent).toContain("project");
   });
 });

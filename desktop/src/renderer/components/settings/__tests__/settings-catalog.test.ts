@@ -137,6 +137,31 @@ describe('visibleSections', () => {
   })
 })
 
+describe('visibleSections under a new-conversation folder lock', () => {
+  const page = (id: string) => SETTINGS_PAGES.find((p) => p.id === id)!
+  const local = { hiddenGroups: [], capabilities: ['local' as const] }
+
+  it('drops the sections that only add, change, or remove projects and profiles', () => {
+    const locked = { ...local, foldersLocked: true }
+    expect(visibleSections(page('projects'), locked)).toEqual([])
+    expect(visibleSections(page('agent'), locked).map((s) => s.id)).not.toContain('engine-profiles')
+    expect(visiblePages(SETTINGS_PAGES, 'server', locked).map((p) => p.id)).not.toContain('projects')
+  })
+
+  it('leaves every other section where it was, and shows all of them with no lock', () => {
+    const locked = visibleSections(page('agent'), { ...local, foldersLocked: true }).map((s) => s.id)
+    expect(locked).toEqual(visibleSections(page('agent'), local).map((s) => s.id).filter((id) => id !== 'engine-profiles'))
+    expect(visibleSections(page('projects'), local).map((s) => s.id)).toEqual(['projects'])
+    expect(visibleSections(page('agent'), local).map((s) => s.id)).toContain('engine-profiles')
+  })
+
+  it('finds nothing in search for a section the lock hides', () => {
+    const lockedFilter = (p: (typeof ALL_PAGES)[number]) => visibleSections(p, { ...local, foldersLocked: true })
+    expect(searchSettings('clone relocate', ALL_PAGES, lockedFilter)).toEqual([])
+    expect(searchSettings('engine profiles extensions', ALL_PAGES, lockedFilter)).toEqual([])
+  })
+})
+
 describe('searchSettings', () => {
   const all = (p: (typeof ALL_PAGES)[number]) => p.sections
   it('finds individual settings by any word of their label or keywords', () => {

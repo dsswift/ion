@@ -270,13 +270,23 @@ export function resolveSettingsTab(tab: string | null | undefined, environmentId
 export interface SectionFilter {
   hiddenGroups: readonly string[]
   capabilities: readonly Capability[]
+  /** True while the new-conversation lock names a directory: the sections that add or change projects and profiles go. */
+  foldersLocked?: boolean
 }
+
+/**
+ * Sections that only manage the projects and profiles a new conversation can
+ * pick from. Under a new-conversation lock that names a directory there is
+ * nothing to pick, and the server refuses every change they make.
+ */
+const SECTIONS_HIDDEN_UNDER_FOLDER_LOCK: ReadonlySet<string> = new Set(['projects', 'engine-profiles'])
 
 /** The sections of `page` this host and this policy show. */
 export function visibleSections(page: SettingsPage, filter: SectionFilter): SettingsSection[] {
   const hidden = new Set(filter.hiddenGroups)
   return page.sections.filter((s) =>
     !hidden.has(s.group)
+    && !(filter.foldersLocked && SECTIONS_HIDDEN_UNDER_FOLDER_LOCK.has(s.id))
     && (!s.requires || filter.capabilities.includes(s.requires)))
 }
 
