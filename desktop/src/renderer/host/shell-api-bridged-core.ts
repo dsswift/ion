@@ -106,7 +106,7 @@ export interface BridgedCoreShell {
   }>;
   terminalActiveTabs(): Promise<string[]>;
   terminalActivitySnapshot(): Promise<import('@ion/shared/terminal-activity').TerminalActivity[]>;
-  onTerminalActivity(callback: (activity: import('@ion/shared/terminal-activity').TerminalActivity) => void): () => void;
+  onTerminalActivity(callback: (activity: import('@ion/shared/terminal-activity').TerminalActivity, environmentId: string) => void): () => void;
   onTerminalData(callback: (key: string, data: string) => void): () => void;
   onTerminalExit(callback: (key: string, exitCode: number) => void): () => void;
   /** The terminal's processes were stopped and a fresh shell started under the same key; `startError` is set when it failed to start. */

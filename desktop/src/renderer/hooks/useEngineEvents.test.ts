@@ -32,6 +32,11 @@ const shell = new Proxy(
 ) as unknown as import('../../preload/ionapi').IonAPI
 
 vi.mock('../host/host-instance', () => ({ host: { capabilities, shell: undefined, onFrame } }))
+// The local Environment is connected, so the activity sync reads it at once.
+vi.mock('../studio/connection/registry', () => ({
+  registry: { subscribe: (listener: (states: Map<string, { phase: string }>) => void) => { listener(new Map([['local', { phase: 'connected' }]])); return () => {} } },
+}))
+vi.mock('../studio/connection/catalog', () => ({ isManageOnlyEnvironment: () => false }))
 
 function Probe(): React.ReactElement {
   useEngineEvents()
