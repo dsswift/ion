@@ -13,6 +13,7 @@ import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveSt
 import { Tooltip } from '../git/Tooltip'
 import { QuickToolsTray } from '../QuickToolsTray'
 import { useActiveQuickTools } from './useActiveQuickTools'
+import { useActiveTerminalAccess } from '../../studio/connection/terminal-access'
 import { COMPOSER_QUICK_TOOLS_EVENT } from './composer-events'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import type { ProjectQuickTool } from '@ion/shared/project-studio-config'
@@ -27,7 +28,9 @@ export function ComposerQuickToolsButton(): React.JSX.Element | null {
   // A project tool chosen before the project's tools were trusted. It runs
   // only if the operator approves the list; every other outcome drops it.
   const [pendingTool, setPendingTool] = useState<ProjectQuickTool | null>(null)
-  const hasTools = user.length + project.length > 0
+  // A Quick Tool runs a shell command on the server, which refuses it without terminal access.
+  const terminalAccess = useActiveTerminalAccess()
+  const hasTools = terminalAccess && user.length + project.length > 0
   const [open, setOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const state = useInteractiveState()

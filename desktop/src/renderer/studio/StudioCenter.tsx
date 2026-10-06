@@ -20,6 +20,7 @@ import { ConversationErrorBoundary } from "../components/conversation";
 import { InputBar } from "../components/InputBar";
 import { TerminalPanel } from "../components/TerminalPanel";
 import { TerminalBigScreen } from "../components/TerminalBigScreen";
+import { useActiveTerminalAccess } from "./connection/terminal-access";
 import { DispatchSplitPane } from "./DispatchSplitPane";
 import { activeDispatchSplit } from "./dispatch-split-state";
 import { useResizablePane } from "../hooks/useResizablePane";
@@ -49,7 +50,8 @@ export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
     s.tabs.find((tab) => tab.id === s.activeTabId),
   );
   const workingDirectory = activeTab?.workingDirectory ?? "~";
-  const isTerminalOnly = activeTab?.isTerminalOnly ?? false;
+  const terminalAccessForOnly = useActiveTerminalAccess();
+  const isTerminalOnly = (activeTab?.isTerminalOnly ?? false) && terminalAccessForOnly;
   const dispatchSplitOpen = useSessionStore((s) =>
     activeDispatchSplit(s.dispatchSplit, s.activeTabId) !== null,
   );
@@ -59,10 +61,12 @@ export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
   const isTerminalBigScreen = useSessionStore(
     (s) => s.terminalBigScreenTabId === s.activeTabId,
   );
+  // A connection without terminal access renders no terminal, whatever the
+  // conversation's shared terminal state says.
+  const terminalAccess = useActiveTerminalAccess();
   const terminalVisible = useSessionStore((s) =>
     s.terminalOpenTabIds.has(s.activeTabId),
-  );
-
+  ) && terminalAccess;
   // needsHistoryHydration, not message emptiness: live events stream into
   // mirror skeleton panes before the user switches to them, and an emptiness
   // check would skip the history load — showing only the last live turn.
@@ -202,7 +206,7 @@ export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
           )}
         </>
       )}
-      {isTerminalBigScreen && activeTabId && (
+      {isTerminalBigScreen && terminalAccess && activeTabId && (
         <TerminalBigScreen tabId={activeTabId} />
       )}
     </div>

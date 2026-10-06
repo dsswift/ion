@@ -10,6 +10,8 @@ import { usePreferencesStore } from '../preferences'
 import { pickDirectoryForSession } from '@ion/server/store/remote-fs-store'
 import { rError } from '../rendererLogger'
 import { tabEnvironmentId, withTargetEnvironment } from '../studio/connection/tab-environment'
+import { terminalAccessFor } from '../studio/connection/terminal-access'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { recentLocalDirectories } from '@ion/shared/recent-directories'
 
 interface DirectoryPickerProps {
@@ -95,6 +97,8 @@ export function DirectoryPicker({
     }
     return [...byCheckout.values()]
   }, [tabs])
+  // The server a repo's bench lives on decides whether a terminal can open there.
+  const environmentOfRepo = useMemo(() => new Map(openRepos.map(({ repo, environmentId }) => [repo, environmentId])), [openRepos])
   const openRepoPaths = useMemo(() => [...new Set(openRepos.map(({ repo }) => repo))], [openRepos])
 
   // Refresh on open so the list is correct the moment it renders rather than a
@@ -195,7 +199,7 @@ export function DirectoryPicker({
           work (build, run, test), operator conversations are deliberately
           not offered in a bench (see BenchBar), and the one-terminal-per-
           bench action lands on the existing tab instead of stacking one. */}
-      {benchEntries.map(({ repo, ws }) => (
+      {benchEntries.filter(({ repo }) => terminalAccessFor(environmentOfRepo.get(repo) ?? LOCAL_ENVIRONMENT_ID)).map(({ repo, ws }) => (
         <div
           key={ws.benchPath}
           data-testid={`picker-bench-${ws.sourceBranch}`}

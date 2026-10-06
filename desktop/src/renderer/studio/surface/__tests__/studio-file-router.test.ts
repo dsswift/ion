@@ -23,8 +23,12 @@ import { registerSurfaceFileRouter, surfaceRouter } from '../../../lib/file-open
 import { registerStudioFileRouter } from '../studio-file-router'
 import { useSurfaceStore } from '../surface-store'
 import { runtimePanel } from '../runtime-panel-registry'
+import { useEnvironmentSettingsStore } from '../../state/environment-settings-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 beforeEach(() => {
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   openFileInEditorMock.mockClear()
   getSessionStateMock.mockReset()
   getSessionStateMock.mockReturnValue({

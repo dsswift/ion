@@ -28,6 +28,7 @@ import { UpdateButton } from "../components/UpdateButton";
 import { NotificationsBell } from "../components/NotificationsPanel";
 import { EnvironmentStatusIndicator } from "./connection/EnvironmentStatusIndicator";
 import { DirectoryPicker } from "../components/DirectoryPicker";
+import { useActiveTerminalAccess } from "./connection/terminal-access";
 import { zoomRect } from "../viewport-zoom";
 import { rDebug, rError } from "../rendererLogger";
 
@@ -60,6 +61,7 @@ export function StudioTitleBar({
 }): React.JSX.Element {
   const colors = useColors();
   const controls = useStudioWindowChrome(colors);
+  const terminalAccess = useActiveTerminalAccess();
   const tab = useSessionStore(
     (state) => state.tabs.find((item) => item.id === state.activeTabId) ?? null,
   );
@@ -218,15 +220,17 @@ export function StudioTitleBar({
         <div data-drag-region="no-drag" style={{ WebkitAppRegion: "no-drag" }}>
           <NotificationsBell />
         </div>
-        <PaneToggle
-          label="Toggle terminal"
-          chord={revealed.get(TERMINAL_COMMAND)}
-          active={panes.terminalVisible}
-          onClick={handleTerminalClick}
-          onMouseDown={handleTerminalMouseDown}
-          onContextMenu={handleTerminalContextMenu}
-          icon={<TerminalIcon size={13} />}
-        />
+        {terminalAccess && (
+          <PaneToggle
+            label="Toggle terminal"
+            chord={revealed.get(TERMINAL_COMMAND)}
+            active={panes.terminalVisible}
+            onClick={handleTerminalClick}
+            onMouseDown={handleTerminalMouseDown}
+            onContextMenu={handleTerminalContextMenu}
+            icon={<TerminalIcon size={13} />}
+          />
+        )}
         <PaneToggle
           label="Toggle canvas panel"
           chord={revealed.get(SURFACE_COMMAND)}

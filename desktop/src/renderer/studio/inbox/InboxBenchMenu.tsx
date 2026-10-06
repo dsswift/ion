@@ -7,17 +7,19 @@ import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useOutsideDismiss } from '../../hooks/useOutsideDismiss'
 import { rError } from '../../rendererLogger'
+import { useEnvironmentTerminalAccess } from '../connection/terminal-access'
 import { ConfirmDialog } from '../../components/git/ConfirmDialog'
 import { ConflictsDialog } from '../../components/git/ConflictsDialog'
 import type { IntegrationWorkspace } from '@ion/shared/types'
 
-export function InboxBenchMenu({ repoPath, workspace, anchor, onClose }: { repoPath: string; workspace: IntegrationWorkspace; anchor: { x: number; y: number }; onClose(): void }): React.JSX.Element | null {
+export function InboxBenchMenu({ environmentId, repoPath, workspace, anchor, onClose }: { environmentId: string; repoPath: string; workspace: IntegrationWorkspace; anchor: { x: number; y: number }; onClose(): void }): React.JSX.Element | null {
   const colors = useColors()
   const layer = usePopoverLayer()
   const menuRef = useRef<HTMLDivElement>(null)
   const [recordingCount, setRecordingCount] = useState<number | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [recoverConflict, setRecoverConflict] = useState(false)
+  const terminalAccess = useEnvironmentTerminalAccess(environmentId)
   const [conflictDirectory, setConflictDirectory] = useState<string | null>(null)
   const dismiss = useCallback(() => {
     if (confirmClear || recoverConflict) return
@@ -46,7 +48,7 @@ export function InboxBenchMenu({ repoPath, workspace, anchor, onClose }: { repoP
   }} data-testid="inbox-bench-menu" data-ion-ui style={{ position: 'fixed', left: pos.left, top: pos.top, visibility: pos.ready ? 'visible' : 'hidden', zIndex: 1000, pointerEvents: 'auto', width: 230, padding: 4, border: `1px solid ${colors.popoverBorder}`, borderRadius: 6, background: colors.popoverBg, boxShadow: colors.popoverShadow }}>
     {!confirmClear && !recoverConflict && <>
       <MenuItem icon={<ChatCircle size={14} />} label="Open Bench Conversation" onClick={() => run('open bench conversation', () => useSessionStore.getState().openBenchConversation(repoPath, workspace.sourceBranch))} />
-      <MenuItem icon={<Terminal size={14} />} label="Open Bench Terminal" onClick={() => run('open bench terminal', () => useSessionStore.getState().openBenchTerminal(repoPath, workspace.sourceBranch))} />
+      {terminalAccess && <MenuItem icon={<Terminal size={14} />} label="Open Bench Terminal" onClick={() => run('open bench terminal', () => useSessionStore.getState().openBenchTerminal(repoPath, workspace.sourceBranch))} />}
       <MenuItem icon={<ArrowsClockwise size={14} />} label="Sync worktree pipeline" onClick={() => run('start worktree pipeline', () => useSessionStore.getState().startWorktreePipeline(repoPath, workspace.sourceBranch))} />
       <MenuItem icon={<ArrowsClockwise size={14} />} label="Assemble / Update Bench" onClick={() => run('assemble bench', () => useSessionStore.getState().benchUpdateAll(repoPath, workspace.sourceBranch))} />
       <MenuItem icon={<Warning size={14} />} label="Recover conflict" onClick={() => setRecoverConflict(true)} />

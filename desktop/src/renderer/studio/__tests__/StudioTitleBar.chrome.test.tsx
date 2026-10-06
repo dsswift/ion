@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -44,8 +44,16 @@ Object.defineProperty(window, "ion", {
 });
 
 import { StudioTitleBar } from "../StudioTitleBar";
+import { useEnvironmentSettingsStore } from "../state/environment-settings-store";
+import { LOCAL_ENVIRONMENT_ID } from "@ion/shared/types-environments";
+
+const FULL_VIEW = ["conversations:read", "conversations:operate", "terminal:operate", "git:write"] as const;
+const CHAT_ONLY = ["conversations:read", "conversations:operate"] as const;
 
 let root: Root | null = null;
+beforeEach(() => {
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, FULL_VIEW);
+});
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
@@ -100,5 +108,19 @@ describe("StudioTitleBar native chrome", () => {
     });
     expect(paneCallbacks.onToggleTerminal).toHaveBeenCalledOnce();
     expect(host.querySelector('[data-testid="directory-picker"]')).not.toBeNull();
+  });
+
+  it("renders no terminal toggle for a connection without terminal:operate, and keeps every other control", async () => {
+    useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, CHAT_ONLY);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<StudioTitleBar panes={{ leftSidebarVisible: true, leftSidebarWidth: 440, terminalVisible: false, surfaceVisible: false, onToggleSidebar: vi.fn(), onToggleTerminal: vi.fn(), onToggleSurface: vi.fn() }} />);
+    });
+    const labels = Array.from(host.querySelectorAll("button")).map((button) => button.getAttribute("aria-label"));
+    expect(labels).not.toContain("Toggle terminal");
+    expect(labels).toContain("Toggle sidebar");
+    expect(labels).toContain("Toggle canvas panel");
   });
 });

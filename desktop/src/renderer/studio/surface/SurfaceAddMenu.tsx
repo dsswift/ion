@@ -7,6 +7,7 @@
  */
 import type { DeveloperSurfaceState } from '@ion/shared/developer-surfaces'
 import { useActiveDeveloperSurfaces } from '../connection/developer-surfaces'
+import { useActiveTerminalAccess } from '../connection/terminal-access'
 import { surfaceTabOffered } from './surface-tab-offer'
 import React, { useEffect, useRef } from 'react'
 import { usePopoverLayer } from '../../components/PopoverLayer'
@@ -22,7 +23,7 @@ import { scrollableMenuStyle } from '../../menu-viewport'
 import { useGraphStore } from '../graph/graph-store'
 import { host } from '../../host/host-instance'
 
-interface AddEntryContext {
+export interface AddEntryContext {
   /** False on a client with no `browser` capability (a browser tab). */
   browserTabAvailable: boolean
   graphViewAvailable: boolean
@@ -30,6 +31,8 @@ interface AddEntryContext {
   portForwardAvailable: boolean
   /** The developer surfaces on offer for the active conversation. */
   developerSurfaces: DeveloperSurfaceState
+  /** Whether the conversation's server lets this connection run a terminal. */
+  terminalAccess: boolean
 }
 
 interface AddEntry {
@@ -43,7 +46,7 @@ interface AddEntry {
 
 /** Future surface kinds are one entry here. */
 export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
-  { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff'), available: (ctx) => surfaceTabOffered('diff', ctx.developerSurfaces) },
+  { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff'), available: (ctx) => surfaceTabOffered('diff', ctx.developerSurfaces, ctx.terminalAccess) },
   { id: 'plan', label: 'Plan Preview', icon: FileText, create: (s) => s.openSingleton('plan') },
   {
     id: 'visualizer',
@@ -53,7 +56,7 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
   },
   { id: 'scratch', label: 'Scratch Document', icon: NotePencil, create: (s) => s.createScratch() },
   { id: 'files', label: 'Explorer', icon: FolderOpen, create: (s) => s.openSingleton('files') },
-  { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel'), available: (ctx) => surfaceTabOffered('gitpanel', ctx.developerSurfaces) },
+  { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel'), available: (ctx) => surfaceTabOffered('gitpanel', ctx.developerSurfaces, ctx.terminalAccess) },
   {
     id: 'browser',
     label: 'Browser',
@@ -66,7 +69,7 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
     // the Visualizer entry above.
     available: (ctx) => ctx.browserTabAvailable,
   },
-  { id: 'terminal', label: 'Terminal', icon: TerminalWindow, create: (s, cwd) => s.openTerminalTab(cwd) },
+  { id: 'terminal', label: 'Terminal', icon: TerminalWindow, create: (s, cwd) => s.openTerminalTab(cwd), available: (ctx) => ctx.terminalAccess },
   {
     id: 'graph',
     label: 'Graph',
@@ -80,7 +83,7 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
     icon: Plugs,
     create: (s) => s.openSingleton('ports'),
     // A forward listens on this machine, which a browser tab cannot do.
-    available: (ctx) => ctx.portForwardAvailable,
+    available: (ctx) => ctx.portForwardAvailable && ctx.terminalAccess,
   },
 ]
 
@@ -128,11 +131,13 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
   const activeCwd = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? '~')
   const graphViewAvailable = useGraphStore((s) => s.available)
   const developerSurfaces = useActiveDeveloperSurfaces()
+  const terminalAccess = useActiveTerminalAccess()
   const ctx: AddEntryContext = {
     graphViewAvailable,
     browserTabAvailable: host.capabilities().includes('browser'),
     portForwardAvailable: Boolean(host.portForward),
     developerSurfaces,
+    terminalAccess,
   }
   const visibleEntries = SURFACE_ADD_ENTRIES.filter((entry) => entry.available?.(ctx) !== false)
 

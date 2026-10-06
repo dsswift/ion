@@ -10,6 +10,7 @@
 import { useMemo } from 'react'
 import type { SurfaceTab } from '@ion/shared/studio-surface-types'
 import { useActiveDeveloperSurfaces } from '../connection/developer-surfaces'
+import { useActiveTerminalAccess } from '../connection/terminal-access'
 import { useSurfaceStore } from './surface-store'
 import { surfaceTabOffered } from './surface-tab-offer'
 
@@ -22,10 +23,11 @@ export function useOfferedSurfaceTabs(): { tabs: SurfaceTab[]; activeTabId: stri
   const tabs = useSurfaceStore((s) => s.tabs)
   const activeTabId = useSurfaceStore((s) => s.activeTabId)
   const surfaces = useActiveDeveloperSurfaces()
+  const terminalAccess = useActiveTerminalAccess()
   return useMemo(() => {
-    const offered = tabs.filter((tab) => surfaceTabOffered(tab.id, surfaces))
+    const offered = tabs.filter((tab) => surfaceTabOffered(tab.id, surfaces, terminalAccess))
     if (offered.length === tabs.length) return { tabs, activeTabId }
     const activeOffered = activeTabId !== null && offered.some((tab) => tab.id === activeTabId)
     return { tabs: offered, activeTabId: activeOffered ? activeTabId : (offered[0]?.id ?? null) }
-  }, [tabs, activeTabId, surfaces])
+  }, [tabs, activeTabId, surfaces, terminalAccess])
 }
