@@ -8,6 +8,12 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.13.3](https://github.com/dsswift/ion/compare/server-v1.13.2...server-v1.13.3) (2026-10-06)
+
+### Bug Fixes
+
+* **repo:** open the studio sidebar on the inbox by default ([1bfe49b](https://github.com/dsswift/ion/commit/1bfe49be6a913d7bc3b708bbdbf6f699e6d0deff))
+
 ## [1.13.2](https://github.com/dsswift/ion/compare/server-v1.13.1...server-v1.13.2) (2026-10-06)
 
 ### Bug Fixes

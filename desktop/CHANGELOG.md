@@ -10,6 +10,14 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.13.2](https://github.com/dsswift/ion/compare/desktop-v2.13.1...desktop-v2.13.2) (2026-10-06)
+
+### Bug Fixes
+
+* **repo:** open the studio sidebar on the inbox by default ([1bfe49b](https://github.com/dsswift/ion/commit/1bfe49be6a913d7bc3b708bbdbf6f699e6d0deff))
+* **desktop:** attach files and screenshots from any client ([b1aca9e](https://github.com/dsswift/ion/commit/b1aca9eb2322baa7634a31c1bd882490c1ed4b6e))
+* **desktop:** start the inbox on newest created ([ec24198](https://github.com/dsswift/ion/commit/ec24198b90a9bdd6f7e5dd39759d40635855cab0))
+
 ## [2.13.1](https://github.com/dsswift/ion/compare/desktop-v2.13.0...desktop-v2.13.1) (2026-10-06)
 
 ### Bug Fixes

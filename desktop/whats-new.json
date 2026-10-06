@@ -1,4 +1,9 @@
 {
+  "2.13.2": [
+    "Fixed a problem where the Inbox did not open by default when you launched Ion Studio for the first time.",
+    "You can now attach files and screenshots regardless of how you are accessing Ion Studio.",
+    "Fixed a problem where the Inbox showed a sort order as selected even though you had not chosen one."
+  ],
   "2.13.1": [
     "Fixed a problem where the Inbox showed an app as still running after it had already been closed.",
     "Fixed a problem where terminals running in other Environments were missing from the list, or kept appearing after that Environment disconnected."
