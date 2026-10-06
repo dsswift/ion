@@ -41,7 +41,7 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     // either one closes the other.
     //
     // The rule lives HERE rather than in the components that trigger it because
-    // there are several triggers already (StatusBarGitButton, the context
+    // there are several triggers already (the status-bar buttons, the context
     // ring, the keyboard) and a component handler only holds for the
     // window it is mounted in -- the Studio mirror runs these same actions. One
     // invariant at the mutation point covers every caller, present and future.
