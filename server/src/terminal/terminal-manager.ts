@@ -459,7 +459,14 @@ export class TerminalManager {
         } else {
           const snapshot = await readProcessSnapshot()
           const nextActivities: TerminalActivity[] = []
+          // The shell each activity was measured from. Web discovery awaits
+          // below, and a terminal destroyed, exited, or relaunched during
+          // that wait has already cleared its activity; publishing the
+          // measurement afterwards would re-add a running entry for a shell
+          // that no longer exists, and no later poll would ever clear it.
+          const polledSessions = new Map<string, IPty>()
           for (const [key, term] of this.sessions) {
+            polledSessions.set(key, term)
             const tree = terminalProcessTree(snapshot, term.pid)
             nextActivities.push({ key, ...splitTerminalActivityKey(key), active: tree.active, processLabel: tree.processLabel, processIds: tree.processIds, cwd: this.lifecycle.get(key)?.cwd, applications: [] })
           }
@@ -482,6 +489,10 @@ export class TerminalManager {
           }
         }
         for (const next of nextActivities) {
+          if (this.sessions.get(next.key) !== polledSessions.get(next.key)) {
+            debug('terminal activity poll result dropped: session ended during the poll', { key: next.key, active: next.active })
+            continue
+          }
           next.applications = webApplications.get(next.key) ?? []
           const previous = this.activities.get(next.key)
           if (!previous || previous.active !== next.active || previous.processLabel !== next.processLabel || previous.processIds.join(',') !== next.processIds.join(',') || JSON.stringify(previous.applications) !== JSON.stringify(next.applications)) {
