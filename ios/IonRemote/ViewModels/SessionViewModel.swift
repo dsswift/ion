@@ -405,6 +405,8 @@ final class SessionViewModel {
     /// One admin session per paired server a settings page has opened, keyed
     /// by the server's `clientId`. See `SessionViewModel+ServerAdmin.swift`.
     @ObservationIgnored var adminSessionsByServer: [String: ServerAdminSession] = [:]
+    /// A diagnostic log upload is sending; another request waits for the next pull.
+    @ObservationIgnored var diagnosticUploadInFlight = false
     var eventTask: Task<Void, Never>?
     var flushTask: Task<Void, Never>?
     /// Safety timer: if `.reconnecting` lingers too long, force a full reconnect.

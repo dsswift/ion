@@ -17,6 +17,11 @@ protocol RemoteTransport: AnyObject {
     var developerSurfaces: DeveloperSurfaces { get }
 
     func send(_ command: RemoteCommand) async throws
+    /// Sends `command` and returns once the server answered every
+    /// `studio_action` it maps to. Throws the first refusal, or when the
+    /// connection drops first. A command that maps to no action is sent
+    /// with nothing to wait for.
+    func sendAwaitingAnswer(_ command: RemoteCommand) async throws
     func stop()
 
     /// Whether a relay leg is up right now, so an auth rejection on the LAN leg

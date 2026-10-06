@@ -297,6 +297,7 @@
 		MTRKIT00000000000000001 /* MetricKitCrashObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */; };
 		KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */; };
 		DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */; };
+		A587B014FF2BD7A5DE13DA4C /* DiagnosticLogUploadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C970FC2A843E1F349643BE4 /* DiagnosticLogUploadTests.swift */; };
 		DIAGPAIRTST000000000001 /* DiagnosticLogPairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGPAIRTST000000000002 /* DiagnosticLogPairingTests.swift */; };
 		DIAGRET0000000000000004 /* DiagnosticLogRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGRET0000000000000003 /* DiagnosticLogRetentionTests.swift */; };
 		AUTHPRFTST000000000001 /* StudioAuthProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUTHPRFTST000000000002 /* StudioAuthProofTests.swift */; };
@@ -771,17 +772,24 @@
 		0BAC38E390B6027E90AC52FE /* ClientOwnedSettingsSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3E18087F352A29090882CC /* ClientOwnedSettingsSections.swift */; };
 		C7366D2099A0F7E754F4F246 /* EnvironmentProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D21246A94498D0B5FE41612 /* EnvironmentProject.swift */; };
 		5846C3FCE553099C98A40551 /* EnvironmentJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23FE7AEEC26293B203EAABA4 /* EnvironmentJob.swift */; };
+		E906493797AFAE59218B0862 /* GitHostingRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B96A0E637A85C9ECE7CD2F /* GitHostingRepository.swift */; };
+		5348B428B07F8FEB7532E3EE /* GitHostingAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC3089A9A93101ECBE6122BB /* GitHostingAccount.swift */; };
+		2CF05DAEED04F8E8252ADCF0 /* GitHostingOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329C93E665CCDAEFFA912795 /* GitHostingOwner.swift */; };
 		60345C2EC1B84833318801B9 /* EnvironmentFsBrowse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D62AD1AF07D7E39BC3A790 /* EnvironmentFsBrowse.swift */; };
 		84C195A34217B37360C29840 /* ProjectRemovalAppraisal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65ED88E738430E6F53A73C72 /* ProjectRemovalAppraisal.swift */; };
 		EA17AA43B7D4D1E21E0A73B9 /* ProjectCloneStarted.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4769126AAEDF47516BD68FA6 /* ProjectCloneStarted.swift */; };
 		71B4AF17A6EB6A92146D2F99 /* EnvironmentGitTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6931D649A86D5D67AEFB204D /* EnvironmentGitTest.swift */; };
 		10760EB6F3FDED9C6641B60E /* EnvironmentGitAuthor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55826914E7D10A5E00A4C139 /* EnvironmentGitAuthor.swift */; };
-		29B3E3837FD8C0668E401349 /* HostSshKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF52246612E1D929687BE18A /* HostSshKey.swift */; };
 		A1306ADF92368FB9E6C24C4A /* GitPublicKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB02FAC6A6787E27A70D9A1C /* GitPublicKey.swift */; };
 		EA1CD40D6239CE3F2BEE596B /* GitAuthorizeStarted.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C61EF650EFEC2AFD9926D11 /* GitAuthorizeStarted.swift */; };
 		8B35C0A585C63983DCFAB9E9 /* ServerAdminClient+Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D38CC25618C718132D7DCA /* ServerAdminClient+Projects.swift */; };
+		C01DDE6F4A924B64F3509BBA /* ServerAdminClient+GitHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE142C1674D3E27AB29CD20 /* ServerAdminClient+GitHosting.swift */; };
 		D881AC8C238475BEBE7457D1 /* ServerAdminClient+GitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42578C741333DE0409FA9ED /* ServerAdminClient+GitAccess.swift */; };
 		1CCE6BB9E50E02D09F9837CC /* AddProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE3015C1B72BA07FA733A87C /* AddProjectModel.swift */; };
+		C74A09975E4AD176584A19E1 /* NewRepositorySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6EE3DA6650775268996B01 /* NewRepositorySource.swift */; };
+		58F858E3B2CA415017DFFCCA /* NewProjectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2D329E978C99EF408F560C /* NewProjectSheet.swift */; };
+		BC2124B60B5839A81D83A6BE /* NewRepositoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BDB219E5331F2142B37D694 /* NewRepositoryModel.swift */; };
+		C8B972FF5D714A7247AD43FA /* NewProjectModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ADF65BC0B8AA4D5F2C11D05 /* NewProjectModel.swift */; };
 		EDC4396050F76091D51FAB02 /* AddProjectSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE1E3573FCB358BE177C48B /* AddProjectSheet.swift */; };
 		AB9C9153F5C1B025659E40E2 /* AdminErrorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C335E7F9E87C07A5203B837 /* AdminErrorRow.swift */; };
 		7D22EA87C9199361EA30D663 /* AdminLoadingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBE150E3AF5E9495ADB2939 /* AdminLoadingRow.swift */; };
@@ -948,6 +956,8 @@
 		4094239C4A16ECB94DF206A8 /* ProjectListRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F0C0B3793898172F96A783 /* ProjectListRowTests.swift */; };
 		1871A24D16228CDC302EECAA /* ProjectsAdminModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D18CA58DB25A6E28E6A30C /* ProjectsAdminModelTests.swift */; };
 		8288B0E0D1D4A1999BAD91A9 /* AddProjectModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2217D6A46B3FDA98B8D2B0FB /* AddProjectModelTests.swift */; };
+		58C8F6A1C7E2E84161262334 /* NewRepositoryModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075058C4F1F19650AF85E089 /* NewRepositoryModelTests.swift */; };
+		9F2FAD1E610EF2FEE04B33AC /* NewProjectModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58735D7DBB4DF92E50084813 /* NewProjectModelTests.swift */; };
 		7C8F9CD94CC1EF8F3B302307 /* GitAccessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F17682AE8C7F8CDA3B5345B /* GitAccessFixtures.swift */; };
 		A9B90FC4BB453A6FA2CCA737 /* GitAccessDecodingAndCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694C5BC3630AA7761ED13B84 /* GitAccessDecodingAndCallTests.swift */; };
 		509ADD1BF40A5A7BA06D500A /* GitAccessModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D6734EBE28BFD16546D7E88 /* GitAccessModelTests.swift */; };
@@ -1490,6 +1500,7 @@
 		MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricKitCrashObserver.swift; sourceTree = "<group>"; };
 		KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandKindNameTests.swift; sourceTree = "<group>"; };
 		DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogBoundsTests.swift; sourceTree = "<group>"; };
+		6C970FC2A843E1F349643BE4 /* DiagnosticLogUploadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLogUploadTests.swift"; sourceTree = "<group>"; };
 		DIAGPAIRTST000000000002 /* DiagnosticLogPairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogPairingTests.swift; sourceTree = "<group>"; };
 		DIAGRET0000000000000003 /* DiagnosticLogRetentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogRetentionTests.swift; sourceTree = "<group>"; };
 		AUTHPRFTST000000000002 /* StudioAuthProofTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAuthProofTests.swift; sourceTree = "<group>"; };
@@ -1765,17 +1776,24 @@
 		7E3E18087F352A29090882CC /* ClientOwnedSettingsSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClientOwnedSettingsSections.swift"; sourceTree = "<group>"; };
 		2D21246A94498D0B5FE41612 /* EnvironmentProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EnvironmentProject.swift"; sourceTree = "<group>"; };
 		23FE7AEEC26293B203EAABA4 /* EnvironmentJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EnvironmentJob.swift"; sourceTree = "<group>"; };
+		47B96A0E637A85C9ECE7CD2F /* GitHostingRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitHostingRepository.swift"; sourceTree = "<group>"; };
+		BC3089A9A93101ECBE6122BB /* GitHostingAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitHostingAccount.swift"; sourceTree = "<group>"; };
+		329C93E665CCDAEFFA912795 /* GitHostingOwner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitHostingOwner.swift"; sourceTree = "<group>"; };
 		A7D62AD1AF07D7E39BC3A790 /* EnvironmentFsBrowse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EnvironmentFsBrowse.swift"; sourceTree = "<group>"; };
 		65ED88E738430E6F53A73C72 /* ProjectRemovalAppraisal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProjectRemovalAppraisal.swift"; sourceTree = "<group>"; };
 		4769126AAEDF47516BD68FA6 /* ProjectCloneStarted.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProjectCloneStarted.swift"; sourceTree = "<group>"; };
 		6931D649A86D5D67AEFB204D /* EnvironmentGitTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EnvironmentGitTest.swift"; sourceTree = "<group>"; };
 		55826914E7D10A5E00A4C139 /* EnvironmentGitAuthor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EnvironmentGitAuthor.swift"; sourceTree = "<group>"; };
-		EF52246612E1D929687BE18A /* HostSshKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HostSshKey.swift"; sourceTree = "<group>"; };
 		AB02FAC6A6787E27A70D9A1C /* GitPublicKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitPublicKey.swift"; sourceTree = "<group>"; };
 		2C61EF650EFEC2AFD9926D11 /* GitAuthorizeStarted.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitAuthorizeStarted.swift"; sourceTree = "<group>"; };
 		A4D38CC25618C718132D7DCA /* ServerAdminClient+Projects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Projects.swift"; sourceTree = "<group>"; };
+		5AE142C1674D3E27AB29CD20 /* ServerAdminClient+GitHosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+GitHosting.swift"; sourceTree = "<group>"; };
 		C42578C741333DE0409FA9ED /* ServerAdminClient+GitAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+GitAccess.swift"; sourceTree = "<group>"; };
 		CE3015C1B72BA07FA733A87C /* AddProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AddProjectModel.swift"; sourceTree = "<group>"; };
+		DD6EE3DA6650775268996B01 /* NewRepositorySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewRepositorySource.swift"; sourceTree = "<group>"; };
+		0C2D329E978C99EF408F560C /* NewProjectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewProjectSheet.swift"; sourceTree = "<group>"; };
+		0BDB219E5331F2142B37D694 /* NewRepositoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewRepositoryModel.swift"; sourceTree = "<group>"; };
+		4ADF65BC0B8AA4D5F2C11D05 /* NewProjectModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewProjectModel.swift"; sourceTree = "<group>"; };
 		1AE1E3573FCB358BE177C48B /* AddProjectSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AddProjectSheet.swift"; sourceTree = "<group>"; };
 		2C335E7F9E87C07A5203B837 /* AdminErrorRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AdminErrorRow.swift"; sourceTree = "<group>"; };
 		FBBE150E3AF5E9495ADB2939 /* AdminLoadingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AdminLoadingRow.swift"; sourceTree = "<group>"; };
@@ -1942,6 +1960,8 @@
 		E0F0C0B3793898172F96A783 /* ProjectListRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProjectListRowTests.swift"; sourceTree = "<group>"; };
 		73D18CA58DB25A6E28E6A30C /* ProjectsAdminModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProjectsAdminModelTests.swift"; sourceTree = "<group>"; };
 		2217D6A46B3FDA98B8D2B0FB /* AddProjectModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AddProjectModelTests.swift"; sourceTree = "<group>"; };
+		075058C4F1F19650AF85E089 /* NewRepositoryModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewRepositoryModelTests.swift"; sourceTree = "<group>"; };
+		58735D7DBB4DF92E50084813 /* NewProjectModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NewProjectModelTests.swift"; sourceTree = "<group>"; };
 		7F17682AE8C7F8CDA3B5345B /* GitAccessFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitAccessFixtures.swift"; sourceTree = "<group>"; };
 		694C5BC3630AA7761ED13B84 /* GitAccessDecodingAndCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitAccessDecodingAndCallTests.swift"; sourceTree = "<group>"; };
 		5D6734EBE28BFD16546D7E88 /* GitAccessModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitAccessModelTests.swift"; sourceTree = "<group>"; };
@@ -2440,6 +2460,7 @@
 				TRACECTX000000000000000A /* TraceContextTests.swift */,
 				KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */,
 				DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */,
+				6C970FC2A843E1F349643BE4 /* DiagnosticLogUploadTests.swift */,
 				DIAGPAIRTST000000000002 /* DiagnosticLogPairingTests.swift */,
 				DIAGRET0000000000000003 /* DiagnosticLogRetentionTests.swift */,
 				CONNQUALTST00000000002 /* ConnectionQualityIndicatorTests.swift */,
@@ -2840,6 +2861,7 @@
 				6C19C045CB244DE8B15FEC6C /* ServerAdminClient+Files.swift */,
 				4F417165CB284874A264660C /* ServerAdminClient+DeepLink.swift */,
 				A4D38CC25618C718132D7DCA /* ServerAdminClient+Projects.swift */,
+				5AE142C1674D3E27AB29CD20 /* ServerAdminClient+GitHosting.swift */,
 				C42578C741333DE0409FA9ED /* ServerAdminClient+GitAccess.swift */,
 				2C37613AD9E4E26297C071E1 /* ServerAdminClient+Models.swift */,
 				9C23E7A5200BC29461CE9175 /* ServerAdminClient+Providers.swift */,
@@ -2951,12 +2973,14 @@
 				32D50A7469F5E94E5E473D5D /* SystemMetricsHistory.swift */,
 				2D21246A94498D0B5FE41612 /* EnvironmentProject.swift */,
 				23FE7AEEC26293B203EAABA4 /* EnvironmentJob.swift */,
+				47B96A0E637A85C9ECE7CD2F /* GitHostingRepository.swift */,
+				BC3089A9A93101ECBE6122BB /* GitHostingAccount.swift */,
+				329C93E665CCDAEFFA912795 /* GitHostingOwner.swift */,
 				A7D62AD1AF07D7E39BC3A790 /* EnvironmentFsBrowse.swift */,
 				65ED88E738430E6F53A73C72 /* ProjectRemovalAppraisal.swift */,
 				4769126AAEDF47516BD68FA6 /* ProjectCloneStarted.swift */,
 				6931D649A86D5D67AEFB204D /* EnvironmentGitTest.swift */,
 				55826914E7D10A5E00A4C139 /* EnvironmentGitAuthor.swift */,
-				EF52246612E1D929687BE18A /* HostSshKey.swift */,
 				AB02FAC6A6787E27A70D9A1C /* GitPublicKey.swift */,
 				2C61EF650EFEC2AFD9926D11 /* GitAuthorizeStarted.swift */,
 				97077DB014AB5234F18DDDDC /* AIWorkflow.swift */,
@@ -3117,6 +3141,10 @@
 			isa = PBXGroup;
 			children = (
 				CE3015C1B72BA07FA733A87C /* AddProjectModel.swift */,
+				DD6EE3DA6650775268996B01 /* NewRepositorySource.swift */,
+				0C2D329E978C99EF408F560C /* NewProjectSheet.swift */,
+				0BDB219E5331F2142B37D694 /* NewRepositoryModel.swift */,
+				4ADF65BC0B8AA4D5F2C11D05 /* NewProjectModel.swift */,
 				1AE1E3573FCB358BE177C48B /* AddProjectSheet.swift */,
 				2C335E7F9E87C07A5203B837 /* AdminErrorRow.swift */,
 				FBBE150E3AF5E9495ADB2939 /* AdminLoadingRow.swift */,
@@ -3183,6 +3211,8 @@
 				E0F0C0B3793898172F96A783 /* ProjectListRowTests.swift */,
 				73D18CA58DB25A6E28E6A30C /* ProjectsAdminModelTests.swift */,
 				2217D6A46B3FDA98B8D2B0FB /* AddProjectModelTests.swift */,
+				075058C4F1F19650AF85E089 /* NewRepositoryModelTests.swift */,
+				58735D7DBB4DF92E50084813 /* NewProjectModelTests.swift */,
 				7F17682AE8C7F8CDA3B5345B /* GitAccessFixtures.swift */,
 				694C5BC3630AA7761ED13B84 /* GitAccessDecodingAndCallTests.swift */,
 				5D6734EBE28BFD16546D7E88 /* GitAccessModelTests.swift */,
@@ -3993,17 +4023,24 @@
 				0BAC38E390B6027E90AC52FE /* ClientOwnedSettingsSections.swift in Sources */,
 				C7366D2099A0F7E754F4F246 /* EnvironmentProject.swift in Sources */,
 				5846C3FCE553099C98A40551 /* EnvironmentJob.swift in Sources */,
+				E906493797AFAE59218B0862 /* GitHostingRepository.swift in Sources */,
+				5348B428B07F8FEB7532E3EE /* GitHostingAccount.swift in Sources */,
+				2CF05DAEED04F8E8252ADCF0 /* GitHostingOwner.swift in Sources */,
 				60345C2EC1B84833318801B9 /* EnvironmentFsBrowse.swift in Sources */,
 				84C195A34217B37360C29840 /* ProjectRemovalAppraisal.swift in Sources */,
 				EA17AA43B7D4D1E21E0A73B9 /* ProjectCloneStarted.swift in Sources */,
 				71B4AF17A6EB6A92146D2F99 /* EnvironmentGitTest.swift in Sources */,
 				10760EB6F3FDED9C6641B60E /* EnvironmentGitAuthor.swift in Sources */,
-				29B3E3837FD8C0668E401349 /* HostSshKey.swift in Sources */,
 				A1306ADF92368FB9E6C24C4A /* GitPublicKey.swift in Sources */,
 				EA1CD40D6239CE3F2BEE596B /* GitAuthorizeStarted.swift in Sources */,
 				8B35C0A585C63983DCFAB9E9 /* ServerAdminClient+Projects.swift in Sources */,
+				C01DDE6F4A924B64F3509BBA /* ServerAdminClient+GitHosting.swift in Sources */,
 				D881AC8C238475BEBE7457D1 /* ServerAdminClient+GitAccess.swift in Sources */,
 				1CCE6BB9E50E02D09F9837CC /* AddProjectModel.swift in Sources */,
+				C74A09975E4AD176584A19E1 /* NewRepositorySource.swift in Sources */,
+				58F858E3B2CA415017DFFCCA /* NewProjectSheet.swift in Sources */,
+				BC2124B60B5839A81D83A6BE /* NewRepositoryModel.swift in Sources */,
+				C8B972FF5D714A7247AD43FA /* NewProjectModel.swift in Sources */,
 				EDC4396050F76091D51FAB02 /* AddProjectSheet.swift in Sources */,
 				AB9C9153F5C1B025659E40E2 /* AdminErrorRow.swift in Sources */,
 				7D22EA87C9199361EA30D663 /* AdminLoadingRow.swift in Sources */,
@@ -4218,6 +4255,7 @@
 				TRACECTX0000000000000009 /* TraceContextTests.swift in Sources */,
 				KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */,
 				DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */,
+				A587B014FF2BD7A5DE13DA4C /* DiagnosticLogUploadTests.swift in Sources */,
 				DIAGPAIRTST000000000001 /* DiagnosticLogPairingTests.swift in Sources */,
 				DIAGRET0000000000000004 /* DiagnosticLogRetentionTests.swift in Sources */,
 				CONNQUALTST00000000001 /* ConnectionQualityIndicatorTests.swift in Sources */,
@@ -4407,6 +4445,8 @@
 				4094239C4A16ECB94DF206A8 /* ProjectListRowTests.swift in Sources */,
 				1871A24D16228CDC302EECAA /* ProjectsAdminModelTests.swift in Sources */,
 				8288B0E0D1D4A1999BAD91A9 /* AddProjectModelTests.swift in Sources */,
+				58C8F6A1C7E2E84161262334 /* NewRepositoryModelTests.swift in Sources */,
+				9F2FAD1E610EF2FEE04B33AC /* NewProjectModelTests.swift in Sources */,
 				7C8F9CD94CC1EF8F3B302307 /* GitAccessFixtures.swift in Sources */,
 				A9B90FC4BB453A6FA2CCA737 /* GitAccessDecodingAndCallTests.swift in Sources */,
 				509ADD1BF40A5A7BA06D500A /* GitAccessModelTests.swift in Sources */,

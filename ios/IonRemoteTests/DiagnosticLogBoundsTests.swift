@@ -87,14 +87,14 @@ final class DiagnosticLogBoundsTests: XCTestCase {
         DiagnosticLog.log("cursor line 1 \(marker)", tag: "cursor", level: .info)
         DiagnosticLog.flush()
 
-        let first = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let first = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
         XCTAssertFalse(first.logs.isEmpty)
 
         // Write more; second pull returns ONLY the new lines.
         DiagnosticLog.log("cursor line 2 \(marker)", tag: "cursor", level: .info)
         DiagnosticLog.log("cursor line 3 \(marker)", tag: "cursor", level: .info)
         DiagnosticLog.flush()
-        let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq)
+        let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq, maxBytes: .max)
         let ownLines = second.logs
             .components(separatedBy: "\n")
             .filter { $0.contains(marker) }
@@ -114,7 +114,7 @@ final class DiagnosticLogBoundsTests: XCTestCase {
         try rotatedLine.data(using: .utf8)!.write(to: rotatedURL)
         defer { try? FileManager.default.removeItem(at: rotatedURL) }
 
-        let third = await DiagnosticLog.exportIncrementalSince(sinceSeq: second.nextSeq)
+        let third = await DiagnosticLog.exportIncrementalSince(sinceSeq: second.nextSeq, maxBytes: .max)
         XCTAssertTrue(third.logs.contains("rotated line"),
                       "a rotated-in file with no cursor entry must be exported from offset 0")
         // nextSeq is the highest seq shipped (the resume cursor), not max+1 —
@@ -128,11 +128,11 @@ final class DiagnosticLogBoundsTests: XCTestCase {
     func testExportCursorResetOnOlderSinceSeq() async throws {
         DiagnosticLog.log("reset probe", tag: "cursor", level: .info)
         DiagnosticLog.flush()
-        let advanced = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let advanced = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
         XCTAssertFalse(advanced.logs.isEmpty)
 
         // Re-pull from 0 (desktop lost its mark). Everything must re-ship.
-        let repull = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let repull = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
         XCTAssertTrue(repull.logs.contains("reset probe"),
                       "sinceSeq below the scanned max must reset the cursor and rescan")
     }

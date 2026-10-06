@@ -216,6 +216,16 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
         }
     }
 
+    func sendAwaitingAnswer(_ command: RemoteCommand) async throws {
+        guard !stopped, case .action(let primary, let followUps)? = mapping.request(for: command) else {
+            try await send(command)
+            return
+        }
+        for call in [primary] + followUps {
+            _ = try await self.call(call.action, args: call.args, timeoutSeconds: call.timeoutSeconds)
+        }
+    }
+
     /// Sends one call, turns its outcome into events, and sends whatever the
     /// mapping says follows it — a read that refreshes what a write changed, or
     /// a step whose arguments are in this step's value.

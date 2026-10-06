@@ -245,7 +245,7 @@ final class DiagnosticLogSchemaTests: XCTestCase {
         }
     }
 
-    /// `exportIncrementalSince(sinceSeq:)` returns only lines whose seq exceeds
+    /// `exportIncrementalSince(sinceSeq:, maxBytes: .max)` returns only lines whose seq exceeds
     /// the cursor, and reports a `nextSeq` past the max returned. This is the
     /// exactly-once pull contract the desktop relies on.
     ///
@@ -263,14 +263,14 @@ final class DiagnosticLogSchemaTests: XCTestCase {
         DiagnosticLog.log("incr one", tag: "incr", level: .info)
         DiagnosticLog.flush()
         // Full pull from 0 returns everything and a nextSeq past the end.
-        let full = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let full = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
         XCTAssertFalse(full.logs.isEmpty, "full pull must return lines")
         XCTAssertGreaterThan(full.nextSeq, 0, "nextSeq must advance past 0 on a non-empty pull")
 
         // A second pull from the returned cursor re-ships nothing: whatever it
         // returns is strictly newer than the cursor, and the cursor never
         // moves backwards.
-        let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
+        let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq, maxBytes: .max)
         for seq in try seqs(in: second.logs) {
             XCTAssertGreaterThan(seq, full.nextSeq - 1, "a pull at the cursor must not re-ship seen seqs")
         }
@@ -283,7 +283,7 @@ final class DiagnosticLogSchemaTests: XCTestCase {
         // advances the cursor past it.
         DiagnosticLog.log("incr two", tag: "incr", level: .info)
         DiagnosticLog.flush()
-        let delta = await DiagnosticLog.exportIncrementalSince(sinceSeq: second.nextSeq)
+        let delta = await DiagnosticLog.exportIncrementalSince(sinceSeq: second.nextSeq, maxBytes: .max)
         for seq in try seqs(in: delta.logs) {
             XCTAssertGreaterThan(seq, second.nextSeq - 1, "delta pull must exclude already-seen seqs")
         }
