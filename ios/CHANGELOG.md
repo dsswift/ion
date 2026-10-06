@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.12.0](https://github.com/dsswift/ion/compare/ios-v2.11.1...ios-v2.12.0) (2026-10-06)
+
+### Features
+
+* **ios:** copy worktree path from the worktree menu ([3000d52](https://github.com/dsswift/ion/commit/3000d52e500884f1ad3d99ee0717a4bd031d10a4))
+
 ## [2.11.1](https://github.com/dsswift/ion/compare/ios-v2.11.0...ios-v2.11.1) (2026-10-06)
 
 ### Bug Fixes
