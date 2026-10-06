@@ -28,6 +28,7 @@ import { SECTION_HEADER } from './git/paneLayout'
 import { rDebug, rError } from '../rendererLogger'
 import { pathSegments } from '@ion/shared/paths'
 import { host } from '../host/host-instance'
+import { terminalAccessForTab } from '../studio/connection/terminal-access'
 import { WorktreeOverlapLauncher } from './WorktreeOverlapLauncher'
 import { submitWithTrace } from '../lib/prompt-trace'
 
@@ -103,7 +104,7 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
   }, [collapsed, refresh])
 
   const handleQuickCommit = useCallback(() => {
-    if (commitCommand) {
+    if (commitCommand && terminalAccessForTab(activeTabId)) {
       const safeCwd = directory.replace(/'/g, "'\\''")
       void useSessionStore.getState().runInTerminal(activeTabId, `cd '${safeCwd}' && ${commitCommand}`).catch((error) => {
         rError('git', 'quick commit terminal launch failed', {

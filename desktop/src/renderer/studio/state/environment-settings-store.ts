@@ -88,6 +88,16 @@ export function canManageEnvironment(state: Pick<EnvironmentSettingsState, 'byEn
 }
 
 /**
+ * Whether this connection may run a terminal, a bash command, a Quick Tool, or
+ * a port forward on that server. Absent until that server's welcome arrives, so
+ * a surface that needs it stays hidden rather than flashing in and out. The
+ * server refuses the same actions without `terminal:operate`.
+ */
+export function canOperateTerminal(state: Pick<EnvironmentSettingsState, 'byEnvironment'>, environmentId: string): boolean {
+  return scopeSatisfies(environmentSettings(state, environmentId).scopes, 'terminal:operate')
+}
+
+/**
  * Change settings on one server. The value is applied here first so the
  * control does not snap back while the round trip is in flight, and put back
  * when the server refuses (an Environment key without `admin`).

@@ -116,7 +116,9 @@ export function fileTabId(filePath: string): string { return `file:${filePath}` 
 export function scratchTabId(documentId: string): string { return `scratch:${documentId}` }
 export function previewTabId(filePath: string): string { return `preview:${filePath}` }
 export function browserTabId(instanceId: string): string { return `browser:${instanceId}` }
-export function terminalTabId(instanceId: string): string { return `terminal:${instanceId}` }
+const TERMINAL_TAB_PREFIX = 'terminal:'
+export function terminalTabId(instanceId: string): string { return `${TERMINAL_TAB_PREFIX}${instanceId}` }
+export function isTerminalTabId(id: string): boolean { return id.startsWith(TERMINAL_TAB_PREFIX) }
 export function isSingleton(tab: SurfaceTab): tab is SingletonTab { return tab.kind === 'singleton' }
 export function isBrowserTab(tab: SurfaceTab): tab is BrowserTab { return tab.kind === 'browser' }
 export function isPinnableSingleton(tab: SurfaceTab): tab is SingletonTab & { id: PinnableSingletonId } {

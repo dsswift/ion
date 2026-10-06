@@ -3,6 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IntegrationWorkspace } from '@ion/shared/types'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { useEnvironmentSettingsStore } from '../state/environment-settings-store'
 import type { DirConversation } from '@ion/shared/worktree-conversations'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -44,6 +46,7 @@ function render(conversationCount: number, showSyncAll = false, assembling = fal
   })) as DirConversation[]
   act(() => root.render(
     <InboxBenchBar
+      environmentId={LOCAL_ENVIRONMENT_ID}
       workspace={workspace}
       conversations={conversations}
       expanded
@@ -61,6 +64,8 @@ function render(conversationCount: number, showSyncAll = false, assembling = fal
 }
 
 beforeEach(() => {
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -120,6 +125,7 @@ describe('InboxBenchBar conversation count', () => {
     const open = { repoPath: '/repo', sourceBranch: 'main', benchPath: '/bench', resolutionOpen: { unmergedPaths: 13 } } as IntegrationWorkspace
     act(() => root.render(
       <InboxBenchBar
+        environmentId={LOCAL_ENVIRONMENT_ID}
         workspace={open}
         conversations={[]}
         expanded
@@ -148,5 +154,31 @@ describe('InboxBenchBar conversation count', () => {
     render(0)
     expect(host.querySelector('[data-testid="inbox-bench-status-main"]')?.textContent).toBe('no members')
     expect(host.querySelector('[data-testid="inbox-bench-resolution-main"]')).toBeNull()
+  })
+
+  it('offers the bench terminal only to a connection with terminal:operate', () => {
+    const render = (): void => act(() => root.render(
+      <InboxBenchBar
+        environmentId={LOCAL_ENVIRONMENT_ID}
+        workspace={workspace}
+        conversations={[]}
+        expanded
+        onToggle={() => {}}
+        onCycle={() => {}}
+        onOpenTerminal={() => {}}
+        onMenu={() => {}}
+        onSyncAll={() => {}}
+        showSyncAll={false}
+        statusText="idle"
+        onAssemble={() => {}}
+        assembling={false}
+      />,
+    ))
+    render()
+    expect(host.querySelector('[aria-label="Open bench terminal"]')).not.toBeNull()
+    act(() => useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate']))
+    expect(host.querySelector('[aria-label="Open bench terminal"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Go to bench terminal"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Bench actions"]')).not.toBeNull()
   })
 })

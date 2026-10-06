@@ -48,6 +48,7 @@ import {
 } from "../surface-store";
 import { installFakeWire } from '../../../host/__tests__/fake-wire'
 import { policyStore } from '../../connection/policy-store'
+import { useEnvironmentSettingsStore } from '../../state/environment-settings-store'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 
 const terminalDestroyMock = vi.fn().mockResolvedValue(undefined);
@@ -75,6 +76,8 @@ function resetStore(): void {
 }
 
 beforeEach(() => {
+  // A full-view connection: the server granted it the terminal scope.
+  useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate'])
   vi.useFakeTimers();
   openFileInEditorMock.mockClear();
   terminalDestroyMock.mockClear();

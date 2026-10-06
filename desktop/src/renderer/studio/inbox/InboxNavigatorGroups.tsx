@@ -72,6 +72,7 @@ export function InboxNavigatorGroups({
     (state) => state.workspaceOperationLedger,
   );
   const [benchMenu, setBenchMenu] = useState<{
+    environmentId: string;
     repoPath: string;
     sourceBranch: string;
     anchor: { x: number; y: number };
@@ -323,6 +324,7 @@ export function InboxNavigatorGroups({
         parts.push(
           <InboxBenchBar
             key={groupKey}
+            environmentId={projectNode.environmentId}
             workspace={workspace}
             conversations={conversations}
             terminalTabId={terminal?.id}
@@ -345,6 +347,7 @@ export function InboxNavigatorGroups({
             }}
             onMenu={(anchor) =>
               setBenchMenu({
+                environmentId: projectNode.environmentId,
                 repoPath: project.key,
                 sourceBranch: workspace.sourceBranch,
                 anchor,
@@ -496,6 +499,7 @@ export function InboxNavigatorGroups({
       parts.push(
         <InboxBenchMenu
           key="inbox-bench-menu"
+          environmentId={benchMenu.environmentId}
           repoPath={benchMenu.repoPath}
           workspace={workspace}
           anchor={benchMenu.anchor}

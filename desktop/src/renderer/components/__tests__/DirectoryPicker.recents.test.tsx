@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
@@ -68,7 +68,12 @@ beforeAll(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 })
 
+import { useEnvironmentSettingsStore } from '../../studio/state/environment-settings-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+
 describe('DirectoryPicker recent directories', () => {
+  // A full-view connection: the server granted it the terminal scope, so bench rows open a terminal.
+  beforeEach(() => { useEnvironmentSettingsStore.getState().hydrate(LOCAL_ENVIRONMENT_ID, {}, ['conversations:read', 'conversations:operate', 'terminal:operate']) })
   let container: HTMLDivElement
   let root: Root
 

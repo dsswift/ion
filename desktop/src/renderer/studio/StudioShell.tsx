@@ -21,7 +21,7 @@
  * Shared surfaces are the SAME component
  * reading the same store — never a bespoke Studio widget.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useEngineEvents } from "../hooks/useEngineEvents";
 import { useHealthReconciliation } from "../hooks/useHealthReconciliation";
@@ -47,6 +47,7 @@ import { revealDockView } from "./layout/dock-view-reveal";
 import type { StudioSidebarView } from "@ion/shared/types-studio";
 import { useStudioBootstrap } from "./useStudioBootstrap";
 import { addActiveConversationShell, toggleActiveConversationTerminal } from "./studio-conversation-terminal-commands";
+import { useActiveTerminalAccess } from "./connection/terminal-access";
 import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
 import { useSurfacePersistOnUnload } from "./surface/surface-persist";
@@ -399,6 +400,12 @@ export function StudioShell(): React.JSX.Element {
       run: toggleActiveConversationTerminal,
     },
   ]);
+  // The terminal entry is offered only where this connection may run one.
+  const terminalAccess = useActiveTerminalAccess();
+  const paletteActionsWithoutTerminal = useMemo(
+    () => paletteActions.current.filter((entry) => entry.id !== "act:terminal"),
+    [],
+  );
   // Palette entries are created once; refs keep them reading fresh state.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -525,7 +532,7 @@ export function StudioShell(): React.JSX.Element {
         )}
         <ControlsPopover />
         <CommandPalette
-          actions={paletteActions.current}
+          actions={terminalAccess ? paletteActions.current : paletteActionsWithoutTerminal}
           open={paletteOpen}
           onOpenChange={setPaletteOpen}
         />
