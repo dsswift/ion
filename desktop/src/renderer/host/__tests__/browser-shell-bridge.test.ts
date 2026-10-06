@@ -431,7 +431,7 @@ describe('the Provider Subscription verbs', () => {
     expect(SHELL_INVOKE.providerSubscription.action).toBe('provider.subscription')
     expect(SHELL_INVOKE.selectProviderSubscription.action).toBe('provider.selectOwnSubscription')
     expect(SHELL_INVOKE.refreshProviderSubscription.action).toBe('provider.refreshOwnSubscription')
-    expect(SHELL_INVOKE.selectProviderSubscription.pack([{ id: 'prem' }])).toEqual([{ id: 'prem' }])
+    expect(SHELL_INVOKE.selectProviderSubscription.pack?.([{ id: 'prem' }])).toEqual([{ id: 'prem' }])
   })
 })
 
