@@ -68,7 +68,7 @@ struct GitAccessAdminSection: View {
         if let identities = model.identities {
             if identities.isEmpty {
                 VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
-                    Text("No credential stored in Ion")
+                    Text("No git credentials")
                     Text(model.noCredentialExplanation).font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -76,7 +76,7 @@ struct GitAccessAdminSection: View {
                 NavigationLink {
                     GitCredentialDetailView(session: session, model: model, identity: identity)
                 } label: {
-                    GitCredentialRow(identity: identity)
+                    GitCredentialRow(identity: identity, serverLabel: session.serverLabel)
                 }
                 .swipeActions {
                     if GitIdentityLabels.isRemovable(identity) && session.allows(.gitIdentityRemove) {

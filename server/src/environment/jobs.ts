@@ -1,7 +1,7 @@
 /**
  * environment/jobs — the registry of background work an Environment runs
- * on a project (a clone, a setup, a purge), and the one place their
- * progress is published from.
+ * on a project (a clone, a setup, a purge, a create), and the one place
+ * their progress is published from.
  *
  * Every mutation broadcasts the job's full snapshot on `ion:project-job`
  * (environment-scoped, see `@ion/shared/studio-wire/channels`), so a client
@@ -29,9 +29,12 @@ interface Entry {
 }
 
 const jobs = new Map<string, Entry>()
+/** In-process watchers of one job, told every snapshot it publishes. */
+const watchers = new Map<string, Set<(job: EnvironmentJob) => void>>()
 
 function publish(entry: Entry): void {
   broadcast(PROJECT_JOB_CHANNEL, { ...entry.job })
+  for (const watch of watchers.get(entry.job.id) ?? []) watch({ ...entry.job })
 }
 
 /** Starts tracking a job. `cancel` is invoked by `cancelJob`; the runner must then settle the job itself. */
@@ -44,13 +47,20 @@ export function startJob(init: Pick<EnvironmentJob, 'kind' | 'dir' | 'stage'> & 
   return { ...job }
 }
 
-/** Updates a running job's stage/progress line. No-op once the job has settled. */
-export function progressJob(id: string, patch: { stage?: string; percent?: number; detail?: string }): void {
+/**
+ * Updates a running job's stage/progress line. A null `percent` or
+ * `detail` clears it, for a stage that reports neither. No-op once the job
+ * has settled.
+ */
+export function progressJob(id: string, patch: { stage?: string; percent?: number | null; detail?: string | null; tabId?: string }): void {
   const entry = jobs.get(id)
   if (!entry || entry.job.phase !== 'running') return
   if (patch.stage !== undefined) entry.job.stage = patch.stage
-  if (patch.percent !== undefined) entry.job.percent = patch.percent
-  if (patch.detail !== undefined) entry.job.detail = patch.detail
+  if (patch.percent === null) delete entry.job.percent
+  else if (patch.percent !== undefined) entry.job.percent = patch.percent
+  if (patch.detail === null) delete entry.job.detail
+  else if (patch.detail !== undefined) entry.job.detail = patch.detail
+  if (patch.tabId !== undefined) entry.job.tabId = patch.tabId
   publish(entry)
 }
 
@@ -89,6 +99,28 @@ export function getJob(id: string): EnvironmentJob | undefined {
   return entry ? { ...entry.job } : undefined
 }
 
+/**
+ * Resolves with the job's final snapshot once it settles, calling
+ * `onProgress` with each running snapshot until then. Resolves undefined
+ * for a job this registry does not know.
+ */
+export function awaitJobSettled(id: string, onProgress?: (job: EnvironmentJob) => void): Promise<EnvironmentJob | undefined> {
+  const entry = jobs.get(id)
+  if (!entry) return Promise.resolve(undefined)
+  if (entry.job.phase !== 'running') return Promise.resolve({ ...entry.job })
+  return new Promise((resolve) => {
+    const set = watchers.get(id) ?? new Set()
+    watchers.set(id, set)
+    const watch = (job: EnvironmentJob): void => {
+      if (job.phase === 'running') { onProgress?.(job); return }
+      set.delete(watch)
+      if (set.size === 0) watchers.delete(id)
+      resolve(job)
+    }
+    set.add(watch)
+  })
+}
+
 export function listJobs(): EnvironmentJob[] {
   return [...jobs.values()].map((e) => ({ ...e.job })).sort((a, b) => b.startedAt - a.startedAt)
 }
@@ -104,4 +136,5 @@ export function runningJobFor(kind: EnvironmentJob['kind'], dir: string): Enviro
 export function _resetJobsForTest(): void {
   for (const entry of jobs.values()) if (entry.retention) clearTimeout(entry.retention)
   jobs.clear()
+  watchers.clear()
 }

@@ -6,7 +6,7 @@
  */
 import React from 'react'
 import { ArrowsClockwise, FolderSimpleDashed, ShieldCheck, Trash, Wrench } from '@phosphor-icons/react'
-import type { EnvironmentJob, EnvironmentProject } from '@ion/shared/types-environment-admin'
+import { environmentJobTitle, type EnvironmentJob, type EnvironmentProject } from '@ion/shared/types-environment-admin'
 import { useSettingsEnvironment } from '../settings-servers'
 import { Button, ErrorText, FormGroup, FormRow, MonoLine, Muted, SidePanel, Stack, Switch } from '../kit'
 import { DirectoryPicker } from './DirectoryPicker'
@@ -16,7 +16,7 @@ import { setupBlockedReason, type ProjectOperations, type ProjectVerbs, type Rem
 interface PanelBase { project: EnvironmentProject; ops: ProjectOperations; verbs: ProjectVerbs; onClose(): void }
 
 function setupDescription(project: EnvironmentProject, job: EnvironmentJob | undefined): string {
-  if (job) return `${job.kind === 'clone' ? 'Cloning' : 'Running setup'}: ${job.stage}${job.percent !== undefined ? ` ${job.percent}%` : ''}${job.detail ? `. ${job.detail}` : ''}`
+  if (job) return `${environmentJobTitle(job.kind)}: ${job.stage}${job.percent !== undefined ? ` ${job.percent}%` : ''}${job.detail ? `. ${job.detail}` : ''}`
   switch (project.setup?.state) {
     case 'running': return 'Setup is running.'
     case 'ready': return 'The last setup succeeded.'

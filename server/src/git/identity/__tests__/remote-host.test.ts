@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execFileSync } from 'child_process'
-import { hostForGitInvocation, hostFromUrl, _resetRemoteHostCacheForTest } from '../remote-host'
+import { remoteForGitInvocation, hostFromUrl, _resetRemoteHostCacheForTest } from '../remote-host'
 
 describe('hostFromUrl', () => {
   it('extracts the host from an https URL', () => {
@@ -24,7 +24,7 @@ describe('hostFromUrl', () => {
   })
 })
 
-describe('hostForGitInvocation', () => {
+describe('remoteForGitInvocation', () => {
   let dir: string
 
   beforeEach(() => {
@@ -39,31 +39,31 @@ describe('hostForGitInvocation', () => {
   })
 
   it('resolves the configured origin remote when no remote name is given', async () => {
-    expect(await hostForGitInvocation(dir, ['push'])).toBe('github.com')
+    expect((await remoteForGitInvocation(dir, ['push']))?.host).toBe('github.com')
   })
 
   it('resolves a named remote', async () => {
     execFileSync('git', ['remote', 'add', 'upstream', 'git@gitlab.example.com:org/repo.git'], { cwd: dir })
-    expect(await hostForGitInvocation(dir, ['fetch', 'upstream'])).toBe('gitlab.example.com')
+    expect((await remoteForGitInvocation(dir, ['fetch', 'upstream']))?.host).toBe('gitlab.example.com')
   })
 
   it('extracts the host directly from an explicit URL argument', async () => {
-    expect(await hostForGitInvocation(dir, ['ls-remote', 'https://gitlab.example.com/org/repo.git'])).toBe('gitlab.example.com')
+    expect((await remoteForGitInvocation(dir, ['ls-remote', 'https://gitlab.example.com/org/repo.git']))?.host).toBe('gitlab.example.com')
   })
 
   it('returns null for clone with no URL findable in args', async () => {
-    expect(await hostForGitInvocation(dir, ['clone'])).toBeNull()
+    expect(await remoteForGitInvocation(dir, ['clone'])).toBeNull()
   })
 
   it('resolves clone from its URL argument', async () => {
-    expect(await hostForGitInvocation(dir, ['clone', 'https://github.com/example/other.git', 'dest'])).toBe('github.com')
+    expect((await remoteForGitInvocation(dir, ['clone', 'https://github.com/example/other.git', 'dest']))?.host).toBe('github.com')
   })
 
   it('returns null for a remote name that does not exist', async () => {
-    expect(await hostForGitInvocation(dir, ['push', 'no-such-remote'])).toBeNull()
+    expect(await remoteForGitInvocation(dir, ['push', 'no-such-remote'])).toBeNull()
   })
 
   it('skips leading flags when finding the subcommand and operands', async () => {
-    expect(await hostForGitInvocation(dir, ['-c', 'foo=bar', 'push'])).toBe('github.com')
+    expect((await remoteForGitInvocation(dir, ['-c', 'foo=bar', 'push']))?.host).toBe('github.com')
   })
 })

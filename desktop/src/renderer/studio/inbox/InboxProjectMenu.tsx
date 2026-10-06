@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react'
-import { ChatCircle, GitBranch, GitFork } from '@phosphor-icons/react'
+import { ChatCircle, CloudArrowDown, GitBranch, GitFork } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { useColors } from '../../theme'
 import { ContextMenuItem } from '../../components/ContextMenuItem'
@@ -18,6 +18,8 @@ interface InboxProjectMenuProps {
    * branch: the "Choose branch…" row, or the worktree row clicked with Alt.
    */
   onNewWorktreeConversation(chooseBranch: boolean): void
+  /** Put this project on more servers. */
+  onCloneToServers(): void
   onClose(): void
 }
 
@@ -27,6 +29,7 @@ export function InboxProjectMenu({
   environmentId,
   onNewConversation,
   onNewWorktreeConversation,
+  onCloneToServers,
   onClose,
 }: InboxProjectMenuProps): React.JSX.Element | null {
   const colors = useColors()
@@ -75,6 +78,10 @@ export function InboxProjectMenu({
           <span>Choose branch…</span>
         </ContextMenuItem>
       )}
+      <ContextMenuItem onClick={() => { onCloneToServers(); onClose() }}>
+        <CloudArrowDown size={14} />
+        <span>Clone to servers…</span>
+      </ContextMenuItem>
     </div>
   )
   return layer ? createPortal(menu, layer) : menu

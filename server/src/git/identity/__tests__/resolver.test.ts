@@ -7,7 +7,7 @@ import { setCurrentServerConfig, _resetCurrentServerConfigForTest } from '../../
 import { loadServerConfig } from '../../../config/server-config'
 import { writeSecretRef } from '../../../config/secret-ref'
 import { _resetGitCredentialStoreForTest, gitCredentialStore } from '../credential-store'
-import { registerExchangeSource, resolveGitCredential, _resetResolverSourcesForTest } from '../resolver'
+import { registerExchangeSource, resolveGitCredential, _resetResolverSourcesForTest, _setHostSourceForTest } from '../resolver'
 import type { GitCredentialSourceProvider } from '../types'
 
 let dir: string
@@ -67,5 +67,34 @@ describe('resolveGitCredential: precedence', () => {
     setCurrentServerConfig(loadServerConfig(dir))
     gitCredentialStore().set({ subject: 'oidc:alice', host: 'github.com', source: 'user', kind: 'ssh', privateKey: 'ALICE-KEY', publicKey: 'p' })
     expect(await resolveGitCredential('oidc:bob', 'github.com')).toBeNull()
+  })
+})
+
+describe('resolveGitCredential: what the caller can use', () => {
+  const hostToken: GitCredentialSourceProvider = { name: 'host', resolve: (_subject, host) => ({ source: 'host', kind: 'https-token', host, token: 'CLI-TOKEN', username: 'x-access-token' }) }
+
+  it('leaves the host source out unless the caller can use a token', async () => {
+    setCurrentServerConfig(loadServerConfig(dir))
+    _setHostSourceForTest(hostToken)
+    expect(await resolveGitCredential('oidc:alice', 'github.com')).toBeNull()
+    expect(await resolveGitCredential('oidc:alice', 'github.com', { transport: 'ssh' })).toBeNull()
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { transport: 'https' }))?.source).toBe('host')
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { kind: 'https-token' }))?.token).toBe('CLI-TOKEN')
+  })
+
+  it('prefers a stored credential over the host source', async () => {
+    setCurrentServerConfig(loadServerConfig(dir))
+    _setHostSourceForTest(hostToken)
+    gitCredentialStore().set({ subject: 'oidc:alice', host: 'github.com', source: 'user', kind: 'https-token', token: 'STORED', username: 'alice' })
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { kind: 'https-token' }))?.token).toBe('STORED')
+  })
+
+  it('passes over a stored credential of the other kind when a kind is asked for', async () => {
+    setCurrentServerConfig(loadServerConfig(dir))
+    _setHostSourceForTest(hostToken)
+    gitCredentialStore().set({ subject: 'oidc:alice', host: 'github.com', source: 'user', kind: 'ssh', privateKey: 'USER-KEY', publicKey: 'PUB' })
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { transport: 'https' }))?.kind).toBe('ssh')
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { kind: 'https-token' }))?.source).toBe('host')
+    expect((await resolveGitCredential('oidc:alice', 'github.com', { kind: 'ssh' }))?.source).toBe('user')
   })
 })

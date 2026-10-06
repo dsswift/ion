@@ -14,7 +14,8 @@ import { filterProjects } from './new-conversation-project-search'
 import { useProjectsByEnvironment, buildMergedProjects, defaultRowEnvironment, rowEnvironments, type MergedProjectRow } from '../studio/connection/environment-projects'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { filterBranches } from './new-conversation-workspaces'
-import { BranchRows, ProfileRows, ProjectRows } from './NewConversationPickerRows'
+import { BranchRows, NewProjectRow, ProfileRows, ProjectRows } from './NewConversationPickerRows'
+import { NewProjectPanel, type ProjectCheckout } from '../studio/new-project/NewProjectPanel'
 import { WorktreeChoiceOptions } from './NewConversationWorktreeOptions'
 import { ProjectListControls } from './NewConversationPickerControls'
 import { flattenProjectGroups, groupProjectRows, isProjectGrouping, isProjectSortOrder, type ProjectGrouping, type ProjectSortOrder } from './new-conversation-project-order'
@@ -370,6 +371,17 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     setChipCursor({ rowKey: entry.row.key, environmentId: options[(index + direction + options.length) % options.length] })
   }
 
+  // "New project…" swaps the picker for the create-and-clone flow; the
+  // checkout it hands back is opened like any project picked from the list.
+  const [newProjectOpen, setNewProjectOpen] = useState(false)
+  const openNewProject = (checkout: ProjectCheckout): void => {
+    setNewProjectOpen(false)
+    setEnvironmentError(null)
+    setWorkspace({ directory: checkout.directory, projectDirectory: checkout.directory, environmentId: checkout.environmentId }); setQuery('')
+    setView(initialUseWorktree && worktreesOfferedOn(checkout.environmentId) ? 'branches' : 'profiles')
+    rInfo('new-conversation-picker', 'new project selected', { directory: checkout.directory, environment_id: checkout.environmentId })
+  }
+
   const handleBack = (): void => {
     if (view === 'profiles') {
       if (initialDirectory || defaultProject(registry, managedProjects)) { onClose(); return }
@@ -406,6 +418,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
 
   // A Project with a resolved conversation type creates without showing the
   // dialog; it appears only if that creation fails, to say why.
+  if (newProjectOpen) return <NewProjectPanel onClose={() => setNewProjectOpen(false)} onOpenProject={openNewProject} />
   if (!layer || (view === 'profiles' && resolvedAction.kind !== 'picker' && !environmentError)) return null
   const placeholder = view === 'projects' ? 'Search projects…' : view === 'branches' ? 'Search branches…' : 'Search conversation profiles…'
   return createPortal(<motion.div data-ion-ui role="dialog" aria-modal="true" aria-label="New conversation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 10001, pointerEvents: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 'max(16px, 10vh) 16px 16px', boxSizing: 'border-box', background: colors.scrim }}>
@@ -416,6 +429,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
       <div style={{ overflowY: 'auto', minWidth: 0, minHeight: 0, padding: 8 }}>
         {environmentError && <div role="alert" style={{ padding: '4px 10px', fontSize: 11, color: colors.statusError }}>{environmentError}</div>}
         {creating && <div role="status" style={{ padding: '4px 10px', fontSize: 11, color: colors.textSecondary }}>Opening the conversation…</div>}
+        {view === 'projects' && !query.trim() && <NewProjectRow colors={colors} onClick={() => setNewProjectOpen(true)} />}
         {view === 'projects' && <ProjectRows groups={projectGroups} collapsed={collapsedGroups} indexOf={indexOfRow} highlighted={highlighted} colors={colors} showMachines={multi} actingEnvironment={actingEnvironmentFor} onHover={setHighlighted} onChoose={chooseProject} onToggleGroup={toggleGroup} />}
         {view === 'branches' && <BranchRows branches={branchMatches} highlighted={highlighted} loading={branchLoading} error={branchError} currentBranch={currentBranch} colors={colors} onHover={setHighlighted} onChoose={chooseBranch} />}
         {view === 'profiles' && workspace && <ProfileRows profiles={profileMatches} highlighted={highlighted} colors={colors} onHover={setHighlighted} onPlain={() => createConversation(workspace)} onProfile={(profileId) => { const profile = profiles.find((item) => item.id === profileId); if (profile) createConversation(workspace, profile) }} />}

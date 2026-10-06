@@ -223,6 +223,8 @@ Fixing one host is enough: it then builds for every host of its platform. Or lea
 
 In Settings → Fleet, a server's **Deploy from source…** opens the Deploy panel. It asks for the checkout folder, with a Browse button, remembers it on this device, and lets you tick every server the build should go to.
 
+An integration bench is remembered by its repository and branch, not its folder. Ion removes a bench's folder when its last worktree lands, and the work it held is then on the branch. Each check asks this device's server (`fleet.deploy.source`) which folder the bench names now: the bench while it is built, or else the checkout that has the branch. The panel says which one it builds. When neither exists, it says so and starts nothing.
+
 Before anything is deployed, the panel asks the fleet what the deploy would do (a dry run) and says under each ticked server whether it is ready. A server that is not ready is left out, and the button says how many will deploy. For a build nothing can make, the panel lists what stops each server and has a button for each fix above: **Install build tools**, **Exclude from Defender**, and **Build elsewhere…**. Each runs on that server, shows its output, and checks the deploy again when it is done. **Install the latest release instead** has that one server take the release.
 
 Once started, each server has a row with its step and the step's detail, and why it failed when it did. A row opens to show that server's build and install log as it grows. **Stop** ends the deploy; its record closes as stopped.

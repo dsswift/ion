@@ -75,6 +75,16 @@ describe('NewConversationPicker', () => {
     expect(document.body.textContent).not.toContain('Source repository')
   })
 
+  it('offers a new project above the list and swaps to the create-and-clone flow', async () => {
+    preferenceState.projects = { '/work/alpha': { addedManually: true, lastUsedAt: 0 } }
+    render()
+    const row = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('New project…'))!
+    expect(row).toBeTruthy()
+    await act(async () => { row.click(); await Promise.resolve() })
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('New project')
+    expect(document.body.textContent).not.toContain('Search projects')
+  })
+
   it('opens source branches only for an explicit new-worktree route', async () => {
     render({ initialDirectory: '/work/alpha', initialUseWorktree: true, onClose: close })
     await act(async () => { await Promise.resolve(); await Promise.resolve() })

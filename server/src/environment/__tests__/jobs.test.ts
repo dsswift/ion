@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const { broadcast } = vi.hoisted(() => ({ broadcast: vi.fn() }))
 vi.mock('../../broadcast', () => ({ broadcast }))
 
-import { startJob, progressJob, finishJob, failJob, cancelJob, markJobCancelled, listJobs, getJob, runningJobFor, _resetJobsForTest } from '../jobs'
+import { startJob, progressJob, finishJob, failJob, cancelJob, markJobCancelled, listJobs, getJob, runningJobFor, awaitJobSettled, _resetJobsForTest } from '../jobs'
 
 afterEach(() => { _resetJobsForTest(); broadcast.mockClear() })
 
@@ -44,5 +44,28 @@ describe('jobs', () => {
     failJob(b.id, 'boom')
     expect(getJob(b.id)).toMatchObject({ phase: 'failed', error: 'boom' })
     expect(cancelJob('nope')).toBe(false)
+  })
+
+  it('awaitJobSettled reports each running snapshot, then resolves with the settled one', async () => {
+    const a = startJob({ kind: 'clone', dir: '/x/a', stage: 's' }, null)
+    const seen: string[] = []
+    const settled = awaitJobSettled(a.id, (job) => seen.push(job.stage))
+    progressJob(a.id, { stage: 'receiving objects', percent: 10 })
+    failJob(a.id, 'boom')
+    expect(await settled).toMatchObject({ id: a.id, phase: 'failed', error: 'boom' })
+    expect(seen).toEqual(['receiving objects'])
+    expect(await awaitJobSettled(a.id)).toMatchObject({ phase: 'failed' })
+    expect(await awaitJobSettled('nope')).toBeUndefined()
+  })
+
+  it('a null percent or detail clears it, and a create job carries the conversation it opened', () => {
+    const a = startJob({ kind: 'create', dir: '/x/a', stage: 'cloning' }, null)
+    progressJob(a.id, { percent: 40, detail: 'Receiving objects: 40%' })
+    progressJob(a.id, { stage: 'opening conversation', percent: null, detail: null })
+    progressJob(a.id, { tabId: 'tab-1' })
+    const job = getJob(a.id)
+    expect(job).toMatchObject({ kind: 'create', stage: 'opening conversation', tabId: 'tab-1' })
+    expect(job?.percent).toBeUndefined()
+    expect(job?.detail).toBeUndefined()
   })
 })

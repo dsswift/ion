@@ -11,6 +11,8 @@ import { authGitCallbackRoute } from '../auth-git-callback'
 
 const GIT: ServerGitConfig = {
   credentials: [],
+  hostCredentials: true,
+  hosts: [],
   publicOrigin: 'https://ion.example.com',
   exchange: {
     ado: { enabled: false },

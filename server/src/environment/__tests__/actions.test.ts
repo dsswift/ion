@@ -30,7 +30,7 @@ const conn = { id: 'c', scopes: ['admin'], principal: { subject: 'paired:x', dis
 describe('scopes', () => {
   it('reads need conversations:read, project and git mutations need git:write, server control and purge need admin', () => {
     const by = (scope: string) => Object.entries(ENVIRONMENT_ACTIONS).filter(([, s]) => s.requiredScope === scope).map(([n]) => n).sort()
-    expect(by('conversations:read')).toEqual(['environment.discovery.status', 'environment.fs.browse', 'environment.git.author.get', 'environment.git.hostKeys', 'environment.host.toolchains', 'environment.jobs.list', 'environment.projects.appraiseRemoval', 'environment.projects.list', 'environment.server.info', 'environment.systemMetrics.history', 'environment.systemMetrics.latest', 'environment.systemMetrics.watch'])
+    expect(by('conversations:read')).toEqual(['environment.discovery.status', 'environment.fs.browse', 'environment.git.author.get', 'environment.host.toolchains', 'environment.jobs.list', 'environment.projects.appraiseRemoval', 'environment.projects.list', 'environment.server.info', 'environment.systemMetrics.history', 'environment.systemMetrics.latest', 'environment.systemMetrics.watch'])
     expect(by('git:write')).toEqual(['environment.git.author.set', 'environment.git.test', 'environment.jobs.cancel', 'environment.projects.add', 'environment.projects.clone', 'environment.projects.relocate', 'environment.projects.remove', 'environment.projects.setup', 'environment.projects.trust'])
     expect(by('admin')).toEqual(['environment.discovery.close', 'environment.discovery.mintCode', 'environment.discovery.open', 'environment.purge.appraise', 'environment.purge.run', 'environment.server.installArtifact', 'environment.server.installNotice', 'environment.server.logTail', 'environment.server.reportInstall', 'environment.server.restart', 'environment.server.update'])
   })
@@ -66,6 +66,15 @@ describe('environment.projects.clone', () => {
     await ENVIRONMENT_ACTIONS['environment.projects.clone'].handler(conn, [{ url: 'u', parentDir: '~/src', trust: 'yes' }])
     await ENVIRONMENT_ACTIONS['environment.projects.clone'].handler(conn, [{ url: 'u', parentDir: '~/src' }])
     expect(startClone.mock.calls.map((c) => (c as unknown as [{ trust: boolean }])[0].trust)).toEqual([true, false, false])
+  })
+
+  // The test home has no ssh key and the connection no stored credential, so this host picks https.
+  it('picks one url from a repository\'s ssh and https pair', async () => {
+    startClone.mockClear()
+    const remote = { sshUrl: 'git@github.com:example-org/app.git', httpsUrl: 'https://github.com/example-org/app.git' }
+    await ENVIRONMENT_ACTIONS['environment.projects.clone'].handler(conn, [{ remote, parentDir: '~/src' }])
+    expect((startClone.mock.calls[0] as unknown as [{ url: string }])[0].url).toBe(remote.httpsUrl)
+    expect(await ENVIRONMENT_ACTIONS['environment.projects.clone'].handler(conn, [{ remote: { sshUrl: remote.sshUrl }, parentDir: '~/src' }])).toMatchObject({ ok: false, error: { code: 'invalid_args' } })
   })
 })
 

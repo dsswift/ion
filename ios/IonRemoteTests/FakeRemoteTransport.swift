@@ -41,6 +41,15 @@ final class FakeRemoteTransport: RemoteTransport, @unchecked Sendable {
         sent.append(command)
     }
 
+    /// Held by `sendAwaitingAnswer` until it returns, so a test can keep an
+    /// answer outstanding; nil answers at once.
+    var answer: (@Sendable () async throws -> Void)?
+
+    func sendAwaitingAnswer(_ command: RemoteCommand) async throws {
+        sent.append(command)
+        try await answer?()
+    }
+
     func stop() {
         stopped = true
         continuation.finish()

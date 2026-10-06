@@ -127,7 +127,7 @@ final class DiagnosticLogRetentionTests: XCTestCase {
 
         DiagnosticLog.log("\(marker) 0", tag: "test")
         DiagnosticLog.flush()
-        var cursor = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, pairingId: pairing).nextSeq
+        var cursor = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, pairingId: pairing, maxBytes: .max).nextSeq
         let before = Set(DiagnosticLog.shared.allLogFiles())
 
         var received: [String] = []
@@ -136,7 +136,7 @@ final class DiagnosticLogRetentionTests: XCTestCase {
                 DiagnosticLog.log("\(marker) \(batch * 20 + i)", tag: "test")
             }
             DiagnosticLog.flush()
-            let pull = await DiagnosticLog.exportIncrementalSince(sinceSeq: cursor, pairingId: pairing)
+            let pull = await DiagnosticLog.exportIncrementalSince(sinceSeq: cursor, pairingId: pairing, maxBytes: .max)
             received += pull.logs.split(separator: "\n").map(String.init).filter { $0.contains(marker) }
             cursor = pull.nextSeq
         }
@@ -156,8 +156,8 @@ final class DiagnosticLogRetentionTests: XCTestCase {
         DiagnosticLog.setPairingId(pairing)
         DiagnosticLog.log("confirm", tag: "test")
         DiagnosticLog.flush()
-        let first = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, pairingId: pairing)
-        _ = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq, pairingId: pairing)
+        let first = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, pairingId: pairing, maxBytes: .max)
+        _ = await DiagnosticLog.exportIncrementalSince(sinceSeq: first.nextSeq, pairingId: pairing, maxBytes: .max)
         XCTAssertEqual(DiagnosticLog.loadShippedMarks()[pairing], first.nextSeq)
     }
 
@@ -169,7 +169,7 @@ final class DiagnosticLogRetentionTests: XCTestCase {
         DiagnosticLog.flush()
 
         let foreign = 1_000_000_000
-        let pull = await DiagnosticLog.exportIncrementalSince(sinceSeq: foreign, pairingId: pairing)
+        let pull = await DiagnosticLog.exportIncrementalSince(sinceSeq: foreign, pairingId: pairing, maxBytes: .max)
         XCTAssertTrue(pull.logs.contains(marker), "the retained lines ship instead of nothing")
         XCTAssertLessThan(pull.nextSeq, foreign, "the server sees its cursor regress and resets it")
         XCTAssertNil(DiagnosticLog.loadShippedMarks()[pairing], "a foreign cursor confirms nothing")

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The Git access page's calls: this person's git credentials on the server,
-/// the host's own ssh keys, access tests, and the commit author.
+/// access tests, and the commit author.
 extension ServerAdminClient {
 
     func listGitIdentities() async throws -> [GitIdentitySummary] {
@@ -30,10 +30,6 @@ extension ServerAdminClient {
     /// Starts the git host's sign-in through the server's OAuth exchange.
     func authorizeGitIdentity(host: String) async throws -> GitAuthorizeStarted {
         try await call(.gitIdentityAuthorize, fields: ["host": .string(host)])
-    }
-
-    func hostSshKeys() async throws -> [HostSshKey] {
-        try await call(.environmentGitHostKeys)
     }
 
     /// Runs `git ls-remote` for `url` on the server with its stored credentials.

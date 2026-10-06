@@ -26,8 +26,9 @@ import { connectionOnHost } from '../protocol/hello'
 import type { HostInstallProgress, HostInstallRequest } from '@ion/shared/host-install'
 import { readEngineRuntime } from '../compat/runtime'
 import { engineBridge } from '../state'
-import { testRemote, readAuthor, writeAuthor, listHostSshKeys } from './git-access'
+import { testRemote, readAuthor, writeAuthor } from './git-access'
 import { startClone } from './clone'
+import { chooseCloneUrl } from './clone-url'
 import { listJobs, cancelJob } from './jobs'
 import { appraisePurge, runPurge } from './purge'
 import { discovery } from '../discovery/runtime'
@@ -193,11 +194,14 @@ export const ENVIRONMENT_ACTIONS: Record<string, EnvironmentActionSpec> = {
   },
   'environment.projects.clone': {
     requiredScope: 'git:write',
-    handler: async (_conn, args) => {
+    handler: async (conn, args) => {
       const a = firstArgObject(args)
-      const url = str(a, 'url')
       const parentDir = str(a, 'parentDir')
-      if (!url || !parentDir) return invalid('url and parentDir are required')
+      // Either one URL, or a repository's SSH and HTTPS pair for this host to pick from.
+      const remote = firstArgObject([a.remote])
+      const pair = { sshUrl: str(remote, 'sshUrl'), httpsUrl: str(remote, 'httpsUrl') }
+      const url = pair.sshUrl && pair.httpsUrl ? await chooseCloneUrl(conn.principal?.subject, pair) : str(a, 'url')
+      if (!url || !parentDir) return invalid('url (or remote.sshUrl and remote.httpsUrl) and parentDir are required')
       try {
         return { ok: true, value: await startClone({ url, parentDir, name: str(a, 'name') || undefined, trust: a.trust === true }) }
       } catch (err) { return { ok: false, refusal: { code: 'clone_refused', message: err instanceof Error ? err.message : String(err) } } }
@@ -319,10 +323,6 @@ export const ENVIRONMENT_ACTIONS: Record<string, EnvironmentActionSpec> = {
       if (!url) return invalid('url is required')
       return { ok: true, value: await testRemote(url) }
     },
-  },
-  'environment.git.hostKeys': {
-    requiredScope: 'conversations:read',
-    handler: async () => ({ ok: true, value: listHostSshKeys() }),
   },
   'environment.git.author.get': {
     requiredScope: 'conversations:read',

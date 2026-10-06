@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { Folder, FolderOpen, GitBranch, Plus, Desktop, CaretDown, CaretRight } from '@phosphor-icons/react'
+import { Folder, GitBranch, Plus, Desktop, CaretDown, CaretRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
-import type { EngineDirListing, EngineProfile } from '@ion/shared/types'
+import type { EngineProfile } from '@ion/shared/types'
 import type { MergedProjectRow } from '../studio/connection/environment-projects'
 import type { ProjectGroup } from './new-conversation-project-order'
 import { PickerMenu, PickerMenuOption } from './NewConversationPickerMenu'
@@ -145,14 +145,10 @@ export function PickerGroupHeader({ colors, label, count, collapsed, onToggle }:
   </button>
 }
 
-export function DirectoryRows({ loading, error, listing, names, selectedDirectory, highlighted, colors, onHover, onChooseDirectory, onChooseEntry }: { loading: boolean; error: string | null; listing: EngineDirListing | null; names: string[]; selectedDirectory: string | null; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChooseDirectory(): void; onChooseEntry(name: string): void }): React.JSX.Element {
-  if (loading) return <PickerMessage colors={colors} message="Loading directories…" />
-  if (error) return <PickerMessage colors={colors} message={`Could not load directories: ${error}`} />
-  if (!listing) return <PickerMessage colors={colors} message="Enter an absolute path or ~/ path." />
-  let index = 0
-  return <><PickerSection colors={colors} label={listing.path} />{selectedDirectory && <PickerRow active={index++ === highlighted} colors={colors} icon={<Plus size={16} />} title="Add and use this directory" detail={selectedDirectory} onMouseEnter={() => onHover(0)} onClick={onChooseDirectory} />}{names.map((name) => { const current = index++; return <PickerRow key={name} active={current === highlighted} colors={colors} icon={<FolderOpen size={16} />} title={name} onMouseEnter={() => onHover(current)} onClick={() => onChooseEntry(name)} /> })}{names.length === 0 && !selectedDirectory && <PickerMessage colors={colors} message="No matching directories." />}{listing.truncated && <PickerMessage colors={colors} message="Directory list is truncated. Type more of the path." />}</>
+/** The way out of the list for a project that does not exist yet: create its repository and clone it. */
+export function NewProjectRow({ colors, onClick }: { colors: ReturnType<typeof useColors>; onClick(): void }): React.JSX.Element {
+  return <PickerRow active={false} colors={colors} icon={<Plus size={16} />} title="New project…" detail="Create a repository and clone it onto your servers" onMouseEnter={() => {}} onClick={onClick} />
 }
-
 
 export function BranchRows({ branches, highlighted, loading, error, currentBranch, colors, onHover, onChoose }: { branches: readonly string[]; highlighted: number; loading: boolean; error: string | null; currentBranch: string; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChoose(branch: string): void }): React.JSX.Element {
   if (loading) return <PickerMessage colors={colors} message="Loading branches…" />

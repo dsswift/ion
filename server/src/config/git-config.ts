@@ -49,8 +49,42 @@ export interface ServerGitExchangeGithubConfig {
   clientSecret: string
 }
 
+/**
+ * One `server.json.git.hosts[]` entry: a self-managed git host this server
+ * can create repositories on (GitHub Enterprise Server, a GitLab instance).
+ * The well-known SaaS hosts need no entry.
+ */
+export interface ServerGitHostConfig {
+  host: string
+  provider: 'github' | 'gitlab' | 'azure-devops'
+  /** The API root; defaults to the provider's usual path on `host`. */
+  apiBaseUrl?: string
+}
+
+const GIT_HOST_PROVIDERS: ReadonlyArray<ServerGitHostConfig['provider']> = ['github', 'gitlab', 'azure-devops']
+
+function parseGitHost(raw: unknown): ServerGitHostConfig | null {
+  const h = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const host = typeof h.host === 'string' ? h.host.trim() : ''
+  const provider = GIT_HOST_PROVIDERS.find((p) => p === h.provider)
+  if (!host || !provider) {
+    warn('server.json.git.hosts[] entry needs a host and a provider of github, gitlab or azure-devops; skipping')
+    return null
+  }
+  return { host, provider, ...(typeof h.apiBaseUrl === 'string' && h.apiBaseUrl ? { apiBaseUrl: h.apiBaseUrl } : {}) }
+}
+
 export interface ServerGitConfig {
   credentials: ServerGitCredentialConfig[]
+  /**
+   * Whether the host user's own git access (the `~/.ssh` keys, a signed-in
+   * `gh`/`glab`/`az`) is listed as a credential and its CLI token answers
+   * when a person has no Ion credential for a host. On by default; off for a
+   * server whose host user's sign-ins must not serve every person.
+   */
+  hostCredentials: boolean
+  /** Self-managed git hosts this server can create repositories on. */
+  hosts: ServerGitHostConfig[]
   /**
    * This server's own externally-reachable origin (e.g. `https://ion.example.com`),
    * used to build the `redirect_uri` for the GitLab/GitHub exchange sources'
@@ -133,5 +167,7 @@ export function parseGit(raw: unknown, dir: string, defaults: ServerGitConfig): 
   }
 
   const publicOrigin = typeof g.publicOrigin === 'string' ? g.publicOrigin.replace(/\/+$/, '') : defaults.publicOrigin
-  return { credentials, publicOrigin, exchange: { ado, gitlab, github } }
+  const hostCredentials = typeof g.hostCredentials === 'boolean' ? g.hostCredentials : defaults.hostCredentials
+  const hosts = Array.isArray(g.hosts) ? g.hosts.map(parseGitHost).filter((h): h is ServerGitHostConfig => h !== null) : defaults.hosts
+  return { credentials, hostCredentials, hosts, publicOrigin, exchange: { ado, gitlab, github } }
 }

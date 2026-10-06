@@ -4,7 +4,7 @@
  * that failed), each with the one status the row's chip and dot carry.
  * Pure, so the list's ordering and status rules are tested without React.
  */
-import type { EnvironmentJob, EnvironmentProject } from '@ion/shared/types-environment-admin'
+import { ENVIRONMENT_JOB_VERB, type EnvironmentJob, type EnvironmentProject } from '@ion/shared/types-environment-admin'
 import type { Tone } from '../kit'
 import { pathBasename, pathDirname } from '@ion/shared/paths'
 
@@ -26,7 +26,7 @@ function withPercent(text: string, job: EnvironmentJob): string {
 }
 
 export function jobProgressLabel(job: EnvironmentJob): string {
-  return withPercent(job.kind === 'clone' ? 'cloning' : 'setting up', job)
+  return withPercent(ENVIRONMENT_JOB_VERB[job.kind], job)
 }
 
 /** The folder name a clone of `url` lands in: the last path segment without `.git`. */
@@ -44,17 +44,20 @@ export function jobRowName(job: EnvironmentJob): string {
 
 /**
  * Job rows first (running jobs whose folder is not a project yet, then
- * failed clones), then every project sorted by name. A running job whose
- * folder IS a project rides on that project's row instead.
+ * failed clones and creates), then every project sorted by name. A running
+ * job whose folder IS a project rides on that project's row instead. One
+ * folder shows one running job: a create, which carries its own clone's
+ * progress, over the clone or setup it started.
  */
 export function buildProjectRows(projects: readonly EnvironmentProject[], jobs: readonly EnvironmentJob[]): ProjectListRow[] {
   const running = jobs.filter((j) => j.phase === 'running')
-  const failed = jobs.filter((j) => j.phase === 'failed' && j.kind === 'clone')
+  const shown = running.filter((j) => j.kind === 'create' || !running.some((o) => o.kind === 'create' && o.dir === j.dir))
+  const failed = jobs.filter((j) => j.phase === 'failed' && (j.kind === 'clone' || j.kind === 'create'))
   const dirs = new Set(projects.map((p) => p.dir))
-  const jobRows: ProjectListRow[] = [...running.filter((j) => !dirs.has(j.dir)), ...failed].map((job) => ({ kind: 'job', key: `job:${job.id}`, job }))
+  const jobRows: ProjectListRow[] = [...shown.filter((j) => !dirs.has(j.dir)), ...failed].map((job) => ({ kind: 'job', key: `job:${job.id}`, job }))
   const projectRows: ProjectListRow[] = [...projects]
     .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
-    .map((project) => ({ kind: 'project', key: project.dir, project, job: running.find((j) => j.dir === project.dir) }))
+    .map((project) => ({ kind: 'project', key: project.dir, project, job: shown.find((j) => j.dir === project.dir) }))
   return [...jobRows, ...projectRows]
 }
 
@@ -75,7 +78,10 @@ export function projectStatus(project: EnvironmentProject, job: EnvironmentJob |
 }
 
 export function jobStatus(job: EnvironmentJob): RowStatus {
-  if (job.phase === 'failed') return { chip: 'clone failed', chipTone: 'error', dot: 'error', dotLabel: 'Clone failed' }
+  if (job.phase === 'failed') {
+    const what = job.kind === 'create' ? 'Create' : 'Clone'
+    return { chip: `${what.toLowerCase()} failed`, chipTone: 'error', dot: 'error', dotLabel: job.error ? `${what} failed: ${job.error}` : `${what} failed` }
+  }
   return { chip: jobProgressLabel(job), chipTone: 'warn', dot: 'warn', dotLabel: 'Working' }
 }
 

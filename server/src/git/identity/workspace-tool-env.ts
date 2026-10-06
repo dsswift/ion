@@ -7,12 +7,12 @@
  *
  * A session's working directory has one git remote host for its whole
  * lifetime (the common case), resolved once at `start_session` the same way
- * `hostForGitInvocation` resolves it for a live `runGit` call -- defaulting
+ * `remoteForGitInvocation` resolves it for a live `runGit` call -- defaulting
  * to `origin`, the subcommand ('push') is a placeholder that never actually
- * runs; it only steers which operand `hostForGitInvocation` treats as a
+ * runs; it only steers which operand `remoteForGitInvocation` treats as a
  * remote name vs a URL.
  */
-import { hostForGitInvocation } from './remote-host'
+import { remoteForGitInvocation } from './remote-host'
 import { resolveGitCredential } from './resolver'
 import { materializeGitCredential } from './materialize'
 import { warn as _warn } from '../../logger'
@@ -25,9 +25,9 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 export async function resolveWorkspaceGitToolEnv(workingDirectory: string | undefined, subject: string | undefined): Promise<Record<string, string> | undefined> {
   if (!workingDirectory || !subject) return undefined
   try {
-    const host = await hostForGitInvocation(workingDirectory, ['push'])
-    if (!host) return undefined
-    const cred = await resolveGitCredential(subject, host)
+    const remote = await remoteForGitInvocation(workingDirectory, ['push'])
+    if (!remote) return undefined
+    const cred = await resolveGitCredential(subject, remote.host, { transport: remote.transport })
     if (!cred) return undefined
     return await materializeGitCredential(subject, cred)
   } catch (err) {

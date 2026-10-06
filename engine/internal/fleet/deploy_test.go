@@ -321,7 +321,7 @@ func TestDeploy_RefusesWhatCannotWork(t *testing.T) {
 func fakeCheckout(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for _, rel := range []string{"scripts/package-studio-server.sh", "scripts/install-studio-server.sh", "engine/go.mod", "desktop/package.json"} {
+	for _, rel := range checkoutMarkers {
 		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(rel)), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -354,7 +354,7 @@ func TestResolveSource(t *testing.T) {
 	if kind, co, err := ResolveSource(SourceRelease, Config{}); err != nil || kind != SourceRelease || co != "" {
 		t.Errorf("a release builds nothing and needs no checkout: %s %s %v", kind, co, err)
 	}
-	if _, _, err := ResolveSource(t.TempDir(), Config{}); err == nil || !strings.Contains(err.Error(), "not an Ion checkout") {
+	if _, _, err := ResolveSource(t.TempDir(), Config{}); err == nil || !strings.Contains(err.Error(), "not the top folder of an Ion checkout") {
 		t.Errorf("a folder that is not a checkout must be refused: %v", err)
 	}
 	t.Setenv("HOME", filepath.Dir(bench))
@@ -363,6 +363,29 @@ func TestResolveSource(t *testing.T) {
 	}
 	if _, _, err := ResolveSource("", Config{}); err == nil {
 		t.Error("no source must be refused")
+	}
+}
+
+// A remembered checkout that was removed (a retired bench) must say the
+// folder is gone, not name a marker file the operator cannot act on.
+func TestIsCheckout_NamesWhatIsWrong(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "ion-removed-bench")
+	if err := IsCheckout(gone); err == nil || !strings.Contains(err.Error(), "no longer exists") || strings.Contains(err.Error(), "scripts/") {
+		t.Errorf("a missing folder: %v", err)
+	}
+	file := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := IsCheckout(file); err == nil || !strings.Contains(err.Error(), "is a file") {
+		t.Errorf("a file: %v", err)
+	}
+	inside := filepath.Join(fakeCheckout(t), "engine")
+	if err := IsCheckout(inside); err == nil || !strings.Contains(err.Error(), "not a folder inside it") {
+		t.Errorf("a folder inside a checkout: %v", err)
+	}
+	if err := IsCheckout(fakeCheckout(t)); err != nil {
+		t.Errorf("a checkout: %v", err)
 	}
 }
 

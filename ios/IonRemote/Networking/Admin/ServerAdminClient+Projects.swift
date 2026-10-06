@@ -24,6 +24,18 @@ extension ServerAdminClient {
         return try await call(.environmentProjectsClone, fields: fields)
     }
 
+    /// Clones a repository the server picks the URL for, from its SSH and
+    /// HTTPS pair, under `parentDir` as a job. `trust` registers it trusted,
+    /// so its setup runs as soon as it lands.
+    func cloneProject(remote: GitHostingRepository, parentDir: String, trust: Bool) async throws -> ProjectCloneStarted {
+        var fields: [String: JSONValue] = [
+            "remote": .object(["sshUrl": .string(remote.sshUrl), "httpsUrl": .string(remote.httpsUrl)]),
+            "parentDir": .string(parentDir), "name": .string(remote.name)
+        ]
+        if trust { fields["trust"] = .bool(true) }
+        return try await call(.environmentProjectsClone, fields: fields)
+    }
+
     func appraiseRemoval(dir: String) async throws -> ProjectRemovalAppraisal {
         try await call(.environmentProjectsAppraiseRemoval, fields: ["dir": .string(dir)])
     }

@@ -88,6 +88,41 @@ export type FleetRunProgress =
 export type FleetRunStart = { ok: true; runId: string } | { ok: false; error: string }
 
 /**
+ * An integration bench named by its repository and the source branch it
+ * integrates into, instead of by its folder. A bench is removed when its last
+ * worktree lands, and what it held is then on `branch`, so a bench remembered
+ * this way still names the same work after its folder is gone.
+ */
+export interface FleetBenchSource {
+  repoPath: string
+  branch: string
+}
+
+/** What `fleet.deploy.source` is asked about: a folder by its path, or a bench by its branch. */
+export type FleetSourceQuery = string | FleetBenchSource
+
+/**
+ * The checkout a deploy builds from, as `fleet.deploy.source` found it.
+ * `via` says how: `folder` was named by its path, `bench` is the bench of a
+ * branch, and `branch` is the checkout that has the branch because its bench
+ * is gone. `bench` names the bench the folder is, or stands in for; absent
+ * for any other folder.
+ */
+export interface FleetCheckout {
+  path: string
+  via: 'folder' | 'bench' | 'branch'
+  bench?: FleetBenchSource
+}
+
+/** Reads a `fleet.deploy.source` argument; null for anything that is neither a folder nor a bench. */
+export function parseFleetSourceQuery(value: unknown): FleetSourceQuery | null {
+  if (typeof value === 'string') return value.trim() === '' ? null : value.trim()
+  if (typeof value !== 'object' || value === null) return null
+  const { repoPath, branch } = value as Record<string, unknown>
+  return typeof repoPath === 'string' && repoPath !== '' && typeof branch === 'string' && branch !== '' ? { repoPath, branch } : null
+}
+
+/**
  * A deploy this device started, as the main process remembers it: whether it
  * still runs, and the log lines of its builds and installs. The page asks for
  * it when it opens, so a deploy started before the page was closed is shown

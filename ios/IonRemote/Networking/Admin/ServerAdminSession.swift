@@ -59,6 +59,10 @@ final class ServerAdminSession {
 
     // MARK: - State
 
+    /// Whether the app's live transport serves this server, so a conversation
+    /// the app opens lands on it.
+    var servesLive: Bool { live() != nil }
+
     /// The transport serving this server now: the live one first.
     var transport: StudioTransport? { live() ?? dedicated }
     var state: TransportState { transport?.state ?? .disconnected }

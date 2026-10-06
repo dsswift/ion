@@ -142,7 +142,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         DiagnosticLog.flush()
 
         // Full pull from 0 to establish baseline cursor
-        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
 
         // Write more lines for both pairings
         DiagnosticLog.setPairingId("desk-A")
@@ -155,7 +155,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
 
         // Filtered pull for desk-A only
         let filteredA = await DiagnosticLog.exportIncrementalSince(
-            sinceSeq: baseline.nextSeq, pairingId: "desk-A")
+            sinceSeq: baseline.nextSeq, pairingId: "desk-A", maxBytes: .max)
         let aLines = filteredA.logs.components(separatedBy: "\n")
             .filter { $0.contains(marker) }
         XCTAssertEqual(aLines.count, 1, "filtered export must return only desk-A lines")
@@ -168,7 +168,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         let marker = "seq-global-\(UUID().uuidString)"
 
         // Establish baseline
-        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
 
         DiagnosticLog.setPairingId("desk-X")
         DiagnosticLog.log("X1 \(marker)", tag: "pairing", level: .info)
@@ -180,13 +180,13 @@ final class DiagnosticLogPairingTests: XCTestCase {
 
         // Filter for desk-X -- should return X1 but cursor advances past Y1 too
         let filtered = await DiagnosticLog.exportIncrementalSince(
-            sinceSeq: baseline.nextSeq, pairingId: "desk-X")
+            sinceSeq: baseline.nextSeq, pairingId: "desk-X", maxBytes: .max)
         XCTAssertTrue(filtered.logs.contains("X1 \(marker)"))
 
         // Now pull unfiltered from the filtered result's cursor -- Y1 should
         // NOT re-appear because the cursor advanced globally past it.
         let afterFiltered = await DiagnosticLog.exportIncrementalSince(
-            sinceSeq: filtered.nextSeq)
+            sinceSeq: filtered.nextSeq, maxBytes: .max)
         XCTAssertFalse(afterFiltered.logs.contains("Y1 \(marker)"),
                        "seq cursor must advance globally, not just over filtered lines")
     }
@@ -199,7 +199,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         DiagnosticLog.log("no-pairing \(marker)", tag: "pairing", level: .info)
         DiagnosticLog.flush()
 
-        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
 
         // Write a line with pairing
         DiagnosticLog.setPairingId("desk-Z")
@@ -212,7 +212,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         DiagnosticLog.flush()
 
         let filtered = await DiagnosticLog.exportIncrementalSince(
-            sinceSeq: baseline.nextSeq, pairingId: "desk-Z")
+            sinceSeq: baseline.nextSeq, pairingId: "desk-Z", maxBytes: .max)
         XCTAssertTrue(filtered.logs.contains("with-pairing \(marker)"),
                       "line matching pairing must be included")
         XCTAssertFalse(filtered.logs.contains("also-no-pairing \(marker)"),
@@ -221,7 +221,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
 
     func testFilteredExportCountsWithheldLinesByReason() async throws {
         let marker = "withheld-\(UUID().uuidString)"
-        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
 
         DiagnosticLog.setPairingId("desk-mine")
         DiagnosticLog.log("mine \(marker)", tag: "pairing", level: .info)
@@ -233,7 +233,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         DiagnosticLog.flush()
 
         let filtered = await DiagnosticLog.exportIncrementalSince(
-            sinceSeq: baseline.nextSeq, pairingId: "desk-mine")
+            sinceSeq: baseline.nextSeq, pairingId: "desk-mine", maxBytes: .max)
         XCTAssertTrue(filtered.logs.contains("mine \(marker)"))
         XCTAssertFalse(filtered.logs.contains("other \(marker)"))
         XCTAssertFalse(filtered.logs.contains("unstamped 1 \(marker)"))
@@ -247,7 +247,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(filtered.withheldUnstamped, 2,
                                     "a pull that passes over unstamped lines must say how many")
 
-        let unfiltered = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let unfiltered = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
         XCTAssertEqual(unfiltered.withheldUnstamped, 0)
         XCTAssertEqual(unfiltered.withheldOtherPairing, 0)
     }
@@ -255,7 +255,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
     func testUnfilteredExportReturnsAllPairings() async throws {
         let marker = "unfiltered-\(UUID().uuidString)"
 
-        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0, maxBytes: .max)
 
         DiagnosticLog.setPairingId("desk-1")
         DiagnosticLog.log("d1 \(marker)", tag: "pairing", level: .info)
@@ -270,7 +270,7 @@ final class DiagnosticLogPairingTests: XCTestCase {
         DiagnosticLog.flush()
 
         // Unfiltered pull returns everything
-        let all = await DiagnosticLog.exportIncrementalSince(sinceSeq: baseline.nextSeq)
+        let all = await DiagnosticLog.exportIncrementalSince(sinceSeq: baseline.nextSeq, maxBytes: .max)
         let ownLines = all.logs.components(separatedBy: "\n")
             .filter { $0.contains(marker) }
         XCTAssertEqual(ownLines.count, 3,

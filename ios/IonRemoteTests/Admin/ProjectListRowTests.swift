@@ -22,6 +22,19 @@ final class ProjectListRowTests: XCTestCase {
         XCTAssertEqual(rows[2], .project(app, job: setupOnApp), "a running job on a project rides its row")
     }
 
+    func testACreateAndTheCloneItStartedShowAsOneRowAndAFailedCreateIsListed() throws {
+        let create = try job(ProjectsFixtures.job(id: "create", kind: "create", percent: 40, url: nil))
+        let clone = try job(ProjectsFixtures.job(id: "clone"))
+        let failed = try job(ProjectsFixtures.job(id: "failed", kind: "create", dir: "/Users/dev/source/taken", phase: "failed", percent: nil, url: nil, error: "name already exists"))
+
+        let rows = ProjectListRow.build(projects: [], jobs: [clone, create, failed])
+
+        XCTAssertEqual(rows.map(\.id), ["job:create", "job:failed"])
+        XCTAssertEqual(ProjectRowStatus.of(create).text, "Creating 40%")
+        XCTAssertEqual(ProjectRowStatus.of(failed).text, "Create failed")
+        XCTAssertEqual(ProjectRowStatus.of(failed).dotLabel, "Create failed: name already exists")
+    }
+
     func testStatusNamesTheOneThingThatMatters() throws {
         let app = try project(ProjectsFixtures.appProject)
         XCTAssertEqual(ProjectRowStatus.of(app, job: nil), ProjectRowStatus(text: nil, tone: .muted, dot: .ok, dotLabel: "Ready"))

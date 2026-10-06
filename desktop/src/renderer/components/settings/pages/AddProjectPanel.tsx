@@ -1,10 +1,11 @@
 /**
- * AddProjectPanel — "Add project" for the server this page is about. Three
+ * AddProjectPanel — "Add project" for the server this page is about. Four
  * sources: a folder already on that host (browse it), a git URL to clone
- * there, or the projects another environment has that this one does not
+ * there, the projects another environment has that this one does not
  * ("Copy from another environment"), cloned with their remote URL into the
- * base folder. Clones run as jobs on the server; the row appears in the list
- * when the job registers it.
+ * base folder, or a new repository created on a git host and cloned there.
+ * Clones run as jobs on the server; the row appears in the list when the job
+ * registers it.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import type { EnvironmentProject } from '@ion/shared/types-environment-admin'
@@ -17,8 +18,9 @@ import { Button, ErrorText, Field, KIT, MonoLine, Muted, Segmented, SidePanel, S
 import { DirectoryPicker } from './DirectoryPicker'
 import { repoNameFromUrl } from './project-rows'
 import { rInfo, rWarn } from '../../../rendererLogger'
+import { NewRepositoryPanel } from './NewRepositoryPanel'
 
-type Source = 'folder' | 'url' | 'copy'
+type Source = 'folder' | 'url' | 'copy' | 'new'
 interface CopyCandidate { from: EnvironmentCatalogEntry; project: EnvironmentProject }
 
 export interface AddProjectPanelProps {
@@ -98,6 +100,17 @@ function AddProjectFlow({ baseDir, existing, onDone, onClose }: AddProjectPanelP
     rInfo('add-project', 'copy clones started', { environment_id: env.id, count: ticked.size })
   })
 
+  const sourceSwitch = (
+    <Segmented<Source>
+      label="Project source"
+      value={source}
+      onChange={(next) => { setSource(next); setError(null) }}
+      options={[{ value: 'folder', label: 'Folder on this host' }, { value: 'url', label: 'Git URL' }, { value: 'copy', label: 'Copy from another environment' }, { value: 'new', label: 'New repository' }]}
+    />
+  )
+  // A new repository is its own flow, with its own lookups, mounted only when it is the source.
+  if (source === 'new') return <NewRepositoryPanel baseDir={baseDir} sourceSwitch={sourceSwitch} onDone={onDone} onClose={onClose} />
+
   const footer = source === 'url'
     ? <Button variant="primary" disabled={busy || !url.trim()} onClick={cloneUrl}>{busy ? 'Starting…' : 'Clone'}</Button>
     : source === 'copy' && candidates && candidates.length > 0
@@ -107,12 +120,7 @@ function AddProjectFlow({ baseDir, existing, onDone, onClose }: AddProjectPanelP
   return (
     <SidePanel open title={`Add project to ${env.label}`} subtitle="Conversations can start in any project on this server." onClose={onClose} footer={footer}>
       <Stack>
-        <Segmented<Source>
-          label="Project source"
-          value={source}
-          onChange={(next) => { setSource(next); setError(null) }}
-          options={[{ value: 'folder', label: 'Folder on this host' }, { value: 'url', label: 'Git URL' }, { value: 'copy', label: 'Copy from another environment' }]}
-        />
+        {sourceSwitch}
         <ErrorText>{error}</ErrorText>
         {source === 'folder' && <>
           <Muted>Browse {env.label} for a checkout that is already there. Double-click a folder to add it.</Muted>

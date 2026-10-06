@@ -202,7 +202,7 @@ export function FleetPage(): React.JSX.Element {
       <SwitchAccountPanel entry={switching} onClose={closeSwitching} />
       <CustomProvidersPanel entry={customizing} onClose={() => setCustomizing(null)} />
       <FleetHubsPanel entry={hubsOf} onClose={() => setHubsOf(null)} />
-      <DeployPanel open={deployOpen} entry={deploying} entries={servers.entries.filter((e) => !isLocalEntry(e))} deploys={deploys} onClose={() => { setDeployOpen(false); setDeploying(null) }} />
+      <DeployPanel open={deployOpen} localEnvironmentId={localId} entry={deploying} entries={servers.entries.filter((e) => !isLocalEntry(e))} deploys={deploys} onClose={() => { setDeployOpen(false); setDeploying(null) }} />
     </Stack>
   )
 }

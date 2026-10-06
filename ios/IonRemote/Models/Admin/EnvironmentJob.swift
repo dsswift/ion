@@ -1,11 +1,23 @@
 import Foundation
 
-/// A background job a server runs on a project: a clone, a setup, or a
-/// purge. Mirrors `EnvironmentJob` in `@ion/shared/types-environment-admin`;
+/// A background job a server runs on a project: a clone, a setup, a purge,
+/// or a create (a new repository, its clone, and a conversation opened in
+/// it). Mirrors `EnvironmentJob` in `@ion/shared/types-environment-admin`;
 /// every change arrives whole on `ion:project-job`.
 struct EnvironmentJob: Decodable, Equatable, Sendable, Identifiable {
     enum Kind: String, Decodable, Sendable {
-        case clone, setup, purge
+        case clone, setup, purge, create
+
+        /// What a running job of this kind is doing, to open a sentence.
+        /// Mirrors `environmentJobTitle` in `@ion/shared`.
+        var title: String {
+            switch self {
+            case .clone: return "Cloning"
+            case .setup: return "Setting up"
+            case .purge: return "Purging"
+            case .create: return "Creating"
+            }
+        }
     }
 
     enum Phase: String, Decodable, Sendable {
@@ -27,4 +39,6 @@ struct EnvironmentJob: Decodable, Equatable, Sendable, Identifiable {
     let endedAt: Double?
     /// For a clone: the URL it clones.
     let url: String?
+    /// For a create: the conversation it opened, once it is open.
+    let tabId: String?
 }

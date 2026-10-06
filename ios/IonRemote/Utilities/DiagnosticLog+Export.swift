@@ -14,7 +14,14 @@ extension DiagnosticLog {
         let withheldUnstamped: Int
         /// Newer lines kept back because they belong to a different pairing.
         let withheldOtherPairing: Int
+        /// The batch filled before the newest line: export again from `nextSeq` for the rest.
+        let more: Bool
     }
+
+    /// The most log bytes one pull ships. A backlog goes up in batches this
+    /// size, each confirmed before the next, so one upload never holds a
+    /// slow relay link for longer than the calls queued behind it can wait.
+    static let exportBatchBytes = 256 * 1024
 
     /// Return all retained log lines whose `fields.seq` is strictly greater
     /// than `sinceSeq`. Used by the desktop's incremental log pull so repeated
@@ -52,10 +59,15 @@ extension DiagnosticLog {
     /// seq regression) resets the cursor and rescans everything, so
     /// correctness never depends on the cursor. Output format is byte-identical
     /// to the pre-cursor implementation (the desktop parses it).
-    static func exportIncrementalSince(sinceSeq: Int, pairingId: String? = nil) async -> IncrementalExport {
+    ///
+    /// **Batched.** At most `maxBytes` of lines ship per pull (always at least
+    /// one line). A pull that stops early says so in `more`, and its cursor
+    /// stops at the last line it passed over, so the next pull from
+    /// `nextSeq` resumes exactly there.
+    static func exportIncrementalSince(sinceSeq: Int, pairingId: String? = nil, maxBytes: Int = exportBatchBytes) async -> IncrementalExport {
         await withCheckedContinuation { continuation in
             shared.writeQueue.async {
-                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq, pairingId: pairingId))
+                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq, pairingId: pairingId, maxBytes: maxBytes))
             }
         }
     }
@@ -73,7 +85,7 @@ extension DiagnosticLog {
     /// lines. A `sinceSeq` above anything this device has written comes from
     /// an older seq space (a reinstall): it confirms nothing, and the pull
     /// starts from 0 so the server sees its cursor regress and resets.
-    private func _exportIncrementalOnQueue(sinceSeq requestedSince: Int, pairingId: String? = nil) -> IncrementalExport {
+    private func _exportIncrementalOnQueue(sinceSeq requestedSince: Int, pairingId: String? = nil, maxBytes: Int) -> IncrementalExport {
         let highestWritten = _highestWrittenSeqOnQueue()
         var sinceSeq = requestedSince
         if requestedSince > highestWritten {
@@ -109,11 +121,13 @@ extension DiagnosticLog {
         exportFileOffsets = exportFileOffsets.filter { liveSet.contains($0.key) }
 
         var newLines: [String] = []
+        var shippedBytes = 0
+        var more = false
         var maxSeq = sinceSeq
         var withheldUnstamped = 0
         var withheldOtherPairing = 0
 
-        for name in liveNames {
+        files: for name in liveNames {
             let url = logDirectory.appendingPathComponent(name)
             guard fm.fileExists(atPath: url.path) else { continue }
             let handle: FileHandle
@@ -152,26 +166,41 @@ extension DiagnosticLog {
             // tail always ends on a line boundary — no partial-line handling
             // is needed and the cursor can advance to `end`.
             let tail = String(decoding: data, as: UTF8.self)
-            for line in tail.components(separatedBy: "\n") where !line.isEmpty {
-                guard let seq = Self.parseSeq(line) else { continue }
-                if seq > exportScannedMaxSeq { exportScannedMaxSeq = seq }
+            // The byte offset of the line being read, so a batch that fills
+            // mid-file leaves the cursor at the first line it did not ship.
+            var lineStart = start
+            var lines = tail.components(separatedBy: "\n")
+            if lines.last == "" { lines.removeLast() } // the tail ends on a newline
+            for line in lines {
+                let lineBytes = line.utf8.count + 1
+                defer { lineStart += UInt64(lineBytes) }
+                guard !line.isEmpty, let seq = Self.parseSeq(line) else { continue }
                 if seq > sinceSeq {
-                    // Advance maxSeq over all qualifying lines regardless of
-                    // the pairing filter -- the cursor is global.
-                    if seq > maxSeq { maxSeq = seq }
+                    var withheld = false
                     if let filterPairing = pairingId {
                         let linePairing = Self.parsePairingId(line)
                         if linePairing == nil {
                             withheldUnstamped += 1
-                            continue
-                        }
-                        if linePairing != filterPairing {
+                            withheld = true
+                        } else if linePairing != filterPairing {
                             withheldOtherPairing += 1
-                            continue
+                            withheld = true
                         }
                     }
-                    newLines.append(line)
+                    if !withheld, !newLines.isEmpty, shippedBytes + lineBytes > maxBytes {
+                        exportFileOffsets[name] = lineStart
+                        more = true
+                        break files
+                    }
+                    // Advance maxSeq over all qualifying lines regardless of
+                    // the pairing filter -- the cursor is global.
+                    if seq > maxSeq { maxSeq = seq }
+                    if !withheld {
+                        newLines.append(line)
+                        shippedBytes += lineBytes
+                    }
                 }
+                if seq > exportScannedMaxSeq { exportScannedMaxSeq = seq }
             }
             exportFileOffsets[name] = end
         }
@@ -190,7 +219,8 @@ extension DiagnosticLog {
             logs: newContent,
             nextSeq: nextSeq,
             withheldUnstamped: withheldUnstamped,
-            withheldOtherPairing: withheldOtherPairing
+            withheldOtherPairing: withheldOtherPairing,
+            more: more
         )
     }
 

@@ -29,6 +29,10 @@ struct TabListView: View {
     // Internal (not private): the sheet and its onDismiss drain live in
     // TabListView+Presentation.swift.
     @State var pendingNewConversationProject: RemoteProject? = nil
+    /// New Project was picked in the new-tab sheet; its card opens once that sheet is gone.
+    @State var pendingNewProject = false
+    /// The server the open New Project card creates on.
+    @State var newProjectSession: ServerAdminSession?
     // Internal (not private): the ServerPickerMenu in TabListView+Layouts'
     // toolbars binds to it.
     @State var showPairingSheet = false

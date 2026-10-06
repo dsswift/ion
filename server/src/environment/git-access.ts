@@ -5,7 +5,7 @@
  * adds the test that proves a stored key or token works, and the host's
  * global author identity that a clone made here will commit with.
  */
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import type { EnvironmentGitTest, EnvironmentGitAuthor } from '@ion/shared/types-environment-admin'
@@ -63,36 +63,4 @@ export async function writeAuthor(author: EnvironmentGitAuthor): Promise<Environ
   await runGit(homedir(), ['config', '--global', 'user.email', email])
   log('author written', { name_length: name.length, email_domain: email.split('@')[1] ?? '' })
   return { name, email }
-}
-
-/** A public key found in the host user's `~/.ssh`: what git will offer when no Ion credential matches. */
-export interface HostSshKey {
-  file: string
-  type: string
-  comment: string
-}
-
-/**
- * The public keys in the host's `~/.ssh`. Ion's own git runs with the
- * host's normal ssh when the principal has stored no credential for a
- * remote's host, so these are the keys a clone or push will actually use
- * there; the section shows them so "no Ion credential" does not read as
- * "no access".
- */
-export function listHostSshKeys(home: string = homedir()): HostSshKey[] {
-  const dir = join(home, '.ssh')
-  let names: string[]
-  try { names = readdirSync(dir) } catch (err) { log('no ~/.ssh to list', { dir, error: String(err) }); return [] }
-  const keys: HostSshKey[] = []
-  for (const name of names) {
-    if (!name.endsWith('.pub')) continue
-    try {
-      const [type = '', , ...rest] = readFileSync(join(dir, name), 'utf-8').trim().split(/\s+/)
-      keys.push({ file: name, type, comment: rest.join(' ') })
-    } catch (err) {
-      warn('public key unreadable', { file: name, error: String(err) })
-    }
-  }
-  log('host ssh keys listed', { count: keys.length })
-  return keys
 }

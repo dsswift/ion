@@ -27,6 +27,7 @@ import { InboxBenchMenu } from "./InboxBenchMenu";
 import { InboxBenchTerminalRow } from "./InboxBenchTerminalRow";
 import { InboxWorktreeRow } from "./InboxWorktreeRow";
 import { InboxProjectMenu } from "./InboxProjectMenu";
+import { CloneToServersPanel } from "../new-project/CloneToServersPanel";
 import { NewConversationPicker } from "../../components/NewConversationPicker";
 import {
   caretStyle,
@@ -81,6 +82,7 @@ export function InboxNavigatorGroups({
     projectName: string;
     anchor: { x: number; y: number };
   } | null>(null);
+  const [cloneToServers, setCloneToServers] = useState<{ environmentId: string; directory: string } | null>(null);
   const [conversationPicker, setConversationPicker] = useState<{
     directory: string;
     environmentId: string;
@@ -513,7 +515,18 @@ export function InboxNavigatorGroups({
         onNewWorktreeConversation={(chooseBranch) =>
           openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, true, chooseBranch)
         }
+        onCloneToServers={() => setCloneToServers({ environmentId: projectMenu.environmentId, directory: projectMenu.repoPath })}
         onClose={() => setProjectMenu(null)}
+      />,
+    );
+  }
+  if (cloneToServers) {
+    parts.push(
+      <CloneToServersPanel
+        key="inbox-clone-to-servers"
+        environmentId={cloneToServers.environmentId}
+        directory={cloneToServers.directory}
+        onClose={() => setCloneToServers(null)}
       />,
     );
   }

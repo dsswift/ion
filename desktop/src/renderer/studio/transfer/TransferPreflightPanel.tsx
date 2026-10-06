@@ -5,6 +5,7 @@
  */
 import React, { useState } from 'react'
 import { CheckCircle, Warning, Info, XCircle } from '@phosphor-icons/react'
+import { environmentJobTitle } from '@ion/shared/types-environment-admin'
 import { useColors } from '../../theme'
 import type { TransferPreflightState, TransferCheck } from './useTransferPreflight'
 import { rWarn } from '../../rendererLogger'
@@ -60,7 +61,7 @@ export function TransferPreflightPanel({ state, targetLabel }: { state: Transfer
       {rows.map((check) => <Row key={check.id} check={check} />)}
       {state.activeJob && (
         <div style={{ fontSize: 11, color: colors.textSecondary, padding: '4px 0 8px' }}>
-          {state.activeJob.kind === 'clone' ? 'Cloning' : 'Setting up'} on {targetLabel}: {state.activeJob.stage}{state.activeJob.percent !== undefined ? ` ${state.activeJob.percent}%` : ''}
+          {environmentJobTitle(state.activeJob.kind)} on {targetLabel}: {state.activeJob.stage}{state.activeJob.percent !== undefined ? ` ${state.activeJob.percent}%` : ''}
         </div>
       )}
     </div>

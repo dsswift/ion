@@ -98,10 +98,6 @@
       "scope": "git:write"
     },
     {
-      "action": "environment.git.hostKeys",
-      "scope": "conversations:read"
-    },
-    {
       "action": "environment.git.test",
       "scope": "git:write"
     },
@@ -212,6 +208,18 @@
     {
       "action": "fs.resolveLink",
       "scope": "conversations:read"
+    },
+    {
+      "action": "gitHosting.accounts",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitHosting.createRepository",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitHosting.startProject",
+      "scope": "git:write"
     },
     {
       "action": "gitIdentity.authorize",

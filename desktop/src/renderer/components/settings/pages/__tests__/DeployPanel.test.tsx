@@ -19,6 +19,8 @@ const wire = vi.hoisted(() => ({
   frames: new Set<(environmentId: string, frame: unknown) => void>(),
   runs: [] as unknown[],
   deploys: [] as unknown[],
+  /** What this device's server says a source names: a path names itself unless a test says otherwise. */
+  checkouts: [] as unknown[],
   next: 0,
 }))
 const hostMock = vi.hoisted(() => ({
@@ -29,8 +31,13 @@ const hostMock = vi.hoisted(() => ({
   onFleetProgress: (cb: (p: unknown) => void) => { wire.fleet.add(cb); return () => { wire.fleet.delete(cb) } },
   onFrame: (cb: (environmentId: string, frame: unknown) => void) => { wire.frames.add(cb); return () => { wire.frames.delete(cb) } },
 }))
-const action = vi.hoisted(() => vi.fn(async (_env: string, name: string) => {
+const action = vi.hoisted(() => vi.fn(async (_env: string, name: string, _args: unknown[] = []) => {
   if (name === 'fleet.deploys.list') return wire.deploys
+  if (name === 'fleet.deploy.source') {
+    const next = wire.checkouts.shift()
+    if (next instanceof Error) throw next
+    return next ?? { path: _args[0], via: 'folder' }
+  }
   throw new Error('unknown_action')
 }))
 vi.mock('../../../../host/host-instance', () => ({ host: hostMock, action }))
@@ -52,7 +59,7 @@ const onClose = vi.fn()
 
 /** The panel as the Fleet page holds it: fed the deploys this device's own server holds. */
 function Panel({ open }: { open: EnvironmentCatalogEntry | null }): React.JSX.Element | null {
-  return <DeployPanel open entry={open} entries={[mac, winA, winB]} deploys={useFleetDeploys('local')} onClose={onClose} />
+  return <DeployPanel open localEnvironmentId="local" entry={open} entries={[mac, winA, winB]} deploys={useFleetDeploys('local')} onClose={onClose} />
 }
 
 async function mount(open: EnvironmentCatalogEntry | null = mac): Promise<void> {
@@ -111,7 +118,7 @@ beforeEach(() => {
   localStorage.clear()
   localStorage.setItem('ion.fleet.deploy-source', '/src/ion')
   _setDeployCheckSettleForTest(0)
-  wire.fleet.clear(); wire.frames.clear(); wire.runs = []; wire.deploys = []; wire.next = 0
+  wire.fleet.clear(); wire.frames.clear(); wire.runs = []; wire.deploys = []; wire.checkouts = []; wire.next = 0
   hostMock.fleetRun.mockClear(); hostMock.cancelFleetRun.mockClear(); onClose.mockClear()
 })
 afterEach(() => h.unmount())
@@ -139,9 +146,9 @@ describe('before a deploy', () => {
   it('says why a deploy cannot be planned at all', async () => {
     await mount()
     await settle()
-    await send({ runId: 'run-1', type: 'line', stream: 'stderr', line: 'ion fleet deploy: /src/ion is not an Ion checkout (no engine/go.mod)' })
+    await send({ runId: 'run-1', type: 'line', stream: 'stderr', line: 'ion fleet deploy: the checkout /src/ion no longer exists' })
     await send({ runId: 'run-1', type: 'exit', code: 1 })
-    expect(text()).toContain('/src/ion is not an Ion checkout (no engine/go.mod)')
+    expect(text()).toContain('the checkout /src/ion no longer exists')
     expect(text()).not.toContain('ion fleet deploy:')
     expect((h.control('Deploy') as HTMLButtonElement).disabled).toBe(true)
   })
@@ -208,6 +215,63 @@ describe('before a deploy', () => {
     expect(text()).toContain('moves a server\'s stored data to an older format')
     await h.click('Deploy anyway')
     expect(requests().at(-1)).toMatchObject({ kind: 'deploy', allowDowngrade: true })
+  })
+})
+
+// Ion removes a bench's folder when its last worktree lands, so a bench is
+// remembered by its branch and this device's server finds its folder for
+// every check.
+describe('a bench source', () => {
+  const josh = { repoPath: '/src/ion', branch: 'josh' }
+  const plan = { ...stuckPlan, targets: [stuckPlan.targets[0]], builds: [stuckPlan.builds[0]] }
+  const field = (): string => (h.container.querySelector('[aria-label="Ion checkout folder"]') as HTMLInputElement).value
+  const sourceAsked = (): unknown[] => action.mock.calls.filter((c) => c[1] === 'fleet.deploy.source').map((c) => (c[2] as unknown[])[0])
+
+  it('remembers a bench folder by its branch once it deploys', async () => {
+    localStorage.setItem('ion.fleet.deploy-source', '/ion/integration/ion-josh')
+    wire.checkouts = [{ path: '/ion/integration/ion-josh', via: 'folder', bench: josh }]
+    await mount()
+    await answerCheck(plan)
+    expect(h.container.querySelector('[aria-label="Bench source"]')?.textContent).toContain('remembered by its branch')
+    await h.click('Deploy')
+    expect(requests().at(-1)).toMatchObject({ kind: 'deploy', source: '/ion/integration/ion-josh' })
+    expect(JSON.parse(localStorage.getItem('ion.fleet.deploy-source') ?? '')).toEqual(josh)
+  })
+
+  it('builds the folder a remembered bench names now, and says when its branch stands in for a removed bench', async () => {
+    localStorage.setItem('ion.fleet.deploy-source', JSON.stringify(josh))
+    wire.checkouts = [{ path: '/src/ion', via: 'branch', bench: josh }]
+    await mount()
+    await answerCheck(plan)
+    expect(sourceAsked().at(-1)).toEqual(josh)
+    expect(requests().at(-1)).toEqual({ kind: 'deploy', environmentIds: ['env-mac'], source: '/src/ion', releaseFor: [], dryRun: true })
+    expect(field()).toBe('/src/ion')
+    expect(h.container.querySelector('[aria-label="Bench source"]')?.textContent).toBe('The josh bench is gone: its last worktree landed, so josh holds its work. This builds josh from /src/ion.')
+    await h.click('Deploy')
+    expect(requests().at(-1)).toMatchObject({ kind: 'deploy', source: '/src/ion' })
+    expect(JSON.parse(localStorage.getItem('ion.fleet.deploy-source') ?? '')).toEqual(josh)
+  })
+
+  it('says why when no folder holds the bench, and starts nothing', async () => {
+    localStorage.setItem('ion.fleet.deploy-source', JSON.stringify(josh))
+    wire.checkouts = [new Error('No folder on this device holds josh')]
+    await mount()
+    await settle()
+    expect(text()).toContain('No folder on this device holds josh')
+    expect(requests()).toEqual([])
+    expect((h.control('Deploy') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('drops the bench for a folder that is typed in its place', async () => {
+    localStorage.setItem('ion.fleet.deploy-source', JSON.stringify(josh))
+    wire.checkouts = [{ path: '/src/ion', via: 'branch', bench: josh }]
+    await mount()
+    await answerCheck(plan)
+    type('Ion checkout folder', '/elsewhere/ion')
+    await answerCheck(plan)
+    expect(requests().at(-1)).toMatchObject({ source: '/elsewhere/ion', dryRun: true })
+    await h.click('Deploy')
+    expect(localStorage.getItem('ion.fleet.deploy-source')).toBe('/elsewhere/ion')
   })
 })
 

@@ -15,28 +15,31 @@
  * panel again shows it where it now stands.
  *
  * The checkout is a folder on this device: a clone, a worktree, or an
- * integration bench. The last one used is remembered on this device.
+ * integration bench. The last one used is remembered on this device, a bench
+ * by its branch (`deploy-source`).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 import { fleetDeployLost, type FleetDeploy } from '@ion/shared/types-fleet-deploy'
-import { parseFleetDeployEvent, type FleetDeployEvent, type FleetPlanBuild, type FleetPlanTarget } from '@ion/shared/types-fleet-run'
+import { parseFleetDeployEvent, type FleetBenchSource, type FleetDeployEvent, type FleetPlanBuild, type FleetPlanTarget } from '@ion/shared/types-fleet-run'
 import { host } from '../../../../host/host-instance'
 import { rInfo, rWarn } from '../../../../rendererLogger'
 import { useColors } from '../../../../theme'
 import { Button, ErrorText, Field, KIT, Notice, SidePanel, StatusDot, TextInput, type Tone } from '../../kit'
 import { BuilderFixes } from './deploy/BuilderFixes'
 import { FleetDeployCard, fleetDeploySummary } from './deploy/FleetDeployCard'
+import { benchNote, describeDeploySource, loadDeploySource, saveDeploySource } from './deploy/deploy-source'
 import { useDeployCheck, type DeployPlan } from './deploy/use-deploy-check'
 
-const SOURCE_KEY = 'ion.fleet.deploy-source'
 /** How many log lines of one server the panel keeps. */
 const HOST_LOG_KEPT = 1_000
 /** How often a running deploy's ages are redrawn. */
 const TICK_MS = 5_000
 
-export function DeployPanel({ open, entry, entries, deploys, onClose }: {
+export function DeployPanel({ open, localEnvironmentId, entry, entries, deploys, onClose }: {
   open: boolean
+  /** This device's own server: it finds the checkout a deploy builds from. */
+  localEnvironmentId: string
   /** The server the panel was opened for; it starts ticked. Null when it was opened to watch a deploy. */
   entry: EnvironmentCatalogEntry | null
   /** Every server a deploy can go to. */
@@ -45,7 +48,7 @@ export function DeployPanel({ open, entry, entries, deploys, onClose }: {
   deploys: readonly FleetDeploy[]
   onClose(): void
 }): React.JSX.Element | null {
-  return open ? <DeployFlow key={entry?.id ?? 'watch'} entry={entry} entries={entries} deploys={deploys} onClose={onClose} /> : null
+  return open ? <DeployFlow key={entry?.id ?? 'watch'} localEnvironmentId={localEnvironmentId} entry={entry} entries={entries} deploys={deploys} onClose={onClose} /> : null
 }
 
 /** One line of the run's own output for each event that is not a log line. */
@@ -81,9 +84,14 @@ function buildOf(plan: DeployPlan | null, target: FleetPlanTarget | undefined): 
   return target && target.source !== 'release' ? plan?.builds?.find((b) => b.hosts.includes(target.host)) : undefined
 }
 
-function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCatalogEntry | null; entries: readonly EnvironmentCatalogEntry[]; deploys: readonly FleetDeploy[]; onClose(): void }): React.JSX.Element {
+function DeployFlow({ localEnvironmentId, entry, entries, deploys, onClose }: { localEnvironmentId: string; entry: EnvironmentCatalogEntry | null; entries: readonly EnvironmentCatalogEntry[]; deploys: readonly FleetDeploy[]; onClose(): void }): React.JSX.Element {
   const colors = useColors()
-  const [source, setSource] = useState(() => localStorage.getItem(SOURCE_KEY) ?? '')
+  // What the field holds, and the bench it names when the remembered source is one; typing or browsing replaces the bench with a path.
+  const [remembered] = useState(loadDeploySource)
+  const [typed, setTyped] = useState(() => (typeof remembered === 'string' ? remembered : ''))
+  const [bench, setBench] = useState<FleetBenchSource | null>(() => (typeof remembered === 'string' ? null : remembered))
+  const source = bench ?? typed
+  const enterFolder = (dir: string): void => { setBench(null); setTyped(dir) }
   const [targets, setTargets] = useState<ReadonlySet<string>>(() => new Set(entry ? [entry.id] : []))
   const [releaseFor, setReleaseFor] = useState<ReadonlySet<string>>(() => new Set())
   const toggle = (set: ReadonlySet<string>, id: string): Set<string> => {
@@ -92,7 +100,7 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
     return next
   }
   const browse = (): void => {
-    host.pickDirectory().then((dir) => { if (dir) setSource(dir) }).catch((err: unknown) =>
+    host.pickDirectory().then((dir) => { if (dir) enterFolder(dir) }).catch((err: unknown) =>
       rWarn('settings.fleet', 'checkout folder picker failed', { error: String(err) }))
   }
 
@@ -152,7 +160,7 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
   const ticked = useMemo(() => entries.filter((e) => targets.has(e.id)), [entries, targets])
   const tickedIds = useMemo(() => ticked.map((e) => e.id), [ticked])
   const releaseIds = useMemo(() => tickedIds.filter((id) => releaseFor.has(id)), [tickedIds, releaseFor])
-  const check = useDeployCheck(source, tickedIds, releaseIds, !watching)
+  const check = useDeployCheck(localEnvironmentId, source, tickedIds, releaseIds, !watching)
   const plan = check.plan
   const targetOf = (e: EnvironmentCatalogEntry): FleetPlanTarget | undefined => plan?.targets?.find((t) => t.environmentId === e.id)
   // A fleet that names no servers in its plan says nothing against any of them.
@@ -161,15 +169,17 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
   const canDeploy = !watching && check.state === 'ready' && ready.length > 0
 
   const start = (): void => {
-    const wanted = source.trim()
-    if (!canDeploy || wanted === '') return
+    const wanted = typeof source === 'string' ? source.trim() : source
+    // The folder the check found is the one built: a bench named by its branch has no path of its own.
+    const folder = check.checkout?.path ?? (typeof wanted === 'string' ? wanted : '')
+    if (!canDeploy || folder === '') return
     const environmentIds = ready.map((e) => e.id)
-    localStorage.setItem(SOURCE_KEY, wanted)
+    saveDeploySource(wanted, check.checkout)
     setStartError(null); setExit(null); setOutput([]); setLogs(new Map())
-    rInfo('settings.fleet', 'deploy from source requested', { server_count: environmentIds.length, skipped_count: ticked.length - ready.length, source: wanted })
+    rInfo('settings.fleet', 'deploy from source requested', { server_count: environmentIds.length, skipped_count: ticked.length - ready.length, source: describeDeploySource(wanted) })
     // The form gives way to the deploy's view at once; its rows arrive with the fleet's first report.
     setStarting(true)
-    host.fleetRun({ kind: 'deploy', environmentIds, source: wanted, releaseFor: releaseIds.filter((id) => environmentIds.includes(id)), ...(plan?.blocked ? { allowDowngrade: true } : {}) }).then((started) => {
+    host.fleetRun({ kind: 'deploy', environmentIds, source: folder, releaseFor: releaseIds.filter((id) => environmentIds.includes(id)), ...(plan?.blocked ? { allowDowngrade: true } : {}) }).then((started) => {
       if (!started.ok) {
         setStartError(started.error)
         return
@@ -188,6 +198,7 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
     setRunId(null); setStarting(false); setExit(null); setStartError(null); setOutput([]); setLogs(new Map())
   }
 
+  const note = benchNote(check.checkout)
   const failed = startError !== null || (exit !== null && exit.code !== 0)
   const outcome = startError ?? exit?.error ?? (deploy ? `The deploy ended with ${fleetDeploySummary(deploy)}. Each failed server says why above.` : 'The deploy failed. The output below says where.')
   const footer = watching ? (
@@ -228,11 +239,12 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
         </>
       ) : (
         <>
-          <Field label="Ion checkout" hint="A folder on this device that holds Ion's source: a clone, a worktree, or an integration bench. It is built as it is now. Remembered for next time.">
+          <Field label="Ion checkout" hint="A folder on this device that holds Ion's source: a clone, a worktree, or an integration bench. It is built as it is now. Remembered for next time, a bench by its branch.">
             <span style={{ display: 'flex', gap: 6 }}>
-              <TextInput mono aria-label="Ion checkout folder" placeholder="/path/to/ion" value={source} onChange={(e) => setSource(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
+              <TextInput mono aria-label="Ion checkout folder" placeholder="/path/to/ion" value={bench ? check.checkout?.path ?? '' : typed} onChange={(e) => enterFolder(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') start() }} />
               <Button onClick={browse}>Browse…</Button>
             </span>
+            {note && <div aria-label="Bench source" style={{ marginTop: 4, fontSize: KIT.fontTiny, lineHeight: 1.45, color: colors.textTertiary }}>{note}</div>}
           </Field>
           <Field label="Servers" hint="Each platform is built once and installed on every server ticked. A server that is not ready is left out, and the others deploy.">
             <div role="group" aria-label="Servers to deploy to" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -260,7 +272,7 @@ function DeployFlow({ entry, entries, deploys, onClose }: { entry: EnvironmentCa
             </div>
           </Field>
           {check.state === 'ready' && refusedBuilds.map((build) => (
-            <BuilderFixes key={build.key} build={build} source={source.trim()} disabled={false} onFixed={check.recheck} />
+            <BuilderFixes key={build.key} build={build} source={check.checkout?.path ?? (typeof source === 'string' ? source.trim() : '')} disabled={false} onFixed={check.recheck} />
           ))}
           {check.state === 'failed' && <ErrorText>{check.error}</ErrorText>}
           {check.state === 'ready' && plan?.blocked && <div style={{ marginTop: 8 }}><Notice tone="warn">This deploy moves a server&apos;s stored data to an older format. The plan below says which.</Notice></div>}
