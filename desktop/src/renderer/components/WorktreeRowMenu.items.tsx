@@ -10,6 +10,7 @@ import {
   ArrowLineDown,
   ArrowsClockwise,
   ChatCircle,
+  Copy,
   Flask,
   FolderOpen,
   PaperPlaneTilt,
@@ -56,6 +57,7 @@ export interface WorktreeMenuActions {
   onLandAndRetire(): void;
   onTransferWorktree(): void;
   onRequestDiscardWorktree(): void;
+  onCopyPath(): void;
   onReveal(): void;
   onReprovision(): void;
   onRequestDiscardRecordings(): void;
@@ -281,6 +283,13 @@ export function buildWorktreeMenuEntries(
   ]);
 
   appendGroup(entries, "tools", [
+    {
+      type: "action",
+      id: "copy-path",
+      label: "Copy path",
+      icon: <Copy size={12} color={colors.textSecondary} />,
+      run: actions.onCopyPath,
+    },
     {
       type: "action",
       id: "reveal",
