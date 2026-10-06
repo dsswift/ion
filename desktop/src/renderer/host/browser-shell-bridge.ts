@@ -167,8 +167,10 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
   entraSignIn: { action: 'entra.signIn', pack: () => [], timeoutMs: INTERACTIVE_SIGN_IN_TIMEOUT_MS },
   entraSignOut: { action: 'entra.signOut', pack: () => [] },
   providerSubscription: { action: 'provider.subscription', pack: () => [] },
-  selectProviderSubscription: { action: 'provider.selectSubscription', pack: (args) => [args[0]] },
-  refreshProviderSubscription: { action: 'provider.refreshSubscription', pack: () => [] },
+  // The person's own subscription: the server answers these from its per-person
+  // lookup when it runs one, and from the engine's (admin only) otherwise.
+  selectProviderSubscription: { action: 'provider.selectOwnSubscription', pack: (args) => [args[0]] },
+  refreshProviderSubscription: { action: 'provider.refreshOwnSubscription', pack: () => [] },
   mcpList: { action: 'mcp.list', pack: () => [] },
   mcpAdd: { action: 'mcp.add', pack: (args) => [args[0]] },
   mcpUpdate: { action: 'mcp.update', pack: (args) => [args[0]] },

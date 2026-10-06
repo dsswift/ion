@@ -425,3 +425,13 @@ describe('a reported capability is only as true as the bridge', () => {
     expect(SHELL_INVOKE).toHaveProperty('studioSetSetting')
   })
 })
+
+describe('the Provider Subscription verbs', () => {
+  it('reach the person\'s own subscription, so a person without admin can choose and look up again', () => {
+    expect(SHELL_INVOKE.providerSubscription.action).toBe('provider.subscription')
+    expect(SHELL_INVOKE.selectProviderSubscription.action).toBe('provider.selectOwnSubscription')
+    expect(SHELL_INVOKE.refreshProviderSubscription.action).toBe('provider.refreshOwnSubscription')
+    expect(SHELL_INVOKE.selectProviderSubscription.pack([{ id: 'prem' }])).toEqual([{ id: 'prem' }])
+  })
+})
+
