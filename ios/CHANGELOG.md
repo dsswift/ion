@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.11.0](https://github.com/dsswift/ion/compare/ios-v2.10.0...ios-v2.11.0) (2026-10-06)
+
+### Features
+
+* **ios:** create and start projects from the phone ([90228e6](https://github.com/dsswift/ion/commit/90228e6b867f7c9cfd20ce01fc1a2b6f0565309a))
+
+### Bug Fixes
+
+* **ios:** upload diagnostic logs one bounded batch at a time ([fecccd3](https://github.com/dsswift/ion/commit/fecccd31b274663560d59083252f753b89bd16f4))
+
 ## [2.10.0](https://github.com/dsswift/ion/compare/ios-v2.9.0...ios-v2.10.0) (2026-10-05)
 
 ### Features

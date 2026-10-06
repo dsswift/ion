@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.12.0](https://github.com/dsswift/ion/compare/desktop-v2.11.0...desktop-v2.12.0) (2026-10-06)
+
+### Features
+
+* **desktop:** create a project and clone it across the fleet ([856cb45](https://github.com/dsswift/ion/commit/856cb45013c0dd07b049b8c695dad446efdb6552))
+* **desktop:** remember a deploy bench by its branch ([af5516e](https://github.com/dsswift/ion/commit/af5516e8f3ee5f5c51deb870f86f7a661977dac3))
+
 ## [2.11.0](https://github.com/dsswift/ion/compare/desktop-v2.10.0...desktop-v2.11.0) (2026-10-05)
 
 ### Features

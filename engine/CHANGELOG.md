@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.2](https://github.com/dsswift/ion/compare/engine-v1.100.1...engine-v1.100.2) (2026-10-06)
+
+### Bug Fixes
+
+* **engine:** say why a deploy checkout folder is refused ([81201a2](https://github.com/dsswift/ion/commit/81201a262a759e544454957b7bae2e22876f6030))
+
 ## [1.100.1](https://github.com/dsswift/ion/compare/engine-v1.100.0...engine-v1.100.1) (2026-10-05)
 
 ### Bug Fixes
