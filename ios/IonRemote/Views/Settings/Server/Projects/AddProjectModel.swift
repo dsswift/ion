@@ -2,14 +2,14 @@ import Foundation
 import Observation
 
 /// Add project for one server: register a folder already there, clone a git
-/// URL there, or clone the projects the phone's other servers have that it
-/// lacks.
+/// URL there, clone the projects the phone's other servers have that it
+/// lacks, or create a new repository and clone it (`NewRepositoryModel`).
 @MainActor
 @Observable
 final class AddProjectModel {
 
     enum Source: String, CaseIterable, Identifiable {
-        case folder, url, copy
+        case folder, url, copy, new
         var id: String { rawValue }
     }
 

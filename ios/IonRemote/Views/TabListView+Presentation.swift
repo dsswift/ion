@@ -148,6 +148,11 @@ extension TabListView {
                     pendingNewConversationProject = nil
                     requestNewConversation(project: project)
                 }
+                // Same reason: the card presents only once this sheet is gone.
+                if pendingNewProject {
+                    pendingNewProject = false
+                    newProjectSession = newProjectAdminSession
+                }
             }) {
                 TabListNewTabSheet(
                     projects: viewModel.projects,
@@ -167,8 +172,19 @@ extension TabListView {
                     },
                     onCreateTerminalTab: { dir in
                         viewModel.createTerminalTab(workingDirectory: dir)
-                    }
+                    },
+                    onNewProject: newProjectAdminSession == nil ? nil : { pendingNewProject = true }
                 )
+            }
+            .sheet(isPresented: Binding(get: { newProjectSession != nil }, set: { if !$0 { newProjectSession = nil } })) {
+                if let session = newProjectSession {
+                    NewProjectSheet(session: session) { tabId in
+                        DiagnosticLog.log("new project: opening its conversation", tag: "view.tablist", fields: [
+                            "tab_id": String(tabId.prefix(8))
+                        ])
+                        viewModel.pendingNavigationTabId = tabId
+                    }
+                }
             }
             .sheet(isPresented: Binding(get: { viewModel.pendingBranchPickerRepo != nil }, set: { if !$0 { viewModel.pendingBranchPickerRepo = nil } })) {
                 if let repo = viewModel.pendingBranchPickerRepo {

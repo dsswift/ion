@@ -31,7 +31,6 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case environmentFsBrowse = "environment.fs.browse"
     case environmentGitAuthorGet = "environment.git.author.get"
     case environmentGitAuthorSet = "environment.git.author.set"
-    case environmentGitHostKeys = "environment.git.hostKeys"
     case environmentGitTest = "environment.git.test"
     case environmentHostToolchains = "environment.host.toolchains"
     case environmentJobsCancel = "environment.jobs.cancel"
@@ -60,6 +59,9 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case fleetReport = "fleet.report"
     case fsReadFileData = "fs.readFileData"
     case fsResolveLink = "fs.resolveLink"
+    case gitHostingAccounts = "gitHosting.accounts"
+    case gitHostingCreateRepository = "gitHosting.createRepository"
+    case gitHostingStartProject = "gitHosting.startProject"
     case gitIdentityAuthorize = "gitIdentity.authorize"
     case gitIdentityList = "gitIdentity.list"
     case gitIdentityMintSshKey = "gitIdentity.mintSshKey"
@@ -108,7 +110,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
     var requiredScope: StudioScope {
         switch self {
         case .aiAssistWorkflows, .authForgetSelf, .automationHistory, .automationListing, .entraIdentity, .environmentDiscoveryStatus,
-             .environmentFsBrowse, .fleetHubsList, .fleetRefreshAccounts, .fleetReport, .fsReadFileData, .fsResolveLink, .environmentGitAuthorGet, .environmentGitHostKeys, .environmentHostToolchains,
+             .environmentFsBrowse, .fleetHubsList, .fleetRefreshAccounts, .fleetReport, .fsReadFileData, .fsResolveLink, .environmentGitAuthorGet, .environmentHostToolchains,
              .environmentJobsList, .environmentProjectsAppraiseRemoval, .environmentProjectsList, .environmentServerInfo,
              .environmentSystemMetricsHistory, .environmentSystemMetricsLatest, .environmentSystemMetricsWatch, .mcpList, .modelList,
              .modelListTiers, .planBashAllowlistGet, .policyGetFull, .providerGetDefault, .providerSubscription,
@@ -119,7 +121,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
             return .conversationsOperate
         case .environmentGitAuthorSet, .environmentGitTest, .environmentJobsCancel, .environmentProjectsAdd,
              .environmentProjectsClone, .environmentProjectsRelocate, .environmentProjectsRemove, .environmentProjectsSetup,
-             .environmentProjectsTrust, .gitIdentityAuthorize, .gitIdentityList, .gitIdentityMintSshKey,
+             .environmentProjectsTrust, .gitHostingAccounts, .gitHostingCreateRepository, .gitHostingStartProject, .gitIdentityAuthorize, .gitIdentityList, .gitIdentityMintSshKey,
              .gitIdentityRemove, .gitIdentitySetSshKey, .gitIdentitySetToken:
             return .gitWrite
         case .authCompleteSignIn, .authCreatePairingLink, .authListClients, .authRevokeClient,

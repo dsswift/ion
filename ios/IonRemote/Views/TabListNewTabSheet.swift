@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Desktop-owned project picker for a new conversation, terminal, or worktree.
+/// Desktop-owned project picker for a new conversation, terminal, or worktree,
+/// with New Project above the list for an idea that has no repository yet.
 struct TabListNewTabSheet: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.appTheme) private var theme
@@ -10,10 +11,39 @@ struct TabListNewTabSheet: View {
     let onCreateWorktree: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateWorktreeConversation: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateTerminalTab: (_ directory: String) -> Void
+    /// Opens the New Project card; nil where the connected server cannot be reached for it.
+    var onNewProject: (() -> Void)?
 
     var body: some View {
         NavigationStack {
             List {
+                if let onNewProject {
+                    Section {
+                        Button {
+                            isPresented = false
+                            onNewProject()
+                        } label: {
+                            HStack(spacing: IonSpace.contentGap) {
+                                Image(systemName: "plus.rectangle.on.folder")
+                                    .font(IonType.meaning)
+                                    .foregroundStyle(theme.accent)
+                                    .frame(width: InboxLayout.iconColumn)
+                                VStack(alignment: .leading, spacing: 2) { // design-geometry: 2pt title-to-detail gap inside a two-line row; below the 4pt rhythm floor
+                                    Text("New Project")
+                                        .font(IonType.rowTitle)
+                                        .foregroundStyle(theme.textPrimary)
+                                    Text("New repository, cloned, with a first prompt")
+                                        .font(IonType.metadata)
+                                        .foregroundStyle(theme.textTertiary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 Section("Projects") {
                     ForEach(projects) { project in
                         // The row is the primary action: a new conversation

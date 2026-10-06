@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Add project to one server: a folder already on it, a git URL to clone
-/// onto it, or the projects the phone's other servers have that it lacks.
+/// onto it, the projects the phone's other servers have that it lacks, or a
+/// new repository created on a git host and cloned onto it.
 struct AddProjectSheet: View {
     let session: ServerAdminSession
     let projects: ProjectsAdminModel
@@ -9,11 +10,16 @@ struct AddProjectSheet: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
     @State private var model: AddProjectModel
+    @State private var repository: NewRepositoryModel
 
     init(session: ServerAdminSession, projects: ProjectsAdminModel) {
         self.session = session
         self.projects = projects
         _model = State(initialValue: AddProjectModel(
+            serverId: session.serverId, serverLabel: session.serverLabel, client: session.client,
+            baseDir: CloneBaseDirectory.read(serverId: session.serverId)
+        ))
+        _repository = State(initialValue: NewRepositoryModel(
             serverId: session.serverId, serverLabel: session.serverLabel, client: session.client,
             baseDir: CloneBaseDirectory.read(serverId: session.serverId)
         ))
@@ -27,6 +33,7 @@ struct AddProjectSheet: View {
                         Text("Folder").tag(AddProjectModel.Source.folder)
                         Text("Git URL").tag(AddProjectModel.Source.url)
                         Text("Other Server").tag(AddProjectModel.Source.copy)
+                        Text("New Repo").tag(AddProjectModel.Source.new)
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
@@ -34,7 +41,7 @@ struct AddProjectSheet: View {
                 } footer: {
                     Text(sourceExplanation)
                 }
-                if let error = model.error {
+                if let error = model.source == .new ? repository.error : model.error {
                     Section { AdminErrorRow(message: error) }
                 }
                 if let reason = denial {
@@ -44,6 +51,7 @@ struct AddProjectSheet: View {
                     case .folder: folderSource
                     case .url: urlSource
                     case .copy: copySource
+                    case .new: NewRepositorySource(model: repository)
                     }
                 }
             }
@@ -62,6 +70,7 @@ struct AddProjectSheet: View {
         switch model.source {
         case .folder: return session.denialReason(.environmentProjectsAdd)
         case .url, .copy: return session.denialReason(.environmentProjectsClone)
+        case .new: return session.denialReason(.gitHostingCreateRepository) ?? session.denialReason(.environmentProjectsClone)
         }
     }
 
@@ -70,6 +79,7 @@ struct AddProjectSheet: View {
         case .folder: return "Pick a checkout that is already on \(session.serverLabel)."
         case .url: return "Clone a repository onto \(session.serverLabel)."
         case .copy: return "Clone the projects your other servers have that \(session.serverLabel) does not."
+        case .new: return "Create a repository and clone it onto \(session.serverLabel)."
         }
     }
 
@@ -84,6 +94,9 @@ struct AddProjectSheet: View {
             let count = model.ticked.count
             Button(count > 0 ? "Clone \(count)" : "Clone") { Task { await done(model.cloneTicked()) } }
                 .disabled(model.busy || count == 0 || denial != nil)
+        case .new:
+            Button("Create") { Task { await created(repository.createAndClone()) } }
+                .disabled(!repository.canCreate || denial != nil)
         }
     }
 
@@ -146,6 +159,18 @@ struct AddProjectSheet: View {
 
     private var otherSources: [PairedServerSource] {
         PairedServerSource.others(than: session.serverId, in: viewModel)
+    }
+
+    /// The new repository is cloned at `directory`: a conversation opens in
+    /// it when the app is connected to this server.
+    private func created(_ directory: String?) async {
+        guard let directory else { return }
+        await projects.load()
+        DiagnosticLog.log("add project: new repository cloned", tag: "admin.projects", fields: [
+            "server_id": session.serverId, "opens_conversation": String(session.servesLive)
+        ])
+        if session.servesLive { viewModel.createTab(workingDirectory: directory) }
+        dismiss()
     }
 
     private func done(_ succeeded: Bool) async {

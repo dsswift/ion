@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// One server's git access for this person: their credentials there, the
-/// host's own ssh keys, and the host's commit author.
+/// One server's git access for this person: their credentials there (the
+/// host's own keys and sign-ins among them) and the host's commit author.
 @MainActor
 @Observable
 final class GitAccessModel {
@@ -12,7 +12,6 @@ final class GitAccessModel {
     /// Nil until listed.
     private(set) var identities: [GitIdentitySummary]?
     private(set) var identitiesError: String?
-    private(set) var hostKeys: [HostSshKey]?
     /// Nil until read.
     private(set) var author: EnvironmentGitAuthor?
     private(set) var authorError: String?
@@ -33,9 +32,8 @@ final class GitAccessModel {
 
     func load() async {
         async let identitiesDone: Void = loadIdentities()
-        async let keysDone: Void = loadHostKeys()
         async let authorDone: Void = loadAuthor()
-        _ = await (identitiesDone, keysDone, authorDone)
+        _ = await (identitiesDone, authorDone)
     }
 
     func loadIdentities() async {
@@ -47,17 +45,6 @@ final class GitAccessModel {
         } catch {
             identitiesError = error.localizedDescription
             log("credentials listing failed", error)
-        }
-    }
-
-    private func loadHostKeys() async {
-        do {
-            hostKeys = try await client.hostSshKeys()
-        } catch is CancellationError {
-            return
-        } catch {
-            // The keys only colour the empty state; the page works without them.
-            log("host ssh keys listing failed", error)
         }
     }
 
@@ -104,14 +91,9 @@ final class GitAccessModel {
         }
     }
 
-    /// The empty-state sentence: what git uses on the host with no Ion credential.
+    /// The empty-state sentence: the server has nothing to reach a git host with.
     var noCredentialExplanation: String {
-        guard let hostKeys else { return "Git on \(serverLabel) uses the host's own ssh setup." }
-        if hostKeys.isEmpty {
-            return "\(serverLabel) has no keys in ~/.ssh, so private repositories cannot be reached until you add a credential."
-        }
-        let keys = hostKeys.map { key in key.comment.isEmpty ? "\(key.file) (\(key.type))" : "\(key.file) (\(key.type), \(key.comment))" }
-        return "Git on \(serverLabel) uses the host's own ssh setup: \(keys.joined(separator: ", "))."
+        "\(serverLabel) has no key or sign-in for a git host, so private repositories cannot be reached until you add a credential."
     }
 
     private func log(_ what: String, _ error: Error, host: String? = nil) {

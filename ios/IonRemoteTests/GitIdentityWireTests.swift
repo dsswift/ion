@@ -33,8 +33,10 @@ final class GitIdentityWireTests: XCTestCase {
         XCTAssertEqual(identities[2].source, .admin)
     }
 
-    func testIdentifiableIdIsHost() {
-        let identity = GitIdentitySummary(host: "github.com", source: .user, kind: .ssh, publicKey: "k", username: nil)
-        XCTAssertEqual(identity.id, "github.com")
+    func testIdentifiableIdTellsRowsOfOneHostApart() {
+        let stored = GitIdentitySummary(host: "github.com", source: .user, kind: .ssh, publicKey: "k")
+        let signedIn = GitIdentitySummary(host: "github.com", source: .host, kind: .httpsToken, tool: .gh)
+        XCTAssertEqual(stored.id, "user|github.com|")
+        XCTAssertEqual(signedIn.id, "host|github.com|gh")
     }
 }

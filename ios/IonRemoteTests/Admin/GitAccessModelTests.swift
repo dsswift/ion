@@ -10,9 +10,8 @@ final class GitAccessModelTests: XCTestCase {
     private var client: ServerAdminClient { ServerAdminClient(serverLabel: "Studio Mac", caller: caller) }
     private func json(_ text: String) -> JSONValue { ProjectsFixtures.json(text) }
 
-    func testLoadReadsCredentialsKeysAndAuthor() async {
+    func testLoadReadsCredentialsAndAuthor() async {
         caller.answer(.gitIdentityList, with: .success(json(GitAccessFixtures.identities)))
-        caller.answer(.environmentGitHostKeys, with: .success(json(GitAccessFixtures.hostKeys)))
         caller.answer(.environmentGitAuthorGet, with: .success(json(GitAccessFixtures.author)))
         let model = GitAccessModel(serverId: "s", serverLabel: "Studio Mac", client: client)
         XCTAssertNil(model.identities)
@@ -21,13 +20,11 @@ final class GitAccessModelTests: XCTestCase {
 
         XCTAssertEqual(model.identities?.count, 2)
         XCTAssertEqual(model.author?.name, "A User")
-        XCTAssertEqual(model.noCredentialExplanation, "Git on Studio Mac uses the host's own ssh setup: id_ed25519.pub (ssh-ed25519, user@example.com).")
     }
 
     func testADeniedListIsShownAndTheAuthorStillLoads() async {
         let denied = FakeActionCaller(scopes: ["conversations:read"])
         denied.answer(.environmentGitAuthorGet, with: .success(json(GitAccessFixtures.author)))
-        denied.answer(.environmentGitHostKeys, with: .success(.array([])))
         let model = GitAccessModel(serverId: "s", serverLabel: "Studio Mac", client: ServerAdminClient(serverLabel: "Studio Mac", caller: denied))
 
         await model.load()
@@ -36,7 +33,7 @@ final class GitAccessModelTests: XCTestCase {
         XCTAssertNotNil(model.identitiesError)
         XCTAssertFalse(denied.calls.contains { $0.action == "gitIdentity.list" }, "a denied action is never sent")
         XCTAssertEqual(model.author?.email, "user@example.com")
-        XCTAssertEqual(model.noCredentialExplanation, "Studio Mac has no keys in ~/.ssh, so private repositories cannot be reached until you add a credential.")
+        XCTAssertEqual(model.noCredentialExplanation, "Studio Mac has no key or sign-in for a git host, so private repositories cannot be reached until you add a credential.")
     }
 
     func testRemovingACredentialRelists() async throws {

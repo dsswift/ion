@@ -73,4 +73,11 @@ extension TabListView {
         }
         return base
     }
+
+    /// The connected server, for New Project: the conversation it opens has
+    /// to land on the server the app is showing.
+    var newProjectAdminSession: ServerAdminSession? {
+        guard let device = viewModel.activeDevice else { return nil }
+        return viewModel.adminSession(for: device)
+    }
 }

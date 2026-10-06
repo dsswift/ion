@@ -22,7 +22,7 @@ struct ServerAdminEvent: Equatable, Sendable {
     static let providerLoginEvent = "ion:provider-login-event"
     /// The project registry changed.
     static let projectsChanged = "ion:projects-changed"
-    /// A clone, setup, or purge job's progress.
+    /// A clone, setup, purge, or create job's progress.
     static let projectJob = "ion:project-job"
     /// The relays the server is reachable through changed.
     static let remoteRelaysChanged = "ion:remote-relays-changed"

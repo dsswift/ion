@@ -16,9 +16,9 @@ struct GitCredentialDetailView: View {
                 Section { AdminErrorRow(message: error) }
             }
             Section {
-                LabeledContent("Host", value: identity.host)
+                LabeledContent("Host", value: identity.hostLabel)
                 LabeledContent("Kind", value: GitIdentityLabels.kind(identity.kind))
-                LabeledContent("Source", value: GitIdentityLabels.source(identity.source))
+                LabeledContent("Source", value: GitIdentityLabels.source(identity, serverLabel: session.serverLabel))
                 if let username = identity.username, !username.isEmpty {
                     LabeledContent("Username", value: username)
                 }
@@ -29,7 +29,7 @@ struct GitCredentialDetailView: View {
                 } header: {
                     Text("Public Key")
                 } footer: {
-                    Text("Add this key to your account on \(identity.host) so \(session.serverLabel) can reach your repositories.")
+                    Text("Add this key to your account on \(identity.host == "*" ? "a git host" : identity.host) so \(session.serverLabel) can reach your repositories.")
                 }
             }
             if GitIdentityLabels.isRemovable(identity) {
@@ -41,7 +41,7 @@ struct GitCredentialDetailView: View {
                 }
             }
         }
-        .navigationTitle(identity.host)
+        .navigationTitle(identity.hostLabel)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Remove the credential for \(identity.host)?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {

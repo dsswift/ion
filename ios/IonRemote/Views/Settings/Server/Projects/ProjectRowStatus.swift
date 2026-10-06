@@ -38,14 +38,15 @@ struct ProjectRowStatus: Equatable, Sendable {
 
     static func of(_ job: EnvironmentJob) -> ProjectRowStatus {
         if job.phase == .failed {
-            return ProjectRowStatus(text: "Clone failed", tone: .error, dot: .error, dotLabel: "Clone failed")
+            let text = job.kind == .create ? "Create failed" : "Clone failed"
+            return ProjectRowStatus(text: text, tone: .error, dot: .error, dotLabel: job.error.map { "\(text): \($0)" } ?? text)
         }
         return ProjectRowStatus(text: progressLabel(job), tone: .warn, dot: .warn, dotLabel: "Working")
     }
 
-    /// `Cloning 45%`, `Setting up`.
+    /// `Cloning 45%`, `Setting up`, `Creating 45%`.
     static func progressLabel(_ job: EnvironmentJob) -> String {
-        let verb = job.kind == .clone ? "Cloning" : "Setting up"
+        let verb = job.kind.title
         guard let percent = job.percent else { return verb }
         return "\(verb) \(Int(percent))%"
     }

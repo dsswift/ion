@@ -29,16 +29,21 @@ enum ProjectListRow: Identifiable, Equatable, Sendable {
     }
 
     /// Job rows first (running jobs whose folder is not a project yet, then
-    /// failed clones), then every project by name. A running job whose
-    /// folder is a project rides on that project's row.
+    /// failed clones and creates), then every project by name. A running job
+    /// whose folder is a project rides on that project's row. One folder
+    /// shows one running job: a create, which carries its own clone's
+    /// progress, over the clone or setup it started.
     static func build(projects: [EnvironmentProject], jobs: [EnvironmentJob]) -> [ProjectListRow] {
         let running = jobs.filter { $0.phase == .running }
-        let failedClones = jobs.filter { $0.phase == .failed && $0.kind == .clone }
+        let shown = running.filter { job in
+            job.kind == .create || !running.contains { $0.kind == .create && $0.dir == job.dir }
+        }
+        let failed = jobs.filter { $0.phase == .failed && ($0.kind == .clone || $0.kind == .create) }
         let dirs = Set(projects.map(\.dir))
-        let jobRows = (running.filter { !dirs.contains($0.dir) } + failedClones).map(ProjectListRow.job)
+        let jobRows = (shown.filter { !dirs.contains($0.dir) } + failed).map(ProjectListRow.job)
         let projectRows = projects
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-            .map { project in ProjectListRow.project(project, job: running.first { $0.dir == project.dir }) }
+            .map { project in ProjectListRow.project(project, job: shown.first { $0.dir == project.dir }) }
         return jobRows + projectRows
     }
 

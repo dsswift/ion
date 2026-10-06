@@ -126,7 +126,7 @@ struct ProjectDetailView: View {
         if let job = model.runningJob(dir: project.dir) {
             let percent = job.percent.map { " \(Int($0))%" } ?? ""
             let detail = job.detail.map { ". \($0)" } ?? ""
-            return "\(job.kind == .clone ? "Cloning" : "Running setup"): \(job.stage)\(percent)\(detail)"
+            return "\(job.kind.title): \(job.stage)\(percent)\(detail)"
         }
         switch project.setup?.state {
         case .running: return "Setup is running."
