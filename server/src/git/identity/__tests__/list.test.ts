@@ -56,10 +56,12 @@ describe('listGitIdentitiesFor', () => {
 })
 
 describe('listHostGitIdentities', () => {
-  const realHome = process.env.HOME
+  // A CI runner sets XDG_CONFIG_HOME, which would point the CLI lookup outside the fake home.
+  const saved = { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, GH_CONFIG_DIR: process.env.GH_CONFIG_DIR, GLAB_CONFIG_DIR: process.env.GLAB_CONFIG_DIR, AZURE_CONFIG_DIR: process.env.AZURE_CONFIG_DIR }
   let home: string
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'ion-git-identity-host-'))
+    for (const key of Object.keys(saved)) delete process.env[key]
     process.env.HOME = home
     mkdirSync(join(home, '.ssh'))
     writeFileSync(join(home, '.ssh', 'id_ed25519.pub'), 'ssh-ed25519 AAAA user@example.org\n')
@@ -69,7 +71,7 @@ describe('listHostGitIdentities', () => {
     writeFileSync(join(home, '.config', 'gh', 'hosts.yml'), 'github.com:\n    user: example-user\n')
   })
   afterEach(() => {
-    process.env.HOME = realHome
+    for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value }
     rmSync(home, { recursive: true, force: true })
   })
 

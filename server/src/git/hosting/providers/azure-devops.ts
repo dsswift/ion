@@ -12,7 +12,9 @@ import { warn as _warn } from '../../../logger'
 
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn('git-hosting', msg, fields) }
 
-const API_VERSION = 'api-version=7.1'
+/** The Azure DevOps REST API version every call pins. */
+export const AZURE_DEVOPS_API_VERSION = '7.1'
+const API_VERSION_QUERY = `api-version=${AZURE_DEVOPS_API_VERSION}`
 /** The identity service every organization shares: who the token is, and which organizations they are in. */
 const IDENTITY_BASE_URL = 'https://app.vssps.visualstudio.com'
 const DEFAULT_BRANCH = 'main'
@@ -49,7 +51,7 @@ function values(body: unknown): unknown[] {
 }
 
 async function profile(target: GitHostingTarget, auth: GitHostingAuth): Promise<{ id: string; name: string }> {
-  const me = await hostingCall<unknown>(call(target, auth, 'account', `${IDENTITY_BASE_URL}/_apis/profile/profiles/me?${API_VERSION}`))
+  const me = await hostingCall<unknown>(call(target, auth, 'account', `${IDENTITY_BASE_URL}/_apis/profile/profiles/me?${API_VERSION_QUERY}`))
   const id = text(me, 'id')
   if (!id) throw new GitHostingError(401, 'Azure DevOps did not accept the credential.')
   return { id, name: text(me, 'emailAddress') || text(me, 'displayName') }
@@ -63,11 +65,11 @@ export const azureDevopsProvider: GitHostingProvider = {
 
   owners: async (target, auth) => {
     const me = await profile(target, auth)
-    const organizations = values(await hostingCall<unknown>(call(target, auth, 'owners', `${IDENTITY_BASE_URL}/_apis/accounts?memberId=${encodeURIComponent(me.id)}&${API_VERSION}`)))
+    const organizations = values(await hostingCall<unknown>(call(target, auth, 'owners', `${IDENTITY_BASE_URL}/_apis/accounts?memberId=${encodeURIComponent(me.id)}&${API_VERSION_QUERY}`)))
       .map((a) => text(a, 'accountName')).filter((n) => n).sort()
     const perOrganization = await Promise.all(organizations.map(async (organization): Promise<GitHostingOwner[]> => {
       try {
-        const projects = values(await hostingCall<unknown>(call(target, auth, 'owners', `${target.apiBaseUrl}/${encodeURIComponent(organization)}/_apis/projects?$top=500&${API_VERSION}`)))
+        const projects = values(await hostingCall<unknown>(call(target, auth, 'owners', `${target.apiBaseUrl}/${encodeURIComponent(organization)}/_apis/projects?$top=500&${API_VERSION_QUERY}`)))
         return projects.map((p) => text(p, 'name')).filter((n) => n).sort().map((project) => ({ id: `${organization}/${project}`, label: `${organization}/${project}`, kind: 'project' }))
       } catch (err) {
         // One organization that refuses the token (a conditional-access policy, say) must not hide the others.
@@ -84,10 +86,10 @@ export const azureDevopsProvider: GitHostingProvider = {
     const organization = request.owner.slice(0, slash)
     const project = request.owner.slice(slash + 1)
     const base = `${target.apiBaseUrl}/${encodeURIComponent(organization)}/${encodeURIComponent(project)}/_apis/git/repositories`
-    const created = await hostingCall<unknown>(call(target, auth, 'create', `${base}?${API_VERSION}`, { name: request.name }))
+    const created = await hostingCall<unknown>(call(target, auth, 'create', `${base}?${API_VERSION_QUERY}`, { name: request.name }))
     const id = text(created, 'id')
     const readme = `# ${request.name}\n${request.description ? `\n${request.description}\n` : ''}`
-    await hostingCall<unknown>(call(target, auth, 'create-readme', `${base}/${encodeURIComponent(id)}/pushes?${API_VERSION}`, {
+    await hostingCall<unknown>(call(target, auth, 'create-readme', `${base}/${encodeURIComponent(id)}/pushes?${API_VERSION_QUERY}`, {
       refUpdates: [{ name: `refs/heads/${DEFAULT_BRANCH}`, oldObjectId: NO_COMMIT }],
       commits: [{ comment: 'Initial commit', changes: [{ changeType: 'add', item: { path: '/README.md' }, newContent: { content: readme, contentType: 'rawtext' } }] }],
     }))
