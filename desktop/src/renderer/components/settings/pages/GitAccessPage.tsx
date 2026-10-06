@@ -2,14 +2,15 @@
  * GitAccessPage — can this server reach your repositories, and who does it
  * commit as. Credentials are the per-principal git identity
  * (`gitIdentity.*`): mint an SSH key on the host for a git host, paste a key
- * or a token instead. A test runs `git ls-remote` from the host. The commit
- * author is the host's global git config.
+ * or a token instead. The host's own ssh keys and CLI sign-ins are listed
+ * beside them, read-only. A test runs `git ls-remote` from the host. The
+ * commit author is the host's global git config.
  */
 import React, { useState } from 'react'
 import { Copy, Key, Trash, Plus, Plugs, ArrowSquareOut } from '@phosphor-icons/react'
 import type { EnvironmentGitAuthor, EnvironmentGitTest } from '@ion/shared/types-environment-admin'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
-import type { GitIdentitySummary } from '@ion/shared/types-git-identity'
+import { gitIdentityKey, type GitIdentitySummary } from '@ion/shared/types-git-identity'
 import { environmentClient, useEnvironmentResource, useEnvironmentProjects } from '../environment/environment-client'
 import { useSettingsEnvironment } from '../settings-servers'
 import {
@@ -18,12 +19,19 @@ import {
 import { rInfo, rWarn } from '../../../rendererLogger'
 import { host } from '../../../host/host-instance'
 
-const SOURCE_LABEL: Record<GitIdentitySummary['source'], string> = {
+const SOURCE_LABEL: Record<Exclude<GitIdentitySummary['source'], 'host'>, string> = {
   admin: 'Managed by your organization',
   'exchange-ado': 'Via Azure DevOps',
   'exchange-gitlab': 'Via GitLab',
   'exchange-github': 'Via GitHub',
   user: 'Set by you',
+}
+
+/** Where a credential came from. A host row names the key file on that server, or the CLI that is signed in there. */
+function sourceLabel(identity: GitIdentitySummary, serverLabel: string): string {
+  if (identity.source !== 'host') return SOURCE_LABEL[identity.source]
+  if (identity.tool) return identity.username ? `Signed in with ${identity.tool} as ${identity.username}` : `Signed in with ${identity.tool}`
+  return `${identity.file ?? 'ssh key'} in ~/.ssh on ${serverLabel}`
 }
 
 type Mode = 'mint' | 'paste-key' | 'token'
@@ -49,7 +57,6 @@ function copy(text: string): void {
 export function GitAccessPage(): React.JSX.Element {
   const env = useSettingsEnvironment()
   const identities = useEnvironmentResource(env.id, environmentClient.gitIdentityList)
-  const hostKeys = useEnvironmentResource(env.id, environmentClient.gitHostKeys)
   const author = useEnvironmentResource(env.id, environmentClient.gitAuthorGet)
   const op = useOperation(env.id)
   const [panel, setPanel] = useState<'add' | 'test' | 'author' | null>(null)
@@ -64,18 +71,18 @@ export function GitAccessPage(): React.JSX.Element {
         anchor="credentials"
         items={identities.data ?? []}
         loading={identities.loading}
-        getKey={(i) => i.host}
+        getKey={gitIdentityKey}
         noun={['credential', 'credentials']}
         filter={(i, q) => i.host.toLowerCase().includes(q)}
         showHeader
         columns={[
-          { id: 'host', header: 'Host', render: (i) => <><Key size={13} /><CellText>{i.host}</CellText></> },
+          { id: 'host', header: 'Host', render: (i) => <><Key size={13} /><CellText>{i.host === '*' ? 'Every host' : i.host}</CellText></> },
           { id: 'kind', header: 'Kind', width: '80px', render: (i) => <Chip>{i.kind === 'ssh' ? 'ssh key' : 'token'}</Chip> },
-          { id: 'source', header: 'Source', width: '190px', render: (i) => <CellText muted>{SOURCE_LABEL[i.source]}</CellText> },
+          { id: 'source', header: 'Source', width: '260px', render: (i) => <CellText muted>{sourceLabel(i, env.label)}</CellText> },
         ]}
         rowMenu={(i) => [
           i.publicKey ? { label: 'Copy public key', icon: Copy, onSelect: () => copy(i.publicKey!) } : null,
-          { label: 'Remove', icon: Trash, danger: true, onSelect: () => op.run('credential removed', async () => { await environmentClient.gitIdentityRemove(env.id, i.host); identities.refresh() }) },
+          i.source === 'host' || i.source === 'admin' ? null : { label: 'Remove', icon: Trash, danger: true, onSelect: () => op.run('credential removed', async () => { await environmentClient.gitIdentityRemove(env.id, i.host); identities.refresh() }) },
         ]}
         actions={<>
           <Button onClick={() => setPanel('test')}>Test access</Button>
@@ -84,10 +91,8 @@ export function GitAccessPage(): React.JSX.Element {
         empty={(
           <EmptyState
             icon={Key}
-            title="No credential stored in Ion"
-            detail={hostKeys.data && hostKeys.data.length > 0
-              ? `Git on ${env.label} uses the host's own ssh setup: ${hostKeys.data.map((k) => `${k.file} (${k.type}${k.comment ? `, ${k.comment}` : ''})`).join(', ')}.`
-              : hostKeys.data ? `${env.label} has no keys in ~/.ssh, so private repositories cannot be reached until you add a credential.` : `Git on ${env.label} uses the host's own ssh setup.`}
+            title="No git credentials"
+            detail={`${env.label} has no key or sign-in for a git host, so private repositories cannot be reached until you add a credential.`}
           />
         )}
       />

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { EnvironmentJob, EnvironmentProject } from '@ion/shared/types-environment-admin'
-import { buildProjectRows, projectStatus, repoNameFromUrl, rowMatches, splitTypedPath } from '../project-rows'
+import { buildProjectRows, jobStatus, projectStatus, repoNameFromUrl, rowMatches, splitTypedPath } from '../project-rows'
 
 const project = (over: Partial<EnvironmentProject> & { dir: string; displayName: string }): EnvironmentProject => ({ entry: { addedManually: true, lastUsedAt: 0 }, exists: true, isGitRepo: true, ...over })
 const job = (over: Partial<EnvironmentJob> & { id: string; dir: string }): EnvironmentJob => ({ kind: 'clone', phase: 'running', stage: 'receiving objects', startedAt: 1, ...over })
@@ -19,6 +19,15 @@ describe('buildProjectRows', () => {
     expect(rows.map((r) => r.key)).toEqual(['job:new', 'job:bad', '/a', '/b'])
     const alpha = rows[2]
     expect(alpha.kind === 'project' && alpha.job?.id).toBe('on-a')
+  })
+
+  it('shows one row per folder for a create and the clone it started, and lists a failed create', () => {
+    const creating = buildProjectRows([], [job({ id: 'clone', dir: '/n' }), job({ id: 'create', dir: '/n', kind: 'create', stage: 'cloning: receiving objects' }), job({ id: 'failed', dir: '/f', kind: 'create', phase: 'failed', error: 'name taken' })])
+    expect(creating.map((r) => r.key)).toEqual(['job:create', 'job:failed'])
+    const onProject = buildProjectRows([project({ dir: '/n', displayName: 'n' })], [job({ id: 'setup', dir: '/n', kind: 'setup' }), job({ id: 'create', dir: '/n', kind: 'create' })])
+    expect(onProject[0].kind === 'project' && onProject[0].job?.id).toBe('create')
+    expect(jobStatus(job({ id: 'f', dir: '/f', kind: 'create', phase: 'failed', error: 'name taken' }))).toMatchObject({ chip: 'create failed', dotLabel: 'Create failed: name taken' })
+    expect(projectStatus(project({ dir: '/n', displayName: 'n' }), job({ id: 'c', dir: '/n', kind: 'create', percent: 40 }))).toMatchObject({ chip: 'creating 40%' })
   })
 })
 

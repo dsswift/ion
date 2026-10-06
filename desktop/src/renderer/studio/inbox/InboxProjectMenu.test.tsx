@@ -28,6 +28,7 @@ describe('InboxProjectMenu', () => {
     const onNewConversation = vi.fn()
     const onNewWorktreeConversation = vi.fn()
     const onClose = vi.fn()
+    const onCloneToServers = vi.fn()
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -37,18 +38,21 @@ describe('InboxProjectMenu', () => {
         environmentId="local"
         onNewConversation={onNewConversation}
         onNewWorktreeConversation={onNewWorktreeConversation}
+        onCloneToServers={onCloneToServers}
         onClose={onClose}
       />)
     })
 
     const buttons = [...document.querySelectorAll('button')]
-    expect(buttons.map((button) => button.textContent)).toEqual(['New conversation', 'New conversation in worktree', 'Choose branch…'])
+    expect(buttons.map((button) => button.textContent)).toEqual(['New conversation', 'New conversation in worktree', 'Choose branch…', 'Clone to servers…'])
     await act(async () => { buttons[0].click() })
     expect(onNewConversation).toHaveBeenCalledOnce()
     expect(onClose).toHaveBeenCalledOnce()
     await act(async () => { buttons[1].click() })
     expect(onNewWorktreeConversation).toHaveBeenLastCalledWith(false)
     expect(onClose).toHaveBeenCalledTimes(2)
+    await act(async () => { buttons[3].click() })
+    expect(onCloneToServers).toHaveBeenCalledOnce()
     await act(async () => { root.unmount() })
   })
 
@@ -59,7 +63,7 @@ describe('InboxProjectMenu', () => {
     const root = createRoot(container)
     const renderMenu = async (): Promise<HTMLButtonElement[]> => {
       await act(async () => {
-        root.render(<InboxProjectMenu anchor={{ x: 30, y: 40 }} environmentId="local" onNewConversation={vi.fn()} onNewWorktreeConversation={onNewWorktreeConversation} onClose={vi.fn()} />)
+        root.render(<InboxProjectMenu anchor={{ x: 30, y: 40 }} environmentId="local" onNewConversation={vi.fn()} onNewWorktreeConversation={onNewWorktreeConversation} onCloneToServers={vi.fn()} onClose={vi.fn()} />)
       })
       return [...document.querySelectorAll('button')]
     }
@@ -83,10 +87,11 @@ describe('InboxProjectMenu', () => {
         environmentId="env-finance"
         onNewConversation={vi.fn()}
         onNewWorktreeConversation={vi.fn()}
+        onCloneToServers={vi.fn()}
         onClose={vi.fn()}
       />)
     })
-    expect([...document.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['New conversation'])
+    expect([...document.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['New conversation', 'Clone to servers…'])
     await act(async () => { root.unmount() })
   })
 })

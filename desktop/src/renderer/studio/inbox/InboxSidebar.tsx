@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowsInLineVertical, ArrowsOutLineVertical, Broadcast, CaretDown, CaretRight, Folder, MagnifyingGlass, NotePencil, SortAscending } from '@phosphor-icons/react'
+import { ArrowsInLineVertical, ArrowsOutLineVertical, Broadcast, CaretDown, CaretRight, Folder, MagnifyingGlass, NotePencil, FolderPlus, SortAscending } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useInboxPartition } from './useInboxPartition'
 import { InboxRow, type InboxRowVariant } from './InboxRow'
@@ -10,6 +10,7 @@ import { environmentOfWorktreeRepo } from '../state/secondary-store-worktree-syn
 import { tabMatchesEnvironmentFilter } from '../connection/view-filter'
 import { fuzzyMatchCommand } from '@ion/shared/fuzzy-match'
 import { NewConversationPicker } from '../../components/NewConversationPicker'
+import { NewProjectPanel, type ProjectCheckout } from '../new-project/NewProjectPanel'
 import { InboxControlButton, InboxEnvironmentPicker, InboxProjectScopePicker, InboxSortPicker, type InboxSortOrder } from './InboxControls'
 import { inboxProjectFor } from './inbox-grouping'
 import { partitionSettled } from './settled-history'
@@ -81,6 +82,9 @@ export function InboxSidebar(): React.JSX.Element {
   const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number } | null>(null)
   const [environmentAnchor, setEnvironmentAnchor] = useState<{ x: number; y: number } | null>(null)
   const [composeOpen, setComposeOpen] = useState(false)
+  const [newProjectOpen, setNewProjectOpen] = useState(false)
+  // A project that was just created and cloned: the picker opens a conversation in it.
+  const [newProjectCheckout, setNewProjectCheckout] = useState<ProjectCheckout | null>(null)
   const [snoozedOpen, setSnoozedOpen] = useState(() => savedBoolean(SNOOZED_EXPANDED_KEY, false))
   const [settledOpen, setSettledOpen] = useState(() => savedBoolean(SETTLED_EXPANDED_KEY, true))
   const [settledShown, setSettledShown] = useState(SETTLED_INITIAL)
@@ -260,7 +264,7 @@ export function InboxSidebar(): React.JSX.Element {
   if (showHistory) return <SettledHistoryView history={historySettled} onBack={() => setShowHistory(false)} />
   return <div ref={sidebarRef} data-testid="inbox-sidebar" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
     <div style={{ padding: '6px 10px', borderBottom: `1px solid ${colors.containerBorder}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MagnifyingGlass size={12} color={colors.textTertiary} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations" spellCheck={false} style={{ flex: 1, minWidth: 0, fontSize: 11, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary }} /><button ref={composeButton} onClick={() => setComposeOpen(true)} aria-label="New conversation" style={iconButton(colors)}><NotePencil size={14} /></button></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><MagnifyingGlass size={12} color={colors.textTertiary} /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search conversations" spellCheck={false} style={{ flex: 1, minWidth: 0, fontSize: 11, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary }} /><button onClick={() => setNewProjectOpen(true)} aria-label="New project" title="New project" style={iconButton(colors)}><FolderPlus size={14} /></button><button ref={composeButton} onClick={() => setComposeOpen(true)} aria-label="New conversation" style={iconButton(colors)}><NotePencil size={14} /></button></div>
       <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
         <InboxControlButton
           buttonRef={projectButton}
@@ -315,6 +319,8 @@ export function InboxSidebar(): React.JSX.Element {
         <button onClick={expandAll} aria-label="Expand all" style={iconControlButton(colors)}><ArrowsOutLineVertical size={14} /></button>
       </div>
       {composeOpen && <NewConversationPicker onClose={() => setComposeOpen(false)} />}
+      {newProjectOpen && <NewProjectPanel onClose={() => setNewProjectOpen(false)} onOpenProject={(checkout) => { setNewProjectOpen(false); setNewProjectCheckout(checkout) }} />}
+      {newProjectCheckout && <NewConversationPicker initialDirectory={newProjectCheckout.directory} initialEnvironmentId={newProjectCheckout.environmentId} onClose={() => setNewProjectCheckout(null)} />}
       {projectAnchor && <InboxProjectScopePicker anchor={projectAnchor} projects={projectOptions} selected={projectFilter} onSelect={setProjectFilter} triggerRef={projectButton} onClose={() => setProjectAnchor(null)} />}
       {environmentAnchor && <InboxEnvironmentPicker anchor={environmentAnchor} environments={environmentOptions} selected={environmentFilter} onSelect={(next) => { rInfo('inbox', 'environment view filter changed', { filter: next }); setEnvironmentFilter(next) }} triggerRef={environmentButton} onClose={() => setEnvironmentAnchor(null)} />}
       {sortAnchor && <InboxSortPicker anchor={sortAnchor} selected={sortOrder} onSelect={setSortOrder} workingLast={workingLast} onWorkingLast={setWorkingLast} triggerRef={sortButton} onClose={() => setSortAnchor(null)} />}

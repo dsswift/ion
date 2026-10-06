@@ -15,11 +15,11 @@ import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 
 const mocks = vi.hoisted(() => ({ action: vi.fn(), readCatalog: vi.fn(async () => [] as unknown[]) }))
 
-vi.mock('../../../../host/host-instance', () => ({ host: { onFrame: () => () => {}, capabilities: () => [], shell: {} }, action: (...args: unknown[]) => mocks.action(...args) }))
+vi.mock('../../../../host/host-instance', () => ({ host: { onFrame: () => () => {}, capabilities: () => [], shell: {}, deviceSettings: async () => ({}) }, action: (...args: unknown[]) => mocks.action(...args) }))
 vi.mock('../../../../studio/connection/catalog', () => ({
   readCatalog: mocks.readCatalog, readConversationCatalog: mocks.readCatalog, addToCatalog: vi.fn(), relabelCatalogEntry: vi.fn(), removeFromCatalog: vi.fn(), onCatalogChange: () => () => {},
 }))
-vi.mock('../../../../studio/connection/registry', () => ({ registry: { connectAll: vi.fn(), forget: vi.fn() } }))
+vi.mock('../../../../studio/connection/registry', () => ({ registry: { connectAll: vi.fn(), forget: vi.fn(), phaseStates: () => new Map([['devbox', { phase: 'connected' }]]), subscribe: (cb: (states: Map<string, unknown>) => void) => { cb(new Map([['devbox', { phase: 'connected' }]])); return () => {} } } }))
 vi.mock('../../../../theme', () => ({ useColors: () => new Proxy({}, { get: (_t, key) => `var(--${String(key)})` }) }))
 vi.mock('../../../../rendererLogger', () => ({ rError: vi.fn(), rWarn: vi.fn(), rInfo: vi.fn(), rDebug: vi.fn() }))
 
@@ -117,5 +117,23 @@ describe('AddProjectPanel', () => {
     expect(container.querySelector('input[aria-label="Copy ion"]')).toBeNull()
     await click(button('Clone 1 project'))
     expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ url: 'https://github.com/o/web.git', parentDir: '~/source', name: 'web' }])
+  })
+
+  it('creates a new repository on the server holding the token and clones it here, trusted', async () => {
+    const created = { host: 'github.com', provider: 'github', owner: 'example-user', name: 'fresh', webUrl: 'https://github.com/example-user/fresh', sshUrl: 'git@github.com:example-user/fresh.git', httpsUrl: 'https://github.com/example-user/fresh.git', defaultBranch: 'main' }
+    const browse = mocks.action.getMockImplementation()!
+    mocks.action.mockImplementation(async (env: string, name: string, args: unknown[]) => {
+      if (name === 'gitHosting.accounts') return env === 'local' ? [{ host: 'github.com', provider: 'github', account: 'example-user', credentialSource: 'host', choosesVisibility: true, owners: [{ id: 'user:example-user', label: 'example-user', kind: 'user' }] }] : []
+      if (name === 'gitHosting.createRepository') return created
+      return browse(env, name, args)
+    })
+    await mount()
+    await click(button('New repository'))
+    expect(container.textContent).toContain('~/source/<name>')
+    await type(container.querySelector('input[aria-label="Repository name"]') as HTMLInputElement, 'fresh')
+    await click(button('Create and clone'))
+    expect(mocks.action).toHaveBeenCalledWith('local', 'gitHosting.createRepository', [{ host: 'github.com', owner: 'user:example-user', name: 'fresh', visibility: 'private' }])
+    expect(mocks.action).toHaveBeenCalledWith('devbox', 'environment.projects.clone', [{ remote: { sshUrl: created.sshUrl, httpsUrl: created.httpsUrl }, parentDir: '~/source', name: 'fresh', trust: true }])
+    expect(onDone).toHaveBeenCalled()
   })
 })

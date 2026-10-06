@@ -32,6 +32,8 @@ const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 let container: HTMLDivElement
 let root: Root
 const calls: Array<{ env: string; name: string; args: unknown[] }> = []
+const stored = { host: 'github.com', kind: 'ssh', source: 'user', publicKey: 'ssh-ed25519 AAAA devbox' }
+let identities: unknown[] = [stored]
 
 function button(label: string): HTMLButtonElement {
   const found = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label)
@@ -52,8 +54,7 @@ beforeEach(async () => {
   mocks.action.mockImplementation(async (env: string, name: string, args: unknown[] = []) => {
     calls.push({ env, name, args })
     switch (name) {
-      case 'gitIdentity.list': return [{ host: 'github.com', kind: 'ssh', source: 'user', publicKey: 'ssh-ed25519 AAAA devbox' }]
-      case 'environment.git.hostKeys': return []
+      case 'gitIdentity.list': return identities
       case 'environment.git.author.get': return { name: 'A User', email: 'user@example.com' }
       case 'gitIdentity.mintSshKey': return { publicKey: 'ssh-ed25519 BBBB minted' }
       default: return null
@@ -67,7 +68,16 @@ beforeEach(async () => {
     await flush(); await flush()
   })
 })
-afterEach(() => { act(() => root.unmount()); container.remove() })
+afterEach(() => { act(() => root.unmount()); container.remove(); identities = [stored] })
+
+async function rerender(): Promise<void> {
+  act(() => root.unmount())
+  root = createRoot(container)
+  await act(async () => {
+    root.render(<PopoverLayerProvider><SettingsEnvironmentProvider entry={devbox}><GitAccessPage /></SettingsEnvironmentProvider></PopoverLayerProvider>)
+    await flush(); await flush()
+  })
+}
 
 describe('GitAccessPage', () => {
   it('lists each credential as one row and summarizes the author on one line', () => {
@@ -77,6 +87,21 @@ describe('GitAccessPage', () => {
     expect(rows[0].textContent).toContain('ssh key')
     expect(container.textContent).toContain('A User <user@example.com>')
     expect(container.querySelector('[aria-label="Git host"]')).toBeNull()
+  })
+
+  it('lists the host\'s own keys and cli sign-ins as credentials, not as an empty state', async () => {
+    identities = [
+      { host: '*', kind: 'ssh', source: 'host', publicKey: 'ssh-ed25519 CCCC user@example.com', file: 'id_ed25519.pub' },
+      { host: '*', kind: 'ssh', source: 'host', publicKey: 'ssh-rsa DDDD user@example.com', file: 'id_rsa.pub' },
+      { host: 'github.com', kind: 'https-token', source: 'host', username: 'example-user', tool: 'gh' },
+    ]
+    await rerender()
+    const rows = [...container.querySelectorAll('[role="listitem"]')].map((r) => r.textContent ?? '')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toContain('Every host')
+    expect(rows[0]).toContain('id_ed25519.pub in ~/.ssh on devbox')
+    expect(rows[2]).toContain('Signed in with gh as example-user')
+    expect(container.textContent).not.toContain('No git credentials')
   })
 
   it('adds a credential from a side panel and shows the minted public key', async () => {

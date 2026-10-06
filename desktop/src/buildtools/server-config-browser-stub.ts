@@ -89,6 +89,8 @@ export interface ServerGitExchangeGithubConfig {
 
 export interface ServerGitConfig {
   credentials: ServerGitCredentialConfig[];
+  hostCredentials: boolean;
+  hosts: Array<{ host: string; provider: "github" | "gitlab" | "azure-devops"; apiBaseUrl?: string }>;
   publicOrigin: string;
   exchange: {
     ado: ServerGitExchangeAdoConfig;
@@ -129,7 +131,7 @@ export function defaultServerConfig(): ServerConfig {
     web: { enabled: false },
     policy: { authPolicy: "default", actionInterceptor: "default", snapshotProjector: "default" },
     tenancy: {},
-    git: { credentials: [], publicOrigin: "", exchange: { ado: { enabled: false }, gitlab: null, github: null } },
+    git: { credentials: [], hostCredentials: true, hosts: [], publicOrigin: "", exchange: { ado: { enabled: false }, gitlab: null, github: null } },
     logLevel: "DEBUG",
   };
 }
