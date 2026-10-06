@@ -6,7 +6,7 @@ sidebar_position: 7
 
 # New-Conversation Policy
 
-The `newConversationDefaults` enterprise config field lets administrators set an organization-wide default working directory and engine profile for every new conversation. When the `locked` flag is set, the policy takes runtime precedence: every new-conversation entry point opens with the mandated directory and profile regardless of what the user's own default-directory and default-profile settings say. The settings controls remain visible and editable, but have no effect on new-conversation creation while the lock is active.
+The `newConversationDefaults` enterprise config field lets administrators set an organization-wide default working directory and engine profile for every new conversation. When the `locked` flag is set, the policy takes runtime precedence: every new-conversation entry point opens with the mandated directory and profile regardless of what the user's own default-directory and default-profile settings say. When the lock names a `baseDirectory`, the controls that offer a folder, a project, or a profile are not shown (see [Controls hidden when locked](#controls-hidden-when-locked)).
 
 ## Engine RPC: `get_enterprise_policy`
 
@@ -66,7 +66,7 @@ Set in the `enterprise` block of the engine config (delivered via MDM, Group Pol
 |-------|------|-------------|
 | `baseDirectory` | string | Default working directory for new conversations. Empty string means no constraint -- clients use their own default. |
 | `engineProfileId` | string | Default engine profile ID for new conversations. Must match an `id` in the user's engine profiles list. Empty string means plain conversation (no extensions). |
-| `locked` | boolean | When `true`, the policy takes runtime precedence. Every new-conversation entry point opens with the mandated `baseDirectory` and `engineProfileId`, ignoring the user's own default-directory and default-profile settings. The settings controls are still visible and editable but have no effect on new-conversation creation while the lock is active. |
+| `locked` | boolean | When `true`, the policy takes runtime precedence. Every new-conversation entry point opens with the mandated `baseDirectory` and `engineProfileId`, ignoring the user's own default-directory and default-profile settings. When `baseDirectory` is set, the controls that offer a folder, a project, or a profile are hidden (see [Controls hidden when locked](#controls-hidden-when-locked)). |
 
 ### Sealing behavior
 
@@ -74,12 +74,30 @@ Set in the `enterprise` block of the engine config (delivered via MDM, Group Pol
 
 ## Client behavior when locked
 
-When `locked` is `true`, both desktop and iOS skip the profile picker and directory picker entirely and open the conversation directly with the mandated values. The user's default-directory and default-profile settings are ignored at new-conversation creation time; the settings controls themselves remain interactive.
+When `locked` is `true`, both desktop and iOS skip the profile picker and directory picker entirely and open the conversation directly with the mandated values. The user's default-directory and default-profile settings are ignored at new-conversation creation time.
 
 - **Desktop**: `resolveNewConversationAction` returns `{ kind: 'locked', baseDirectory, profileId }`. The conversation opens directly with the mandated values.
 - **iOS**: the free function `resolveNewConversationAction(...)` in `NewConversationRouting.swift` returns `.locked(baseDirectory:profileId:)`; the dispatch to `createTab` happens in `TabListView.swift`. The new-conversation sheet bypasses profile and directory selection.
 
 Empty `engineProfileId` with `locked: true` is valid. It means a plain conversation (no extensions) is mandated. Users cannot switch to an extension profile.
+
+## Controls hidden when locked
+
+A lock that names a `baseDirectory` takes folder and project choice away. The desktop and web clients hide these controls while it is in force:
+
+| Where | Control hidden |
+|-------|----------------|
+| New conversation | The project list, the New project row, the branch step, and the profile picker. The conversation opens straight into `baseDirectory` on `engineProfileId`. |
+| Inbox sidebar | The New project button. |
+| Title bar | The project name stops being a button that opens the new-conversation picker, and the terminal folder picker (Ctrl+Alt click) does not open. |
+| Conversation | The Choose folder button in an empty conversation. |
+| Explorer | The Add Folder to Workspace button. |
+| Settings | The Projects section (add, clone, change location, remove, default project, profile per project) and the Engine profiles section. |
+| Send in the background | The fresh conversation opens in `baseDirectory` on `engineProfileId`, with no worktree and no other machine's checkout. |
+
+A lock with an empty `baseDirectory` (a profile lock only) hides none of these: the person still chooses where.
+
+Left visible because it only reads: the Explorer tree of the locked folder, the project scope filter in the Inbox, and each conversation's profile badge.
 
 ## Server enforcement when locked
 
@@ -87,7 +105,7 @@ The Studio server applies the lock itself, so a client that ignores it is refuse
 
 - `createConversationTab` opens every new conversation in `baseDirectory` on `engineProfileId`, whatever directory, profile, or worktree the caller asked for. A restore keeps what it recorded.
 - The engine forces the locked profile onto every session it starts.
-- `environment.projects.add`, `environment.projects.clone`, `environment.projects.remove`, `environment.projects.relocate`, `setBaseDirectory`, and `addDirectory` are refused with `policy_locked`.
+- `environment.projects.add`, `environment.projects.clone`, `environment.projects.remove`, `environment.projects.relocate`, `setBaseDirectory`, and `addDirectory` are refused with `policy_locked`, only when the lock names a `baseDirectory`.
 - A conversation the server opens by itself (a person's last one was closed or settled) follows the same directory and profile.
 
 ## Example: require a specific profile, allow directory choice
