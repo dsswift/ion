@@ -2202,6 +2202,45 @@
       ]
     },
     {
+      "id": "fleet-clone",
+      "term": "Fleet Clone",
+      "definition": "One repository cloned onto several servers of the Fleet at once. Each chosen server runs its own clone as a Project Job into its own clone folder, picking the URL its credentials fit, and is followed to done or failed on its own; a server that fails can be retried without touching the others. Used by New Project, which creates the repository first, and by Clone to Servers, which copies a project one server already holds.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function startFleetClone",
+          "path": "desktop/src/renderer/studio/new-project/fleet-clone.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function NewProjectPanel",
+          "path": "desktop/src/renderer/studio/new-project/NewProjectPanel.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function CloneToServersPanel",
+          "path": "desktop/src/renderer/studio/new-project/CloneToServersPanel.tsx"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function chooseCloneUrl",
+          "path": "server/src/environment/clone-url.ts"
+        }
+      ]
+    },
+    {
       "id": "fleet-deploy-record",
       "term": "Fleet Deploy Record",
       "definition": "One deploy as it runs: what is deployed, and each host with its step, the step's detail, and why it failed. `ion fleet deploy` keeps the record and tells the server on its own machine at every step, and at least every 30 seconds while it runs. That server holds the newest few, publishes them to Studio on `ion:fleet-deploys`, and passes each to the Fleet Hubs it reports to. A record still marked running that stops arriving is shown as lost.",
@@ -2372,9 +2411,48 @@
       ]
     },
     {
+      "id": "git-hosting-provider",
+      "term": "Git Hosting Provider",
+      "definition": "One kind of git host a server can manage repositories on, beyond git itself: who a token acts as there, where that account can create a repository, and creating one with a first commit. GitHub, GitLab, and Azure DevOps each have one; a hostname is mapped to its provider by the server, with self-managed hosts named in `server.json`. The token is the person's Git Identity for the host. Reached through the `gitHosting.*` studio_actions.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface GitHostingProvider",
+          "path": "server/src/git/hosting/types.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export const GIT_HOSTING_ACTIONS",
+          "path": "server/src/git/hosting/actions.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function useHostingAccounts",
+          "path": "desktop/src/renderer/studio/new-project/hosting-accounts.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct GitHostingAccount",
+          "path": "ios/IonRemote/Models/Admin/GitHostingAccount.swift"
+        }
+      ]
+    },
+    {
       "id": "git-identity",
       "term": "Git Identity",
-      "definition": "The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or certificate scoped to a subject and host), a user-supplied credential entered in Studio Settings, then an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App). The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.",
+      "definition": "The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or token scoped to a subject and host), an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App), a user-supplied credential entered in Studio Settings, then the token of a git-host CLI the server's host user is signed in to, for a caller that can use a token. The host user's own SSH keys are listed beside these, since git offers them when no other credential matches. The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -4028,7 +4106,7 @@
     {
       "id": "project-job",
       "term": "Project Job",
-      "definition": "Background work an Environment runs on one of its projects: a clone, a setup recipe, or a purge. Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.",
+      "definition": "Background work an Environment runs on one of its projects: a clone, a setup recipe, a purge, or a create (a Project Start). Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -4072,6 +4150,31 @@
           "language": "typescript",
           "symbol": "export async function resolveProjectQuickTool",
           "path": "server/src/project-studio-config.ts"
+        }
+      ]
+    },
+    {
+      "id": "project-start",
+      "term": "Project Start",
+      "definition": "A new project from one request to one server: create the repository on a git host, clone it onto the server trusted, open a conversation in the checkout on the chosen model and harness, and send it the opening prompt. The server runs it as one Project Job of kind `create`, so the client that asked may close or disconnect at any step; the finished job names the conversation. A retry under the same request id resumes at the step that failed.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function startProject",
+          "path": "server/src/git/hosting/start-project.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "NewProjectSheet",
+          "path": "ios/IonRemote/Views/Settings/Server/Projects/NewProjectSheet.swift"
         }
       ]
     },

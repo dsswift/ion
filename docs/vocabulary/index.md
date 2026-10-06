@@ -120,10 +120,12 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Extension context](#term-extension-context)
 - [External Host](#term-external-host)
 - [Fleet](#term-fleet)
+- [Fleet Clone](#term-fleet-clone)
 - [Fleet Deploy Record](#term-fleet-deploy-record)
 - [Fleet Hub](#term-fleet-hub)
 - [Fleet Report](#term-fleet-report)
 - [Format Version](#term-format-version)
+- [Git Hosting Provider](#term-git-hosting-provider)
 - [Git Identity](#term-git-identity)
 - [Graph Agent Highlight](#term-graph-agent-highlight)
 - [Graph Anchor Node](#term-graph-anchor-node)
@@ -185,6 +187,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Principal Partition](#term-principal-partition)
 - [Project Job](#term-project-job)
 - [Project Quick Tool](#term-project-quick-tool)
+- [Project Start](#term-project-start)
 - [Project Trust](#term-project-trust)
 - [Project Workspace](#term-project-workspace)
 - [Prompt trace](#term-prompt-trace)
@@ -1701,7 +1704,7 @@ An always-on service a Studio server reports to, so a Fleet can be watched and m
 
 #### Git Identity {#term-git-identity}
 
-The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or certificate scoped to a subject and host), a user-supplied credential entered in Studio Settings, then an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App). The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.
+The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or token scoped to a subject and host), an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App), a user-supplied credential entered in Studio Settings, then the token of a git-host CLI the server's host user is signed in to, for a caller that can use a token. The host user's own SSH keys are listed beside these, since git offers them when no other credential matches. The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.
 
 - **ID:** `git-identity`
 - **Status:** `canonical`
@@ -2961,6 +2964,38 @@ Which folders are expanded, which root sections are folded shut, and which row i
   - `desktop` / `code` / `typescript`: `loadExplorerState` in `server/src/explorer-state-store.ts`
   - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `server/src/store/explorer-state-sync.ts`
 
+#### Fleet Clone {#term-fleet-clone}
+
+One repository cloned onto several servers of the Fleet at once. Each chosen server runs its own clone as a Project Job into its own clone folder, picking the URL its credentials fit, and is followed to done or failed on its own; a server that fails can be retried without touching the others. Used by New Project, which creates the repository first, and by Clone to Servers, which copies a project one server already holds.
+
+- **ID:** `fleet-clone`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function startFleetClone` in `desktop/src/renderer/studio/new-project/fleet-clone.ts`
+  - `studio` / `ui` / `typescript`: `export function NewProjectPanel` in `desktop/src/renderer/studio/new-project/NewProjectPanel.tsx`
+  - `studio` / `ui` / `typescript`: `export function CloneToServersPanel` in `desktop/src/renderer/studio/new-project/CloneToServersPanel.tsx`
+  - `server` / `code` / `typescript`: `export async function chooseCloneUrl` in `server/src/environment/clone-url.ts`
+
+#### Git Hosting Provider {#term-git-hosting-provider}
+
+One kind of git host a server can manage repositories on, beyond git itself: who a token acts as there, where that account can create a repository, and creating one with a first commit. GitHub, GitLab, and Azure DevOps each have one; a hostname is mapped to its provider by the server, with self-managed hosts named in `server.json`. The token is the person's Git Identity for the host. Reached through the `gitHosting.*` studio_actions.
+
+- **ID:** `git-hosting-provider`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export interface GitHostingProvider` in `server/src/git/hosting/types.ts`
+  - `server` / `code` / `typescript`: `export const GIT_HOSTING_ACTIONS` in `server/src/git/hosting/actions.ts`
+  - `studio` / `code` / `typescript`: `export function useHostingAccounts` in `desktop/src/renderer/studio/new-project/hosting-accounts.ts`
+  - `ios` / `code` / `swift`: `struct GitHostingAccount` in `ios/IonRemote/Models/Admin/GitHostingAccount.swift`
+
 #### Managed Default {#term-managed-default}
 
 An unlocked enterprise policy value that seeds a preference the person may then change. A client records the last policy value it applied (the watermark) and overwrites the preference only when the policy value differs from it.
@@ -3051,7 +3086,7 @@ A loopback port on the machine Studio runs on that reaches a TCP port on an Envi
 
 #### Project Job {#term-project-job}
 
-Background work an Environment runs on one of its projects: a clone, a setup recipe, or a purge. Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.
+Background work an Environment runs on one of its projects: a clone, a setup recipe, a purge, or a create (a Project Start). Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.
 
 - **ID:** `project-job`
 - **Status:** `canonical`
@@ -3062,6 +3097,20 @@ Background work an Environment runs on one of its projects: a clone, a setup rec
 - **Implementations:**
   - `server` / `code` / `typescript`: `startJob` in `server/src/environment/jobs.ts`
   - `desktop` / `code` / `typescript`: `useEnvironmentJobs` in `desktop/src/renderer/components/settings/environment/environment-client.ts`
+
+#### Project Start {#term-project-start}
+
+A new project from one request to one server: create the repository on a git host, clone it onto the server trusted, open a conversation in the checkout on the chosen model and harness, and send it the opening prompt. The server runs it as one Project Job of kind `create`, so the client that asked may close or disconnect at any step; the finished job names the conversation. A retry under the same request id resumes at the step that failed.
+
+- **ID:** `project-start`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export function startProject` in `server/src/git/hosting/start-project.ts`
+  - `ios` / `ui` / `swift`: `NewProjectSheet` in `ios/IonRemote/Views/Settings/Server/Projects/NewProjectSheet.swift`
 
 #### Prompt trace {#term-prompt-trace}
 
@@ -3533,10 +3582,12 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Ephemeral Worktree | None | `export function WorktreeEphemeralBadge` | None | `var ephemeralKeptReason: String?` | Overlay |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Fleet | None | `FleetPage` | None | `struct FleetView` | Overlay |
+| Fleet Clone | None | `export function startFleetClone`, `export function NewProjectPanel`, `export function CloneToServersPanel` | None | None | Overlay, iOS |
 | Fleet Deploy Record | `interface FleetDeployRecord` | `interface FleetDeployRecord`, `function FleetDeployCard` | `interface FleetDeployRecord` | None | iOS |
 | Fleet Hub | None | `function HubApp` | None | None | Overlay, iOS |
 | Fleet Report | `interface FleetReport` | `interface FleetReport` | `interface FleetReport` | `struct FleetReport` | None |
 | Format Version | `ServerFactsGroup` | `ServerFactsGroup` | `ServerFactsGroup` | None | iOS |
+| Git Hosting Provider | None | `export function useHostingAccounts` | None | `struct GitHostingAccount` | Overlay |
 | Git Identity | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `struct GitIdentitySummary`, `struct AddGitCredentialSheet` | None |
 | Graph Agent Highlight | `agentHighlightNodeIds` | `agentHighlightNodeIds` | `agentHighlightNodeIds` | None | iOS |
 | Graph Anchor Node | `export function buildAnchorNodes` | `export function buildAnchorNodes` | `export function buildAnchorNodes` | None | iOS |
@@ -3579,6 +3630,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
 | Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
 | Project Quick Tool | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | None | iOS |
+| Project Start | None | None | None | `NewProjectSheet` | Desktop, Studio, Overlay |
 | Project Trust | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | None | iOS |
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
