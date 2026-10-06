@@ -57,6 +57,7 @@ import { loadRestoredHistory } from './useTabRestoration-history'
 import { registerInitialRestoredTab } from './useTabRestoration-initial-tab'
 import { backfillLastActivity } from './useTabRestoration-activity'
 import { reportStartup } from '../store/host-api'
+import { currentServerConfig } from '../config/current'
 import { log as _log, error as _error } from '../logger'
 import type { FileEditorTab, FileEditorDirState } from '../store/session-store-types'
 
@@ -139,6 +140,13 @@ async function restoreInitialBlankTab(homeDir: string): Promise<void> {
   })
 }
 
+/** Drops the store constructor's placeholder tab and declares the workspace ready with no conversations. */
+function startWithoutTabs(): void {
+  useSessionStore.setState({ tabs: [], conversationPanes: new Map(), activeTabId: '', tabsReady: true, rehydrating: false, initProgress: null })
+  log('hosted home project configured: no boot conversation created; the signed-in person opens their own')
+  reportStartup('Workspace ready', true)
+}
+
 /**
  * Restore every persisted tab, in order, then run the post-restore steps
  * (eager session start, history load, active-tab hydration, editor/geometry
@@ -158,6 +166,15 @@ export async function bootRestoreTabs(): Promise<void> {
   })
 
   if (!saved || !saved.tabs || saved.tabs.length === 0) {
+    if (currentServerConfig().homeProject) {
+      // A hosted personal instance has exactly one person, and nobody is
+      // signed in at boot. A tab made now would belong to no one, and the
+      // engine refuses an unowned conversation to the person who then signs
+      // in. Their first conversation is created when they ask for it, owned
+      // by them, in the home project.
+      startWithoutTabs()
+      return
+    }
     await restoreInitialBlankTab(homeDir)
     return
   }
