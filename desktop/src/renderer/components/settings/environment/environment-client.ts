@@ -1,6 +1,6 @@
 /**
  * environment-client — the renderer's typed face on the `environment.*`,
- * `gitIdentity.*`, and `auth.*` studio_actions the Environment page runs
+ * `gitIdentity.*`, `gitHosting.*`, and `auth.*` studio_actions the Environment page runs
  * against ONE environment (ADR-033), plus the hooks that keep its lists
  * live: projects re-list on `ion:projects-changed`, jobs update on every
  * `ion:project-job` snapshot. The local environment is reached the same
@@ -8,6 +8,7 @@
  * projects UI rather than a second implementation.
  */
 import type { FleetDeploy } from '@ion/shared/types-fleet-deploy'
+import type { FleetCheckout, FleetSourceQuery } from '@ion/shared/types-fleet-run'
 import { useCallback, useEffect, useState } from 'react'
 import type {
   EnvironmentProject, EnvironmentFsBrowse, EnvironmentToolchains, EnvironmentServerInfo, EnvironmentLogFile,
@@ -15,6 +16,7 @@ import type {
 } from '@ion/shared/types-environment-admin'
 import { PROJECT_JOB_CHANNEL, PROJECTS_CHANGED_CHANNEL } from '@ion/shared/types-environment-admin'
 import type { GitIdentitySummary } from '@ion/shared/types-git-identity'
+import type { GitCloneRemote, GitHostingAccount, GitHostingCreateRequest, GitHostingRepository } from '@ion/shared/types-git-hosting'
 import type { Scope } from '@ion/shared/studio-wire/types'
 import { host, action } from '../../../host/host-instance'
 import { rInfo, rWarn } from '../../../rendererLogger'
@@ -60,7 +62,8 @@ export const environmentClient = {
   relocateProject: (env: string, from: string, to: string) => call<EnvironmentProject>(env, 'environment.projects.relocate', [{ from, to }]),
   setupProject: (env: string, dir: string) => call<{ jobId: string }>(env, 'environment.projects.setup', [{ dir }]),
   trustProject: (env: string, dir: string) => call<EnvironmentProject>(env, 'environment.projects.trust', [{ dir }]),
-  cloneProject: (env: string, url: string, parentDir: string, name?: string) => call<{ jobId: string; dir: string }>(env, 'environment.projects.clone', [{ url, parentDir, ...(name ? { name } : {}) }]),
+  /** `source` is one URL, or a repository's SSH and HTTPS pair for the server to pick from. */
+  cloneProject: (env: string, source: string | GitCloneRemote, parentDir: string, name?: string, trust?: boolean) => call<{ jobId: string; dir: string }>(env, 'environment.projects.clone', [{ ...(typeof source === 'string' ? { url: source } : { remote: source }), parentDir, ...(name ? { name } : {}), ...(trust ? { trust: true } : {}) }]),
   listJobs: (env: string) => call<EnvironmentJob[]>(env, 'environment.jobs.list'),
   cancelJob: (env: string, jobId: string) => call<{ cancelled: boolean }>(env, 'environment.jobs.cancel', [{ jobId }]),
   browse: (env: string, path: string, showHidden: boolean) => call<EnvironmentFsBrowse>(env, 'environment.fs.browse', [{ path, showHidden }]),
@@ -70,7 +73,6 @@ export const environmentClient = {
   restart: (env: string) => call<{ scheduled: boolean }>(env, 'environment.server.restart'),
   update: (env: string) => call<{ scheduled: boolean }>(env, 'environment.server.update'),
   gitTest: (env: string, url: string) => call<EnvironmentGitTest>(env, 'environment.git.test', [{ url }]),
-  gitHostKeys: (env: string) => call<Array<{ file: string; type: string; comment: string }>>(env, 'environment.git.hostKeys'),
   gitAuthorGet: (env: string) => call<EnvironmentGitAuthor>(env, 'environment.git.author.get'),
   gitAuthorSet: (env: string, author: EnvironmentGitAuthor) => call<EnvironmentGitAuthor>(env, 'environment.git.author.set', [author]),
   gitIdentityList: (env: string) => call<GitIdentitySummary[]>(env, 'gitIdentity.list'),
@@ -79,6 +81,9 @@ export const environmentClient = {
   gitIdentityAuthorize: (env: string, gitHost: string) => call<{ started: boolean }>(env, 'gitIdentity.authorize', [{ host: gitHost }]),
   gitIdentitySetToken: (env: string, gitHost: string, token: string, username?: string) => call<void>(env, 'gitIdentity.setToken', [{ host: gitHost, token, ...(username ? { username } : {}) }]),
   gitIdentityRemove: (env: string, gitHost: string) => call<{ removed: boolean }>(env, 'gitIdentity.remove', [{ host: gitHost }]),
+  /** The git-host accounts this server holds a token for, as the calling person. */
+  hostingAccounts: (env: string) => call<GitHostingAccount[]>(env, 'gitHosting.accounts'),
+  createRepository: (env: string, request: GitHostingCreateRequest) => call<GitHostingRepository>(env, 'gitHosting.createRepository', [request]),
   purgeAppraise: (env: string) => call<EnvironmentPurgeAppraisal>(env, 'environment.purge.appraise'),
   purgeRun: (env: string, levels: Omit<EnvironmentPurgeLevels, 'studio'>) => call<EnvironmentPurgeResult>(env, 'environment.purge.run', [levels]),
   listClients: (env: string) => call<PairedClient[]>(env, 'auth.listClients'),
@@ -94,6 +99,8 @@ export const environmentClient = {
   discoveryMintCode: (env: string) => call<{ code: string; expiresAt: number }>(env, 'environment.discovery.mintCode'),
   /** The deploys `ion fleet deploy` on the server's own machine told it of, newest first. */
   fleetDeploys: (env: string) => call<FleetDeploy[]>(env, 'fleet.deploys.list'),
+  /** The checkout a deploy on the server's machine builds from: the folder named, or the one a bench names now. */
+  fleetDeploySource: (env: string, source: FleetSourceQuery) => call<FleetCheckout>(env, 'fleet.deploy.source', [source]),
 }
 
 function isStudioEvent(frame: unknown): frame is { type: 'studio_event'; channel: string; payload: unknown } {
