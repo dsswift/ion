@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.12.1](https://github.com/dsswift/ion/compare/desktop-v2.12.0...desktop-v2.12.1) (2026-10-06)
+
+### Bug Fixes
+
+* **desktop:** hide terminal controls without terminal:operate ([558c126](https://github.com/dsswift/ion/commit/558c126e69ca9c498330427bf153b6e24f81eed9))
+
 ## [2.12.0](https://github.com/dsswift/ion/compare/desktop-v2.11.0...desktop-v2.12.0) (2026-10-06)
 
 ### Features

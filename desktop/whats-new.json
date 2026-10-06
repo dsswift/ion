@@ -1,1 +1,5 @@
-{}
+{
+  "2.12.1": [
+    "Fixed a problem where buttons and panels for features you did not have access to were still visible on screen."
+  ]
+}
