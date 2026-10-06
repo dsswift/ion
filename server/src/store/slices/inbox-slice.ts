@@ -1,6 +1,9 @@
 import type { StoreGet, StoreSet, State } from '../session-store-types'
 import { activeInstance, effectivePermissionMode, isEmptyConversation, makeMainPane, needsHistoryHydration } from '../conversation-instance'
 import { makeLocalTab } from '../session-store-helpers'
+import { newTabDefaults } from '../new-tab-defaults'
+import { registerTabOwner } from '../../protocol/tabs-index'
+import type { TabState } from '@ion/shared/types'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { usePreferencesStore } from '../../persistence/preferences'
 import { rDebug, rInfo, rWarn } from '../rendererLogger'
@@ -137,7 +140,14 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const tabs = state.tabs.filter((tab) => tab.id !== tabId)
       const settledHistory = [...state.settledHistory.filter((tab) => tab.id !== tabId), settledRecord]
       if (tabs.length === 0) {
-        const replacement = makeLocalTab()
+        const defaults = newTabDefaults(get().staticInfo?.homePath || '~')
+        const replacement: TabState = {
+          ...makeLocalTab(),
+          workingDirectory: defaults.workingDirectory,
+          hasChosenDirectory: defaults.hasChosenDirectory,
+          engineProfileId: defaults.engineProfileId,
+        }
+        if (replacement.principalSubject) registerTabOwner(replacement.id, replacement.principalSubject)
         nextTabId = replacement.id
         return { tabs: [replacement], activeTabId: replacement.id, settledHistory, conversationPanes: new Map([[replacement.id, makeMainPane({})]]) }
       }
