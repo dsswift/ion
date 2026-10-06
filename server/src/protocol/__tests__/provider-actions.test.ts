@@ -157,3 +157,73 @@ describe('PROVIDER_ACTIONS on a managed engine configuration', () => {
     expect(outcome).toMatchObject({ ok: true, value: { ok: false, code: 'managed_config_write_refused' } })
   })
 })
+
+const person = vi.hoisted(() => ({
+  enabled: true,
+  subscription: vi.fn(async (subject: string) => ({ ok: true, subscription: { state: 'applied', who: subject } })),
+  select: vi.fn(async (subject: string, payload: unknown) => ({ ok: true, subscription: { state: 'applied', who: subject, payload } })),
+  refresh: vi.fn(async (subject: string) => ({ ok: true, subscription: { state: 'resolving', who: subject } })),
+}))
+vi.mock('../../subscription/person-api', () => ({
+  personLookupEnabled: () => person.enabled,
+  personSubscription: person.subscription,
+  selectPersonSubscription: person.select,
+  refreshPersonSubscription: person.refresh,
+}))
+vi.mock('../../engine/provider-subscription-api', () => ({
+  getProviderSubscription: vi.fn(async () => ({ ok: true, subscription: { state: 'engine' } })),
+  selectProviderSubscription: vi.fn(async () => ({ ok: true, subscription: { state: 'engine-selected' } })),
+  refreshProviderSubscription: vi.fn(async () => ({ ok: true, subscription: { state: 'engine-refreshed' } })),
+}))
+
+describe('the per-person Provider Subscription actions', () => {
+  const alice = { id: 'c1', scopes: ['conversations:read', 'conversations:operate'], principal: { subject: 'alice' } } as unknown as Connection
+  const aliceReadOnly = { id: 'c2', scopes: ['conversations:read'], principal: { subject: 'alice' } } as unknown as Connection
+  const anonymous = { id: 'c3', scopes: ['conversations:read', 'conversations:operate'], principal: null } as unknown as Connection
+
+  beforeEach(() => { person.enabled = true; person.subscription.mockClear(); person.select.mockClear(); person.refresh.mockClear() })
+
+  it('keep the published phone actions at admin and add own-subscription actions for the person asking', () => {
+    expect(PROVIDER_ACTIONS['provider.selectSubscription'].requiredScope).toBe('admin')
+    expect(PROVIDER_ACTIONS['provider.refreshSubscription'].requiredScope).toBe('admin')
+    expect(PROVIDER_ACTIONS['provider.selectOwnSubscription'].requiredScope).toBe('conversations:operate')
+    expect(PROVIDER_ACTIONS['provider.refreshOwnSubscription'].requiredScope).toBe('conversations:operate')
+  })
+
+  it('answer a person from their own subscription, by the subject on their connection, never one they name', async () => {
+    const read = await PROVIDER_ACTIONS['provider.subscription'].handler(alice, [{ subject: 'mallory' }])
+    expect(read).toEqual({ ok: true, value: { ok: true, subscription: { state: 'applied', who: 'alice' } } })
+    await PROVIDER_ACTIONS['provider.selectOwnSubscription'].handler(alice, [{ id: 'sub-high', subject: 'mallory' }])
+    expect(person.select).toHaveBeenCalledWith('alice', { id: 'sub-high', subject: 'mallory' })
+    await PROVIDER_ACTIONS['provider.refreshOwnSubscription'].handler(alice, [])
+    expect(person.refresh).toHaveBeenCalledWith('alice')
+  })
+
+  it('let a person without admin choose their own subscription when the server runs the per-person lookup', async () => {
+    const outcome = await PROVIDER_ACTIONS['provider.selectOwnSubscription'].handler(alice, [{ id: 'x' }])
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('refuse a connection with no signed-in person', async () => {
+    const outcome = await PROVIDER_ACTIONS['provider.selectOwnSubscription'].handler(anonymous, [{ id: 'x' }])
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'scope' } })
+    expect(person.select).not.toHaveBeenCalled()
+  })
+
+  it('fall back to the engine\'s lookup, and its admin rule, when this server runs no per-person lookup', async () => {
+    person.enabled = false
+    const read = await PROVIDER_ACTIONS['provider.subscription'].handler(alice, [])
+    expect(read).toEqual({ ok: true, value: { ok: true, subscription: { state: 'engine' } } })
+    const refused = await PROVIDER_ACTIONS['provider.selectOwnSubscription'].handler(alice, [{ id: 'x' }])
+    expect(refused).toMatchObject({ ok: false, error: { code: 'scope', message: 'provider.selectOwnSubscription requires scope admin' } })
+    const admin = { id: 'c4', scopes: ['admin'], principal: { subject: 'root' } } as unknown as Connection
+    const allowed = await PROVIDER_ACTIONS['provider.selectOwnSubscription'].handler(admin, [{ id: 'x' }])
+    expect(allowed).toEqual({ ok: true, value: { ok: true, subscription: { state: 'engine-selected' } } })
+    expect(person.select).not.toHaveBeenCalled()
+  })
+
+  it('read the per-person state with only conversations:read', async () => {
+    const outcome = await PROVIDER_ACTIONS['provider.subscription'].handler(aliceReadOnly, [])
+    expect(outcome.ok).toBe(true)
+  })
+})

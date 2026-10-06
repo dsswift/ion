@@ -294,3 +294,79 @@ export async function refreshAccessToken(oidc: ServerOidcConfig, refreshToken: s
     refreshToken: payload.refresh_token ?? refreshToken,
   }
 }
+
+export type ScopedTokenResult =
+  | { ok: true; accessToken: string; expiresAt: number; refreshToken: string }
+  | { ok: false; reason: string }
+
+/**
+ * Exchanges a stored refresh token for an access token for ANOTHER resource's
+ * scope (`api://<app-id>/<scope>`), without disturbing the session's own
+ * tokens. The caller keeps the session's refresh token unless this returns a
+ * rotated one, which it must store.
+ *
+ * This is the refresh-token grant with a different `scope`, the form Entra
+ * documents for one signed-in person reaching a second API: the new token's
+ * audience is that API, not this server. Nothing is verified against this
+ * server's own audience, because the token is not for this server.
+ */
+export async function refreshForScope(oidc: ServerOidcConfig, refreshToken: string, scope: string): Promise<ScopedTokenResult> {
+  let doc: DiscoveryDoc
+  try {
+    doc = await discover(oidc.issuer)
+  } catch (err) {
+    warn('scoped refresh failed: discovery failed', { error: String(err) })
+    return { ok: false, reason: 'the sign-in service could not be reached' }
+  }
+  const body = withClientSecret(new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: oidc.clientId,
+    scope: `${scope} ${REFRESH_SCOPE_ADDITION}`,
+  }), oidc)
+
+  let tokenRes: Response
+  try {
+    tokenRes = await fetch(doc.token_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (err) {
+    warn('scoped refresh failed: token endpoint request errored', { scope, error: String(err) })
+    return { ok: false, reason: 'the sign-in service could not be reached' }
+  }
+  if (!tokenRes.ok) {
+    const detail = await tokenErrorBody(tokenRes)
+    warn('scoped refresh failed: token endpoint returned an error', { scope, status: tokenRes.status, body: detail })
+    return { ok: false, reason: scopedRefreshReason(detail) }
+  }
+  const payload = (await tokenRes.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
+  if (!payload.access_token) {
+    warn('scoped refresh failed: token endpoint response has no access_token', { scope })
+    return { ok: false, reason: 'the sign-in service returned no token' }
+  }
+  log('scoped token minted', { scope })
+  return {
+    ok: true,
+    accessToken: payload.access_token,
+    expiresAt: Date.now() + (payload.expires_in ?? 3600) * 1000,
+    // The IdP may omit `refresh_token` on a refresh response; keep the caller's own then.
+    refreshToken: payload.refresh_token ?? refreshToken,
+  }
+}
+
+/** What a person can act on when the token endpoint refuses a scoped refresh. */
+function scopedRefreshReason(detail: { error?: string; error_description?: string; error_codes?: number[] } | string): string {
+  if (typeof detail === 'string') return 'the sign-in service refused the request'
+  const codes = detail.error_codes ?? []
+  // AADSTS65001: consent for the scope has not been granted. AADSTS70011: the scope is not valid for this app.
+  if (codes.includes(65001) || detail.error === 'consent_required' || detail.error === 'interaction_required') {
+    return 'this app has not been given access to the key lookup yet; an administrator must grant consent'
+  }
+  if (codes.includes(70011) || codes.includes(650053)) return 'this app is not set up to request the key lookup scope'
+  if (detail.error === 'invalid_grant') return 'your sign-in has expired; sign in again'
+  return 'the sign-in service refused the request'
+}
+

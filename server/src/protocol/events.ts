@@ -120,11 +120,14 @@ function formatEventPayload(channel: string, args: unknown[]): unknown {
   // The third argument names whose setting changed and only routes the event
   // (see `visibleTo`); a client receives the key and the value.
   if (channel === SETTINGS_CHANGED_CHANNEL) return [args[0], args[1]]
+  // Likewise a Provider Subscription snapshot: the second argument names whose it is.
+  if (channel === PROVIDER_SUBSCRIPTION_CHANGED_CHANNEL && typeof args[1] === 'string') return args[0]
   if (args.length === 1) return args[0]
   return args
 }
 
 const SETTINGS_CHANGED_CHANNEL = 'ion:settings-changed'
+const PROVIDER_SUBSCRIPTION_CHANGED_CHANNEL = 'ion:provider-subscription-changed'
 
 /**
  * Worktree and bench state on the thin channel is held to the rule
@@ -156,6 +159,11 @@ function visibleTo(conn: Connection, channel: string, args: unknown[]): boolean 
   // setting names no owner and reaches every connection.
   if (channel === SETTINGS_CHANGED_CHANNEL && typeof args[2] === 'string') {
     return conn.principal !== null && conn.principal.subject === args[2]
+  }
+  // A Provider Subscription snapshot that names a person reaches that person's
+  // connections only. One the engine broadcast (no owner) reaches everyone, as before.
+  if (channel === PROVIDER_SUBSCRIPTION_CHANGED_CHANNEL && typeof args[1] === 'string') {
+    return conn.principal !== null && conn.principal.subject === args[1]
   }
   const scope = eventChannelScope(channel)
   if (scope !== 'tab') return true // 'environment' and 'per-principal' both reach every connection

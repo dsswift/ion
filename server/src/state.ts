@@ -9,6 +9,7 @@ import { wireEarlyStopPolicy } from "./engine/early-stop-policy";
 import { wireCredentialResponder } from "./engine/credential-responder";
 import { registerPrincipalSource } from "./credentials/principal-source";
 import { adminRefsSource } from "./credentials/sources/admin-refs";
+import { subscriptionSource } from "./subscription";
 import { currentServerConfig } from "./config/current";
 import { RelayDiscovery } from "./remote/discovery";
 
@@ -41,6 +42,10 @@ wireEarlyStopPolicy(
 // once here, at the same construction point as the early-stop policy above
 // -- this is the server's own reference PrincipalCredentialSource; any
 // harness engineer can register their own via registerPrincipalSource.
+// The per-person subscription lookup comes first: a looked-up key outranks every
+// manually configured one, matching the engine's own lookup. It answers nothing
+// when `server.json.subscriptionLookup` is absent.
+registerPrincipalSource(subscriptionSource());
 registerPrincipalSource(
   adminRefsSource(
     () => currentServerConfig().providerCredentials,

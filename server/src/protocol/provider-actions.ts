@@ -19,8 +19,10 @@
  * `Studio.Admin` can change what the server is configured to reach.
  */
 import type { Scope, StudioActionError } from '@ion/shared/studio-wire/types'
+import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
 import * as providerApi from '../engine/provider-api'
 import { getProviderSubscription, refreshProviderSubscription, selectProviderSubscription } from '../engine/provider-subscription-api'
+import { personLookupEnabled, personSubscription, refreshPersonSubscription, selectPersonSubscription } from '../subscription/person-api'
 import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
 import { ManagedEngineConfigError } from '../persistence/settings-store'
 import { log as _log, warn as _warn } from '../logger'
@@ -70,18 +72,74 @@ function wrap(
   }
 }
 
+/** The signed-in person's subject on this connection. A connection with no principal has no subscription of its own. */
+function personSubject(conn: Connection): string {
+  return conn.principal?.subject ?? ''
+}
+
+/**
+ * An action answered by the per-person lookup when this server runs one, and
+ * by the engine otherwise. `engineScope` is the scope the engine-backed path
+ * needs; the person-scoped path needs only `conversations:operate`, because
+ * it changes the caller's own key and nobody else's. `requiredScope` is the
+ * LEAST either path needs, so `handleAction` lets the call in, and the
+ * handler then refuses a caller who lacks what the path it took requires.
+ */
+function personOrEngine(
+  name: string,
+  engineScope: Scope,
+  person: (conn: Connection, args: unknown[]) => Promise<unknown>,
+  engine: (conn: Connection, args: unknown[]) => Promise<unknown>,
+): ProviderActionSpec {
+  const personScope: Scope = engineScope === 'conversations:read' ? 'conversations:read' : 'conversations:operate'
+  return {
+    requiredScope: personScope,
+    handler: async (conn, args) => {
+      try {
+        if (personLookupEnabled()) {
+          if (!personSubject(conn)) {
+            warn('subscription action refused: no signed-in person on this connection', { connection_id: conn.id, action: name })
+            return { ok: false, error: { code: 'scope', message: `${name} needs a signed-in person` } }
+          }
+          return { ok: true, value: (await person(conn, args)) ?? null }
+        }
+        if (!scopeSatisfies(conn.scopes, engineScope)) {
+          log('action refused: insufficient scope for the engine-backed path', { connection_id: conn.id, action: name, required_scope: engineScope })
+          return { ok: false, error: { code: 'scope', message: `${name} requires scope ${engineScope}` } }
+        }
+        return { ok: true, value: (await engine(conn, args)) ?? null }
+      } catch (err) {
+        return thrownActionError(conn, name, err)
+      }
+    },
+  }
+}
+
 export const PROVIDER_ACTIONS: Record<string, ProviderActionSpec> = {
   'model.list': wrap('model.list', 'conversations:read', () => providerApi.listModels()),
   'model.listTiers': wrap('model.listTiers', 'conversations:read', () => providerApi.listModelTiers()),
   'model.resolveTier': wrap('model.resolveTier', 'conversations:read', (args) => providerApi.resolveModelTier(args[0])),
   'provider.getDefault': wrap('provider.getDefault', 'conversations:read', () => providerApi.getDefaultProvider()),
-  // The Provider Subscription: the provider key the engine looked up for the
-  // signed-in identity. Reading it is `conversations:read`; choosing a
-  // subscription or looking up again changes the key a SHARED engine sends,
-  // so both are `admin`, like `provider.storeCredential`.
-  'provider.subscription': wrap('provider.subscription', 'conversations:read', () => getProviderSubscription()),
+  // The Provider Subscription: the provider key looked up for the signed-in
+  // identity. Reading it is `conversations:read`. When this server runs the
+  // per-person lookup (`server.json.subscriptionLookup`) the answer is the
+  // CALLER's own subscription; otherwise the engine's lookup answers.
+  'provider.subscription': personOrEngine('provider.subscription', 'conversations:read',
+    (conn) => personSubscription(personSubject(conn)), () => getProviderSubscription()),
+  // Choosing a subscription or looking up again through the ENGINE's lookup
+  // changes the key a SHARED engine sends, so both are `admin`, like
+  // `provider.storeCredential`. These two are the published phone actions
+  // (`phone-actions.json`) and keep that scope.
   'provider.selectSubscription': wrap('provider.selectSubscription', 'admin', (args) => selectProviderSubscription(args[0])),
   'provider.refreshSubscription': wrap('provider.refreshSubscription', 'admin', () => refreshProviderSubscription()),
+  // The same two, for the person asking. When this server runs the per-person
+  // lookup they change only the caller's own key, so `conversations:operate`
+  // is enough; otherwise they are the engine-backed commands above and need
+  // `admin`, checked here because `requiredScope` can only name the least.
+  'provider.selectOwnSubscription': personOrEngine('provider.selectOwnSubscription', 'admin',
+    (conn, args) => selectPersonSubscription(personSubject(conn), args[0]), (_conn, args) => selectProviderSubscription(args[0])),
+  'provider.refreshOwnSubscription': personOrEngine('provider.refreshOwnSubscription', 'admin',
+    (conn) => refreshPersonSubscription(personSubject(conn)), () => refreshProviderSubscription()),
 
   'model.setTier': wrap('model.setTier', 'admin', (args) => providerApi.setModelTier(args[0])),
   'model.removeTier': wrap('model.removeTier', 'admin', (args) => providerApi.removeModelTier(args[0])),
