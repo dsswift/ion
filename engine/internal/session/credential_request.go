@@ -148,8 +148,8 @@ type clientCredentialSource struct {
 
 func (s clientCredentialSource) Name() string { return "client" }
 
-func (s clientCredentialSource) Resolve(_ context.Context, scope auth.CredentialScope) (auth.RequestAuthenticator, error) {
-	key := s.m.sessionKeyForSubject(scope.Subject)
+func (s clientCredentialSource) Resolve(ctx context.Context, scope auth.CredentialScope) (auth.RequestAuthenticator, error) {
+	key := s.m.sessionKeyForCredentialAsk(ctx, scope.Subject)
 	if key == "" {
 		// No live session is attributed to this subject right now (e.g. the
 		// principal's only session already ended). Nothing to ask.

@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // newCredentialTestSession builds a minimal manager+session attributed to
@@ -169,4 +170,74 @@ func TestCredentialResponse_UnknownRequestIDDropped(t *testing.T) {
 	m, _, key := newCredentialTestSession(t, "alice")
 	// No panic, no effect: there is no pending request "does-not-exist".
 	m.HandleCredentialResponse(key, "does-not-exist", true, "sk-x", "")
+}
+
+// A session opened before anyone signed in is stamped with the host's local
+// identity, yet its turns run for the signed-in person. The credential
+// request must go to the session running the turn, found from the context,
+// not only to a session whose own principal is that person.
+func TestClientSource_AsksTheSessionRunningTheTurn(t *testing.T) {
+	m, s, key := newCredentialTestSession(t, "local:node")
+	s.principal = &types.SessionPrincipal{Subject: "local:node", Kind: "local"}
+	reqIDs := watchCredentialRequestIDs(m, key)
+	src := clientCredentialSource{m: m}
+
+	ctx := utils.WithSessionID(t.Context(), key)
+	type result struct {
+		a   auth.RequestAuthenticator
+		err error
+	}
+	resCh := make(chan result, 1)
+	go func() {
+		a, err := src.Resolve(ctx, auth.CredentialScope{Subject: "signed-in-person", Provider: "dci-marketing"})
+		resCh <- result{a, err}
+	}()
+
+	var reqID string
+	select {
+	case reqID = <-reqIDs:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no engine_credential_request was sent to the session running the turn")
+	}
+	m.HandleCredentialResponse(key, reqID, true, "key-for-the-person", "x-api-key")
+
+	select {
+	case r := <-resCh:
+		if r.err != nil || r.a == nil {
+			t.Fatalf("expected an authenticator, got %v, %v", r.a, r.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Resolve did not return after the client answered")
+	}
+}
+
+// With no session in the context the old rule holds: ask a session attributed
+// to the subject, and ask nobody when there is none.
+func TestClientSource_NoContextSessionStillMatchesBySubject(t *testing.T) {
+	m, _, key := newCredentialTestSession(t, "alice")
+	if got := m.sessionKeyForCredentialAsk(t.Context(), "alice"); got != key {
+		t.Fatalf("matched %q, want %q", got, key)
+	}
+	if got := m.sessionKeyForCredentialAsk(t.Context(), "bob"); got != "" {
+		t.Fatalf("matched %q for a subject with no session, want none", got)
+	}
+}
+
+// A context naming a session that is gone does not strand the request: it
+// falls back to a session attributed to the subject.
+func TestClientSource_StaleContextSessionFallsBackToSubject(t *testing.T) {
+	m, _, key := newCredentialTestSession(t, "alice")
+	ctx := utils.WithSessionID(t.Context(), "a-session-that-ended")
+	if got := m.sessionKeyForCredentialAsk(ctx, "alice"); got != key {
+		t.Fatalf("matched %q, want %q", got, key)
+	}
+}
+
+// An unattributed call is never asked about: there is no person to ask for.
+func TestClientSource_NoSubjectAsksNobody(t *testing.T) {
+	m, _, key := newCredentialTestSession(t, "alice")
+	ctx := utils.WithSessionID(t.Context(), key)
+	if got := m.sessionKeyForCredentialAsk(ctx, ""); got != "" {
+		t.Fatalf("matched %q for an empty subject, want none", got)
+	}
 }
