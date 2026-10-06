@@ -134,10 +134,15 @@ describe('hosted personal instance with a home project and the lock policy', () 
     expect(settings.projects[ORION].isDefault).toBe(true)
   })
 
-  it('shows the signed-in person no conversation they cannot use, and carries the lock in the welcome', async () => {
+  it('opens no conversation before sign-in, then gives the person one they own in the home project on first sign-in', async () => {
     const { ws, welcome } = await signIn()
     expect(welcome.snapshot.tabs).toEqual([])
     expect(welcome.enterprisePolicy?.newConversationDefaults).toMatchObject({ baseDirectory: ORION, engineProfileId: 'orion', locked: true })
+    const readTabs = (): Array<{ workingDirectory: string; engineProfileId?: string; principalSubject?: string }> => {
+      try { return JSON.parse(readFileSync(join(dataDir, 'tabs.json'), 'utf-8')).tabs } catch { return [] }
+    }
+    await waitFor(() => readTabs().length > 0, 10000, 'first conversation persisted')
+    expect(readTabs()).toEqual([expect.objectContaining({ workingDirectory: ORION, engineProfileId: 'orion', principalSubject: SUBJECT })])
     await closeSocket(ws)
   })
 

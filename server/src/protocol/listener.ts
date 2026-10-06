@@ -29,6 +29,7 @@ import { unregisterPresence } from './presence'
 import { unsubscribeCorpusAll } from '../graph-view/corpus-subscriptions'
 import { sendThinFirstPaint, noteThinConnectionClosed } from '../thin-view/thin-sync'
 import { DEFAULT_BUFFER_CAP_BYTES } from './buffer'
+import { ensureFirstConversation } from '../bootstrap/first-conversation'
 import { handleHello, LocalOnlyAuthPolicy, type AuthPolicy } from './hello'
 import { buildStudioSnapshot } from './snapshot'
 import { attachConnectionToEvents } from './events'
@@ -136,6 +137,7 @@ function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBi
     }).then((welcomed) => {
       if (!welcomed) return
       unsubscribe.fn = attachConnectionToEvents(conn)
+      if (conn.principal) void ensureFirstConversation(conn.principal)
       // Subscribed first, so nothing published while the first paint builds is missed.
       if (conn.view === 'thin') void sendThinFirstPaint(conn)
     })
