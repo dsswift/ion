@@ -148,6 +148,7 @@ struct FleetHubsContent: View {
 /// One hub: its name, its address, and how its link stands.
 private struct FleetHubRow: View {
     let hub: FleetHubStatus
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -156,7 +157,7 @@ private struct FleetHubRow: View {
                 Spacer()
                 Text(hub.stateWord)
                     .font(.caption)
-                    .foregroundStyle(hub.state == "connected" ? Color.green : hub.state == "connecting" ? Color.secondary : Color.orange)
+                    .foregroundStyle(hub.state == "connected" ? theme.statusDone : hub.state == "connecting" ? theme.textSecondary : theme.statusWarning)
             }
             Text(hub.url)
                 .font(.caption.monospaced())

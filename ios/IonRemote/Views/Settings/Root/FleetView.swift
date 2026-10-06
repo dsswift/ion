@@ -10,6 +10,7 @@ import SwiftUI
 /// reveals them, on every visit, so the screen is safe to share or capture.
 struct FleetView: View {
     @Environment(SessionViewModel.self) private var viewModel
+    @Environment(\.appTheme) private var theme
 
     @State private var model = FleetModel()
     @State private var pendingRemoval: PairedDevice?
@@ -136,7 +137,7 @@ struct FleetView: View {
                 totalTile("\(model.totals.accountsSignedIn)/\(model.totals.accounts)", "Signed in")
                 totalTile("\(model.totals.accountsExpiring)", "Expiring", warn: model.totals.accountsExpiring > 0)
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 "\(model.totals.serversReached) of \(viewModel.pairedDevices.count) servers reached, "
@@ -151,7 +152,7 @@ struct FleetView: View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.headline.monospacedDigit())
-                .foregroundStyle(warn ? Color.orange : Color.primary)
+                .foregroundStyle(warn ? theme.statusWarning : theme.textPrimary)
             Text(caption)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
