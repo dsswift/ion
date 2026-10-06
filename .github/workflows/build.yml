@@ -232,16 +232,21 @@ jobs:
           VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="engine") | .new_version')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
       - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="engine-v${{ steps.version.outputs.version }}"
-          gh release download "$TAG" -R "${{ github.repository }}" -D assets/
+          # Outside the checkout, beside the server job's own download.
+          bash .github/scripts/download-release-assets.sh "${{ github.repository }}" "$TAG" "$RUNNER_TEMP/engine-release"
 
       - name: Generate checksums
         run: |
-          cd assets
+          cd "$RUNNER_TEMP/engine-release"
           sha256sum ./* > checksums.txt
           cat checksums.txt
 
@@ -251,7 +256,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="engine-v${{ steps.version.outputs.version }}"
-          gh release upload "$TAG" assets/checksums.txt --clobber -R "${{ github.repository }}"
+          gh release upload "$TAG" "$RUNNER_TEMP/engine-release/checksums.txt" --clobber -R "${{ github.repository }}"
 
   build-engine-image:
     if: contains(fromJSON(inputs.release_report).components, 'engine')
@@ -420,12 +425,11 @@ jobs:
         run: |
           TAG="server-v${{ steps.version.outputs.version }}"
           # Outside the checkout: the repo has its own assets/ folder.
-          gh release download "$TAG" -R "${{ github.repository }}" -D "$RUNNER_TEMP/server-release"
+          bash .github/scripts/download-release-assets.sh "${{ github.repository }}" "$TAG" "$RUNNER_TEMP/server-release"
 
       - name: Generate checksums
         run: |
           cd "$RUNNER_TEMP/server-release"
-          rm -f checksums.txt
           sha256sum ./* > checksums.txt
           cat checksums.txt
 

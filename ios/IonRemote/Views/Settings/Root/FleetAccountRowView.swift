@@ -38,7 +38,7 @@ struct FleetAccountRowView: View {
                 .font(.caption)
                 .lineLimit(2)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         .accessibilityElement(children: .combine)
     }
 
@@ -133,7 +133,7 @@ struct FleetQuotaPoolView: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         .accessibilityElement(children: .combine)
     }
 

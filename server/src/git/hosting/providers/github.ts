@@ -8,6 +8,8 @@ import type { GitHostingOwner, GitHostingRepository } from '@ion/shared/types-gi
 import type { GitHostingAuth, GitHostingProvider, GitHostingTarget } from '../types'
 import { hostingCall, record, text, type HostingCall } from '../http'
 
+/** The GitHub REST API version every call pins. */
+export const GITHUB_API_VERSION = '2022-11-28'
 const PAGE = 100
 const MAX_PAGES = 10
 
@@ -26,7 +28,7 @@ function call(target: GitHostingTarget, auth: GitHostingAuth, operation: string,
     operation,
     url: `${target.apiBaseUrl}${path}`,
     method: body === undefined ? 'GET' : 'POST',
-    headers: { Authorization: `Bearer ${auth.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'ion' },
+    headers: { Authorization: `Bearer ${auth.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': GITHUB_API_VERSION, 'User-Agent': 'ion' },
     body,
     errorMessage,
   }

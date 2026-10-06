@@ -18,6 +18,8 @@ import { UNIFIED_SCHEMA_VERSION } from '@ion/shared/tab-migration-unify'
 import { TELEMETRY_FRAME_VERSION } from '@ion/shared/telemetry-frame'
 import { EXTERNALIZE_SCHEMA_VERSION, SPLIT_SCHEMA_VERSION } from '@ion/shared/types-persistence'
 import { MANIFEST_VERSION } from '../conversation-backup/manifest'
+import { AZURE_DEVOPS_API_VERSION } from '../git/hosting/providers/azure-devops'
+import { GITHUB_API_VERSION } from '../git/hosting/providers/github'
 import { EXTERNAL_CONTENT_SCHEMA_VERSION } from '../persistence/tab-content-store'
 import { QUESTION_RECORD_VERSION } from '../questions/questions-persistence'
 import { TRANSFER_MANIFEST_VERSION } from '../transfer/manifest'
@@ -58,6 +60,10 @@ export const SERVER_FORMAT_REGISTRY: readonly RegisteredFormat[] = [
     'Stored per-tab content files'),
   entry('question-records', QUESTION_RECORD_VERSION, 'QUESTION_RECORD_VERSION', 'host-storage',
     'Stored Guided Questions workflows'),
+  entry('github-rest-api', GITHUB_API_VERSION, 'GITHUB_API_VERSION', 'external',
+    'GitHub REST API version the server pins when it lists owners and creates repositories'),
+  entry('azure-devops-rest-api', AZURE_DEVOPS_API_VERSION, 'AZURE_DEVOPS_API_VERSION', 'external',
+    'Azure DevOps REST API version the server pins when it lists owners and creates repositories'),
 ]
 
 /** The server's formats as published: the registry without its source constants. */

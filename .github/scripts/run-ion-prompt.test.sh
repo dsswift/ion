@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pins run-ion-prompt.sh: the engine reads the config from ION_DATA_DIR, a
 # config with no model gets the CI default while one with a model keeps it,
-# telemetry is merged only when asked for, and a failed or empty run fails.
+# telemetry is merged only when asked for, the engine runs as the calling user
+# so the script can clean up what it wrote, and a failed or empty run fails.
 
 set -euo pipefail
 
@@ -50,6 +51,7 @@ jq -e '.providers.anthropic' "$TMP/engine.json" > /dev/null || fail "secret conf
 grep -q -- '-e ION_DATA_DIR=/data/.ion' "$TMP/docker-args" || fail "ION_DATA_DIR not pointed at the config: $(cat "$TMP/docker-args")"
 grep -q -- 'img:1 prompt - --output text --no-extensions --timeout 3m --max-budget 1.00' "$TMP/docker-args" || fail "prompt flags wrong: $(cat "$TMP/docker-args")"
 [ "$(cat "$TMP/stdin")" = 'write the notes' ] || fail "prompt not on stdin"
+grep -q -- "--user $(id -u):$(id -g)" "$TMP/docker-args" || fail "engine not run as the calling user: $(cat "$TMP/docker-args")"
 grep -q -- '--hostname' "$TMP/docker-args" && fail "hostname passed when not asked for"
 jq -e '.logging' "$TMP/engine.json" > /dev/null && fail "telemetry merged when not asked for"
 
