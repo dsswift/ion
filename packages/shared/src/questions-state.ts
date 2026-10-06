@@ -33,7 +33,7 @@ export type QuestionsTerminalReason =
 
 /** One image attached to a question's answer. */
 export interface QuestionAnswerAttachment {
-  /** Absolute path on the desktop host (rides the prompt attachment pipeline). */
+  /** Absolute path on the Environment holding the workflow (rides the prompt attachment pipeline). */
   path: string
   name: string
 }

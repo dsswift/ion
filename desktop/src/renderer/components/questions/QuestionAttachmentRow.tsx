@@ -2,21 +2,26 @@ import React from 'react'
 import { Paperclip, X } from '@phosphor-icons/react'
 import { rWarn } from '../../rendererLogger'
 import type { useColors } from '../../theme'
-import type { QuestionDraftAnswer, QuestionAnswerAttachment } from '@ion/shared/questions-state'
-import { host } from '../../host/host-instance'
+import type { QuestionDraftAnswer, QuestionsWorkflowState } from '@ion/shared/questions-state'
+import { environmentOfWorkflow } from '../../stores/questions-store'
+import { stageFilesFor } from '../composer/attachment-staging'
+import { pickLocalFiles } from '../composer/local-file-sources'
 
 /**
  * Per-question attachment row: an "Attach image" affordance plus removable
- * chips for the images already attached to this answer. Selection goes
- * through the main-process native picker (QUESTIONS_PICK_ATTACHMENTS);
- * the picked paths ride the draft answer and, at submit, the resume
- * prompt's attachment pipeline delivers the bytes to the engine.
+ * chips for the images already attached to this answer. The operator picks
+ * images from their own machine; each is staged on the Environment holding
+ * the workflow (by path when it is this desktop, uploaded otherwise), and
+ * at submit the resume prompt's attachment pipeline delivers the bytes to
+ * the engine.
  */
 export function QuestionAttachmentRow({
+  workflow,
   draft,
   onChange,
   colors,
 }: {
+  workflow: Pick<QuestionsWorkflowState, 'workflowId' | 'sessionKey'>
   draft: QuestionDraftAnswer
   onChange: (next: QuestionDraftAnswer) => void
   colors: ReturnType<typeof useColors>
@@ -24,21 +29,20 @@ export function QuestionAttachmentRow({
   const attachments = draft.attachments ?? []
 
   const pick = () => {
-    // A native file picker returns host paths, which only an OS shell can
-    // produce. Withheld rather than offered-and-thrown; the button itself is
-    // hidden below on the same capability.
-    if (!host.capabilities().includes('nativeShell')) return
-    void host.shell
-      .questionsPickAttachments()
-      .then((picked: QuestionAnswerAttachment[]) => {
-        if (picked.length === 0) return
+    const target = { tabId: workflow.sessionKey, environmentId: environmentOfWorkflow(workflow.workflowId) }
+    void pickLocalFiles({ accept: 'image/*' })
+      .then((files) => stageFilesFor(files, 'pick', target))
+      .then((staged) => {
+        if (staged.length === 0) return
         // De-duplicate by path; re-picking an attached file is a no-op.
         const existing = new Set(attachments.map((a) => a.path))
-        const added = picked.filter((p) => !existing.has(p.path))
+        const added = staged
+          .filter((a) => !existing.has(a.path))
+          .map((a) => ({ path: a.path, name: a.name }))
         if (added.length === 0) return
         onChange({ ...draft, attachments: [...attachments, ...added], skipped: undefined })
       })
-      .catch((err: unknown) => rWarn('questions', 'attachment pick failed', { error: String(err) }))
+      .catch((err: unknown) => rWarn('questions', 'attachment pick failed', { workflow_id: workflow.workflowId, error: String(err) }))
   }
 
   const remove = (path: string) => {

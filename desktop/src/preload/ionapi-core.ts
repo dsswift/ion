@@ -33,7 +33,6 @@ export interface IonCoreApi {
   /** Stop waiting for a redirect. */
   oauthCallbackCancel(id: string): Promise<void>;
 
-  attachFiles(): Promise<FileAttachment[] | null>;
   takeScreenshot(): Promise<FileAttachment | null>;
   /**
    * Copy PNG bytes to the OS clipboard. Resolves false on any refusal (wrong

@@ -16,8 +16,8 @@
  *     argument marshalling the preload does for the same method, so the
  *     server sees an identical payload whichever client called it. Getting
  *     that wrong is silent (the server reads `undefined` off a differently
- *     shaped object), so each entry is written against its preload
- *     counterpart in `preload/engine-api.ts`.
+ *     shaped object), so each entry is written against the server action
+ *     that reads it.
  *   - SUBSCRIBE: an `on*` listener. The server already fans these out as
  *     `studio_event` frames through `broadcast()`; the entry names the
  *     channel and the listener filters for it.

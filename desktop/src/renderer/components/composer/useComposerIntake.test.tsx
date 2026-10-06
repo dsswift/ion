@@ -16,7 +16,7 @@ vi.mock('@ion/server/store/sessionStore', () => ({
 }))
 vi.mock('../../rendererLogger', () => ({ rDebug: vi.fn(), rError: vi.fn(), rInfo: vi.fn() }))
 let tabEnvironment = 'local'
-vi.mock('../../studio/connection/tab-environment', () => ({ environmentOfTab: () => tabEnvironment }))
+vi.mock('../../studio/connection/tab-environment', () => ({ environmentOfTab: () => tabEnvironment, withTargetEnvironment: <T,>(_id: string, fn: () => T): T => fn() }))
 
 let pathFor: (file: File) => string = () => ''
 let caps: string[] = []

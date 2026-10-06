@@ -210,7 +210,7 @@ export interface StudioLayout {
 
 export const STUDIO_LAYOUT_DEFAULTS: StudioLayout = {
   leftSidebarVisible: false,
-  leftSidebarView: "explorer",
+  leftSidebarView: "inbox",
   surfaceWidth: 520,
   terminalHeight: 240,
   dispatchSplitRatio: 0.45,

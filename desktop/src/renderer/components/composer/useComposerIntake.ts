@@ -1,62 +1,17 @@
 /**
  * useComposerIntake — everything that enters the composer other than typing:
  * files dropped on the window, and pasted images, files, and oversized text.
- *
- * A file the host can name by path (Electron) is attached by that path when
- * the conversation lives on this machine. A file with no path on the
- * conversation's Environment (a browser drop, a pasted blob, or a Finder drop
- * onto a remote conversation) is stored there first through
- * `saveAttachmentData`. Either way the result is an ordinary attachment row.
+ * Files become attachment rows through `attachment-staging`.
  */
 import { useCallback, useEffect, useRef } from 'react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
-import type { FileAttachment } from '@ion/shared/types'
-import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { host } from '../../host/host-instance'
-import { environmentOfTab } from '../../studio/connection/tab-environment'
 import { rDebug, rError, rInfo } from '../../rendererLogger'
 import { useComposerDragStore } from './composer-drag-store'
-import { bytesToBase64, decideTextPaste, isRawPasteChord, textToBase64 } from './composer-intake'
+import { decideTextPaste, isRawPasteChord, textToBase64 } from './composer-intake'
+import { stageFiles } from './attachment-staging'
 
 let pastedTextCounter = 0
-let pastedImageCounter = 0
-
-/** A clipboard image arrives as `image.png`; give it a name the operator can tell apart. */
-function stagedName(file: File, source: 'drop' | 'paste'): string {
-  if (source === 'paste' && file.type.startsWith('image/')) {
-    const ext = file.type.slice('image/'.length).replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png'
-    return `pasted image ${++pastedImageCounter}.${ext}`
-  }
-  return file.name || 'dropped-file'
-}
-
-async function stageFile(file: File, source: 'drop' | 'paste', tabId: string): Promise<FileAttachment | null> {
-  // Only a host with a native shell sees real filesystem paths; a browser's
-  // File has none, so its bytes are uploaded instead. A path on this machine
-  // means nothing to a remote Environment, so a remote conversation gets the
-  // bytes too.
-  const path = host.capabilities().includes('nativeShell') ? host.shell.getPathForFile(file) : ''
-  const local = (environmentOfTab(tabId) ?? LOCAL_ENVIRONMENT_ID) === LOCAL_ENVIRONMENT_ID
-  if (path && local) return host.shell.attachFileByPath(tabId, path)
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  return host.shell.saveAttachmentData(tabId, stagedName(file, source), bytesToBase64(bytes))
-}
-
-async function stageFiles(files: File[], source: 'drop' | 'paste'): Promise<void> {
-  const tabId = useSessionStore.getState().activeTabId
-  if (!tabId) {
-    rDebug('composer', 'staging skipped: no active conversation', { source, files: files.length })
-    return
-  }
-  const staged = (await Promise.all(files.map((file) =>
-    stageFile(file, source, tabId).catch((err) => {
-      rError('composer', 'staging a file failed', { source, name: file.name, error: String(err) })
-      return null
-    }),
-  ))).filter((a): a is FileAttachment => a !== null)
-  rInfo('composer', 'files staged', { source, offered: files.length, staged: staged.length })
-  if (staged.length > 0) useSessionStore.getState().addAttachments(staged)
-}
 
 function hasFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files')

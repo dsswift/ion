@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * The `+` menu replaces the old floating Attach / Screenshot stack. Pins: the
- * built-in rows stage what the host returns, a browser host (no `nativeShell`)
- * is offered neither, extension rows render under a divider, and the keymap's
- * window events reach the same actions as a click.
+ * The `+` menu. Pins: every host is offered "Attach file" (the web platform's
+ * own picker), screenshot is offered on a native shell or a page that can
+ * capture the screen, each built-in row stages what it gets, extension rows
+ * render under a divider, and the keymap's window events reach the same
+ * actions as a click.
  */
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -11,10 +12,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-const addAttachments = vi.fn()
-vi.mock('@ion/server/store/sessionStore', () => ({
-  useSessionStore: (selector: (s: { addAttachments: typeof addAttachments }) => unknown) => selector({ addAttachments }),
-}))
 vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 vi.mock('../../rendererLogger', () => ({ rError: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn(), rTrace: vi.fn() }))
 vi.mock('../../hooks/useViewportClamp', () => ({ useViewportClamp: () => undefined }))
@@ -23,18 +20,33 @@ let layer: HTMLElement | null = null
 vi.mock('../PopoverLayer', () => ({ usePopoverLayer: () => layer }))
 
 const shot = { id: 'shot-1', type: 'image' as const, name: 'shot.png', path: '/tmp/shot.png' }
-const file = { id: 'file-1', type: 'file' as const, name: 'a.txt', path: '/tmp/a.txt' }
+const picked = new File(['hi'], 'a.txt')
+const frame = new File(['png'], 'screenshot.png', { type: 'image/png' })
 const takeScreenshot = vi.fn(async () => shot)
-const attachFiles = vi.fn(async () => [file])
+const stageFiles = vi.fn(async () => undefined)
+const stageNativeCapture = vi.fn(async () => undefined)
+const pickLocalFiles = vi.fn(async () => [picked])
+const captureScreenFrame = vi.fn(async () => frame)
 // Hoisted: the host mock is read at import time (platform/mod-key.ts), which
 // runs before a plain `let` in this file is initialised.
-const capState = vi.hoisted(() => ({ caps: ['nativeShell'] as string[] }))
+const env = vi.hoisted(() => ({ caps: ['nativeShell'] as string[], canCapture: false }))
 vi.mock('../../host/host-instance', () => ({
-  host: { shell: { takeScreenshot: () => takeScreenshot(), attachFiles: () => attachFiles() }, capabilities: () => capState.caps },
+  host: { shell: { takeScreenshot: () => takeScreenshot() }, capabilities: () => env.caps },
+}))
+vi.mock('./attachment-staging', () => ({
+  stageFiles: (...args: unknown[]) => stageFiles(...(args as [])),
+  stageNativeCapture: (...args: unknown[]) => stageNativeCapture(...(args as [])),
+}))
+vi.mock('./local-file-sources', () => ({
+  pickLocalFiles: () => pickLocalFiles(),
+  captureScreenFrame: () => captureScreenFrame(),
+  canCaptureScreen: () => env.canCapture,
 }))
 
 import { ComposerPlusMenu, type ComposerPlusMenuItem } from './ComposerPlusMenu'
-import { COMPOSER_ATTACH_EVENT } from './composer-events'
+import { COMPOSER_ATTACH_EVENT, COMPOSER_SCREENSHOT_EVENT } from './composer-events'
+
+const flush = async (): Promise<void> => { await act(async () => { await new Promise((r) => setTimeout(r, 0)) }) }
 
 describe('ComposerPlusMenu', () => {
   let container: HTMLDivElement
@@ -44,7 +56,8 @@ describe('ComposerPlusMenu', () => {
     act(() => root.unmount())
     document.body.replaceChildren()
     vi.clearAllMocks()
-    capState.caps = ['nativeShell']
+    env.caps = ['nativeShell']
+    env.canCapture = false
   })
 
   function mount(extraItems?: ComposerPlusMenuItem[]): void {
@@ -55,28 +68,56 @@ describe('ComposerPlusMenu', () => {
     act(() => root.render(<ComposerPlusMenu extraItems={extraItems} />))
   }
 
-  const open = (): void => act(() => (container.querySelector('[data-testid="composer-plus-button"]') as HTMLButtonElement).click())
+  const button = (): HTMLButtonElement => container.querySelector('[data-testid="composer-plus-button"]') as HTMLButtonElement
+  const open = (): void => act(() => button().click())
   const row = (id: string): HTMLButtonElement | null => layer!.querySelector(`[data-testid="composer-plus-item-${id}"]`)
 
-  it('stages the picked file and closes', async () => {
+  it('stages the picked files and closes', async () => {
     mount()
     open()
-    await act(async () => { row('attach')!.click(); await Promise.resolve(); await Promise.resolve() })
-    expect(addAttachments).toHaveBeenCalledWith([file])
+    act(() => row('attach')!.click())
+    await flush()
+    expect(pickLocalFiles).toHaveBeenCalledTimes(1)
+    expect(stageFiles).toHaveBeenCalledWith([picked], 'pick')
     expect(layer!.querySelector('[data-testid="composer-plus-menu"]')).toBeNull()
   })
 
-  it('stages the captured screenshot', async () => {
+  it('stages nothing when the picker is cancelled', async () => {
+    pickLocalFiles.mockResolvedValueOnce([])
     mount()
     open()
-    await act(async () => { row('screenshot')!.click(); await Promise.resolve(); await Promise.resolve() })
-    expect(addAttachments).toHaveBeenCalledWith([shot])
+    act(() => row('attach')!.click())
+    await flush()
+    expect(stageFiles).not.toHaveBeenCalled()
   })
 
-  it('offers neither built-in row to a host without nativeShell, and disables an empty menu', () => {
-    capState.caps = ['terminal', 'git', 'files']
+  it('stages the native screenshot through the capture path', async () => {
     mount()
-    expect((container.querySelector('[data-testid="composer-plus-button"]') as HTMLButtonElement).disabled).toBe(true)
+    open()
+    act(() => row('screenshot')!.click())
+    await flush()
+    expect(stageNativeCapture).toHaveBeenCalledWith(shot)
+    expect(captureScreenFrame).not.toHaveBeenCalled()
+  })
+
+  it('offers a browser host the file picker, and no screenshot when the page cannot capture', async () => {
+    env.caps = ['terminal', 'git', 'files']
+    mount()
+    expect(button().disabled).toBe(false)
+    open()
+    expect(row('attach')).not.toBeNull()
+    expect(row('screenshot')).toBeNull()
+  })
+
+  it('captures a browser screenshot through screen sharing when the page can', async () => {
+    env.caps = []
+    env.canCapture = true
+    mount()
+    open()
+    act(() => row('screenshot')!.click())
+    await flush()
+    expect(takeScreenshot).not.toHaveBeenCalled()
+    expect(stageFiles).toHaveBeenCalledWith([frame], 'capture')
   })
 
   it('renders extension rows under a divider and runs them', () => {
@@ -89,9 +130,20 @@ describe('ComposerPlusMenu', () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
-  it('runs attach when the keymap rings the attach event', async () => {
+  it('runs attach when the keymap rings the attach event, on a browser host too', async () => {
+    env.caps = []
     mount()
-    await act(async () => { window.dispatchEvent(new CustomEvent(COMPOSER_ATTACH_EVENT)); await Promise.resolve(); await Promise.resolve() })
-    expect(attachFiles).toHaveBeenCalledTimes(1)
+    act(() => { window.dispatchEvent(new CustomEvent(COMPOSER_ATTACH_EVENT)) })
+    await flush()
+    expect(pickLocalFiles).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores the screenshot event where no capture is offered', async () => {
+    env.caps = []
+    mount()
+    act(() => { window.dispatchEvent(new CustomEvent(COMPOSER_SCREENSHOT_EVENT)) })
+    await flush()
+    expect(captureScreenFrame).not.toHaveBeenCalled()
+    expect(takeScreenshot).not.toHaveBeenCalled()
   })
 })

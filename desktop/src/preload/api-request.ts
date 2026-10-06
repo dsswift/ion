@@ -15,7 +15,6 @@ export const requestApi = {
   oauthCallbackListen: () => ipcRenderer.invoke(IPC.OAUTH_CALLBACK_LISTEN),
   oauthCallbackAwait: (id) => ipcRenderer.invoke(IPC.OAUTH_CALLBACK_AWAIT, id),
   oauthCallbackCancel: (id) => ipcRenderer.invoke(IPC.OAUTH_CALLBACK_CANCEL, id),
-  attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   takeScreenshot: () => ipcRenderer.invoke(IPC.TAKE_SCREENSHOT),
   listFonts: () => ipcRenderer.invoke(IPC.LIST_FONTS),
 

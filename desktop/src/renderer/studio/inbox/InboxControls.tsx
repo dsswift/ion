@@ -8,8 +8,8 @@ import { scrollableMenuStyle } from '../../menu-viewport'
 import { toggleProjectSelection, type InboxProjectSelection } from './project-selection'
 import { LOCAL_ENVIRONMENT_ID, type EnvironmentViewFilter } from '@ion/shared/types-environments'
 import { useEnvironmentAvailabilityMap } from '../connection/environment-availability'
+import type { InboxSortOrder } from './inbox-sort'
 
-export type InboxSortOrder = 'created' | 'activity' | 'title'
 
 interface ProjectScopePickerProps {
   anchor: { x: number; y: number }

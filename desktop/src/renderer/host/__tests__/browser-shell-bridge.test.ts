@@ -6,8 +6,8 @@
  * named fields off `args[0]`, so a bridge entry that forwards a bare
  * positional argument where the preload sends `{ provider }` fails SILENTLY
  * — the server sees `undefined` and refuses with a validation error that
- * looks like a user mistake. Each case here is written against the preload
- * counterpart in `preload/engine-api.ts`.
+ * looks like a user mistake. Each case here is written against the server
+ * action that reads the payload.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
@@ -306,10 +306,7 @@ describe('a reported capability is only as true as the bridge', () => {
     'fsSaveDialog', 'fsRevealInFinder', 'fsOpenNative', 'fsOpenNativeData', 'fsSaveData', 'selectDirectory', 'selectExtensionFiles',
     'pickFile', 'pickDirectory', 'openExternal', 'getPathForFile', 'clipboardWriteImage',
     'showItemInFolder', 'listFonts', 'getFavicon', 'copyPngToClipboard',
-    'takeScreenshot', 'attachFileByPath', 'attachFiles',
-    // A native file dialog: the browser's own <input type=file> is the
-    // equivalent, and the questions wizard uses it directly.
-    'questionsPickAttachments',
+    'takeScreenshot', 'attachFileByPath',
     // Reveals a path in the OS file manager, on the machine the UI runs on.
     'revealPath',
     // The engine event stream's DIRECT transport. A browser client is not

@@ -5,7 +5,6 @@ import { automationApi } from "./api-automation";
 import { gitIdentityApi } from "./api-git-identity";
 import { systemApi } from "./api-system";
 import { worktreeApi } from "./api-worktree";
-import { engineApi } from "./engine-api";
 import type { IonAPI } from "./ionapi";
 
 export type { IonAPI } from "./ionapi";
@@ -20,7 +19,6 @@ const api: IonAPI = {
   ...automationApi,
   ...gitIdentityApi,
   ...worktreeApi,
-  ...engineApi,
   ...systemApi,
 };
 
