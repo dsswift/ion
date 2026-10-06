@@ -81,7 +81,10 @@ fi
 
 echo "run-ion-prompt: prompt is $(wc -c < "$PROMPT_FILE") bytes; running $IMAGE"
 status=0
+# The image runs as root by default. Its conversation files would then be
+# root-owned in $DATA_DIR, and the cleanup trap could not remove them.
 timeout 4m docker run --rm -i \
+  --user "$(id -u):$(id -g)" \
   ${HOSTNAME_ARGS[@]+"${HOSTNAME_ARGS[@]}"} \
   "${DOCKER_ENV[@]}" \
   -v "$DATA_DIR:/data" \
