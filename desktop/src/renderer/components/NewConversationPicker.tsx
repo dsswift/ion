@@ -24,6 +24,7 @@ import type { EngineProfile } from '@ion/shared/types'
 import type { NewConversationPickerTarget } from './new-conversation-picker-target'
 import { host } from '../host/host-instance'
 import { refusalForDraftEnvironment } from '../studio/connection/draft-lock'
+import { useNewConversationLock } from '../lib/new-conversation-lock'
 import { policyStore } from '../studio/connection/policy-store'
 import { deriveDesktopEnvironmentPolicy } from '@ion/shared/enterprise-environment-policy'
 import { readConversationCatalog } from '../studio/connection/catalog'
@@ -88,14 +89,19 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   // project listing instead.
   const localUsage = usePreferencesStore((state) => state.directoryUsageCounts)
   const enterprisePolicy = usePreferencesStore((state) => state.enterpriseNewConversationDefaults)
+  // A lock that names a directory decides where this opens, so the picker offers no folder, branch, or profile.
+  const lock = useNewConversationLock()
+  const foldersLocked = lock?.foldersLocked === true
   const fullEnterprisePolicy = usePreferencesStore((state) => state.enterprisePolicy)
   const managedProjects = useMemo<ManagedProject[]>(() => (fullEnterprisePolicy?.newConversationDefaults?.projects ?? []).map((project) => ({ directory: project.directory, name: project.name, isDefault: project.default, profileAction: project.profileName ? 'profile' : 'ask', profileSource: project.profileName ? 'enterprise-project' : undefined })), [fullEnterprisePolicy])
   const effectiveProjectList = useMemo(() => effectiveProjects(registry, managedProjects), [managedProjects, registry])
   const [view, setView] = useState<PickerView>(() => {
+    if (foldersLocked) return 'profiles'
     if (initialDirectory) return initialUseWorktree && worktreesOfferedOn(initialEnvironmentId) && (!initialSourceBranch || initialChooseBranch) ? 'branches' : 'profiles'
     return defaultProject(registry, managedProjects) ? 'profiles' : 'projects'
   })
   const [workspace, setWorkspace] = useState<WorkspaceChoice | null>(() => {
+    if (lock?.foldersLocked) return { directory: lock.directory, projectDirectory: lock.directory, environmentId: LOCAL_ENVIRONMENT_ID }
     if (initialDirectory) return { directory: initialDirectory, projectDirectory: initialDirectory, environmentId: initialEnvironmentId, useWorktree: initialUseWorktree && worktreesOfferedOn(initialEnvironmentId), sourceBranch: initialChooseBranch ? undefined : initialSourceBranch }
     // The starred Project comes from this machine's own registry.
     const project = defaultProject(registry, managedProjects)
@@ -305,7 +311,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     const directory = locked && enterprisePolicy.baseDirectory ? enterprisePolicy.baseDirectory : choice.directory
     const profileId = locked ? enterprisePolicy.engineProfileId : profile?.id ?? (resolvedAction.kind === 'profile' ? resolvedAction.profileId : '')
     const workspaceChanged = directory !== choice.directory
-    const useWorktree = !workspaceChanged && choice.useWorktree && worktreesOfferedOn(targetEnvironmentId)
+    const useWorktree = !workspaceChanged && !foldersLocked && choice.useWorktree && worktreesOfferedOn(targetEnvironmentId)
     const opts = {
       ...(profileId ? { profileId } : {}),
       ...(!workspaceChanged && { useWorktree, sourceBranch: choice.sourceBranch }),
@@ -339,7 +345,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
     createInFlight.current = true
     setEnvironmentError(null)
     setCreating(true)
-  }, [enterprisePolicy, onClose, resolvedAction])
+  }, [enterprisePolicy, foldersLocked, onClose, resolvedAction])
 
   useEffect(() => {
     if (view !== 'profiles' || !workspace || autoCreateStarted.current || resolvedAction.kind === 'picker') return
@@ -383,6 +389,7 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
   }
 
   const handleBack = (): void => {
+    if (foldersLocked) { onClose(); return }
     if (view === 'profiles') {
       if (initialDirectory || defaultProject(registry, managedProjects)) { onClose(); return }
       setWorkspace(null); setView('projects'); setQuery(''); return
@@ -418,21 +425,21 @@ export function NewConversationPicker({ initialDirectory, initialEnvironmentId =
 
   // A Project with a resolved conversation type creates without showing the
   // dialog; it appears only if that creation fails, to say why.
-  if (newProjectOpen) return <NewProjectPanel onClose={() => setNewProjectOpen(false)} onOpenProject={openNewProject} />
+  if (newProjectOpen && !foldersLocked) return <NewProjectPanel onClose={() => setNewProjectOpen(false)} onOpenProject={openNewProject} />
   if (!layer || (view === 'profiles' && resolvedAction.kind !== 'picker' && !environmentError)) return null
   const placeholder = view === 'projects' ? 'Search projects…' : view === 'branches' ? 'Search branches…' : 'Search conversation profiles…'
   return createPortal(<motion.div data-ion-ui role="dialog" aria-modal="true" aria-label="New conversation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 10001, pointerEvents: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 'max(16px, 10vh) 16px 16px', boxSizing: 'border-box', background: colors.scrim }}>
     <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4, scale: 0.99 }} transition={{ duration: 0.14 }} onMouseDown={(event) => event.stopPropagation()} style={{ width: 560, maxWidth: '100%', maxHeight: '100%', minWidth: 0, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: colors.popoverBg, border: `1px solid ${colors.popoverBorder}`, borderRadius: 12, boxShadow: colors.popoverShadow }}>
-      <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${colors.popoverBorder}`, padding: '8px 10px', gap: 8 }}><button aria-label="Back" className="ion-focusable" onClick={handleBack} style={{ display: 'flex', alignItems: 'center', padding: 4, border: 'none', borderRadius: 5, background: 'transparent', color: colors.textSecondary, cursor: 'pointer' }}><ArrowLeft size={16} /></button><MagnifyingGlass size={16} color={colors.textTertiary} /><input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleInputKey} placeholder={placeholder} spellCheck={false} aria-label="New conversation search" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary, fontSize: 14 }} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${colors.popoverBorder}`, padding: '8px 10px', gap: 8 }}><button aria-label="Back" className="ion-focusable" onClick={handleBack} style={{ display: 'flex', alignItems: 'center', padding: 4, border: 'none', borderRadius: 5, background: 'transparent', color: colors.textSecondary, cursor: 'pointer' }}><ArrowLeft size={16} /></button>{!foldersLocked && <MagnifyingGlass size={16} color={colors.textTertiary} />}{!foldersLocked && <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleInputKey} placeholder={placeholder} spellCheck={false} aria-label="New conversation search" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: colors.textPrimary, fontSize: 14 }} />}</div>
       {view === 'branches' && <WorktreeChoiceOptions ephemeral={worktreeEphemeral} remember={rememberWorktree} colors={colors} onEphemeral={setWorktreeEphemeral} onRemember={setRememberWorktree} />}
       {view === 'projects' && <ProjectListControls sort={sortOrder} grouping={grouping} showGrouping={multi} onSort={chooseSortOrder} onGrouping={chooseGrouping} placement={placementMode} onPlacement={choosePlacementMode} />}
       <div style={{ overflowY: 'auto', minWidth: 0, minHeight: 0, padding: 8 }}>
         {environmentError && <div role="alert" style={{ padding: '4px 10px', fontSize: 11, color: colors.statusError }}>{environmentError}</div>}
         {creating && <div role="status" style={{ padding: '4px 10px', fontSize: 11, color: colors.textSecondary }}>Opening the conversation…</div>}
-        {view === 'projects' && !query.trim() && <NewProjectRow colors={colors} onClick={() => setNewProjectOpen(true)} />}
+        {view === 'projects' && !foldersLocked && !query.trim() && <NewProjectRow colors={colors} onClick={() => setNewProjectOpen(true)} />}
         {view === 'projects' && <ProjectRows groups={projectGroups} collapsed={collapsedGroups} indexOf={indexOfRow} highlighted={highlighted} colors={colors} showMachines={multi} actingEnvironment={actingEnvironmentFor} onHover={setHighlighted} onChoose={chooseProject} onToggleGroup={toggleGroup} />}
         {view === 'branches' && <BranchRows branches={branchMatches} highlighted={highlighted} loading={branchLoading} error={branchError} currentBranch={currentBranch} colors={colors} onHover={setHighlighted} onChoose={chooseBranch} />}
-        {view === 'profiles' && workspace && <ProfileRows profiles={profileMatches} highlighted={highlighted} colors={colors} onHover={setHighlighted} onPlain={() => createConversation(workspace)} onProfile={(profileId) => { const profile = profiles.find((item) => item.id === profileId); if (profile) createConversation(workspace, profile) }} />}
+        {view === 'profiles' && workspace && !foldersLocked && <ProfileRows profiles={profileMatches} highlighted={highlighted} colors={colors} onHover={setHighlighted} onPlain={() => createConversation(workspace)} onProfile={(profileId) => { const profile = profiles.find((item) => item.id === profileId); if (profile) createConversation(workspace, profile) }} />}
       </div>
       <div style={{ borderTop: `1px solid ${colors.popoverBorder}`, padding: '8px 12px', color: colors.textTertiary, fontSize: 11 }}>Use ↑ ↓ and Enter to select{view === 'projects' && multi && effectiveGrouping !== 'by-host' ? ', ← → to pick the machine' : ''}{view === 'projects' && multi && placementMode === 'auto' ? '. Auto opens each project on the machine with the most room' : ''}. Backspace returns to the prior step.</div>
     </motion.div>

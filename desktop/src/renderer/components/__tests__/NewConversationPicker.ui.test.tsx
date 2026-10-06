@@ -99,7 +99,45 @@ describe('NewConversationPicker', () => {
     preferenceState.enterpriseNewConversationDefaults = { locked: true, baseDirectory: '/corp/project', engineProfileId: 'corp-profile' }
     render({ initialDirectory: '/work/alpha', onClose: close })
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
-    expect(createConversationTab).toHaveBeenCalledWith('/corp/project', expect.objectContaining({ profileId: 'corp-profile', projectDirectory: '/work/alpha' }))
+    expect(createConversationTab).toHaveBeenCalledWith('/corp/project', expect.objectContaining({ profileId: 'corp-profile', projectDirectory: '/corp/project', useWorktree: false }))
     expect(document.body.textContent).not.toContain('Choose conversation type')
+  })
+
+  it('under a directory lock, opens straight into the locked folder and never shows a project, branch, or profile choice', async () => {
+    preferenceState.projects = {}
+    preferenceState.enterpriseNewConversationDefaults = { locked: true, baseDirectory: '/corp/project', engineProfileId: 'corp-profile' }
+    render({ initialDirectory: '/elsewhere', initialUseWorktree: true, onClose: close })
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+
+    expect(createConversationTab).toHaveBeenCalledTimes(1)
+    expect(createConversationTab).toHaveBeenCalledWith('/corp/project', expect.objectContaining({ profileId: 'corp-profile', useWorktree: false }))
+    const text = document.body.textContent ?? ''
+    for (const phrase of ['Search projects', 'New project', 'Choose source branch', 'Choose conversation type', 'Plain conversation']) expect(text).not.toContain(phrase)
+  })
+
+  it('under a directory lock with no project registered, still opens the locked folder rather than a project list', async () => {
+    preferenceState.projects = {}
+    preferenceState.enterpriseNewConversationDefaults = { locked: true, baseDirectory: '/corp/project', engineProfileId: 'corp-profile' }
+    render()
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+
+    expect(createConversationTab).toHaveBeenCalledWith('/corp/project', expect.anything())
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('a lock on the profile alone still lets the person choose the folder', () => {
+    preferenceState.projects = { '/work/alpha': { addedManually: true, lastUsedAt: 0 } }
+    preferenceState.enterpriseNewConversationDefaults = { locked: true, baseDirectory: '', engineProfileId: 'corp-profile' }
+    render()
+
+    expect(document.body.textContent).toContain('Projects')
+    expect(document.body.textContent).toContain('New project…')
+  })
+
+  it('with no lock the project list and its New project row are offered', () => {
+    preferenceState.projects = { '/work/alpha': { addedManually: true, lastUsedAt: 0 } }
+    render()
+
+    expect(document.body.textContent).toContain('New project…')
   })
 })
