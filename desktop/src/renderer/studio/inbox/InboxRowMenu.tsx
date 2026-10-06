@@ -113,9 +113,8 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameW
   // minted conversation to copy from, and a landed or moved worktree is a
   // sealed read-only record that no longer accepts new forks.
   const canFork = !!tab.conversationId && !isTabWorktreeSealed(tab)
-  // "Transfer…" is disabled
-  // unless the conversation is idle, not already mid-transfer, and some
-  // other environment is connected to receive it.
+  // "Transfer…" is disabled unless the conversation is idle and not
+  // already mid-transfer.
   const transfer = useTransferGate(tab)
 
   // Settled state (override-aware) decides which settle verb shows.
