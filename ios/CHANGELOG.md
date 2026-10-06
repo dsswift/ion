@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.11.1](https://github.com/dsswift/ion/compare/ios-v2.11.0...ios-v2.11.1) (2026-10-06)
+
+### Bug Fixes
+
+* **ios:** theme and annotate the fleet settings views (#488) ([c92b1db](https://github.com/dsswift/ion/commit/c92b1db2f3ae39959fe6213c3c4f922d734a53b7))
+
 ## [2.11.0](https://github.com/dsswift/ion/compare/ios-v2.10.0...ios-v2.11.0) (2026-10-06)
 
 ### Features
