@@ -1,16 +1,15 @@
 /**
- * body-sync — the browser Studio client's conversation-body channel
+ * body-sync — every Studio client's conversation-body channel
  * (`studio_body_request` -> `studio_body`, manifest contract C3).
  *
  * Conversation bodies deliberately never ride the snapshot: `snapshot.ts`
  * strips `conversationPane`, so a client learns which tabs exist from
- * `studio:tabs-sync` but gets no message rows with them. The Electron Studio
- * window fills that gap over main-process IPC (`initTabsSync` and friends,
- * gated on the `windowMirrorSync` capability). A browser client has no such
- * bridge, and until this module existed it had no replacement either: the
- * server implemented and documented the body channel, but nothing on the
- * client ever sent the request, so every conversation rendered empty while
- * the inbox looked fully populated.
+ * `studio:tabs-sync` but gets no message rows with them. This module is the
+ * only return path, and `bootMirror` starts it unconditionally for the
+ * Electron window and the browser alike; there is no Electron-only IPC pull.
+ * Before this module existed the server implemented and documented the body
+ * channel, but nothing on the client ever sent the request, so every
+ * conversation rendered empty while the inbox looked fully populated.
  *
  * Forwarding `loadSkeletonMessages` is not a substitute. That action is in
  * FORWARDED_ACTIONS, so it runs in the SERVER's store and hydrates the
