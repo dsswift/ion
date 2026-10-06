@@ -10,6 +10,7 @@ import {
 import { expandHome } from "../git/ignore-paths";
 import type { ThinkingEffort } from "@ion/shared/types-session";
 import { MANAGED_CONFIG_WRITE_REFUSED } from "@ion/shared/types-enterprise";
+import { STUDIO_LAYOUT_DEFAULTS } from "@ion/shared/types-studio";
 import {
   hasSealedSettings,
   keepStoredUnderSeal,
@@ -177,13 +178,7 @@ export const SETTINGS_DEFAULTS = {
   // Studio shell geometry. Pane visibility is owned by its content: the bottom
   // terminal uses per-conversation session-store state, and surface visibility
   // is saved with each conversation in studioSurface.
-  studioLayout: {
-    leftSidebarVisible: false,
-    leftSidebarView: "explorer",
-    surfaceWidth: 520,
-    terminalHeight: 240,
-    dispatchSplitRatio: 0.45,
-  },
+  studioLayout: { ...STUDIO_LAYOUT_DEFAULTS },
   // Studio surface records by conversation plus core tabs pinned across them.
   studioSurface: {
     version: 4,

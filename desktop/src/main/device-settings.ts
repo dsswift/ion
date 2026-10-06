@@ -15,6 +15,7 @@ import { dataDir } from '@ion/server/paths'
 import { join } from 'path'
 import { atomicWriteFileSync } from '@ion/server/utils/atomicWrite'
 import type { EnvironmentTarget, EnvironmentViewFilter } from '@ion/shared/types-environments'
+import { STUDIO_LAYOUT_DEFAULTS } from '@ion/shared/types-studio'
 import { resolveSettingMutability, sealedSettingValues, sealedSettingsMessage, type DeviceSettingWrite } from '@ion/shared/enterprise-settings-policy'
 import { devicePolicy } from './device-policy'
 import { log as _log, warn as _warn } from './logger'
@@ -55,13 +56,7 @@ export const DEVICE_SETTINGS_DEFAULTS = {
   studioHeat: false,
   studioBeacon: true,
   studioSound: true,
-  studioLayout: {
-    leftSidebarVisible: false,
-    leftSidebarView: 'explorer',
-    surfaceWidth: 520,
-    terminalHeight: 240,
-    dispatchSplitRatio: 0.45,
-  },
+  studioLayout: { ...STUDIO_LAYOUT_DEFAULTS },
   studioSurface: { version: 4, pinnedTabs: ['plan'], notification: null, conversations: {}, scratchProjects: {} },
   studioComposerStash: { version: 1, projects: {} },
   studioShortcut: 'Alt+Shift+Space',

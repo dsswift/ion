@@ -24,6 +24,8 @@
  * import of it resolves here.
  */
 
+import { STUDIO_LAYOUT_DEFAULTS } from "@ion/shared/types-studio";
+
 function rejectWrite(name: string): never {
   throw new Error(
     `${name}() cannot run in the Studio renderer — settings persistence is server-owned; route through a FORWARDED store action instead.`,
@@ -95,13 +97,7 @@ export const SETTINGS_DEFAULTS = {
   studioShortcut: "Alt+Shift+Space",
   studioHeat: false,
   studioPlaywrightEnabled: true,
-  studioLayout: {
-    leftSidebarVisible: false,
-    leftSidebarView: "explorer",
-    surfaceWidth: 520,
-    terminalHeight: 240,
-    dispatchSplitRatio: 0.45,
-  },
+  studioLayout: { ...STUDIO_LAYOUT_DEFAULTS },
   studioSurface: { version: 4, pinnedTabs: ["plan"], notification: null, conversations: {}, scratchProjects: {} },
   studioComposerStash: { version: 1, projects: {} },
   studioSound: true,
