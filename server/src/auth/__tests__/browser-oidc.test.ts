@@ -245,7 +245,7 @@ describe('refreshForScope', () => {
     expect(body.get('grant_type')).toBe('refresh_token')
     expect(body.get('refresh_token')).toBe('refresh-1')
     expect(body.get('client_id')).toBe('browser-client-id')
-    expect(body.get('scope')).toBe(`${SCOPE} offline_access`)
+    expect(body.get('scope')).toBe(`openid profile ${SCOPE} offline_access`)
     expect(verifyBearer).not.toHaveBeenCalled()
   })
 

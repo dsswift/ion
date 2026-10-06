@@ -322,7 +322,8 @@ export async function refreshForScope(oidc: ServerOidcConfig, refreshToken: stri
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
     client_id: oidc.clientId,
-    scope: `${scope} ${REFRESH_SCOPE_ADDITION}`,
+    // `openid profile` so the token carries the account claim the lookup names the person by.
+    scope: `openid profile ${scope} ${REFRESH_SCOPE_ADDITION}`,
   }), oidc)
 
   let tokenRes: Response
