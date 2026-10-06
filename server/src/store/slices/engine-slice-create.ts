@@ -101,8 +101,12 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const lock = opts.reuseTabId || opts.restoring ? null : activeNewConversationLock()
     if (lock) {
       rInfo('engine.create', 'new-conversation lock applied', { requested_directory: dir, locked_directory: lock.baseDirectory, requested_profile: opts.profileId ?? '', locked_profile: lock.engineProfileId })
-      opts = { ...opts, profileId: lock.engineProfileId || undefined, extensions: undefined, useWorktree: false, sourceBranch: undefined, ephemeralWorktree: undefined, rememberWorktreeChoice: false }
-      if (lock.baseDirectory) dir = lock.baseDirectory
+      opts = { ...opts, profileId: lock.engineProfileId || undefined, extensions: undefined }
+      if (lock.baseDirectory) {
+        // A worktree is a folder the caller picks, so a lock on the folder drops it too.
+        opts = { ...opts, useWorktree: false, sourceBranch: undefined, ephemeralWorktree: undefined, rememberWorktreeChoice: false }
+        dir = lock.baseDirectory
+      }
     }
     const baseWorkingDirectory = dir || defaultProjectDirectory || homeDir
     // A caller names a directory on THIS server's machine. A client that is

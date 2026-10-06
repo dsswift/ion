@@ -26,6 +26,11 @@ describe('refusedUnderNewConversationLock', () => {
     }
   })
 
+  it('leaves folder choices alone when the lock names a profile but no directory', () => {
+    expect(refusedUnderNewConversationLock('environment.projects.add', { baseDirectory: '', engineProfileId: 'orion' })).toBe(false)
+    expect(refusedUnderNewConversationLock('setBaseDirectory', { baseDirectory: '', engineProfileId: 'orion' })).toBe(false)
+  })
+
   it('leaves everything else, and every action with no lock, alone', () => {
     expect(refusedUnderNewConversationLock('submit', lock)).toBe(false)
     expect(refusedUnderNewConversationLock('environment.projects.list', lock)).toBe(false)

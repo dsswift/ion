@@ -34,7 +34,11 @@ const ACTIONS_REFUSED_UNDER_LOCK: ReadonlySet<string> = new Set([
   'addDirectory',
 ])
 
-/** Whether `action` is refused while the new-conversation lock is in force. */
+/**
+ * Whether `action` is refused while the new-conversation lock is in force.
+ * Only a lock that names a directory takes folder and project choices away:
+ * a lock on the profile alone leaves the person free to choose where.
+ */
 export function refusedUnderNewConversationLock(action: string, lock: NewConversationLock | null): boolean {
-  return lock !== null && ACTIONS_REFUSED_UNDER_LOCK.has(action)
+  return lock !== null && lock.baseDirectory !== '' && ACTIONS_REFUSED_UNDER_LOCK.has(action)
 }

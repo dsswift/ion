@@ -164,6 +164,16 @@ describe('createConversationTab — enterprise new-conversation lock', () => {
     expect(tab.worktree).toBeNull()
   })
 
+  it('with a lock on the profile alone, the caller still chooses the directory', async () => {
+    lock = { baseDirectory: '', engineProfileId: 'orion' }
+    const { state, set, get } = buildHarness()
+    const tabId = await createConversationTabAction(set as any, get as any)('/tmp/anywhere')
+
+    const tab = state.tabs.find((t: any) => t.id === tabId)
+    expect(tab.workingDirectory).toBe('/tmp/anywhere')
+    expect(tab.engineProfileId).toBe('orion')
+  })
+
   it('leaves a restore alone', async () => {
     const { state, set, get } = buildHarness()
     mockIon.adoptTab.mockResolvedValue({ tabId: 'restored' })
