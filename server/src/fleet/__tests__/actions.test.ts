@@ -57,6 +57,7 @@ describe('fleet actions', () => {
       ['fleet.hubs.remove', 'admin'],
       ['fleet.deploy.report', 'admin'],
       ['fleet.deploys.list', 'conversations:read'],
+      ['fleet.deploy.source', 'conversations:read'],
     ])
   })
 

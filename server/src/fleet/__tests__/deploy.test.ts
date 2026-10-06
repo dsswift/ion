@@ -8,6 +8,11 @@ const { broadcast } = vi.hoisted(() => ({ broadcast: vi.fn() }))
 vi.mock('../../broadcast', () => ({ broadcast }))
 const hubs = vi.hoisted(() => ({ deploy: vi.fn(), running: true }))
 vi.mock('../hub-links', () => ({ fleetHubLinks: () => (hubs.running ? { deploy: hubs.deploy } : null) }))
+const benches = vi.hoisted(() => ({
+  checkoutForBranch: vi.fn(async (_ref: unknown): Promise<{ ok: true; path: string; via: 'bench' | 'branch' } | { ok: false; error: string }> => ({ ok: true, path: '/ion/integration/ion-josh', via: 'bench' })),
+  benchOfFolder: vi.fn((_folder: string): { repoPath: string; branch: string } | null => null),
+}))
+vi.mock('../../integration/bench-source-checkout', () => benches)
 
 import { FLEET_DEPLOY_ACTIONS } from '../deploy-actions'
 import { _resetFleetDeploysForTest, listFleetDeploys } from '../deploy-ledger'
@@ -72,5 +77,28 @@ describe('fleet.deploy.report', () => {
     hubs.running = false
     expect(await report(record())).toEqual({ ok: true, value: null })
     expect(listFleetDeploys()).toHaveLength(1)
+  })
+})
+
+// A deploy's checkout is found here: a bench is named by its branch, because
+// its folder is removed when its last worktree lands.
+describe('fleet.deploy.source', () => {
+  const source = (query: unknown) => FLEET_DEPLOY_ACTIONS['fleet.deploy.source'].handler(conn, [query])
+  const josh = { repoPath: '/src/ion', branch: 'josh' }
+
+  it('finds the folder a bench names now, by its branch', async () => {
+    expect(await source(josh)).toEqual({ ok: true, value: { path: '/ion/integration/ion-josh', via: 'bench', bench: josh } })
+    expect(benches.checkoutForBranch).toHaveBeenCalledWith(josh)
+    benches.checkoutForBranch.mockResolvedValueOnce({ ok: true, path: '/src/ion', via: 'branch' })
+    expect(await source(josh)).toEqual({ ok: true, value: { path: '/src/ion', via: 'branch', bench: josh } })
+    benches.checkoutForBranch.mockResolvedValueOnce({ ok: false, error: 'No folder on this device holds josh' })
+    expect(await source(josh)).toEqual({ ok: false, refusal: { code: 'no_checkout', message: 'No folder on this device holds josh' } })
+  })
+
+  it('names the bench a folder is, so a client can remember it by its branch', async () => {
+    benches.benchOfFolder.mockReturnValueOnce(josh)
+    expect(await source(' /ion/integration/ion-josh ')).toEqual({ ok: true, value: { path: '/ion/integration/ion-josh', via: 'folder', bench: josh } })
+    expect(await source('/src/other')).toEqual({ ok: true, value: { path: '/src/other', via: 'folder' } })
+    expect(await source({ repoPath: '/src/ion' })).toMatchObject({ ok: false, refusal: { code: 'invalid_source' } })
   })
 })
