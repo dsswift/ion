@@ -349,7 +349,7 @@ func TestDeployAsksForASourceWhenNoneIsKnown(t *testing.T) {
 func TestDeploySourceThatFailsIsAskedForAgain(t *testing.T) {
 	deps := testDeps(&recorder{}, devbox)
 	deps.Prepare = func(context.Context, []fleet.Host, string, []fleet.HostStatus) (*fleet.Prepared, error) {
-		return nil, errors.New("/tmp is not an Ion checkout (no scripts/package-studio-server.sh)")
+		return nil, errors.New("/tmp is not the top folder of an Ion checkout")
 	}
 	m := New(deps)
 	m = answered(t, m, statusesFor([]fleet.Host{devbox}))
@@ -357,7 +357,7 @@ func TestDeploySourceThatFailsIsAskedForAgain(t *testing.T) {
 	for _, msg := range runCmd(cmd) {
 		m, _ = update(t, m, msg)
 	}
-	if m.screen != screenDeploy || !m.editingSource || m.sourceInput != fleet.SourceDev || !strings.Contains(m.View().Content, "not an Ion checkout") {
+	if m.screen != screenDeploy || !m.editingSource || m.sourceInput != fleet.SourceDev || !strings.Contains(m.View().Content, "not the top folder of an Ion checkout") {
 		t.Fatalf("screen=%v editing=%v input=%q\n%s", m.screen, m.editingSource, m.sourceInput, m.View().Content)
 	}
 	m, _ = press(t, m, "esc")
