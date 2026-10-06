@@ -1,4 +1,8 @@
 {
+  "2.13.1": [
+    "Fixed a problem where the Inbox showed an app as still running after it had already been closed.",
+    "Fixed a problem where terminals running in other Environments were missing from the list, or kept appearing after that Environment disconnected."
+  ],
   "2.12.1": [
     "Fixed a problem where buttons and panels for features you did not have access to were still visible on screen."
   ]

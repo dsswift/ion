@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.3](https://github.com/dsswift/ion/compare/engine-v1.100.2...engine-v1.100.3) (2026-10-06)
+
+### Bug Fixes
+
+* **engine:** end polls that no judge or owner can finish ([bfa1fe5](https://github.com/dsswift/ion/commit/bfa1fe555972b1922f67bde311f0e8d4401745aa))
+
 ## [1.100.2](https://github.com/dsswift/ion/compare/engine-v1.100.1...engine-v1.100.2) (2026-10-06)
 
 ### Bug Fixes
