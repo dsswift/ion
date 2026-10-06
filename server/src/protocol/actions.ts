@@ -38,6 +38,7 @@ import { connOwnsConversation, connOwnsTab } from './ownership'
 import { setDriving } from './presence'
 import { lockableActionGroup, computeSettingsHiddenGroups } from './settings-visibility'
 import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
+import { activeNewConversationLock, refusedUnderNewConversationLock } from '../new-conversation-lock'
 import { enterprisePolicyCache } from '../state'
 import type { SessionActionSpec } from './session-actions'
 
@@ -136,6 +137,16 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
       id: frame.id,
       ok: false,
       refusal: { code: 'surface_disabled', message: `${frame.action} is not available on this server` },
+    })
+    return
+  }
+  if (refusedUnderNewConversationLock(frame.action, activeNewConversationLock())) {
+    warn('action refused: new-conversation lock in force', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
+    conn.send({
+      type: 'studio_action_result',
+      id: frame.id,
+      ok: false,
+      refusal: { code: 'policy_locked', message: `${frame.action} is not available on this server` },
     })
     return
   }

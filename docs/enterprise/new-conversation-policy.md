@@ -81,6 +81,15 @@ When `locked` is `true`, both desktop and iOS skip the profile picker and direct
 
 Empty `engineProfileId` with `locked: true` is valid. It means a plain conversation (no extensions) is mandated. Users cannot switch to an extension profile.
 
+## Server enforcement when locked
+
+The Studio server applies the lock itself, so a client that ignores it is refused rather than trusted:
+
+- `createConversationTab` opens every new conversation in `baseDirectory` on `engineProfileId`, whatever directory, profile, or worktree the caller asked for. A restore keeps what it recorded.
+- The engine forces the locked profile onto every session it starts.
+- `environment.projects.add`, `environment.projects.clone`, `environment.projects.remove`, `environment.projects.relocate`, `setBaseDirectory`, and `addDirectory` are refused with `policy_locked`.
+- A conversation the server opens by itself (a person's last one was closed or settled) follows the same directory and profile.
+
 ## Example: require a specific profile, allow directory choice
 
 ```json
