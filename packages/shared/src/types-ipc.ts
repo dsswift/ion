@@ -11,7 +11,6 @@ export const IPC = {
   SELECT_DIRECTORY: "ion:select-directory",
   SELECT_EXTENSION_FILES: "ion:select-extension-files",
   OPEN_EXTERNAL: "ion:open-external",
-  ATTACH_FILES: "ion:attach-files",
   ATTACH_FILE_BY_PATH: "ion:attach-file-by-path",
   TAKE_SCREENSHOT: "ion:take-screenshot",
   // Move a live conversation to a different working directory, preserving its
@@ -236,11 +235,6 @@ export const IPC = {
   // (QuestionsCoordinator); renderers read state and send revisioned
   // patches/actions. QUESTIONS_STATE is the broadcast channel.
   QUESTIONS_STATE: "ion:questions-state",
-  // Native image picker for per-question answer attachments.
-  QUESTIONS_PICK_ATTACHMENTS: "ion:questions-pick-attachments",
-  // Rebuild a parked question from a restored conversation transcript. The
-  // transcript is the authority for whether a question is outstanding; the
-  // ~/.ion/questions record only caches the operator's typed draft.
 
   // Resource focus tracking
   /** Main → renderer: catalog changed outside a live delta (see chart-restore). */

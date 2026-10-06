@@ -13,16 +13,10 @@ import { registerStudioBridgeIpc } from "./studio-bridge";
 import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerStartupIpc } from "./startup";
-import { registerQuestionsIpc } from "../questions/questions-ipc";
 import { registerBuildNoticeIpc } from "../build-notice";
 
 export function registerAllIpc(): void {
   registerStartupIpc();
-  // Guided Questions: the coordinator, its persistence and the engine-event
-  // intake are wired by the Studio server. registerQuestionsIpc owns the one
-  // handler that genuinely needs an Electron window (the native attachment
-  // picker) plus the renderer-facing ion:questions-* handlers.
-  registerQuestionsIpc();
   registerSystemIpc();
   registerFileDialogIpc();
   registerOAuthCallbackIpc();

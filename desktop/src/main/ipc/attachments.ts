@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { createHash } from 'crypto'
 import { execSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, statSync } from 'fs'
@@ -121,28 +121,6 @@ function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: s
 }
 
 export function registerAttachmentsIpc(): void {
-  ipcMain.handle(IPC.ATTACH_FILES, async () => {
-    // A normal window (Studio) never needs hiding for a native file dialog
-    // to render on top of it — that dance was only for the deleted overlay
-    // glass, which floated above everything.
-    const options: Electron.OpenDialogOptions = {
-      properties: ['openFile' as const, 'multiSelections' as const],
-      ...(process.platform !== 'darwin' && {
-        filters: [
-          { name: 'All Files', extensions: ['*'] },
-          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
-          { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'md', 'json', 'yaml', 'toml'] },
-        ],
-      }),
-    }
-    const result = process.platform === 'darwin' || !state.studioWindow
-      ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(state.studioWindow, options)
-    if (result.canceled || result.filePaths.length === 0) return null
-
-    return result.filePaths.map((fp: string) => describeFile(fp)).filter(Boolean)
-  })
-
   ipcMain.handle(IPC.ATTACH_FILE_BY_PATH, async (_event, fp: string) => describeFile(fp))
 
   ipcMain.handle(IPC.TAKE_SCREENSHOT, async () => {

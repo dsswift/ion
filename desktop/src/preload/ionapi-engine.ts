@@ -19,10 +19,6 @@ export interface IonEngineApi {
   /** Ask where to save `base64` as `name` (the dialog opens in Downloads), then write it. `filePath` is null on cancel. */
   fsSaveData(name: string, base64: string): Promise<{ filePath: string | null; error?: string }>;
 
-  // ─── Guided Questions (AskUserQuestions wizard) ───
-  /** Native image picker for per-question answer attachments. */
-  questionsPickAttachments(): Promise<Array<{ path: string; name: string }>>;
-
   // ─── Plugin management ───
 
   // ─── MCP server administration ───

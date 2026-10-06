@@ -79,16 +79,15 @@ beforeEach(async () => {
 
 describe("preload module ownership", () => {
   it("does not let later modules replace an API owned by another module", async () => {
-    const [{ requestApi }, { automationApi }, { engineApi }, { systemApi }, { studioApi }, { worktreeApi }] =
+    const [{ requestApi }, { automationApi }, { systemApi }, { studioApi }, { worktreeApi }] =
       await Promise.all([
         import("../api-request"),
         import("../api-automation"),
-        import("../engine-api"),
         import("../api-system"),
         import("../studio-api"),
         import("../api-worktree"),
       ]);
-    const modules = [requestApi, automationApi, engineApi, systemApi, studioApi, worktreeApi];
+    const modules = [requestApi, automationApi, systemApi, studioApi, worktreeApi];
 
     for (let left = 0; left < modules.length; left++) {
       for (let right = left + 1; right < modules.length; right++) {

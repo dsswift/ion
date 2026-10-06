@@ -1,8 +1,9 @@
 /**
  * ComposerPlusMenu — the `+` button inside the composer pill and the upward
- * menu it opens. Holds the actions that add something to the prompt: attach a
- * file, take a screenshot, and any extra items the caller supplies (extension
- * Composer Actions).
+ * menu it opens. Holds the actions that add something to the prompt from the
+ * operator's own machine: attach a file, take a screenshot, and any extra
+ * items the caller supplies (extension Composer Actions). A file already on
+ * the conversation's Environment is referenced by its path instead.
  *
  * The menu is edge-anchored: `bottom`/`left` come from the trigger rect so it
  * grows upward out of the pill, and `useViewportClamp` keeps it inside the
@@ -13,7 +14,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Plus, Paperclip, Camera } from '@phosphor-icons/react'
-import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
 import { usePopoverLayer } from '../PopoverLayer'
 import { useViewportClamp } from '../../hooks/useViewportClamp'
@@ -23,6 +23,8 @@ import { Tooltip } from '../git/Tooltip'
 import { host } from '../../host/host-instance'
 import { rError, rInfo } from '../../rendererLogger'
 import { COMPOSER_ATTACH_EVENT, COMPOSER_SCREENSHOT_EVENT } from './composer-events'
+import { stageFiles, stageNativeCapture } from './attachment-staging'
+import { canCaptureScreen, captureScreenFrame, pickLocalFiles } from './local-file-sources'
 
 /** A caller-supplied row rendered under the built-in items. */
 export interface ComposerPlusMenuItem {
@@ -57,7 +59,6 @@ function MenuRow({ item, onDone }: { item: ComposerPlusMenuItem; onDone: () => v
 export function ComposerPlusMenu({ extraItems = [] }: { extraItems?: ComposerPlusMenuItem[] }): React.JSX.Element {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
-  const addAttachments = useSessionStore((s) => s.addAttachments)
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -65,36 +66,38 @@ export function ComposerPlusMenu({ extraItems = [] }: { extraItems?: ComposerPlu
   const triggerState = useInteractiveState()
   useViewportClamp(menuRef, open)
 
-  // A native file picker and an OS screen capture both need the machine in
-  // front of the user. A browser client lacks `nativeShell`, so it is offered
-  // neither (it still attaches by paste and by drop).
+  // The picker is the web platform's own, so every host offers it: Electron
+  // shows its native dialog, a browser its upload dialog. Capture is the OS
+  // screenshot on a desktop and the browser's screen share elsewhere, which
+  // only a secure page has.
   const nativeShell = host.capabilities().includes('nativeShell')
+  const canScreenshot = nativeShell || canCaptureScreen()
 
   const attachFile = useCallback(() => {
     rInfo('composer', 'attach file requested')
-    void host.shell.attachFiles()
-      .then((files) => { if (files && files.length > 0) addAttachments(files) })
+    void pickLocalFiles()
+      .then((files) => (files.length > 0 ? stageFiles(files, 'pick') : undefined))
       .catch((err) => rError('composer', 'attach file failed', { error: String(err) }))
-  }, [addAttachments])
+  }, [])
 
   const takeScreenshot = useCallback(() => {
-    rInfo('composer', 'screenshot requested')
-    void host.shell.takeScreenshot()
-      .then((shot) => { if (shot) addAttachments([shot]) })
-      .catch((err) => rError('composer', 'screenshot failed', { error: String(err) }))
-  }, [addAttachments])
+    rInfo('composer', 'screenshot requested', { native: nativeShell })
+    const capture = nativeShell
+      ? host.shell.takeScreenshot().then((shot) => (shot ? stageNativeCapture(shot) : undefined))
+      : captureScreenFrame().then((file) => (file ? stageFiles([file], 'capture') : undefined))
+    void capture.catch((err) => rError('composer', 'screenshot failed', { error: String(err) }))
+  }, [nativeShell])
 
   // Keyboard shortcuts reach the composer as window events (the Studio keymap
   // owns capture; the composer owns the action).
   useEffect(() => {
-    if (!nativeShell) return
     window.addEventListener(COMPOSER_ATTACH_EVENT, attachFile)
-    window.addEventListener(COMPOSER_SCREENSHOT_EVENT, takeScreenshot)
+    if (canScreenshot) window.addEventListener(COMPOSER_SCREENSHOT_EVENT, takeScreenshot)
     return () => {
       window.removeEventListener(COMPOSER_ATTACH_EVENT, attachFile)
       window.removeEventListener(COMPOSER_SCREENSHOT_EVENT, takeScreenshot)
     }
-  }, [nativeShell, attachFile, takeScreenshot])
+  }, [canScreenshot, attachFile, takeScreenshot])
 
   useEffect(() => {
     if (!open) return
@@ -120,13 +123,10 @@ export function ComposerPlusMenu({ extraItems = [] }: { extraItems?: ComposerPlu
     setOpen((o) => !o)
   }
 
-  const builtIn: ComposerPlusMenuItem[] = nativeShell
-    ? [
-      { id: 'attach', label: 'Attach file', icon: <Paperclip size={14} />, onSelect: attachFile },
-      { id: 'screenshot', label: 'Take screenshot', icon: <Camera size={14} />, onSelect: takeScreenshot },
-    ]
-    : []
-  const hasAny = builtIn.length > 0 || extraItems.length > 0
+  const builtIn: ComposerPlusMenuItem[] = [
+    { id: 'attach', label: 'Attach file', icon: <Paperclip size={14} />, onSelect: attachFile },
+    ...(canScreenshot ? [{ id: 'screenshot', label: 'Take screenshot', icon: <Camera size={14} />, onSelect: takeScreenshot }] : []),
+  ]
 
   return (
     <>
@@ -138,8 +138,7 @@ export function ComposerPlusMenu({ extraItems = [] }: { extraItems?: ComposerPlu
           aria-haspopup="menu"
           aria-expanded={open}
           data-testid="composer-plus-button"
-          disabled={!hasAny}
-          {...(hasAny ? triggerState.handlers : {})}
+          {...triggerState.handlers}
           onClick={toggle}
           className="flex items-center justify-center rounded-full ion-focusable"
           style={{
@@ -148,8 +147,7 @@ export function ComposerPlusMenu({ extraItems = [] }: { extraItems?: ComposerPlu
             color: open ? colors.textPrimary : colors.textSecondary,
             background: interactiveBg(colors, { ...triggerState, selected: open }),
             border: `1px solid ${colors.containerBorder}`,
-            opacity: hasAny ? 1 : 0.45,
-            cursor: hasAny ? 'pointer' : 'default',
+            cursor: 'pointer',
           }}
         >
           <Plus size={13} weight="bold" />

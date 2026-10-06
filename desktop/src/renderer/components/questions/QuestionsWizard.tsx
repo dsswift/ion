@@ -115,7 +115,7 @@ export function QuestionsWizard({ workflow }: { workflow: QuestionsWorkflowState
       )}
       {workflow.request.questions.map((q) => {
         const answer = draft.find((d) => d.questionId === q.id) ?? { questionId: q.id, selectedOptionIds: [] }
-        return <QuestionsWizardQuestion key={q.id} spec={q} draft={answer} onChange={updateAnswer} colors={colors} />
+        return <QuestionsWizardQuestion key={q.id} workflow={workflow} spec={q} draft={answer} onChange={updateAnswer} colors={colors} />
       })}
       <div className="mb-3">
         <AutoGrowTextarea

@@ -2,7 +2,7 @@ import React from 'react'
 import type { useColors } from '../../theme'
 import type { QuestionSpec } from '@ion/shared/questions-schema'
 import { resolveQuestionDisplay } from '@ion/shared/questions-schema'
-import type { QuestionDraftAnswer } from '@ion/shared/questions-state'
+import type { QuestionDraftAnswer, QuestionsWorkflowState } from '@ion/shared/questions-state'
 import { AutoGrowTextarea } from './AutoGrowTextarea'
 import { QuestionAttachmentRow } from './QuestionAttachmentRow'
 
@@ -16,11 +16,13 @@ import { QuestionAttachmentRow } from './QuestionAttachmentRow'
  * persistence through main IPC.
  */
 export function QuestionsWizardQuestion({
+  workflow,
   spec,
   draft,
   onChange,
   colors,
 }: {
+  workflow: Pick<QuestionsWorkflowState, 'workflowId' | 'sessionKey'>
   spec: QuestionSpec
   draft: QuestionDraftAnswer
   onChange: (next: QuestionDraftAnswer) => void
@@ -89,7 +91,7 @@ export function QuestionsWizardQuestion({
           ) : (
             <OptionControl spec={spec} draft={draft} onToggle={toggleOption} onCustomText={setCustomText} colors={colors} />
           )}
-          <QuestionAttachmentRow draft={draft} onChange={onChange} colors={colors} />
+          <QuestionAttachmentRow workflow={workflow} draft={draft} onChange={onChange} colors={colors} />
         </div>
       )}
     </div>
