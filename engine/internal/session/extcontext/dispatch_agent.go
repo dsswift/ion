@@ -1552,6 +1552,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// handleRunExit sampled bgCount BEFORE Deregister ran; nothing
 				// re-emits after, leaving a stale BackgroundAgents:1 (or N) as the
 				// last value the client sees. This call is the correction.
+				releaseDispatchPolls(sa, agentID)
 				sa.EmitDispatchCountStatus("dispatch_deregister")
 			}
 

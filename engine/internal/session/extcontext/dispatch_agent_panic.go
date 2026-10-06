@@ -70,6 +70,7 @@ func recoverBackgroundDispatchPanic(
 	}
 	if registry != nil {
 		registry.Deregister(agentID, DispatchOutcome{Status: DispatchStatusError, Reason: panicMessage, ExitCode: result.ExitCode})
+		releaseDispatchPolls(sa, agentID)
 		sa.EmitDispatchCountStatus("dispatch_panic_deregister")
 	}
 	if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
