@@ -122,6 +122,11 @@ extension WorktreeRowView {
         if let onRename {
             Button { onRename() } label: { Label("Rename worktree", systemImage: "pencil") }
         }
+        Button {
+            UIPasteboard.general.string = worktree.worktreePath
+        } label: {
+            Label("Copy path", systemImage: "doc.on.doc")
+        }
         if let onReprovision {
             Button { onReprovision() } label: { Label("Re-provision", systemImage: "arrow.clockwise") }
         }
