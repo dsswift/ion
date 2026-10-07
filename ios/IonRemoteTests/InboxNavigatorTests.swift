@@ -384,6 +384,8 @@ final class InboxNavigatorTests: XCTestCase {
         let headerButton = String(bench[..<headerTap.lowerBound].suffix(120))
         XCTAssertTrue(headerButton.contains("openBenchTerminal(bench)"),
                       "the bench header's tap must open the bench terminal")
+        XCTAssertFalse(bench.contains("headerGlyph(\"terminal\")"),
+                       "the header tap is the terminal's one entry point on the header")
 
         let inbox = try source("IonRemote/Views/TabListView+Inbox.swift")
         XCTAssertTrue(inbox.contains("InboxNavigator.headerTapCycles(selectionStyle)"),

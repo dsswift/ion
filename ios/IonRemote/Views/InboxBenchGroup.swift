@@ -104,6 +104,7 @@ struct InboxBenchGroup<Row: View>: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint(bench.benchTerminalTabId == nil ? "Open bench terminal" : "Go to bench terminal")
                     .contextMenu {
                         benchActionMenu(bench)
                     }
@@ -126,13 +127,6 @@ struct InboxBenchGroup<Row: View>: View {
                     .buttonStyle(.plain)
                     .disabled(actionsLocked)
                     .accessibilityLabel(actionsLocked ? "Syncing" : "Sync all worktrees")
-                    Button {
-                        openBenchTerminal(bench)
-                    } label: {
-                        headerGlyph("terminal")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(bench.benchTerminalTabId == nil ? "Open bench terminal" : "Go to bench terminal")
                     Menu {
                         benchActionMenu(bench)
                     } label: {
