@@ -179,9 +179,20 @@ extension ConversationView {
     /// row's height never changes as controls swap in and out.
     private static let controlSize: CGFloat = IonSpace.screenInset
 
+    /// A `Menu` rather than a button plus `confirmationDialog`: the menu
+    /// opens from the button itself, where a dialog anchors to whatever view
+    /// carries the modifier.
     var attachButton: some View {
-        Button {
-            showAttachMenu = true
+        Menu {
+            Button("Photo Library", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+            Button("Choose File", systemImage: "doc") { showDocumentPicker = true }
+            Button("Browse Server Files", systemImage: "server.rack") { showFilePicker = true }
+            ForEach(viewModel.composerActions(tabId: tabId), id: \.menuKey) { action in
+                Button(action.label) { runComposerAction(action) }
+            }
+            ForEach(viewModel.quickTools(tabId: tabId)) { tool in
+                Button(tool.name) { runQuickTool(tool) }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(IonType.rowTitle)
