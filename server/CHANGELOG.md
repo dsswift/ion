@@ -8,6 +8,17 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.15.0](https://github.com/dsswift/ion/compare/server-v1.14.0...server-v1.15.0) (2026-10-07)
+
+### Features
+
+* **ios:** run composer actions from the phone's + menu ([46f1636](https://github.com/dsswift/ion/commit/46f16368cbe6adbd10d517b432b4a0f0ad532913))
+* **ios:** run your quick tools from the phone's + menu ([9b394c5](https://github.com/dsswift/ion/commit/9b394c54a5e54ebc761f752ada97058c83de2341))
+
+### Bug Fixes
+
+* **server:** keep an empty conversation's id across restarts ([462785b](https://github.com/dsswift/ion/commit/462785bff7a5a3c1972446e12066dde67f226ab3))
+
 ## [1.14.0](https://github.com/dsswift/ion/compare/server-v1.13.3...server-v1.14.0) (2026-10-07)
 
 ### Features

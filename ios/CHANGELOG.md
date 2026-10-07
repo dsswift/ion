@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.13.0](https://github.com/dsswift/ion/compare/ios-v2.12.1...ios-v2.13.0) (2026-10-07)
+
+### Features
+
+* **ios:** run composer actions from the phone's + menu ([46f1636](https://github.com/dsswift/ion/commit/46f16368cbe6adbd10d517b432b4a0f0ad532913))
+* **ios:** run your quick tools from the phone's + menu ([9b394c5](https://github.com/dsswift/ion/commit/9b394c54a5e54ebc761f752ada97058c83de2341))
+
+### Bug Fixes
+
+* **ios:** explain bench verification failures instead of raw output ([65339a0](https://github.com/dsswift/ion/commit/65339a04635f5e805aa573424669a93a938ac248))
+
 ## [2.12.1](https://github.com/dsswift/ion/compare/ios-v2.12.0...ios-v2.12.1) (2026-10-07)
 
 ### Bug Fixes

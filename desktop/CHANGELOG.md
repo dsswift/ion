@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.15.0](https://github.com/dsswift/ion/compare/desktop-v2.14.1...desktop-v2.15.0) (2026-10-07)
+
+### Features
+
+* **ios:** run your quick tools from the phone's + menu ([9b394c5](https://github.com/dsswift/ion/commit/9b394c54a5e54ebc761f752ada97058c83de2341))
+
 ## [2.14.1](https://github.com/dsswift/ion/compare/desktop-v2.14.0...desktop-v2.14.1) (2026-10-07)
 
 ### Bug Fixes

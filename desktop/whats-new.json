@@ -1,4 +1,8 @@
 {
+  "2.15.0": [
+    "Fixed a problem where conversations you opened could go missing the next time Ion Studio started.",
+    "You can now run your Quick Tools and Composer Actions from the + menu on your phone."
+  ],
   "2.14.1": [
     "Fixed a problem where conversations already being handled did not appear dimmed in your Inbox, making them harder to tell apart from ones still waiting for attention."
   ],
