@@ -68,6 +68,11 @@ final class ConnectionQuality {
     /// the transport, but the ViewModel records the receive time here too.
     var lastHeartbeatAt: Date?
 
+    /// How often the one-way latency is written to the log.
+    static let latencyLogInterval: TimeInterval = 60
+    /// When `heartbeat latency` was last written.
+    private(set) var lastLatencyLogAt: Date?
+
     // MARK: - Computed
 
     var signalLevel: SignalLevel {
@@ -107,9 +112,9 @@ final class ConnectionQuality {
 
     // MARK: - Mutation
 
-    func recordHeartbeat(senderTs: Double, buffered: Int) {
+    func recordHeartbeat(senderTs: Double, buffered: Int, at now: Date = Date()) {
         let sample = HeartbeatSample(
-            receivedAt: Date(),
+            receivedAt: now,
             senderTs: senderTs,
             buffered: buffered
         )
@@ -118,6 +123,27 @@ final class ConnectionQuality {
         if samples.count > 5 {
             samples.removeFirst(samples.count - 5)
         }
+        logLatencyIfDue(at: now)
+    }
+
+    /// The one-way latency the indicator shows, written once a minute so the
+    /// relay path has a logged number beside the action round trips. It is
+    /// the server's clock against this phone's, so clock skew is in it; the
+    /// median over the window is what is written.
+    @discardableResult
+    func logLatencyIfDue(at now: Date = Date()) -> Bool {
+        if let last = lastLatencyLogAt, now.timeIntervalSince(last) < Self.latencyLogInterval { return false }
+        lastLatencyLogAt = now
+        let route: String
+        switch transportState {
+        case .lanPreferred: route = StudioRouteKind.tcp.rawValue
+        case .relayOnly: route = StudioRouteKind.relay.rawValue
+        case .disconnected: route = "disconnected"
+        }
+        DiagnosticLog.log("heartbeat latency", tag: "wire-latency", fields: ["transport": route], numbers: [
+            "one_way_ms": medianLatency.rounded(), "samples": Double(samples.count), "buffered": Double(lastBuffered)
+        ])
+        return true
     }
 
     func reset() {

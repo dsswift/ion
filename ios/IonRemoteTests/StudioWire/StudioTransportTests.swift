@@ -54,8 +54,9 @@ final class FakeStudioConnection: StudioConnecting, @unchecked Sendable {
     func requestSnapshot() async { lock.withLock { snapshots += 1 } }
     func requestBody(_ request: StudioBodyRequest) async { lock.withLock { bodies.append(request) } }
 
-    func sendAction(_ action: String, args: [JSONValue], activeTabId: String?, timeoutSeconds: Double?) async throws -> JSONValue {
-        try record(action, args: args, activeTabId: activeTabId).get()
+    func sendAction(_ action: String, args: [JSONValue], activeTabId: String?, timeoutSeconds: Double?, traceparent: String?) async throws -> JSONValue {
+        lock.withLock { traceparents.append(traceparent) }
+        return try record(action, args: args, activeTabId: activeTabId).get()
     }
 
     func submitAction(

@@ -223,7 +223,11 @@ final class SessionViewModel {
 
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
-    var pairingState: PairingState = .idle
+    /// The pairing flow's state. Its transitions are the `pairing.complete`
+    /// span's start and end (`ClientSpanBook`).
+    var pairingState: PairingState = .idle {
+        didSet { ClientSpanBook.shared.pairingStateChanged(from: oldValue, to: pairingState) }
+    }
     /// One OIDC token manager per paired desktop, keyed by device ID.
     ///
     /// A phone can be paired with desktops that authenticate against different

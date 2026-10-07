@@ -46,6 +46,10 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
     @ObservationIgnored private let onStop: (@Sendable () async -> Void)?
     /// Called with every event on a channel an admin screen reads (`ServerAdminEvent.channels`).
     @ObservationIgnored private let onAdminEvent: (@Sendable (StudioEvent) -> Void)?
+    /// The open client spans of the actions sent here. Every call leaves with
+    /// a trace: the prompt's, minted by the view model before the command was
+    /// built, or an `action.send` span opened here and closed with the answer.
+    @ObservationIgnored private let traceBook: ActionTraceBook
 
     @ObservationIgnored private let eventContinuation: AsyncStream<RemoteEvent>.Continuation
     @ObservationIgnored private var inboundTask: Task<Void, Never>?
@@ -69,11 +73,13 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
         onStart: (@Sendable (StudioTransport) async -> Void)? = nil,
         onWelcome: (@Sendable (StudioWelcome) async -> Void)? = nil,
         onStop: (@Sendable () async -> Void)? = nil,
-        onAdminEvent: (@Sendable (StudioEvent) -> Void)? = nil
+        onAdminEvent: (@Sendable (StudioEvent) -> Void)? = nil,
+        traceBook: ActionTraceBook = .shared
     ) {
         self.deviceId = deviceId
         self.serverId = serverId
         self.onAdminEvent = onAdminEvent
+        self.traceBook = traceBook
         self.connection = connection
         self.mapping = mapping
         self.mapper = mapper
@@ -222,14 +228,50 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
             return
         }
         for call in [primary] + followUps {
-            _ = try await self.call(call.action, args: call.args, timeoutSeconds: call.timeoutSeconds)
+            _ = try await self.call(call.action, args: call.args, timeoutSeconds: call.timeoutSeconds, activeTabId: call.activeTabId)
         }
+    }
+
+    // MARK: - Tracing
+
+    /// A call without a trace of its own gets an `action.send` span; the span's
+    /// traceparent rides the call. Returns the call to send and the key its
+    /// span is open under, nil when the call already carried a trace.
+    private func traced(_ call: StudioActionCall) -> (call: StudioActionCall, key: String?) {
+        guard call.traceparent == nil else { return (call, nil) }
+        let key = UUID().uuidString.lowercased()
+        let span = traceBook.openAction(call.action, key: key, tabId: call.activeTabId ?? Self.tabId(in: call.args))
+        var traced = call
+        traced.traceparent = span.traceparent
+        return (traced, key)
+    }
+
+    /// Closes the span `traced` opened, with the answer.
+    private func closeTrace(key: String?, outcome: Result<JSONValue, Error>) {
+        guard let key else { return }
+        switch outcome {
+        case .success:
+            traceBook.close(key: key, accepted: true, error: nil)
+        case .failure(let error):
+            let failure = (error as? StudioActionFailure) ?? .failed(code: "unexpected", message: error.localizedDescription)
+            traceBook.close(key: key, accepted: false, error: failure.localizedDescription)
+        }
+    }
+
+    /// The tab an action's arguments name, when they do: the `tabId` member of
+    /// an object argument.
+    static func tabId(in args: [JSONValue]) -> String? {
+        for arg in args {
+            if let tabId = arg["tabId"]?.stringValue { return tabId }
+        }
+        return nil
     }
 
     /// Sends one call, turns its outcome into events, and sends whatever the
     /// mapping says follows it — a read that refreshes what a write changed, or
     /// a step whose arguments are in this step's value.
-    private func submit(_ call: StudioActionCall, for command: RemoteCommand, commandType: String) async {
+    private func submit(_ untraced: StudioActionCall, for command: RemoteCommand, commandType: String) async {
+        let (call, traceKey) = traced(untraced)
         DiagnosticLog.log("studio transport: command sent as an action", tag: "studio.transport", level: .debug, fields: [
             "device": devicePrefix, "command": commandType, "action": call.action
         ])
@@ -237,6 +279,7 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
         await connection.submitAction(
             call.action, args: call.args, activeTabId: call.activeTabId, timeoutSeconds: call.timeoutSeconds, traceparent: call.traceparent
         ) { [weak self] outcome in
+            self?.closeTrace(key: traceKey, outcome: outcome)
             switch outcome {
             case .success(let value):
                 DiagnosticLog.log("studio transport: action answered", tag: "studio.transport", level: .debug, fields: [
@@ -263,6 +306,11 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
     /// `.abandoned`. The outcome is logged by name and duration, never by its
     /// arguments, which may hold a credential.
     func call(_ action: String, args: [JSONValue] = [], timeoutSeconds: Double? = nil) async throws -> JSONValue {
+        try await call(action, args: args, timeoutSeconds: timeoutSeconds, activeTabId: nil)
+    }
+
+    /// `call`, for an action that acts on `activeTabId` when it names no tab itself.
+    func call(_ action: String, args: [JSONValue], timeoutSeconds: Double?, activeTabId: String?) async throws -> JSONValue {
         guard !stopped else {
             DiagnosticLog.log("studio transport: call refused, transport is stopped", tag: "studio.transport", level: .warn, fields: [
                 "device": devicePrefix, "action": action
@@ -270,14 +318,19 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
             throw StudioActionFailure.abandoned(action: action)
         }
         let started = ContinuousClock.now
+        let (call, traceKey) = traced(StudioActionCall(action: action, args: args, activeTabId: activeTabId, timeoutSeconds: timeoutSeconds))
         do {
-            let value = try await connection.sendAction(action, args: args, activeTabId: nil, timeoutSeconds: timeoutSeconds)
+            let value = try await connection.sendAction(
+                call.action, args: call.args, activeTabId: call.activeTabId, timeoutSeconds: call.timeoutSeconds, traceparent: call.traceparent
+            )
+            closeTrace(key: traceKey, outcome: .success(value))
             DiagnosticLog.log("studio transport: call answered", tag: "studio.transport", fields: [
                 "device": devicePrefix, "action": action, "ms": Self.milliseconds(since: started), "outcome": "ok"
             ])
             return value
         } catch {
             let failure = (error as? StudioActionFailure) ?? .failed(code: "unexpected", message: error.localizedDescription)
+            closeTrace(key: traceKey, outcome: .failure(failure))
             DiagnosticLog.log("studio transport: call failed", tag: "studio.transport", level: .warn, fields: [
                 "device": devicePrefix, "action": action, "ms": Self.milliseconds(since: started),
                 "outcome": failure.outcomeCode, "error": failure.localizedDescription
@@ -295,17 +348,23 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
     /// more, then hands the mapping one value whose `content` is every page
     /// joined. A reply that is one whole string stays one event however many
     /// windows the server needed to send it.
-    private func page(_ call: StudioActionCall, for command: RemoteCommand, commandType: String) async {
-        var call = call
+    private func page(_ first: StudioActionCall, for command: RemoteCommand, commandType: String) async {
+        // One span for the whole reply: the pages are one action to the person.
+        let (traced, traceKey) = traced(first)
+        var call = traced
         var content = ""
         var offset = call.args.first?["offset"]?.intValue ?? 0
         var pages = 0
+        defer { closeTrace(key: traceKey, outcome: .success(.null)) }
         while pages < Self.maxPages {
             pages += 1
             let value: JSONValue
             do {
-                value = try await connection.sendAction(call.action, args: call.args, activeTabId: call.activeTabId, timeoutSeconds: call.timeoutSeconds)
+                value = try await connection.sendAction(
+                    call.action, args: call.args, activeTabId: call.activeTabId, timeoutSeconds: call.timeoutSeconds, traceparent: call.traceparent
+                )
             } catch {
+                closeTrace(key: traceKey, outcome: .failure(error))
                 let failure = (error as? StudioActionFailure) ?? .failed(code: "unexpected", message: error.localizedDescription)
                 DiagnosticLog.log("studio transport: paged action failed", tag: "studio.transport", level: .warn, fields: [
                     "device": devicePrefix, "command": commandType, "action": call.action,

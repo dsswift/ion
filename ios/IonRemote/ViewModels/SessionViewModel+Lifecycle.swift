@@ -263,12 +263,13 @@ extension SessionViewModel {
             ])
             return
         }
-        let ageSeconds = Int(Date().timeIntervalSince(cached.cachedAt))
+        // How old the cache is, not how long the restore took: a number a
+        // dashboard reads as the staleness of what the person first sees.
+        let ageSeconds = Date().timeIntervalSince(cached.cachedAt).rounded(.down)
         DiagnosticLog.log("restore cached layout hit", tag: "session.cache", fields: [
             "device": String(deviceId.prefix(8)),
-            "count": String(cached.tabs.count),
-            "duration_ms": String(ageSeconds)
-        ])
+            "count": String(cached.tabs.count)
+        ], numbers: ["age_s": ageSeconds])
         tabs = cached.tabs
         tabIds = Set(cached.tabs.map(\.id))
         if !cached.recentDirectories.isEmpty {

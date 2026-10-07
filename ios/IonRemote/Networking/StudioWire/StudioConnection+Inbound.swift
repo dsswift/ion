@@ -89,6 +89,8 @@ extension StudioConnection {
         welcomed = true
         lastWelcome = welcome
         let route = socket?.routeKind ?? .tcp
+        latency.noteEnvironment(welcome.environmentId)
+        endConnectSpan(welcome: welcome, route: route)
         DiagnosticLog.log("studio connection: welcomed", tag: "studio.conn", fields: [
             "client_id": clientId,
             "environment_id": welcome.environmentId,

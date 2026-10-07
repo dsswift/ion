@@ -31,6 +31,8 @@ extension ConversationView {
     /// calls `loadConversation` directly.
     @MainActor
     func loadConversationHistory() {
+        // The conversation is on screen: a push that opened it has arrived.
+        ClientSpanBook.shared.tabVisible(tabId)
         viewModel.loadConversationIfNeeded(tabId: tabId)
     }
 }

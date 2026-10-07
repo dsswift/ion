@@ -65,8 +65,12 @@ actor StudioConnection {
     var pendingActions: [String: PendingAction] = [:]
 
     /// This client's own view of wire latency, reported once per window.
-    private lazy var latency = StudioClientLatency(transport: "mobile")
+    /// Shared with `StudioConnection+Trace.swift`.
+    lazy var latency = StudioClientLatency()
     private var latencyWindowTask: Task<Void, Never>?
+    /// The `connection.connect` span of the attempt in flight, from the dial
+    /// to the welcome or the failure. See `StudioConnection+Trace.swift`.
+    var connectSpan: TraceSpan?
 
     // MARK: - Init
 
@@ -114,7 +118,8 @@ actor StudioConnection {
         // one would otherwise go with it.
         latencyWindowTask?.cancel()
         latencyWindowTask = nil
-        latency.flush(clientId: clientId)
+        latency.flush()
+        endConnectSpan(error: "stopped by caller")
         setState(.idle)
     }
 
@@ -128,7 +133,7 @@ actor StudioConnection {
                 } catch {
                     return // cancelled: stop() writes the final window
                 }
-                await self?.latency.flush(clientId: self?.clientId ?? "")
+                await self?.flushLatencyWindow()
             }
         }
     }
@@ -186,10 +191,11 @@ actor StudioConnection {
         _ action: String,
         args: [JSONValue] = [],
         activeTabId: String? = nil,
-        timeoutSeconds: Double? = nil
+        timeoutSeconds: Double? = nil,
+        traceparent: String? = nil
     ) async throws -> JSONValue {
         try await withCheckedThrowingContinuation { continuation in
-            submitAction(action, args: args, activeTabId: activeTabId, timeoutSeconds: timeoutSeconds) {
+            submitAction(action, args: args, activeTabId: activeTabId, timeoutSeconds: timeoutSeconds, traceparent: traceparent) {
                 continuation.resume(with: $0)
             }
         }
@@ -219,7 +225,9 @@ actor StudioConnection {
             await self?.resolveAction(id: id, with: .failure(StudioActionFailure.timedOut(action: action, seconds: seconds)), why: "timed out")
         }
         pendingActions[id] = PendingAction(action: action, completion: completion, timeoutTask: timeoutTask, sent: false, traceparent: traceparent)
-        latency.noteActionSent(id: id)
+        // The round trip is timed from the socket write (`transmit`); from
+        // here to there is queue time, reported on its own.
+        latency.noteActionEnqueued(id: id)
         DiagnosticLog.log("studio connection: action sent", tag: "studio.conn", level: .debug, fields: [
             "client_id": clientId, "action": action, "action_id": id, "welcomed": String(welcomed)
         ])
@@ -242,6 +250,7 @@ actor StudioConnection {
         generation &+= 1
         let generation = generation
         welcomed = false
+        beginConnectSpan()
         setState(.connecting)
         dialTask = Task { [weak self, dial] in
             let plan: StudioDialPlan
@@ -275,6 +284,7 @@ actor StudioConnection {
         }
         socket = plan.socket
         credential = plan.credential
+        latency.noteRoute(plan.socket.routeKind)
         DiagnosticLog.log("studio connection: socket adopted", tag: "studio.conn", fields: [
             "client_id": clientId, "route": plan.socket.routeKind.rawValue, "credential_kind": plan.credential.kind
         ])
@@ -309,6 +319,7 @@ actor StudioConnection {
     // MARK: - Failure and retry
 
     func handleFailure(reason: String) {
+        endConnectSpan(error: reason)
         teardown()
         guard running else { return }
         failActions(where: \.sent) { .connectionLost(action: $0.action) }
@@ -353,6 +364,7 @@ actor StudioConnection {
 
     func endWithoutRetry(_ terminal: StudioConnectionState, why: String) {
         running = false
+        endConnectSpan(error: why)
         teardown()
         failActions(where: \.sent) { .connectionLost(action: $0.action) }
         failActions(where: { !$0.sent }) { .abandoned(action: $0.action) }
@@ -426,14 +438,18 @@ actor StudioConnection {
             return
         }
         let traceparent: String?
+        let actionId: String?
         if case .action(let action) = frame {
             pendingActions[action.id]?.sent = true
             traceparent = pendingActions[action.id]?.traceparent
+            actionId = action.id
         } else {
             traceparent = nil
+            actionId = nil
         }
         let wireType = frame.wireType
-        chainSend(label: wireType) { [clientId] in
+        chainSend(label: wireType) { [weak self, clientId] in
+            if let actionId { await self?.noteActionWritten(id: actionId) }
             do {
                 try await socket.send(text: text, traceparent: traceparent)
             } catch {

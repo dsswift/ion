@@ -54,7 +54,8 @@ extension SessionViewModel {
     @MainActor
     func handlePromptResult(tabId: String, clientMsgId: String, status: String, error: String?) {
         let accepted = status == "accepted"
-        PromptTraceBook.shared.close(clientMsgId: clientMsgId, accepted: accepted, error: error)
+        ActionTraceBook.shared.close(key: clientMsgId, accepted: accepted, error: error)
+        if !accepted { ClientSpanBook.shared.promptRejected(clientMsgId: clientMsgId, error: error) }
         var pending = pendingPrompts[tabId] ?? []
         let index = pending.firstIndex(where: { $0.id == clientMsgId })
         if let index {

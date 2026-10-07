@@ -164,6 +164,7 @@ extension SessionViewModel {
     @MainActor
     func handleTranscriptPatch(_ patch: TranscriptPatch) {
         let tabId = patch.tabId
+        let span = beginTranscriptApplySpan(patch)
         var stream = transcriptStreams[tabId]
         let awaiting = transcriptResyncing.contains(tabId)
         let outcome = withTranscriptRows(tabId: tabId) { rows in
@@ -189,6 +190,7 @@ extension SessionViewModel {
             ])
         }
         settle(outcome, tabId: tabId)
+        endTranscriptApplySpan(span, patch: patch, outcome: outcome)
     }
 
     /// After the phone's rows changed: follow a resync outcome, and bring
@@ -236,6 +238,7 @@ extension SessionViewModel {
         transcriptOlderInFlight.remove(tabId)
         speechAwaitingTranscript.remove(tabId)
         pendingPrompts.removeValue(forKey: tabId)
+        ClientSpanBook.shared.abandonPrompts(tabId: tabId, reason: "conversation closed")
         loadingConversation.remove(tabId)
         conversationLoadFailed.remove(tabId)
         cancelLoadTimer(tabId: tabId)

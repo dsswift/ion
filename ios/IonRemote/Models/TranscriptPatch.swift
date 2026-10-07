@@ -19,4 +19,10 @@ struct TranscriptPatch: Codable, Sendable {
     /// Row count of the whole transcript after this change.
     var total: Int
     var change: TranscriptChange
+    /// The W3C trace position of the run that produced this change, when the
+    /// frame carried one (`trace_id` / `span_id`). The phone's render spans
+    /// join that trace; a patch without one is joined to its tab's waiting
+    /// prompt instead.
+    var traceId: String? = nil
+    var spanId: String? = nil
 }

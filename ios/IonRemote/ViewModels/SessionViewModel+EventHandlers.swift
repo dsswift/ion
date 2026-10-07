@@ -42,11 +42,13 @@ extension SessionViewModel {
             settledTabs = tabs
 
         case .snapshot(let snapshotTabs, let recentDirs, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotProjects, let snapshotWorktreeStates, let snapshotSettledTabs):
+            let span = beginSnapshotApplySpan(tabCount: snapshotTabs.count)
             handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, availableModels: snapshotAvailableModels, projects: snapshotProjects, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
             if let snapshotResources {
                 resourceStore.applyCompleteManifest(snapshotResources)
             }
+            span.end()
 
         case .remoteDisplay(let customName, let customIcon, let updatedAt):
             applyLiveRemoteDisplay(customName: customName, customIcon: customIcon, updatedAt: updatedAt)
