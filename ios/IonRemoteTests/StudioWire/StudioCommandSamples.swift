@@ -82,6 +82,7 @@ enum StudioCommandSamples {
         .terminalInput(tabId: "s", instanceId: "s", data: "s"),
         .terminalResize(tabId: "s", instanceId: "s", cols: 1, rows: 1),
         .terminalAddInstance(tabId: "s"),
+        .runQuickTool(tabId: "s", toolId: "q"),
         .terminalRemoveInstance(tabId: "s", instanceId: "s"),
         .terminalSelectInstance(tabId: "s", instanceId: "s"),
         .requestTerminalSnapshot(tabId: "s"),

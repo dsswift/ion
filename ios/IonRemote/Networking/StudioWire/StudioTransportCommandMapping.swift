@@ -210,6 +210,8 @@ struct StudioTransportCommandMapping: StudioCommandMapping {
             ]))
         case .terminalAddInstance(let tabId):
             return .action(.positional("addTerminalInstance", .string(tabId), .string("user")))
+        case .runQuickTool(let tabId, let toolId):
+            return .action(.positional("runQuickTool", .string(tabId), .string(toolId)))
         case .terminalRemoveInstance(let tabId, let instanceId):
             return .action(.positional("removeTerminalInstance", .string(tabId), .string(instanceId)))
         case .terminalSelectInstance(let tabId, let instanceId):

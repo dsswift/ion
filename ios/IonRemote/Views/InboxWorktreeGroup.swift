@@ -23,6 +23,7 @@ struct InboxWorktreeGroup<Row: View>: View {
     @State private var renameTitle = ""
     @State private var confirmDiscardRecordings = false
     @State private var confirmDiscard = false
+    @State private var showVerification = false
     let activeTabId: String?
     @Binding var expanded: Set<String>
     /// True only in the side-by-side layout. When false (iPhone), tapping the
@@ -57,6 +58,7 @@ struct InboxWorktreeGroup<Row: View>: View {
             onNewConversation: { viewModel.newWorktreeConversation(worktreePath: worktree.worktreePath) },
             onSelectConversation: { viewModel.navigateToTab($0) },
             verificationFailure: verificationFailure,
+            onReviewVerification: { showVerification = true },
             onRetire: { confirmDiscard = true },
             activeAutoFixTabId: InboxNavigator.activeAutoFixTab(viewModel.tabs, directory: worktree.worktreePath)?.id,
             benchAutoFixTabId: benchAutoFixTabId,
@@ -97,6 +99,11 @@ struct InboxWorktreeGroup<Row: View>: View {
                 viewModel.discardBenchMemberRecordings(repoPath: repoPath, sourceBranch: membership.sourceBranch, branchNames: [worktree.branchName])
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showVerification) {
+            if let sourceBranch = worktree.membership?.sourceBranch {
+                BenchVerificationSheet(repoPath: repoPath, sourceBranch: sourceBranch)
+            }
         }
         .confirmationDialog(discardSummary, isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard worktree", role: .destructive) {

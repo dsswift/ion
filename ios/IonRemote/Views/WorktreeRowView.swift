@@ -40,8 +40,11 @@ struct WorktreeRowView: View {
     /// navigation -- mirrors `onNewConversation`'s optionality.
     var onSelectConversation: ((String) -> Void)?
     /// Verification evidence for this replayed member. The desktop identifies
-    /// suspects in its projection; iOS renders that fact and opens analysis.
+    /// suspects in its projection; iOS names that fact and opens the bench
+    /// verification sheet through `onReviewVerification`.
     var verificationFailure: RemoteBenchVerification?
+    /// Open the bench verification sheet: what failed and the ways out.
+    var onReviewVerification: (() -> Void)?
     /// Discard this worktree without merging it into its source branch. The
     /// desktop appraises and preserves recoverable work before removal.
     var onRetire: (() -> Void)?

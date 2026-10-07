@@ -184,6 +184,12 @@ extension ConversationView {
                 Button("Photo Library") { showPhotoPicker = true }
                 Button("Choose File") { showDocumentPicker = true }
                 Button("Browse Server Files") { showFilePicker = true }
+                ForEach(viewModel.composerActions(tabId: tabId), id: \.menuKey) { action in
+                    Button(action.label) { runComposerAction(action) }
+                }
+                ForEach(viewModel.quickTools(tabId: tabId)) { tool in
+                    Button(tool.name) { runQuickTool(tool) }
+                }
                 Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog(

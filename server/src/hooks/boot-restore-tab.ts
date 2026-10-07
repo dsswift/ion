@@ -389,11 +389,19 @@ async function restoreTerminalOnlyTab(st: PersistedTab, index: number, restoredT
 }
 
 async function restoreSessionlessTab(st: PersistedTab, index: number, restoredTabIds: RestoredTabId[]): Promise<void> {
-  // Sessionless tab (e.g. has editor state but no messages sent yet). The
-  // directory is the one this conversation was persisted with, so it is a
-  // restore: a folder that has since been removed must not cost the operator
-  // the tab, which is what the new-conversation existence check would do.
-  const tabId = await useSessionStore.getState().createTabInDirectory(st.workingDirectory, false, true, undefined, true)
+  // Sessionless tab (e.g. has editor state but no messages sent yet). Adopt
+  // the persisted id like every other arm: the tab's content file is keyed
+  // by it, and a fresh id leaves that file with no tab in the manifest,
+  // which the save guard reads as a truncated save and refuses -- along
+  // with every save after it. A record saved before ids were persisted has
+  // none and gets a fresh one. The directory is the one this conversation
+  // was persisted with, so it is a restore: a folder that has since been
+  // removed must not cost the operator the tab.
+  const tabId = await useSessionStore.getState().createConversationTab(st.workingDirectory, {
+    worktree: st.worktree ?? null,
+    restoring: true,
+    ...(st.id ? { reuseTabId: st.id } : {}),
+  })
   restoredTabIds.push({ tabId, sessionId: null, index })
 
   const sessionlessMain = readMainInstance(st)

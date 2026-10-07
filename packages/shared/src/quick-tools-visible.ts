@@ -1,10 +1,11 @@
 /**
  * Which Quick Tools apply to a conversation.
  *
- * One rule, read by both the composer's lightning button (show or hide) and
- * the tray (what to list), so the button can never appear over an empty tray.
+ * One rule, read by Studio's composer lightning button (show or hide) and its
+ * tray (what to list), so the button can never appear over an empty tray, and
+ * by the server when it lists a conversation's Quick Tools for the phone.
  */
-import type { QuickTool } from '@ion/shared/types'
+import type { QuickTool } from './types-session'
 
 /** True when `dir` is `root` or a path beneath it. Either separator counts. */
 function isUnder(dir: string, root: string): boolean {

@@ -199,6 +199,9 @@ extension DiagnosticLog {
         case .terminalAddInstance(let tabId):
             log("CMD: terminalAddInstance tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 
+        case .runQuickTool(let tabId, let toolId):
+            log("CMD: runQuickTool tabId=\(tabId.prefix(8)) tool=\(toolId)", tag: "ipc", level: .info)
+
         case .terminalRemoveInstance(let tabId, let instId):
             log("CMD: terminalRemoveInstance tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8))", tag: "ipc", level: .info)
 

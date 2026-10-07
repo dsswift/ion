@@ -325,8 +325,8 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     /// from an older desktop.
     var resolutionOpen: RemoteBenchResolutionOpen?
     /// Evidence for a `"verification"` failure. Nil otherwise, and nil from an
-    /// older desktop. The recovery verbs (dismiss, discard-and-reassemble,
-    /// analyse) are desktop-only -- this is read-only detail for the footer.
+    /// older desktop. BenchVerificationSheet renders it with the recovery
+    /// verbs (discard-and-reassemble, analyse).
     var lastAssemblyVerification: RemoteBenchVerification?
     /// The feature branch has moved past the bench's base, so an assembly would
     /// pick up work that landed since.
@@ -392,7 +392,8 @@ struct RemoteBench: Codable, Identifiable, Hashable {
 
 /// Evidence for a bench verification failure: what ran, what it said, and
 /// which members' merges came from a replayed rerere recording (the
-/// suspects). Read-only on iOS -- desktop-only recovery verbs act on it.
+/// suspects). BenchVerificationSheet acts on it with the same verbs as the
+/// desktop's dialog.
 struct RemoteBenchVerification: Codable, Hashable {
     var command: String
     var outputTail: String

@@ -186,6 +186,10 @@ export type RemoteCommand =
       rows: number;
     }
   | { type: "desktop_terminal_add_instance"; tabId: string }
+  // Run one of the sender's own Quick Tools in the conversation's terminal.
+  // Only the id travels: the server reads the command from the sender's
+  // settings, so a client can never supply a shell command.
+  | { type: "desktop_run_quick_tool"; tabId: string; toolId: string }
   | {
       type: "desktop_terminal_remove_instance";
       tabId: string;

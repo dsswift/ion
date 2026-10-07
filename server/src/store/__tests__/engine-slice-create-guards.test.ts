@@ -220,6 +220,15 @@ describe('createConversationTab — recording project use', () => {
     expect(addRecentBaseDirectory).not.toHaveBeenCalled()
   })
 
+  it('does not count a restore of a record saved before ids were persisted', async () => {
+    const { set, get } = buildHarness()
+    const createConversationTab = createConversationTabAction(set as any, get as any)
+
+    await createConversationTab('/tmp/project', { restoring: true })
+
+    expect(addRecentBaseDirectory).not.toHaveBeenCalled()
+  })
+
   it('does not count a creation this machine refused', async () => {
     fsExists.mockResolvedValue({ exists: false })
     const { set, get } = buildHarness()

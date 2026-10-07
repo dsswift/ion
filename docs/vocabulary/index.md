@@ -1992,7 +1992,7 @@ Where a paired phone receives push notifications: its APNs device token and the 
 
 #### Quick Tool {#term-quick-tool}
 
-A named shell command an operator runs from the lightning button in the Input Bar. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.
+A named shell command an operator runs from the lightning button in the Input Bar, or from the composer's + sheet on iPhone. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.
 
 - **ID:** `quick-tool`
 - **Status:** `canonical`
@@ -2003,6 +2003,7 @@ A named shell command an operator runs from the lightning button in the Input Ba
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `export interface QuickTool` in `packages/shared/src/types-session.ts`
   - `studio` / `ui` / `typescript`: `export function ComposerQuickToolsButton` in `desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx`
+  - `ios` / `code` / `swift`: `struct RemoteQuickTool` in `ios/IonRemote/Models/RemoteQuickTool.swift`
 
 #### Quota Pool {#term-quota-pool}
 
@@ -3268,6 +3269,7 @@ A row an extension adds to the + menu of the Input Bar through the Studio SDK. C
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface ComposerAction` in `packages/shared/src/studio-sdk-contract.ts`
   - `studio` / `ui` / `typescript`: `export function useComposerActions` in `desktop/src/renderer/components/composer/useComposerActions.tsx`
+  - `ios` / `code` / `swift`: `struct ComposerAction` in `ios/IonRemote/Models/ComposerAction.swift`
 
 #### Fleet Report {#term-fleet-report}
 
@@ -3545,7 +3547,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
-| Composer Action | None | `export interface ComposerAction`, `export function useComposerActions` | None | None | Overlay, iOS |
+| Composer Action | None | `export interface ComposerAction`, `export function useComposerActions` | None | `struct ComposerAction` | Overlay |
 | Composer Draft | None | `useComposerDraft` | None | `adoptRemoteDraft` | Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
 | Conversation | `export interface RemoteTabState` | `export interface RemoteTabState` | `export interface RemoteTabState` | None | iOS |
@@ -3638,7 +3640,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Provider Subscription Prompt | `nextSubscriptionAttention` | `nextSubscriptionAttention`, `ProviderSubscriptionPrompt` | `nextSubscriptionAttention` | `struct ProviderSubscriptionPromptOverlay` | None |
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
-| Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |
+| Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | `struct RemoteQuickTool` | None |
 | Quota Pool | `fleetQuotaPools` | `fleetQuotaPools`, `FleetQuota` | `fleetQuotaPools` | `struct FleetQuotaPoolView` | None |
 | Relay-backed Environment | `RelayStudioSocket` | `RelayStudioSocket` | `RelayStudioSocket` | None | iOS |
 | Request Principal | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | None | iOS |

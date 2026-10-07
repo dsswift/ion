@@ -33,6 +33,7 @@ import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
 import { getMachineIdentity } from '../machine-identity'
 import { questionsCoordinator } from '../questions/questions-wiring'
+import { applyComposerExtras } from './snapshot-composer'
 import { resourceCatalog } from '../engine/resource-catalog'
 import { terminalManager } from '../terminal/terminal-manager-instance'
 import { orderedSessionIds } from '@ion/shared/tab-predicates'
@@ -204,11 +205,13 @@ export async function getRemoteTabStates(forSubject?: string): Promise<RemoteTab
     })
 
     const scoped = forSubject ? filterBySubject(mapped, forSubject) : mapped
+    applyComposerExtras(scoped, forSubject)
     return { tabs: stampEnvironment(scoped), resourceManifest }
   }
 
   const cold = coldStartSnapshot()
   const coldScoped = forSubject ? filterBySubject(cold.tabs, forSubject) : cold.tabs
+  applyComposerExtras(coldScoped, forSubject)
   return { tabs: stampEnvironment(coldScoped), resourceManifest: cold.resourceManifest }
 }
 
@@ -554,3 +557,4 @@ function applyQuestionsState(tabs: RemoteTabState[]): void {
     if (open.length > 0) tab.questions = open
   }
 }
+

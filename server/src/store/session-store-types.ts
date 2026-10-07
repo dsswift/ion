@@ -278,13 +278,6 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     useWorktree?: boolean,
     skipDuplicateCheck?: boolean,
     sourceBranch?: string,
-    /**
-     * Server-internal: the directory came from persisted state, so the tab
-     * is exempt from the does-this-machine-have-it check. Beyond this
-     * action's `maxArgs` in `studio-wire/actions.ts`, so a client cannot
-     * reach it -- only an in-process caller restoring a conversation can.
-     */
-    restoring?: boolean,
   ) => Promise<string>;
   selectTab: (tabId: string) => void;
   /** `remote` means main already closed; `delete` means history is deleted; `remote-delete` means both. */
