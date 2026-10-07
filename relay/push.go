@@ -286,7 +286,7 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 	fail := func(reason string, err error, extra ...any) error {
 		args := append([]any{"tag", "relay.apns.error", "err", err, "reason", reason,
 			"kind", req.kind, "resource_id", req.resourceId}, extra...)
-		logger.Error("APNs "+reason+" error", append(args, timing()...)...)
+		logger.Error("APNs push failed", append(args, timing()...)...)
 		return newAPNsError(reason, err)
 	}
 
