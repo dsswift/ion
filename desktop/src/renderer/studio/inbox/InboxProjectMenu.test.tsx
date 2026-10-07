@@ -77,7 +77,7 @@ describe('InboxProjectMenu', () => {
   })
 
   it('offers no worktree conversation on a machine that does not offer worktrees', async () => {
-    policyStore.setDeveloperSurfaces('env-finance', { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: false })
+    policyStore.setDeveloperSurfaces('env-finance', { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: false, profiling: true })
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)

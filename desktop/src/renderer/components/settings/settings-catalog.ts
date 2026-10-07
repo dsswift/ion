@@ -112,7 +112,10 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
   ] },
   presets: { component: P.PresetsSection, items: [item('presets', 'Presets', 'preset operator developer quick configure apply bundle')] },
   backup: { component: P.BackupSection, items: [item('backup', 'Backup and restore', 'backup restore export import conversations archive')] },
-  developer: { component: P.DeveloperSection, items: [item('simulate-update', 'Simulate update', 'simulate update developer auto debug test')] },
+  developer: { component: P.DeveloperSection, items: [
+    item('simulate-update', 'Simulate update', 'simulate update developer auto debug test'),
+    item('profiler', 'Profiler', 'profiler cpu profile heap snapshot capture performance developer'),
+  ] },
   // ── You ──────────────────────────────────────────────────────────────
   'defaults-conversation': { component: P.DefaultsPage, items: [
     item('permission-mode', 'Default permission mode', 'permission mode plan auto approve', ['defaultPermissionMode']),

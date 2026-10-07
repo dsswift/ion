@@ -9,6 +9,7 @@
 import { ipcRenderer, webUtils } from 'electron'
 import type { NearbyStudioServer } from '@ion/shared/types-nearby'
 import { IPC } from '@ion/shared/types'
+import { DESKTOP_IPC, launchTraceparentFromArgv, type ProfileCaptureRequest, type ProfileCaptureResult, type StudioActionTiming } from '../shared/desktop-ipc'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import type { ConnectionPhaseSnapshot } from '../shared/types-connections'
 import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
@@ -101,6 +102,12 @@ export interface StudioApi {
   hostSendFrame(environmentId: string, frame: StudioFrame): void
   /** Every frame the broker relayed from any environment. */
   onHostFrame(callback: (environmentId: string, frame: StudioFrame) => void): () => void
+  /** The renderer's own round-trip time for one `studio_action`, for main's IPC-hop figure (`connections/ipc-hop.ts`). */
+  hostNoteActionTiming(environmentId: string, id: string, rendererMs: number): void
+  /** Main's `app.launch` traceparent, handed to this window at creation so its boot spans join the launch trace; null when it was not. */
+  readonly launchTraceparent: string | null
+  /** Captures a CPU profile or heap snapshot of main or this renderer into `<data dir>/profiles/`. */
+  profileCapture(request: ProfileCaptureRequest): Promise<ProfileCaptureResult>
   /** The current phase of every known environment connection. */
   hostGetConnections(): Promise<ConnectionPhaseSnapshot[]>
   /** Live connection phase snapshots (pushed on every transition). */
@@ -222,6 +229,12 @@ export const studioApi: StudioApi = {
     }
   },
   hostSendFrame: (environmentId, frame) => ipcRenderer.send(IPC.STUDIO_SEND, { environmentId, frame }),
+  hostNoteActionTiming: (environmentId, id, rendererMs) => {
+    const timing: StudioActionTiming = { environmentId, id, rendererMs }
+    ipcRenderer.send(DESKTOP_IPC.STUDIO_ACTION_TIMING, timing)
+  },
+  launchTraceparent: launchTraceparentFromArgv(process.argv),
+  profileCapture: (request) => ipcRenderer.invoke(DESKTOP_IPC.PROFILE_CAPTURE, request),
   onHostFrame: (callback) => {
     // One ipcRenderer listener fans out to every subscriber. Each bridged
     // shell call subscribes for the life of its own request, so a dozen

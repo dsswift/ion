@@ -7,12 +7,14 @@ import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import type { StudioHost } from '../StudioHost'
 import { createHostAction, traceparentFromArgs } from '../host-actions'
 
-vi.mock('../../rendererLogger', () => ({ rWarn: vi.fn() }))
+vi.mock('../../rendererLogger', () => ({ rWarn: vi.fn(), rInfo: vi.fn() }))
 
 /** A minimal fake StudioHost: `send` echoes a scripted reply through `onFrame`. */
 function makeFakeHost(reply: (frame: StudioFrame) => StudioFrame | null) {
   const listeners = new Set<(environmentId: string, frame: StudioFrame) => void>()
-  const host: Pick<StudioHost, 'send' | 'onFrame'> = {
+  const host: Pick<StudioHost, 'send' | 'onFrame' | 'capabilities'> = {
+    // Every action is spanned with the surface it was sent from.
+    capabilities: () => [],
     send: (environmentId, frame) => {
       const response = reply(frame)
       if (response) {
@@ -48,7 +50,8 @@ describe('createHostAction', () => {
 
   it('ignores a result meant for a different environment or a different id', async () => {
     const listeners: Array<(environmentId: string, frame: StudioFrame) => void> = []
-    const host: Pick<StudioHost, 'send' | 'onFrame'> = {
+    const host: Pick<StudioHost, 'send' | 'onFrame' | 'capabilities'> = {
+      capabilities: () => [],
       send: (environmentId, frame) => {
         if (frame.type !== 'studio_action') return
         // Wrong environment, then wrong id, then the real answer.

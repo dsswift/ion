@@ -8,6 +8,8 @@
  * place where the Electron window and a browser client genuinely diverge.
  */
 import { rInfo } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
+import { startStoreHydrate } from '../../lib/render-spans'
 import {
   applyMirrorOverrides,
   initTabsSyncFromWire,
@@ -31,6 +33,8 @@ let booted = false
 export function bootMirror(): void {
   if (booted) return
   booted = true
+  // `store.hydrate`: from here to the first tabs hydrated (`hydrateTabsFromSync`).
+  startStoreHydrate(host.launchTraceparent?.() ?? null)
   const swapped = applyMirrorOverrides()
   initDispatchSplitConversationGuard()
   // Every client runs every mirror sync. These five used to be gated on the

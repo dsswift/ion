@@ -6,6 +6,7 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { LINK_RE, isCmdHeld } from '../hooks/useNavigableLinks'
 import { rDebug, rTrace, rWarn } from '../rendererLogger'
+import { noteTerminalKeystroke, noteTerminalOutput } from '../lib/terminal-echo-trace'
 import { openClickedLink } from '../lib/open-link'
 import { openFileLink } from '../lib/open-file-link'
 import { isModKey } from '../platform/mod-key'
@@ -40,6 +41,7 @@ function installTerminalListeners(): void {
     if (!entry) return
     if (entry.historyPending) entry.pendingChunks.push(data)
     else entry.terminal.write(data)
+    noteTerminalOutput(key, data.length)
   })
   host.shell.onTerminalExit((key, _exitCode) => {
     const entry = terminalInstances.get(key)
@@ -354,6 +356,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
 
     // Wire keystrokes -> PTY (only while mounted/visible)
     const disposeOnData = entry.terminal.onData((data) => {
+      noteTerminalKeystroke(key)
       host.shell.terminalWrite(key, data)
     })
 

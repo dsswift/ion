@@ -46,7 +46,7 @@ function welcomeFrame(): string {
   return JSON.stringify({
     type: 'studio_welcome', protocolVersion: 1, environmentId: 'srv', label: 'Test',
     platform: 'linux', serverVersion: '0.0.0', engineVersion: '0.0.0', capabilities: [],
-    principal: { subject: 'local:test', displayName: 'test' }, scopes: [], enterprisePolicy: null, settingsHiddenGroups: [], developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }, policyHash: 'sha256:test', snapshot: {},
+    principal: { subject: 'local:test', displayName: 'test' }, scopes: [], enterprisePolicy: null, settingsHiddenGroups: [], developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true }, policyHash: 'sha256:test', snapshot: {},
   })
 }
 

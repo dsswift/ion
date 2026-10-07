@@ -3124,9 +3124,9 @@ The one W3C trace that follows a prompt from the client that sent it through the
 - **Legacy names:** None
 - **Contract:** `public-wire`
 - **Implementations:**
-  - `studio` / `code` / `typescript`: `export function submitWithTrace` in `desktop/src/renderer/lib/prompt-trace.ts`
+  - `studio` / `code` / `typescript`: `export function submitWithTrace` in `desktop/src/renderer/lib/action-trace.ts`
   - `server` / `code` / `typescript`: `export function startPromptHandleSpan` in `server/src/tracing/prompt-span.ts`
-  - `ios` / `code` / `swift`: `final class PromptTraceBook` in `ios/IonRemote/Utilities/PromptTraceBook.swift`
+  - `ios` / `code` / `swift`: `final class ActionTraceBook` in `ios/IonRemote/Utilities/ActionTraceBook.swift`
   - `engine` / `wire` / `go`: `func ParseTraceparent` in `engine/internal/utils/traceparent.go`
 - **Notes:** Span record shapes and the hop chain: docs/observability/log-schema.md § Spans.
 
@@ -3635,7 +3635,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Project Start | None | None | None | `NewProjectSheet` | Desktop, Studio, Overlay |
 | Project Trust | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | None | iOS |
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
-| Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
+| Prompt trace | None | `export function submitWithTrace` | None | `final class ActionTraceBook` | Overlay |
 | Provider Subscription | `export interface ProviderSubscriptionStatus` | `export interface ProviderSubscriptionStatus`, `ProviderSubscriptionGroup` | `export interface ProviderSubscriptionStatus` | `struct ProviderSubscriptionStatus` | None |
 | Provider Subscription Prompt | `nextSubscriptionAttention` | `nextSubscriptionAttention`, `ProviderSubscriptionPrompt` | `nextSubscriptionAttention` | `struct ProviderSubscriptionPromptOverlay` | None |
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |

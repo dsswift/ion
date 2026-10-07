@@ -88,6 +88,10 @@ export function rendererServerStubs(desktopDir: string): ReadonlyArray<readonly 
       resolve(desktopDir, "../server/src/identity/request-principal.ts"),
       resolve(desktopDir, "src/buildtools/server-request-principal-browser-stub.ts"),
     ],
+    [
+      resolve(desktopDir, "../server/src/tracing/op-span.ts"),
+      resolve(desktopDir, "src/buildtools/server-op-span-browser-stub.ts"),
+    ],
   ];
 }
 

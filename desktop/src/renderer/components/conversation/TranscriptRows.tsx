@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useMemo, type MutableRefObject, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { rDebug, rInfo, rWarn } from "../../rendererLogger";
+import { attachTranscriptView, noteTranscriptCommit } from "../../lib/render-spans";
 import {
   MessageBubble,
   AssistantMessage,
@@ -565,6 +566,13 @@ export function TranscriptRows({
     () => (messages ? chartRowRenders(messages) : undefined),
     [messages],
   );
+  // The commit that shows the latest delta: `transcript.apply` ends here
+  // (`lib/render-spans.ts`), after React has committed the rows above. Only
+  // a mounted view's deltas are timed.
+  useEffect(() => (tabId ? attachTranscriptView(tabId) : undefined), [tabId]);
+  useEffect(() => {
+    if (tabId) noteTranscriptCommit(tabId);
+  }, [grouped, tabId]);
   const virtual =
     grouped.length >= VIRTUAL_THRESHOLD && !forceFullRender && scrollRef != null;
   if (grouped.length === 0) return null;

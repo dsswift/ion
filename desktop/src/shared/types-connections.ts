@@ -13,7 +13,13 @@
  */
 import type { StudioRefusalReason } from '@ion/shared/studio-wire/types'
 
-export type ConnectionTransportKind = 'local' | 'tcp' | 'relay'
+/**
+ * How a connection reaches its server. `ssh` is a TCP socket dialed at the
+ * local end of an SSH forward this desktop opened; it is named apart from
+ * `tcp` because the forward is a hop of its own and the wire-latency and
+ * connect spans must not read an SSH round trip as a LAN one.
+ */
+export type ConnectionTransportKind = 'local' | 'tcp' | 'ssh' | 'relay'
 
 export type ConnectionPhase =
   | { phase: 'connecting'; transport: ConnectionTransportKind }

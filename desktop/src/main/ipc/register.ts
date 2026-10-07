@@ -14,6 +14,7 @@ import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerStartupIpc } from "./startup";
 import { registerBuildNoticeIpc } from "../build-notice";
+import { registerProfilingIpc } from "../profiling/profiling-ipc";
 
 export function registerAllIpc(): void {
   registerStartupIpc();
@@ -28,4 +29,5 @@ export function registerAllIpc(): void {
   registerFaviconIpc();
   registerWorktreeOverlapIpc();
   registerBuildNoticeIpc();
+  registerProfilingIpc();
 }

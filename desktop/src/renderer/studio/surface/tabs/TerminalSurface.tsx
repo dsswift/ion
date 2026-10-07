@@ -21,6 +21,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { usePreferencesStore } from '../../../preferences'
 import { useColors } from '../../../theme'
 import { rDebug, rWarn } from '../../../rendererLogger'
+import { noteTerminalKeystroke, noteTerminalOutput } from '../../../lib/terminal-echo-trace'
 import '@xterm/xterm/css/xterm.css'
 import { host } from '../../../host/host-instance'
 import { writeTerminalHistory } from '../../../lib/terminal-history'
@@ -101,6 +102,7 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
       if (k !== key) return
       if (historyPending) pendingChunks.push(data)
       else terminal.write(data)
+      noteTerminalOutput(key, data.length)
     })
     const offExit = host.shell.onTerminalExit((k, exitCode) => {
       if (k !== key) return
@@ -118,6 +120,7 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
         attach(true)
         return
       }
+      noteTerminalKeystroke(key)
       host.shell.terminalWrite(key, data)
     })
 

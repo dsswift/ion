@@ -30,7 +30,7 @@ import { pathSegments } from '@ion/shared/paths'
 import { host } from '../host/host-instance'
 import { terminalAccessForTab } from '../studio/connection/terminal-access'
 import { WorktreeOverlapLauncher } from './WorktreeOverlapLauncher'
-import { submitWithTrace } from '../lib/prompt-trace'
+import { submitWithTrace } from '../lib/action-trace'
 
 function HeaderIconButton({
   title,

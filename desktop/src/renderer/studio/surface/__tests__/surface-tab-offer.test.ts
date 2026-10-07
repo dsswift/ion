@@ -11,7 +11,7 @@ import { policyStore } from '../../connection/policy-store'
 import { useEnvironmentSettingsStore } from '../../state/environment-settings-store'
 import { gitPanelOffered, surfaceTabOffered, surfaceTabOfferedNow } from '../surface-tab-offer'
 
-const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }
+const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true }
 
 beforeEach(() => {
   policyStore._resetForTest()

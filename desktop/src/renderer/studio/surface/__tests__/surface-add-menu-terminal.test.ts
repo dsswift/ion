@@ -6,7 +6,7 @@ vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: { getState: 
 
 import { SURFACE_ADD_ENTRIES, type AddEntryContext } from '../SurfaceAddMenu'
 
-const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }
+const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true }
 const ctx = (over: Partial<AddEntryContext>): AddEntryContext => ({
   graphViewAvailable: true,
   browserTabAvailable: true,

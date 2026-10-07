@@ -42,6 +42,7 @@ import { createStartupWindow } from './startup-window'
 import { installQuitHandlers } from './app-lifecycle-quit'
 import { initEgressFromEngineConfig, initEgressFromSettingsConfig } from './app-lifecycle-egress'
 import { failStartup, isStartupRevealed, prepareStudioStartup, reportStartup, requireStartupAuthentication } from './startup-coordinator'
+import { launchTrace } from './spans'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -193,6 +194,9 @@ export function setupAppLifecycle(): void {
   })
 
   app.whenReady().then(async () => {
+    // `app.launch`: process start → Electron ready (`spans.ts`). The window
+    // and renderer boot spans join it as children.
+    launchTrace().endAppLaunch({ app_version: __ION_DESKTOP_VERSION__ })
     createStartupWindow()
     reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
 
