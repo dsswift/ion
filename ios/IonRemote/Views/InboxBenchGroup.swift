@@ -65,6 +65,8 @@ struct InboxBenchGroup<Row: View>: View {
     /// Full-featured inbox conversation row (same builder as worktree groups).
     @ViewBuilder let row: (RemoteTabState) -> Row
     @State private var confirmPipelineAi = false
+    /// The source branch whose verification sheet is open, if any.
+    @State private var verificationSheetBranch: String?
 
     var body: some View {
         ForEach(state.benches) { bench in
@@ -178,12 +180,30 @@ struct InboxBenchGroup<Row: View>: View {
                 benchConversationRow(tab, bench: bench)
             }
             if bench.lastAssemblyFailure == "verification", let evidence = bench.lastAssemblyVerification {
-                VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
-                    Text(evidence.command).font(IonType.mono)
-                    Text(evidence.outputTail).font(IonType.microLabel).lineLimit(4)
+                // What happened in words, and a tap to the ways out. The raw
+                // verify output stays in the sheet, behind a disclosure.
+                Button {
+                    verificationSheetBranch = bench.sourceBranch
+                } label: {
+                    HStack(spacing: IonSpace.contentGap) {
+                        Text(BenchVerificationCopy.headline(replayedBranches: evidence.replayedBranches))
+                            .font(IonType.metadata)
+                            .foregroundStyle(theme.textSecondary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(3)
+                        Spacer(minLength: IonSpace.hairlineGap)
+                        Text("Fix")
+                            .font(IonType.meaning)
+                            .foregroundStyle(theme.accent)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows what failed and how to fix it")
                 .inboxRow(level: 2)
+                .sheet(isPresented: verificationSheetBinding(bench)) {
+                    BenchVerificationSheet(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
+                }
             }
         }
     }
@@ -350,6 +370,13 @@ struct InboxBenchGroup<Row: View>: View {
         Button("Delete replay cache", role: .destructive) {
             viewModel.discardAllBenchRecordings(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
         }
+    }
+
+    private func verificationSheetBinding(_ bench: RemoteBench) -> Binding<Bool> {
+        Binding(
+            get: { verificationSheetBranch == bench.sourceBranch },
+            set: { if !$0 { verificationSheetBranch = nil } }
+        )
     }
 
     private func openBenchTerminal(_ bench: RemoteBench) {

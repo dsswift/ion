@@ -71,6 +71,8 @@
 		C0DE00000000000000000003 /* InboxConversationPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000004 /* InboxConversationPreview.swift */; };
 		C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000006 /* InboxWorktreeGroup.swift */; };
 		C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000008 /* InboxBenchGroup.swift */; };
+		B5E7C0DE0000000000000A03 /* BenchVerificationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E7C0DE0000000000000A04 /* BenchVerificationSheet.swift */; };
+		B5E7C0DE0000000000000A01 /* BenchVerificationCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E7C0DE0000000000000A02 /* BenchVerificationCopy.swift */; };
 		B3NCHTERM000000000000002 /* InboxBenchTerminalRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */; };
 		INBOXSNOOZE000000000002 /* InboxSnoozePresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */; };
 		WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */; };
@@ -87,6 +89,7 @@
 		21D9E90057FA0B80AB1A9EA7 /* PresenceWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC809708DA7323E91CCD503F /* PresenceWireTests.swift */; };
 		34C16DDE7A2818EFEF89D2C3 /* SystemMetricsWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49902F0DB93E601B6385554 /* SystemMetricsWireTests.swift */; };
 		F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */; };
+		B5E7C0DE0000000000000A05 /* BenchVerificationCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E7C0DE0000000000000A06 /* BenchVerificationCopyTests.swift */; };
 		QUESTNS990000000000BF01 /* QuestionsWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS990000000000FR01 /* QuestionsWireTests.swift */; };
 		F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */; };
 		F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */; };
@@ -1072,6 +1075,8 @@
 		C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSettledHistorySheet.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000006 /* InboxWorktreeGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeGroup.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000008 /* InboxBenchGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchGroup.swift; sourceTree = "<group>"; };
+		B5E7C0DE0000000000000A04 /* BenchVerificationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchVerificationSheet.swift; sourceTree = "<group>"; };
+		B5E7C0DE0000000000000A02 /* BenchVerificationCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchVerificationCopy.swift; sourceTree = "<group>"; };
 		B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalRow.swift; sourceTree = "<group>"; };
 		INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnoozePresets.swift; sourceTree = "<group>"; };
 		WTPROJIDENT000000000002 /* WorktreeProjectIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeProjectIdentity.swift; sourceTree = "<group>"; };
@@ -1088,6 +1093,7 @@
 		EC809708DA7323E91CCD503F /* PresenceWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PresenceWireTests.swift"; sourceTree = "<group>"; };
 		E49902F0DB93E601B6385554 /* SystemMetricsWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SystemMetricsWireTests.swift"; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchNavigationTests.swift; sourceTree = "<group>"; };
+		B5E7C0DE0000000000000A06 /* BenchVerificationCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchVerificationCopyTests.swift; sourceTree = "<group>"; };
 		QUESTNS990000000000FR01 /* QuestionsWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionsWireTests.swift; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchEphemeralLifecycleTests.swift; sourceTree = "<group>"; };
 		F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeRowSelectConversationTests.swift; sourceTree = "<group>"; };
@@ -2213,6 +2219,8 @@
 				C0DE0000000000000000000E /* InboxSettledHistorySheet.swift */,
 				C0DE00000000000000000006 /* InboxWorktreeGroup.swift */,
 				C0DE00000000000000000008 /* InboxBenchGroup.swift */,
+				B5E7C0DE0000000000000A04 /* BenchVerificationSheet.swift */,
+				B5E7C0DE0000000000000A02 /* BenchVerificationCopy.swift */,
 				B3NCHTERM000000000000001 /* InboxBenchTerminalRow.swift */,
 				INBOXSNOOZE000000000001 /* InboxSnoozePresets.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
@@ -2582,6 +2590,7 @@
 				EC809708DA7323E91CCD503F /* PresenceWireTests.swift */,
 				E49902F0DB93E601B6385554 /* SystemMetricsWireTests.swift */,
 				F3B1C2D3E4F5061728394A02 /* BenchNavigationTests.swift */,
+				B5E7C0DE0000000000000A06 /* BenchVerificationCopyTests.swift */,
 				QUESTNS990000000000FR01 /* QuestionsWireTests.swift */,
 				F3B1C2D3E4F5061728394F72 /* BenchEphemeralLifecycleTests.swift */,
 				F3B1C2D3E4F5061728394B02 /* WorktreeRowSelectConversationTests.swift */,
@@ -3600,6 +3609,8 @@
 				C0DE0000000000000000000D /* InboxSettledHistorySheet.swift in Sources */,
 				C0DE00000000000000000005 /* InboxWorktreeGroup.swift in Sources */,
 				C0DE00000000000000000007 /* InboxBenchGroup.swift in Sources */,
+				B5E7C0DE0000000000000A03 /* BenchVerificationSheet.swift in Sources */,
+				B5E7C0DE0000000000000A01 /* BenchVerificationCopy.swift in Sources */,
 				B3NCHTERM000000000000002 /* InboxBenchTerminalRow.swift in Sources */,
 				INBOXSNOOZE000000000002 /* InboxSnoozePresets.swift in Sources */,
 				WTPROJIDENT000000000001 /* WorktreeProjectIdentity.swift in Sources */,
@@ -4387,6 +4398,7 @@
 				21D9E90057FA0B80AB1A9EA7 /* PresenceWireTests.swift in Sources */,
 				34C16DDE7A2818EFEF89D2C3 /* SystemMetricsWireTests.swift in Sources */,
 				F3B1C2D3E4F5061728394A01 /* BenchNavigationTests.swift in Sources */,
+				B5E7C0DE0000000000000A05 /* BenchVerificationCopyTests.swift in Sources */,
 				QUESTNS990000000000BF01 /* QuestionsWireTests.swift in Sources */,
 				F3B1C2D3E4F5061728394F71 /* BenchEphemeralLifecycleTests.swift in Sources */,
 				F3B1C2D3E4F5061728394B01 /* WorktreeRowSelectConversationTests.swift in Sources */,

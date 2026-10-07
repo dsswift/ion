@@ -65,9 +65,15 @@ extension WorktreeRowView {
         }
         if let m = membership {
             if let verificationFailure {
-                Section("Verification failed after replay") {
-                    Text(verificationFailure.command).font(IonType.mono)
-                    Text(verificationFailure.outputTail).font(IonType.microLabel).lineLimit(4)
+                Section("Bench verification failed") {
+                    Text(BenchVerificationCopy.headline(replayedBranches: verificationFailure.replayedBranches))
+                    if let onReviewVerification {
+                        Button {
+                            onReviewVerification()
+                        } label: {
+                            Label("Fix verification failure", systemImage: "checkmark.seal.trianglebadge.exclamationmark")
+                        }
+                    }
                 }
             }
             // The bench conflict's detail. The FACTS -- which files, which
