@@ -51,12 +51,34 @@ import type {
   EventEmitterContext,
 } from "./engine-control-plane-events-types";
 
+/**
+ * The context the translation arms emit through, carrying `event`'s run trace
+ * position onto every NormalizedEvent emitted for it. The arms build fresh
+ * events, so without this a client could never join its render spans
+ * (`prompt.visible`, `transcript.apply`) to the run by `trace_id`.
+ */
+function withEventTrace(ctx: EventEmitterContext, event: EngineEvent): EventEmitterContext {
+  const { trace_id: traceId, span_id: spanId } = event;
+  if (!traceId || !spanId) return ctx;
+  return {
+    ...ctx,
+    emit: (eventName, ...args) => {
+      const normalized = args[1] as NormalizedEvent | undefined;
+      if (eventName === "event" && normalized && typeof normalized === "object" && !normalized.trace_id) {
+        args[1] = { ...normalized, trace_id: traceId, span_id: spanId };
+      }
+      ctx.emit(eventName, ...args);
+    },
+  };
+}
+
 export function handleEngineEvent(
-  ctx: EventEmitterContext,
+  plainCtx: EventEmitterContext,
   tabId: string,
   tab: TabEntry,
   event: EngineEvent,
 ): void {
+  const ctx = withEventTrace(plainCtx, event);
   // Watchdog breadcrumb: this is the per-event entry point for every engine
   // event forwarded through the main process. If the main thread wedges while
   // spinning here, the watchdog worker sees this code with a climbing counter.
