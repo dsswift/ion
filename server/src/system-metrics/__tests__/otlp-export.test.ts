@@ -17,7 +17,7 @@ function sample(overrides: Partial<EnvironmentSystemMetrics> = {}): EnvironmentS
     sampledAt: 1, intervalMs: 1000,
     host: { cpuUtilization: 0.1, cpuCount: 8, effectiveCpuCount: 8, memoryTotalBytes: 16_000, memoryAvailableBytes: 4_000, memoryLimitBytes: 0, containerLimited: false, load1: 1, diskPath: '/x', diskTotalBytes: 1_000, diskFreeBytes: 250 },
     processes: [{ pid: 2, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: 12.5, cpuTimeMs: 5, rssBytes: 4096 }],
-    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6 },
+    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6, gcPauseP99Ms: 0, allocRateBytesPerS: 0, schedLatencyP99Ms: 0 },
     serverEventLoopUtilization: 0.25,
     serverEventLoopDelayP50Ms: 2,
     serverEventLoopDelayP99Ms: 30,

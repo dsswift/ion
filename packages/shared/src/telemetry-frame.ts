@@ -1,14 +1,16 @@
 /**
  * telemetry-frame.ts — expansion for compact telemetry frames.
  *
- * Telemetry v4 stores shared identity and context data in tables. The tailer
- * expands a frame before egress so existing telemetry consumers still receive
- * one complete event per record.
+ * Compact frames (the layout telemetry v4 introduced) store shared identity
+ * and context data in tables. The tailer expands a frame before egress so
+ * existing telemetry consumers still receive one complete event per record.
+ * The version is the telemetry schema: 5 added span events and runtime
+ * figures without changing the frame layout, so a 4 frame still decodes.
  */
 
 import type { EgressRecord } from './log-egress'
 
-export const TELEMETRY_FRAME_VERSION = 4
+export const TELEMETRY_FRAME_VERSION = 5
 export const TELEMETRY_FRAME_RECORD = 'telemetry.frame'
 
 type ValueMap = Record<string, unknown>

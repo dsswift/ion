@@ -594,6 +594,6 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "memoryLimitBytes",
     "memoryTotalBytes",
   ],
-  SystemMetricsProcess: ["cpuPercent", "cpuTimeMs", "name", "pid", "role", "rssBytes", "startTimeMs"],
-  SystemMetricsRuntime: ["goroutines", "heapBytes", "memLimitBytes", "numGC", "sessions", "sysBytes"],
+  SystemMetricsProcess: ["cpuPercent", "cpuTimeMs", "name", "pid", "role", "rssBytes", "sessionId", "startTimeMs"],
+  SystemMetricsRuntime: ["allocRateBytesPerS", "gcPauseP99Ms", "goroutines", "heapBytes", "memLimitBytes", "numGC", "schedLatencyP99Ms", "sessions", "sysBytes"],
 };

@@ -58,7 +58,7 @@ function sample(at: number, cpu: number): EnvironmentSystemMetrics {
       { pid: 1, startTimeMs: 1, role: 'engine', name: 'ion', cpuPercent: 3, cpuTimeMs: 1, rssBytes: 200 * 1024 ** 2 },
       { pid: 3, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: 2, cpuTimeMs: 1, rssBytes: 150 * 1024 ** 2 },
     ],
-    runtime: { heapBytes: 0, sysBytes: 0, memLimitBytes: 0, goroutines: 1, numGC: 0, sessions: 0 },
+    runtime: { heapBytes: 0, sysBytes: 0, memLimitBytes: 0, goroutines: 1, numGC: 0, sessions: 0, gcPauseP99Ms: 0, allocRateBytesPerS: 0, schedLatencyP99Ms: 0 },
   }
 }
 const device: DeviceMetricsSample = {

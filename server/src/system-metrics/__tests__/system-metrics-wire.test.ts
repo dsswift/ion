@@ -28,7 +28,7 @@ function sample(at: number): SystemMetricsSample {
     sampledAt: at, intervalMs: 1000,
     host: { cpuUtilization: 0.3, cpuCount: 4, effectiveCpuCount: 4, memoryTotalBytes: 8, memoryAvailableBytes: 4, memoryLimitBytes: 0, containerLimited: false, load1: null, diskPath: '/d', diskTotalBytes: 10, diskFreeBytes: 5 },
     processes: [{ pid: 9, startTimeMs: 1, role: 'engine', name: 'ion', cpuPercent: null, cpuTimeMs: 0, rssBytes: 1 }],
-    runtime: { heapBytes: 0, sysBytes: 0, memLimitBytes: 0, goroutines: 1, numGC: 0, sessions: 0 },
+    runtime: { heapBytes: 0, sysBytes: 0, memLimitBytes: 0, goroutines: 1, numGC: 0, sessions: 0, gcPauseP99Ms: 0, allocRateBytesPerS: 0, schedLatencyP99Ms: 0 },
   }
 }
 

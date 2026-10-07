@@ -23,7 +23,7 @@ function sample(at: number, cpu: number | null = 0.5): SystemMetricsSample {
       memoryLimitBytes: 0, containerLimited: false, load1: 1, diskPath: '/x', diskTotalBytes: 1_000, diskFreeBytes: 250,
     },
     processes: [{ pid: 10, startTimeMs: 1, role: 'engine', name: 'ion', cpuPercent: 20, cpuTimeMs: 5, rssBytes: 100 }],
-    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6 },
+    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6, gcPauseP99Ms: 0, allocRateBytesPerS: 0, schedLatencyP99Ms: 0 },
   }
 }
 
