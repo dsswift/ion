@@ -7,10 +7,10 @@ import SwiftUI
 /// row already sits under its project.
 final class InboxRowLayoutTests: XCTestCase {
 
-    private func tab(directory: String = "/work/ion", lastMessage: String? = nil, extra: String = "") throws -> RemoteTabState {
+    private func tab(directory: String = "/work/ion", status: String = "idle", lastMessage: String? = nil, extra: String = "") throws -> RemoteTabState {
         let message = lastMessage.map { ", \"lastMessage\": \"\($0)\"" } ?? ""
         let json = """
-        {"id":"t1","title":"Fix login","status":"idle","workingDirectory":"\(directory)",
+        {"id":"t1","title":"Fix login","status":"\(status)","workingDirectory":"\(directory)",
         "permissionMode":"auto","permissionQueue":[],"inboxState":"active"\(message)\(extra)}
         """.data(using: .utf8)!
         return try JSONDecoder().decode(RemoteTabState.self, from: json)
@@ -76,6 +76,29 @@ final class InboxRowLayoutTests: XCTestCase {
     func testTreeRowPreviewIsPlainText() throws {
         let row = try tab(lastMessage: "**Done.** Tests pass")
         XCTAssertEqual(InboxRowView.detail(for: row, showsProject: false), .preview("Done. Tests pass"))
+    }
+
+    // MARK: - Emphasis
+
+    func testWorkingRowRecedesBelowAReadIdleRow() throws {
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "running")), .working)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "starting")), .working)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(extra: ", \"backgroundLiveness\": \"monitoring\"")), .working)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab()), .quiet)
+        XCTAssertLessThan(InboxRowView.Emphasis.working.opacity, InboxRowView.Emphasis.quiet.opacity)
+        XCTAssertLessThan(InboxRowView.Emphasis.quiet.opacity, InboxRowView.Emphasis.full.opacity)
+    }
+
+    /// The server's quiet flag covers busy rows too; working must still win.
+    func testWorkingRowRecedesEvenWhenUnreadOrServerQuiet() throws {
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "running", extra: ", \"unread\": true")), .working)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "running", extra: ", \"quiet\": true")), .working)
+    }
+
+    func testRowsThatNeedThePersonStayFull() throws {
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "running", extra: ", \"wokeAt\": 1000")), .full)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(extra: ", \"unread\": true")), .full)
+        XCTAssertEqual(InboxRowView.emphasis(for: try tab(status: "failed")), .full)
     }
 
     // MARK: - Worktree header
