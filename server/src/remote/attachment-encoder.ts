@@ -5,6 +5,7 @@ import { PNG } from 'pngjs'
 import { decode as decodeJpeg, encode as encodeJpeg } from 'jpeg-js'
 import { log as _log, warn as _warn } from '../logger'
 import type { ImageAttachmentPayload } from '@ion/shared/types'
+import { ATTACHMENT_IMAGE_MAX_DIM, ATTACHMENT_IMAGE_TARGET_BYTES } from '@ion/shared/attachment-image-targets'
 
 // ---------------------------------------------------------------------------
 // Image codecs.
@@ -42,16 +43,10 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
 // stray multi-hundred-MB photo never explodes memory on the way to resize.
 const RAW_MAX_BYTES = 25 * 1024 * 1024
 
-// Anthropic auto-downscales anything wider than 1568px on the long edge,
-// so resampling client-side at this size is the largest you'd ever want
-// to send. Everything past it is paid token waste.
-const MAX_DIM = 1568
-
-// Target encoded size after recompression. iOS already compresses to
-// ~1 MB before upload; matching that here keeps the wire payload small,
-// stays well under Anthropic's 5 MB per-image input cap, and stays under
-// the engine's NDJSON line cap with room to spare.
-const TARGET_BYTES = 1_000_000
+// The long-edge and encoded-size targets are shared with the browser, which
+// shrinks a photo to the same numbers before it uploads one.
+const MAX_DIM = ATTACHMENT_IMAGE_MAX_DIM
+const TARGET_BYTES = ATTACHMENT_IMAGE_TARGET_BYTES
 
 // Engine-side cap for a single inlined document (mirrors the engine's
 // maxInlineAttachmentBytes). PDFs are sent verbatim -- never recompressed --

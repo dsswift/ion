@@ -109,7 +109,20 @@ export const FILE_ACTIONS: Record<string, FileActionSpec> = {
   // attachment is part of composing a prompt, so it takes the scope that
   // sending one takes. It writes only under the server's own data directory,
   // never into a working tree, which is why it is not `git:write`.
-  'fs.saveAttachmentData': wrap('fs.saveAttachmentData', 'conversations:operate', (args) => saveAttachmentData(args[0])),
+  'fs.saveAttachmentData': {
+    requiredScope: 'conversations:operate',
+    handler: async (conn, args) => {
+      try {
+        const saved = saveAttachmentData(args[0])
+        // A refusal is an answer the person can act on, so it travels with its reason.
+        if ('refused' in saved) return { ok: false, error: { code: saved.refused, message: saved.message } }
+        return { ok: true, value: saved }
+      } catch (err) {
+        warn('file action threw', { connection_id: conn.id, action: 'fs.saveAttachmentData', error: String(err) })
+        return { ok: false, error: { code: 'file_action_failed', message: String(err) } }
+      }
+    },
+  },
 
   'fs.writeFile': wrap('fs.writeFile', 'git:write', (args) => fileApi.fsWriteFile(args[0])),
   'fs.createDir': wrap('fs.createDir', 'git:write', (args) => fileApi.fsCreateDir(args[0])),
