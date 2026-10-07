@@ -104,7 +104,9 @@ export function auditOvercount(json: Record<string, unknown>): string[] {
   const violations: string[] = [];
   for (const t of targets) {
     const cls = t.__ionClass as string;
-    const mode = t.queryType as string;
+    // Loki targets state the mode as queryType; a Prometheus target states it
+    // as the instant/range booleans (panels.ts keeps queryType on both).
+    const mode = (t.queryType as string | undefined) ?? (t.range === true ? 'range' : t.instant === true ? 'instant' : '');
     const expr = t.expr as string;
     if (cls === 'accumulation' && mode === 'range' && FIXED_WINDOW.test(expr)) {
       violations.push(`range accumulation with fixed window: ${expr}`);

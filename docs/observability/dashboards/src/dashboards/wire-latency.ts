@@ -9,7 +9,10 @@
 //
 // Every panel is a windowed statistic over a rolling window, which is correct
 // by design for this dashboard — the window is not pinned in the titles
-// (statistical smoothing convention: "p50 / p95", not "(1m)").
+// (statistical smoothing convention: "p50 / p95", not "(1m)"). The lines hold
+// per-minute summaries, not raw probes, so a p95 here is the p95 of the
+// per-minute p95s (queries-latency.ts explains); every description says which
+// statistic of which summary it shows.
 //
 // This replaced a set of panels that timed desktop→iOS transport frames. That
 // transport is gone (ADR-035 put every client on the Studio wire), nothing had
@@ -35,7 +38,7 @@ export function wireLatencyDashboard(): Dashboard {
       id: 2,
       title: 'Round trip to each client (p50 / p95)',
       description:
-        'Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. Source: server.jsonl tag=wire-latency msg="wire window" fields.rtt_p50_ms / rtt_p95_ms.',
+        'Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. The server logs one line per connection per minute with that minute\'s p50 and p95, not the raw probes: the p50 line is the median of the per-minute p50s over 5 m, the p95 line the p95 of the per-minute p95s. The full per-probe distribution is in the server\'s OTLP metrics export (ion.server.* wire histograms). Source: server.jsonl tag=wire-latency msg="wire window" fields.rtt_p50_ms / rtt_p95_ms.',
       gridPos: { h: 8, w: 12, x: 0, y: 0 },
       fieldConfig: line('ms'),
       options: legend(),
@@ -58,7 +61,7 @@ export function wireLatencyDashboard(): Dashboard {
       id: 4,
       title: 'Outbound queue wait (p95)',
       description:
-        'How long a frame sat between entering the send queue and leaving the socket. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.',
+        'How long a frame sat between entering the send queue and leaving the socket: the p95 of each minute\'s p95 over 5 m. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.',
       gridPos: { h: 8, w: 12, x: 0, y: 8 },
       fieldConfig: line('ms'),
       options: legend(),
@@ -68,11 +71,11 @@ export function wireLatencyDashboard(): Dashboard {
       id: 5,
       title: 'Peak send-queue depth',
       description:
-        'The deepest the bounded send queue got in the window. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.',
+        'The deepest the bounded send queue got: the maximum of each minute\'s peak over 5 m. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.',
       gridPos: { h: 8, w: 12, x: 12, y: 8 },
       fieldConfig: line('bytes'),
       options: legend(),
-      targets: [{ e: wireWindowStat({ field: 'fields_queue_max', window: '5m' }), legend: '{{fields_client_kind}}' }],
+      targets: [{ e: wireWindowStat({ field: 'fields_queue_max', window: '5m', agg: 'max' }), legend: '{{fields_client_kind}}' }],
     }),
     timeseries({
       id: 6,
@@ -88,7 +91,7 @@ export function wireLatencyDashboard(): Dashboard {
       id: 7,
       title: 'Server time per action (p95)',
       description:
-        'The server\'s own work on one studio_action, receipt to result sent — the wire is not in this number. Compare against the client-felt panel below: the gap between them is the wire. Source: server.jsonl fields.action_p95_ms.',
+        'The server\'s own work on one studio_action, receipt to result sent — the wire is not in this number: the p95 of each minute\'s p95 over 5 m. Compare against the client-felt panel below: the gap between them is the wire. Ion Performance has the same figure per action name from the action.handle span. Source: server.jsonl fields.action_p95_ms.',
       gridPos: { h: 8, w: 12, x: 12, y: 16 },
       fieldConfig: line('ms'),
       options: legend(),
@@ -98,7 +101,7 @@ export function wireLatencyDashboard(): Dashboard {
       id: 8,
       title: 'Client-felt action latency (p50 / p95)',
       description:
-        'What a person waits through: an action leaving the client and its result arriving back, from each client\'s own window. desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client\'s log, tag=wire-latency msg="client window".',
+        'What a person waits through: an action leaving the client and its result arriving back, from each client\'s own per-minute window (the median of per-minute p50s, and the p95 of per-minute p95s, over 5 m). desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client\'s log, tag=wire-latency msg="client window".',
       gridPos: { h: 8, w: 12, x: 0, y: 24 },
       fieldConfig: line('ms'),
       options: legend(),
@@ -111,7 +114,7 @@ export function wireLatencyDashboard(): Dashboard {
       id: 9,
       title: 'Client action timeouts, and server decode errors',
       description:
-        'Two ways the wire fails rather than slows. Timeouts are actions a client gave up on, counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server. Sources: client windows fields.action_timeouts; server windows fields.decode_errors.',
+        'Two ways the wire fails rather than slows. Timeouts are actions a client gave up on (per-minute counts averaged over 5 m), counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server (summed over 5 m). Sources: client windows fields.action_timeouts; server windows fields.decode_errors.',
       gridPos: { h: 8, w: 12, x: 12, y: 24 },
       fieldConfig: {
         defaults: { unit: 'short', custom: { lineWidth: 2, fillOpacity: 20 } },

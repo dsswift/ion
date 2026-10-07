@@ -1,0 +1,9 @@
+# Prometheus for dev.yaml, which drops any compose `command:` field, so the
+# flags the local stack needs are baked in here. docker-compose.yml names the
+# same image tag and the same flags directly; change both together.
+#   --web.enable-otlp-receiver          the engine's OTLP metrics export writes here
+#   --web.enable-remote-write-receiver  Tempo's metrics-generator remote-writes span metrics here
+#   --enable-feature=exemplar-storage   keeps the trace id Tempo attaches to each histogram sample
+FROM prom/prometheus:v3.14.0
+COPY prometheus.yml /etc/prometheus/prometheus.yml
+CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=15d", "--web.enable-otlp-receiver", "--web.enable-remote-write-receiver", "--enable-feature=exemplar-storage"]

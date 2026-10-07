@@ -1,0 +1,2003 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "How long each operation takes, end to end, from the spans every surface emits: percentiles per span name and service from Tempo's span metrics in Prometheus, run duration beside cost, cold starts, store actions, snapshot and patch builds, client render and hydrate, the relay, and the server event loop and engine GC from the System Metrics sample lines. Phone spans ride the server's diagnostic-log pull and can be up to ~30 s behind.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Latency by span",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Engine spans p95",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "description": "p95 of every engine span per step, one line per span name: run.execute, llm.call, llm.attempt, tool.execute, extension.hook_latency, hook.fanout, dispatch.agent, command.dispatch, conversation.load, conversation.persist, context.assemble, compaction, mcp.start, mcp.call, extension.spawn, permission.decide, config.load, provider.probe, session.start, daemon.startup. Backend and Model filter the spans that carry those attributes. Source: traces_spanmetrics_latency_bucket{service=\"ion-engine\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", service=\"ion-engine\", backend=~\"$backend\", model=~\"$model\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Server spans p95",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "description": "p95 of every Ion Studio Server span per step: action.handle, engine.request, engine.send_prompt, prompt.handle, snapshot.build, tabs_index.build, thin.first_paint, transcript.patch, body.serve, settled.publish, store.broadcast, git.exec, worktree.*, bench.rebuild, transfer.*, http.request, log.ingest, hello.auth, relay.frame, fleet.deploy, push.ring. Client kind filters the spans that carry it. Source: traces_spanmetrics_latency_bucket{service=\"ion-server\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", service=\"ion-server\", client_kind=~\"$client_kind\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Client spans p95",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "description": "p95 of every client span per step, one line per service and span name. Desktop: app.launch, window.ready, studio.first_paint, store.hydrate, connection.connect, body.load, transcript.apply, prompt.send, prompt.visible, terminal.echo. iOS: app.launch, connection.connect, pairing.complete, snapshot.apply, transcript.apply, prompt.send, prompt.visible, push.open. A browser Studio tab is ion-web. Source: traces_spanmetrics_latency_bucket{service=~\"ion-desktop|ion-web|ion-ios\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", service=~\"ion-desktop|ion-web|ion-ios\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{service}} {{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "p50 / p95 / p99 per span and service",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "description": "Every span name Tempo has seen in the range, by service, with its p50, p95, and p99 over the whole range. Sort by p99 to find the slowest operation. Seconds. Source: traces_spanmetrics_latency_bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "span_name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "span"
+              },
+              {
+                "id": "custom.width",
+                "value": 240
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "p50"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "p95"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #C"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "p99"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "p99",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "B",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "C",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Run duration and cost",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "run.execute p50 / p95 by model",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      },
+      "description": "How long an engine run takes from start to exit, per model, from the run.execute span. The alert \"Ion run p95 over 120 s\" reads the ungrouped p95. Source: traces_spanmetrics_latency_bucket{span_name=\"run.execute\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, model) (rate(traces_spanmetrics_latency_bucket{span_name=\"run.execute\", service=\"ion-engine\", backend=~\"$backend\", model=~\"$model\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p50 {{model}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(traces_spanmetrics_latency_bucket{span_name=\"run.execute\", service=\"ion-engine\", backend=~\"$backend\", model=~\"$model\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p95 {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "LLM call, attempt, and tool p95",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      },
+      "description": "Inside a run: llm.call is one model turn including retries, llm.attempt one request to the provider, tool.execute one tool call, provider.probe one provider reachability probe. A gap between llm.call and llm.attempt is retry time. Source: traces_spanmetrics_latency_bucket{service=\"ion-engine\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"llm.call|llm.attempt|tool.execute|provider.probe\", service=\"ion-engine\", backend=~\"$backend\", model=~\"$model\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Cost and duration per run, by model",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "description": "One row per model over the range: runs, average cost per run (run_cost_usd, this run only, excluding dispatched sub-agents), and the p95 run duration the engine reported on run.complete. Reads the telemetry event, so it needs telemetry enabled; the span panel beside it reads the same runs as spans. Source: {event_name=\"run.complete\"}.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "payload_model"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "model"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "runs"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "cost / run"
+              },
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #C"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "duration p95"
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "cost / run",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_run_cost_usd [$__range])) / sum by (payload_model) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "B",
+          "__ionClass": "windowed-stat"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_duration_ms [$__range]) by (payload_model)",
+          "queryType": "instant",
+          "refId": "C",
+          "__ionClass": "windowed-stat"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Cold starts",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Engine daemon startup p95",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 31
+      },
+      "description": "daemon.startup: the engine process from start to the socket accepting clients, p95 over the range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no spans",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"daemon.startup\", service=\"ion-engine\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Studio app launch p95",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 31
+      },
+      "description": "app.launch on the desktop: Electron start to the first Studio window ready, p95 over the range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no spans",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"app.launch\", service=\"ion-desktop\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "iOS app launch p95",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 31
+      },
+      "description": "app.launch on the phone: process start to the first screen, p95 over the range. Phone spans ride the server's diagnostic-log pull, so this can be up to ~30 s behind.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no spans",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"app.launch\", service=\"ion-ios\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Extension spawn p95",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 31
+      },
+      "description": "extension.spawn: the engine starting an extension subprocess to its init handshake, p95 over the range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no spans",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"extension.spawn\", service=\"ion-engine\", host_name=~\"$host\", user=~\"$user\"}[$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Cold starts over time (p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "description": "The start-up spans per step, one line per service and span: daemon.startup and session.start (engine), extension.spawn and mcp.start (engine), app.launch, window.ready and studio.first_paint (desktop), app.launch and pairing.complete (iOS). There is no Ion Studio Server start-up span; the server's first hello.auth marks its readiness.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"daemon.startup|session.start|extension.spawn|mcp.start|app.launch|window.ready|studio.first_paint|pairing.complete\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{service}} {{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Store actions and engine requests",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "action.handle p95 by action",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "description": "The server's own time on one Studio store action, receipt to result sent, per action name (the `action` attribute). Client kind filters by the connection that sent it. The wire is not in this number; Ion Wire Latency has the client-felt figure. Source: traces_spanmetrics_latency_bucket{span_name=\"action.handle\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, action) (rate(traces_spanmetrics_latency_bucket{span_name=\"action.handle\", service=\"ion-server\", client_kind=~\"$client_kind\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{action}}"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Store actions per second by surface",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "description": "How many actions each Studio surface (the `surface` attribute) sends per second. Source: traces_spanmetrics_calls_total{span_name=\"action.handle\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (surface) (rate(traces_spanmetrics_calls_total{span_name=\"action.handle\", service=\"ion-server\", client_kind=~\"$client_kind\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{surface}}"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "engine.request p95 by command",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "description": "A server request to the engine, per client command (the `command` attribute), from send to the engine's answer. Source: traces_spanmetrics_latency_bucket{span_name=\"engine.request\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, command) (rate(traces_spanmetrics_latency_bucket{span_name=\"engine.request\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{command}}"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Prompt hand-off and engine command dispatch p95",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "description": "prompt.handle and engine.send_prompt (server): a prompt from receipt to the engine accepting it. command.dispatch (engine): one client command from receipt to its result, per command. Source: traces_spanmetrics_latency_bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"prompt.handle|engine.send_prompt\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, command) (rate(traces_spanmetrics_latency_bucket{span_name=\"command.dispatch\", service=\"ion-engine\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "command.dispatch {{command}}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "row",
+      "title": "Snapshot, patch, and publish",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Server build and publish spans p95",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 63
+      },
+      "description": "snapshot.build and tabs_index.build (what a connecting client receives), thin.first_paint (the phone's first screen), transcript.patch (one transcript delta), settled.publish and store.broadcast (fan-out to every connection). Source: traces_spanmetrics_latency_bucket{service=\"ion-server\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"snapshot.build|tabs_index.build|thin.first_paint|transcript.patch|settled.publish|store.broadcast\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Body serve and conversation persistence p95",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 63
+      },
+      "description": "body.serve (server): one conversation body served to a client. conversation.load, conversation.persist, context.assemble, compaction (engine): reading and writing the conversation tree and building the model context. Source: traces_spanmetrics_latency_bucket.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=\"body.serve\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"conversation.load|conversation.persist|context.assemble|compaction\", service=\"ion-engine\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Render and hydrate",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Client render and hydrate spans p95",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 73
+      },
+      "description": "store.hydrate (desktop: the mirror store filled from the first snapshot), snapshot.apply (iOS), transcript.apply (both: one transcript delta rendered), body.load (desktop: a conversation body fetched and shown), connection.connect (both; Transport filters the desktop's). Source: traces_spanmetrics_latency_bucket{service=~\"ion-desktop|ion-web|ion-ios\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"store.hydrate|snapshot.apply|transcript.apply|body.load|connection.connect\", service=~\"ion-desktop|ion-web|ion-ios\", transport=~\"$transport\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{service}} {{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Prompt send and prompt visible p95",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 73
+      },
+      "description": "prompt.send: the operator submits until the server answers. prompt.visible: the same submit until the first token of the answer is on screen, the number a person feels. Per client service. Source: traces_spanmetrics_latency_bucket{span_name=~\"prompt.send|prompt.visible\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, service, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"prompt.send|prompt.visible\", service=~\"ion-desktop|ion-web|ion-ios\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{service}} {{span_name}}"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "Relay",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 82
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "relay.forward p95 by direction (span metrics)",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 83
+      },
+      "description": "The relay forwarding one frame, receive to the write to the peer, per direction, from its relay.forward span. Source: traces_spanmetrics_latency_bucket{service=\"ion-relay\"}.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, direction) (rate(traces_spanmetrics_latency_bucket{span_name=\"relay.forward\", service=\"ion-relay\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "Relay forward p50 / p95 by direction (relay metrics)",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 83
+      },
+      "description": "The same forward, from the relay's own relay_forward_seconds histogram scraped by Prometheus. Agreement with the span panel beside it is the check that both paths see every frame.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, direction) (rate(relay_forward_seconds_bucket{le=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p50 {{direction}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, direction) (rate(relay_forward_seconds_bucket{le=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p95 {{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Relay ping round trip p50 / p95",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 83
+      },
+      "description": "The relay's WebSocket ping to each peer and back, on the relay's clock. Source: relay_ping_rtt_seconds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(relay_ping_rtt_seconds_bucket{le=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(relay_ping_rtt_seconds_bucket{le=~\".+\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "row",
+      "title": "Runtime: event loop and garbage collector",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 92
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Server event-loop delay (per-sample p50 / p99)",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 93
+      },
+      "description": "How late the Ion Studio Server's event loop ran its timers, per device: the p50 and p99 within each 30 s sample, averaged over 5 m. A p99 above 200 ms for 5 minutes fires \"Ion server event loop p99 over 200 ms\". Source: server.jsonl tag=system-metrics fields.server_event_loop_p50_ms / server_event_loop_p99_ms.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"system-metrics\" | msg=\"system metrics sample\" | fields_server_event_loop_p50_ms != \"\" | unwrap fields_server_event_loop_p50_ms [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p50 {{host_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"system-metrics\" | msg=\"system metrics sample\" | fields_server_event_loop_p99_ms != \"\" | unwrap fields_server_event_loop_p99_ms [5m]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p99 {{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "Engine GC pause p99 and scheduler latency p99",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 93
+      },
+      "description": "The Go runtime's stop-the-world pause and goroutine scheduling latency inside the engine, per device: the p99 within each 30 s sample, averaged over 5 m. Source: engine.jsonl tag=sysmetrics fields.gc_pause_p99_ms / sched_latency_p99_ms.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_gc_pause_p99_ms != \"\" | unwrap fields_gc_pause_p99_ms [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "GC pause {{host_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_sched_latency_p99_ms != \"\" | unwrap fields_sched_latency_p99_ms [5m]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "scheduler {{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Engine allocation rate",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 102
+      },
+      "description": "Bytes the engine allocated per second since the previous sample, per device. A climbing rate with a flat heap is churn the collector is paying for. Source: engine.jsonl tag=sysmetrics fields.alloc_rate_bytes_per_s.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_alloc_rate_bytes_per_s != \"\" | unwrap fields_alloc_rate_bytes_per_s [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{host_name}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": [
+    "ion",
+    "performance",
+    "latency",
+    "spans",
+    "tempo"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "backend",
+        "label": "Backend",
+        "type": "query",
+        "description": "The run's backend (`backend` span attribute): the engine's own model loop, or a delegated CLI. Filters engine spans; All keeps spans without the attribute.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(traces_spanmetrics_calls_total, backend)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "description": "The model a run or call used (`model` span attribute). Filters engine spans; All keeps spans without the attribute.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(traces_spanmetrics_calls_total, model)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "transport",
+        "label": "Transport",
+        "type": "query",
+        "description": "How Studio reached the server (`transport` on connection.connect). Filters client spans; All keeps spans without the attribute.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(traces_spanmetrics_calls_total, transport)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "client_kind",
+        "label": "Client kind",
+        "type": "query",
+        "description": "The connection kind the server saw (`client_kind` on server spans): desktop, web, or ios. Filters server spans; All keeps spans without the attribute.",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(traces_spanmetrics_calls_total, client_kind)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Performance",
+  "uid": "ion-performance-001",
+  "version": 1
+}

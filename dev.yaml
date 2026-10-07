@@ -19,13 +19,16 @@ vars:
 # =============================================================================
 # SERVICES
 # =============================================================================
-# Ion local observability stack — 5 containers.
+# Ion local observability stack; the `observability` profile below lists its
+# services.
 #
 # Default config-path mounts (empirically verified via docker inspect):
 #   alloy  CMD: run /etc/alloy/config.alloy  → mount there, default CMD works
 #   loki   CMD: -config.file=/etc/loki/local-config.yaml → mount there
 #   grafana: no CMD, /run.sh entrypoint, env-driven — no command override needed
 #   tempo  CMD: None → build/Dockerfile.tempo COPYs config and sets CMD
+#   prometheus CMD: flags only, without the receivers this stack needs →
+#          build/Dockerfile.prometheus COPYs config and sets CMD
 #
 # NOTE: The v4 compose: block has no command/entrypoint field (silently dropped
 # by the executor). All config delivery is via volume mounts or image builds.
@@ -145,6 +148,27 @@ services:
       # 4317/4318. Grafana reaches Tempo inside the network on 3200.
       volumes:
         - tempo-data:/var/tempo
+      # The metrics-generator remote-writes span metrics and the service
+      # graph to Prometheus (tempo-config.yaml).
+      depends_on:
+        - prometheus
+
+  # Prometheus is the metrics store: the engine's OTLP metrics export writes
+  # to its OTLP receiver, Tempo's metrics-generator to its remote-write
+  # receiver, and it scrapes the relay. Grafana reads it as the "Prometheus"
+  # data source. Like tempo, the flags are baked into the image because the
+  # v4 executor drops command:; docker-compose.yml names the same tag and
+  # flags directly, so change both together.
+  prometheus:
+    tier: docker
+    compose:
+      build:
+        context: ./docs/observability
+        dockerfile: Dockerfile.prometheus
+      ports:
+        - "9090:9090"
+      volumes:
+        - prometheus-data:/prometheus
 
   # Local Event Hub emulator — lets conversationEvents.targets: ["eventhub"]
   # be exercised end to end without a real Azure subscription. Speaks AMQP
@@ -287,7 +311,8 @@ services:
 # =============================================================================
 # Log-flow: engine/server/desktop/ios JSONL -> alloy -> loki -> grafana
 #           telemetry JSONL -> telemetry-forwarder -> alloy API
-#           tempo <- otlp (from alloy)
+#           tempo <- otlp (from alloy); tempo -> prometheus (span metrics)
+#           engine OTLP metrics -> prometheus -> grafana
 
 graph:
   host:
@@ -299,7 +324,18 @@ graph:
       label: "desktop.jsonl"
     - name: ios-logs
       label: "ios-diagnostic-logs.jsonl"
+    - name: otlp-metrics
+      label: "engine OTLP metrics"
   edges:
+    - from: otlp-metrics
+      to: prometheus
+      label: "OTLP receiver"
+    - from: tempo
+      to: prometheus
+      label: "span metrics (remote write)"
+    - from: prometheus
+      to: grafana
+      label: "query"
     - from: engine-logs
       to: alloy
       label: "tail (ro)"
@@ -336,7 +372,7 @@ graph:
       services: [alloy, telemetry-forwarder, mount-refresher]
     storage:
       label: "Storage"
-      services: [loki, tempo]
+      services: [loki, tempo, prometheus]
     visualization:
       label: "Visualization"
       services: [grafana]
@@ -361,7 +397,7 @@ config:
 
 profiles:
   observability:
-    description: "Local observability stack: Alloy, Loki, Grafana, Tempo, Event Hub emulator"
+    description: "Local observability stack: Alloy, Loki, Grafana, Tempo, Prometheus, Event Hub emulator"
     services:
       alloy:
         tier: docker
@@ -374,6 +410,8 @@ profiles:
       grafana:
         tier: docker
       tempo:
+        tier: docker
+      prometheus:
         tier: docker
       eventhub-emulator:
         tier: docker
@@ -431,7 +469,7 @@ utilities:
 
   clear-observability-data:
     command: |
-      echo "Clearing Loki and Alloy state (docker compose -p ion-obs down -v)."
+      echo "Clearing Loki, Alloy, Tempo, and Prometheus state (docker compose -p ion-obs down -v)."
       echo ""
       echo "Will re-ingest on next observability-profile deploy:"
       echo "  ~/.ion/engine.jsonl              (engine + extension logs)"

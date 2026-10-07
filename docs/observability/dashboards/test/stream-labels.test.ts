@@ -42,10 +42,13 @@ function fleetLabels(): Set<string> {
   return promotedLabels(block[1]);
 }
 
+// Loki expressions only: a PromQL target (datasource type prometheus) selects
+// on Prometheus series labels, which no log collector produces.
 function exprs(v: unknown, out: string[]): string[] {
   if (Array.isArray(v)) for (const x of v) exprs(x, out);
   else if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
+    if ((o.datasource as Record<string, unknown> | undefined)?.type === 'prometheus') return out;
     for (const k of ['expr', 'rawQuery']) if (typeof o[k] === 'string') out.push(o[k] as string);
     for (const x of Object.values(o)) exprs(x, out);
   }

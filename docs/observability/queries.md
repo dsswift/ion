@@ -2,7 +2,7 @@
 
 > **Generated file — do not edit by hand.** This document is emitted by `docs/observability/dashboards` (`npm run generate`). Every expression below is defined once in the canonical query module and shared by the dashboard panels, so the reference cannot drift from what the dashboards actually run. Edit the query module and regenerate; `make check-dashboards` fails on drift.
 
-All queries are LogQL targeting the Loki datasource. Field names are snake_case structured-metadata keys promoted by Alloy from the NDJSON telemetry log. See [`log-schema.md`](log-schema.md) for the full field reference.
+A `logql` block is LogQL against the Loki datasource; field names are snake_case structured-metadata keys promoted by Alloy from the NDJSON telemetry log. A `promql` block is PromQL against the Prometheus datasource: the span metrics Tempo's metrics-generator writes (`traces_spanmetrics_*`), the relay's own metrics (`relay_*`), and the OTLP metrics export. See [`log-schema.md`](log-schema.md) for the full field reference and § "Spans" for every span name.
 
 ## Query classes
 
@@ -44,6 +44,56 @@ Count of `idle repaint detected` WARN lines: Studio's GPU helper or a renderer b
 
 ```logql
 sum by (host_name) (count_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="idle repaint detected" [$__interval]))
+```
+
+### Span latency p95 by span name (span metrics)
+
+**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
+
+p95 of one service's spans per step, one series per span name, from the histogram Tempo's metrics-generator writes to Prometheus. Swap the service, the quantile, or the grouping (`model`, `backend`, `action`, `command`, `surface`, `transport`, `client_kind`, `direction`). Seconds.
+
+```promql
+histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~".+", service="ion-engine"}[$__rate_interval])))
+```
+
+### Store action p95 by action (span metrics)
+
+**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
+
+p95 of the server's `action.handle` span per store action: the server's own time on one Studio action, from receipt to the result sent. The Performance alert "Ion store action p95 over 500 ms" reads the ungrouped form.
+
+```promql
+histogram_quantile(0.95, sum by (le, action) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle", service="ion-server"}[$__rate_interval])))
+```
+
+### Cold start p95 over the dashboard range (span metrics)
+
+**Class:** `instant` &nbsp; **Window:** `$__range`
+
+One headline number for a start-up span over the whole range: `daemon.startup` (engine), `app.launch` (desktop and iOS, told apart by `service`), `extension.spawn` (engine).
+
+```promql
+histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="daemon.startup", service="ion-engine"}[$__range])))
+```
+
+### Span rate by surface (span metrics)
+
+**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
+
+Spans per second from the call counter, here `action.handle` split by the Studio surface that sent the action.
+
+```promql
+sum by (surface) (rate(traces_spanmetrics_calls_total{span_name="action.handle", service="ion-server"}[$__rate_interval]))
+```
+
+### Relay forward p95 by direction (relay metrics)
+
+**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
+
+p95 of the relay's own `relay_forward_seconds` histogram, per direction (`mobile_to_ion`, `ion_to_mobile`), scraped from the relay's metrics endpoint. The `relay.forward` span gives the same figure through span metrics.
+
+```promql
+histogram_quantile(0.95, sum by (le, direction) (rate(relay_forward_seconds_bucket{le=~".+"}[$__rate_interval])))
 ```
 
 ### Ingest freshness by component (minutes since last line)

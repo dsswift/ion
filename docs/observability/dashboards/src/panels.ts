@@ -22,7 +22,7 @@
 // rolling count (identical LogQL, different intent).
 
 import type { Expr, FixedWindow } from './types.ts';
-import { LOKI, TEMPO, isFixedWindow } from './types.ts';
+import { LOKI, TEMPO, PROMETHEUS, MIXED, isFixedWindow } from './types.ts';
 
 export type EvalMode = 'instant' | 'range';
 
@@ -41,13 +41,27 @@ export interface Target {
 }
 
 // The emitted target shape. `__ionClass` is the audit hook.
+//
+// A Loki target states its evaluation mode as `queryType`. A Prometheus
+// target states it the way Grafana's Prometheus query model does, as the
+// `instant` / `range` booleans; `queryType` is kept on it too so the
+// structural audit (check.ts) and the semantic diff read one field for both.
 interface EmittedTarget {
-  datasource: typeof LOKI;
+  datasource: typeof LOKI | typeof PROMETHEUS;
   expr: string;
   legendFormat?: string;
   queryType: EvalMode;
+  instant?: boolean;
+  range?: boolean;
   refId: string;
   __ionClass: Expr['cls'];
+}
+
+/** The datasource a panel declares: one store, or Mixed when its targets differ. */
+function panelDatasource(targets: readonly Target[]): typeof LOKI | typeof PROMETHEUS | typeof MIXED {
+  const prom = targets.filter((t) => t.e.datasource === 'prometheus').length;
+  if (prom === 0) return LOKI;
+  return prom === targets.length ? PROMETHEUS : MIXED;
 }
 
 const REF_IDS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -76,12 +90,16 @@ function emitTarget(t: Target, mode: EvalMode, index: number, panelTitle: string
   }
 
   const out: EmittedTarget = {
-    datasource: LOKI,
+    datasource: e.datasource === 'prometheus' ? PROMETHEUS : LOKI,
     expr: e.expr,
     queryType: mode,
     refId: t.refId ?? REF_IDS[index],
     __ionClass: e.cls,
   };
+  if (e.datasource === 'prometheus') {
+    out.instant = mode === 'instant';
+    out.range = mode === 'range';
+  }
   if (t.legend !== undefined) out.legendFormat = t.legend;
   return out;
 }
@@ -146,7 +164,7 @@ interface InstantPanelSpec extends PanelBase {
 
 function instantPanel(type: string, p: InstantPanelSpec): Record<string, unknown> {
   const out = base(p, type);
-  out.datasource = LOKI;
+  out.datasource = panelDatasource(p.targets);
   if (p.fieldConfig !== undefined) out.fieldConfig = p.fieldConfig;
   if (p.options !== undefined) out.options = p.options;
   if (p.transformations !== undefined) out.transformations = p.transformations;
@@ -189,7 +207,7 @@ const SERIES_MAX_DATA_POINTS = 2000;
 function seriesPanel(type: string, p: SeriesPanelSpec): Record<string, unknown> {
   assertWindowInTitle(p.targets, p.title);
   const out = base(p, type);
-  out.datasource = LOKI;
+  out.datasource = panelDatasource(p.targets);
   out.maxDataPoints = SERIES_MAX_DATA_POINTS;
   if (p.fieldConfig !== undefined) out.fieldConfig = p.fieldConfig;
   if (p.options !== undefined) out.options = p.options;
@@ -235,7 +253,7 @@ interface TablePanelSpec extends PanelBase {
 }
 export function table(p: TablePanelSpec): Record<string, unknown> {
   const out = base(p, 'table');
-  out.datasource = LOKI;
+  out.datasource = panelDatasource(p.targets);
   if (p.fieldConfig !== undefined) out.fieldConfig = p.fieldConfig;
   if (p.options !== undefined) out.options = p.options;
   if (p.transformations !== undefined) out.transformations = p.transformations;

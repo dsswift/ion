@@ -10,6 +10,14 @@ datasources:
     url: http://prometheus:9090
     jsonData:
       timeInterval: 60s
+      # Metric -> trace: Tempo's metrics-generator attaches the trace id to
+      # each span-metrics histogram sample as an exemplar labeled traceID;
+      # an OTel SDK exemplar is labeled trace_id. Either opens in Tempo.
+      exemplarTraceIdDestinations:
+        - name: traceID
+          datasourceUid: tempo
+        - name: trace_id
+          datasourceUid: tempo
   - name: Loki
     type: loki
     uid: loki
@@ -105,8 +113,9 @@ datasources:
         filterByTraceID: true
         customQuery: true
         query: '{service_name=~".+"} | trace_id="${__trace.traceId}"'
-      # No serviceMap: it reads span metrics from a Prometheus datasource, and
-      # this Tempo remote-writes none. Pointing it at Prometheus anyway made
-      # the Service Graph tab fail rather than be absent.
+      # Service Graph tab: reads the traces_service_graph_* series Tempo's
+      # metrics-generator remote-writes to Prometheus (tempo-config.yaml).
+      serviceMap:
+        datasourceUid: prometheus
       nodeGraph:
         enabled: true

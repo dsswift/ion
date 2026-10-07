@@ -21,6 +21,8 @@ export interface RegisteredQuery {
   readonly expr: string;
   readonly window: Window | null;
   readonly commentary: string;
+  // Absent means LogQL against Loki; `prometheus` means PromQL (see types.ts).
+  readonly datasource?: 'prometheus';
 }
 
 const REGISTRY: RegisteredQuery[] = [];
@@ -28,7 +30,7 @@ const REGISTRY: RegisteredQuery[] = [];
 // Register a query for the generated reference doc. Returns the Expr unchanged
 // so call sites can `return register('name', 'commentary', builder(...))`.
 export function registerQuery(name: string, commentary: string, e: Expr): Expr {
-  REGISTRY.push({ name, cls: e.cls, expr: e.expr, window: e.window, commentary });
+  REGISTRY.push({ name, cls: e.cls, expr: e.expr, window: e.window, commentary, ...(e.datasource ? { datasource: e.datasource } : {}) });
   return e;
 }
 

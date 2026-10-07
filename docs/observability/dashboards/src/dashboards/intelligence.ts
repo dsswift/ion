@@ -70,7 +70,7 @@ export function intelligenceDashboard(): Dashboard {
       id: 4,
       title: 'Provider league table',
       description:
-        "One row per model: TTFT p50, stall count, retry count, fallback-out count. The 'should we reroute traffic' view. Phase-B events required for all columns except run count.",
+        "One row per model over the range: run count (run.complete), TTFT p50 (provider.ttft), stall count (provider.stall), retry count (provider.retry), and fallback-out count (provider.fallback). The 'should we reroute traffic' view.",
       gridPos: { h: 10, w: 12, x: 0, y: 9 },
       mode: 'instant',
       fieldConfig: {
@@ -144,7 +144,7 @@ export function intelligenceDashboard(): Dashboard {
       id: 7,
       title: 'Autonomy ratio trend (daily)',
       description:
-        'The fraction of permission checks that resolve to allow, sampled per interval. Rising means the rule set is absorbing what used to need asking. A healthy trend is flat or rising. Phase-B event required.',
+        'The fraction of permission checks that resolved to allow, per step, from permission.decision. Rising means the rule set is absorbing what used to need asking. A healthy trend is flat or rising.',
       gridPos: { h: 10, w: 12, x: 12, y: 20 },
       fieldConfig: {
         defaults: {
@@ -170,7 +170,7 @@ export function intelligenceDashboard(): Dashboard {
       id: 8,
       title: 'Sub-agent adoption (weekly)',
       description:
-        'Which sub-agents are being dispatched and how often. Rising dispatch counts signal that users are leaning into multi-agent workflows. Phase-B event required.',
+        'Which sub-agents are being dispatched and how often, per step, from dispatch.agent (payload.agent). Rising dispatch counts signal that users are leaning into multi-agent workflows.',
       gridPos: { h: 10, w: 12, x: 0, y: 30 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),
@@ -191,7 +191,7 @@ export function intelligenceDashboard(): Dashboard {
       id: 11,
       title: 'Cache savings trend (weekly)',
       description:
-        'Total dollars saved by prompt caching per week. A flat or declining line means caching is not being leveraged — look at session length and repeat-prefix patterns. Phase-B event required.',
+        'Dollars saved by prompt caching per step, from cache.savings (payload.savings_usd). A flat or declining line means caching is not being leveraged — look at session length and repeat-prefix patterns.',
       gridPos: { h: 8, w: 8, x: 0, y: 41 },
       fieldConfig: lineDefaults('currencyUSD', { decimals: 4, fillOpacity: 20 }),
       options: legendBottom(false),
@@ -206,7 +206,7 @@ export function intelligenceDashboard(): Dashboard {
       id: 12,
       title: 'Tokens reclaimed by compaction (weekly)',
       description:
-        'Tokens freed by context compaction per week, split by trigger type (automatic vs manual). This is the efficiency dividend of the compaction subsystem. Phase-B event required.',
+        'Tokens freed by context compaction per step, split by trigger (automatic vs manual), from the compaction event (payload.tokens_reclaimed). This is the efficiency dividend of the compaction subsystem.',
       gridPos: { h: 8, w: 8, x: 8, y: 41 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),

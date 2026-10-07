@@ -29,9 +29,11 @@ export function renderQueriesDoc(queries: readonly RegisteredQuery[]): string {
   );
   lines.push('');
   lines.push(
-    'All queries are LogQL targeting the Loki datasource. Field names are snake_case ' +
-      'structured-metadata keys promoted by Alloy from the NDJSON telemetry log. See ' +
-      '[`log-schema.md`](log-schema.md) for the full field reference.',
+    'A `logql` block is LogQL against the Loki datasource; field names are snake_case ' +
+      'structured-metadata keys promoted by Alloy from the NDJSON telemetry log. A `promql` block is PromQL ' +
+      'against the Prometheus datasource: the span metrics Tempo\'s metrics-generator writes ' +
+      '(`traces_spanmetrics_*`), the relay\'s own metrics (`relay_*`), and the OTLP metrics export. See ' +
+      '[`log-schema.md`](log-schema.md) for the full field reference and § "Spans" for every span name.',
   );
   lines.push('');
   lines.push('## Query classes');
@@ -54,7 +56,7 @@ export function renderQueriesDoc(queries: readonly RegisteredQuery[]): string {
     lines.push('');
     lines.push(q.commentary);
     lines.push('');
-    lines.push('```logql');
+    lines.push(q.datasource === 'prometheus' ? '```promql' : '```logql');
     lines.push(q.expr);
     lines.push('```');
     lines.push('');

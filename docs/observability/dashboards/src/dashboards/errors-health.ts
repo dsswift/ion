@@ -168,7 +168,7 @@ export function errorsHealthDashboard(): Dashboard {
     stat({
       id: 21,
       title: 'Retries',
-      description: 'Count of provider.retry events. Data empty until Phase-B engine rebuild ships.',
+      description: 'Count of provider.retry events over the range: provider requests the engine retried after a retryable error. Source: {event_name="provider.retry"}.',
       gridPos: { h: 4, w: 4, x: 0, y: 39 },
       fieldConfig: {
         defaults: {
@@ -190,7 +190,7 @@ export function errorsHealthDashboard(): Dashboard {
     stat({
       id: 22,
       title: 'Stalls',
-      description: 'Count of provider.stall events (intra-stream gap threshold exceeded). Data empty until Phase-B.',
+      description: 'Count of provider.stall events over the range: streams where the gap between consecutive tokens exceeded the stall threshold. Source: {event_name="provider.stall"}.',
       gridPos: { h: 4, w: 4, x: 4, y: 39 },
       fieldConfig: {
         defaults: {
@@ -234,7 +234,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 24,
       title: 'Retry causes',
-      description: 'Retry events grouped by payload_error_code (ProviderError constants). Data empty until Phase-B.',
+      description: 'provider.retry events per step, grouped by payload_error_code (the ProviderError constants), so a burst names its cause.',
       gridPos: { h: 8, w: 12, x: 12, y: 39 },
       fieldConfig: bars(70),
       options: legendBottom(true),
@@ -243,7 +243,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 25,
       title: 'TTFT p95 by model',
-      description: 'Time-to-first-token p95, grouped by model. Data empty until Phase-B.',
+      description: 'Time to first token per step, p95 grouped by model, from the provider.ttft event (payload.ttft_ms). On a delegated CLI it includes the CLI\'s own overhead.',
       gridPos: { h: 8, w: 12, x: 0, y: 47 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
@@ -252,7 +252,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 26,
       title: 'Worst intra-stream gap p99',
-      description: 'Tail stall signal: max gap between consecutive token events during a stream. Data empty until Phase-B.',
+      description: 'Tail stall signal: the p99, per model and step, of each stream\'s longest gap between consecutive token events (provider.stream_summary payload.max_gap_ms).',
       gridPos: { h: 8, w: 12, x: 12, y: 47 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
@@ -262,7 +262,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 31,
       title: 'Extension respawns by extension',
-      description: 'Count of extension.respawn events per extension. Rising count signals instability. Data empty until Phase-B.',
+      description: 'extension.respawn events per step, per extension: each time the engine restarted an extension subprocess that exited. A rising count is an unstable extension.',
       gridPos: { h: 8, w: 12, x: 0, y: 56 },
       fieldConfig: bars(70),
       options: legendBottom(true),
@@ -272,7 +272,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 32,
       title: 'Budget-exceeded deaths',
       description:
-        'Extensions that exhausted their respawn strike budget and did not recover. Any nonzero value warrants investigation. Data empty until Phase-B.',
+        'Extensions that exhausted their respawn strike budget and did not recover, over the range (extension.respawn with outcome=budget_exceeded). Any nonzero value warrants investigation.',
       gridPos: { h: 4, w: 6, x: 12, y: 56 },
       fieldConfig: {
         defaults: {
@@ -301,7 +301,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 33,
       title: 'Cold-start p95 by extension',
       description:
-        'Time from extension process launch to ready state, p95. Persistent high values suggest startup bottlenecks. Data empty until Phase-B.',
+        'Time from extension process launch to its ready handshake, p95 per extension and step, from extension.coldstart (payload.ready_ms). The extension.spawn span on Ion Performance is the engine-side view of the same start.',
       gridPos: { h: 8, w: 18, x: 6, y: 60 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
@@ -311,7 +311,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 34,
       title: 'Client backpressure (dropped events)',
       description:
-        'Cumulative dropped event count per queue. Zero is the only good number. Note: ack RTT is not measurable today (D3 §4e.5); this is a drop/saturation gauge only. Data empty until Phase-B.',
+        'Latest cumulative dropped-event count per client queue, from client.backpressure (payload.dropped_total). Zero is the only good number. A drop/saturation gauge only: the round trip to the client is on Ion Wire Latency.',
       gridPos: { h: 8, w: 12, x: 0, y: 68 },
       fieldConfig: {
         defaults: {
@@ -332,7 +332,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 36,
       title: 'Respawn detail (range)',
       description:
-        'Full respawn event table with preceding_operation, exit_signal, and outcome. Rows with outcome=budget_exceeded are terminal failures. Data empty until Phase-B.',
+        'Every extension.respawn event in the range with preceding_operation, exit_signal, and outcome. Rows with outcome=budget_exceeded are terminal failures.',
       gridPos: { h: 8, w: 12, x: 12, y: 68 },
       mode: 'range',
       fieldConfig: {

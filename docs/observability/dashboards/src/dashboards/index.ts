@@ -22,6 +22,7 @@ import { usersDashboard } from './users.ts';
 import { fleetDashboard } from './fleet.ts';
 import { mobileDashboard } from './mobile.ts';
 import { systemMetricsDashboard } from './system-metrics.ts';
+import { performanceDashboard } from './performance.ts';
 
 export type Recipe = () => Dashboard;
 
@@ -42,4 +43,5 @@ export const RECIPES: readonly Recipe[] = [
   fleetDashboard,
   mobileDashboard,
   systemMetricsDashboard,
+  performanceDashboard,
 ];

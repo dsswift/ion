@@ -26,6 +26,12 @@
 # be fresh WHILE its paired server/desktop stream on the SAME host has gone
 # stale, rather than firing on any one component's absolute silence.
 #
+# The ion-performance group reads the span metrics Tempo's metrics-generator
+# writes to Prometheus (tempo-config.yaml; the Ion Performance dashboard's
+# panels are the same queries) and the System Metrics sample lines in Loki.
+# A Prometheus query model states its evaluation as instant/range booleans,
+# as Grafana's Prometheus datasource does; a Loki query states queryType.
+#
 # No notification contact point is configured. az-lz-platform has no Grafana
 # contact point today (investigated 2026-09-28: no grafana_contact_point /
 # grafana_notification_policy resource anywhere in that repo, and the one
@@ -177,3 +183,134 @@ groups:
         annotations:
           summary: 'A host''s engine shipped an op-log line in the last 10 minutes, that host has shipped a server or desktop op-log line at some point in the last 24h (so a pairing exists), but neither has shipped one in the last 30 minutes — the tailer-wedge case, not an idle/unpaired component going quiet.'
           description: 'Three fixed-window counts per host_name, combined in one LogQL expression (no vector()/now-macro, which Grafana''s alerting engine does not expand the way a dashboard panel does): (engine active in 10m) AND (server/desktop active at some point in 24h, i.e. a pairing exists on this host) UNLESS (server/desktop active in the last 30m). A host with no desktop/server pairing at all (headless engine, or a component that legitimately reports rarely, e.g. iOS, the relay, an idle instance) never satisfies the 24h clause and never matches. See the overview dashboard''s "Ingest freshness by component" tile for the raw per-component numbers, and README "Tailer wedge" for the known virtiofs bind-mount cause.'
+
+  - orgId: 1
+    name: ion-performance
+    folder: Ion Alerts
+    interval: 1m
+    rules:
+      - uid: ion-store-action-p95
+        title: Ion store action p95 over 500 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle",
+                service="ion-server"}[10m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'The server''s p95 time on a Studio store action (the action.handle span) has been above 500 ms for 10 minutes.'
+          description: 'The server''s own work on one action, receipt to result sent; the wire is not in this number. Ion Performance "action.handle p95 by action" names the slow action; Ion Wire Latency shows what clients felt. Seconds in the query: 0.5 is 500 ms.'
+
+      - uid: ion-run-p95
+        title: Ion run p95 over 120 s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="run.execute",
+                service="ion-engine"}[10m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [120] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'The engine''s p95 run duration (the run.execute span) has been above 120 seconds for 10 minutes.'
+          description: 'Long runs are not wrong by themselves; a sustained shift is. Ion Performance "run.execute p50 / p95 by model" splits it by model and Backend; the LLM call, attempt, and tool panel says where inside the run the time goes.'
+
+      - uid: ion-server-event-loop-p99
+        title: Ion server event loop p99 over 200 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                max by (host_name) (max_over_time({service_name="ion-server", event_name=""} | json | tag="system-metrics"
+                | msg="system metrics sample" | fields_server_event_loop_p99_ms != "" | unwrap fields_server_event_loop_p99_ms [5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [200] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'An Ion Studio Server''s event-loop delay p99 has been above 200 ms in every 30 s sample for 5 minutes.'
+          description: 'The server ran its timers late, so every connection on that host waited: snapshots, patches, action results. Read per host_name from the server''s System Metrics sample line (fields.server_event_loop_p99_ms). Ion Performance "Server event-loop delay" charts it; the store action and build panels beside it say what was busy.'
+
+      - uid: ion-host-memory-low
+        title: Ion host memory available under 10%
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                max by (host_name) (last_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics"
+                | msg=~"system metrics sample|HIGH MEMORY" | fields_host_memory_available_bytes != ""
+                | unwrap fields_host_memory_available_bytes [10m]))
+                / max by (host_name) (last_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics"
+                | msg=~"system metrics sample|HIGH MEMORY" | fields_host_memory_total_bytes != ""
+                | unwrap fields_host_memory_total_bytes [10m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: critical, ion: 'true' }
+        annotations:
+          summary: 'A host has had less than 10% of its physical memory available to new work for 10 minutes.'
+          description: 'Available over total, per host_name, from the engine''s System Metrics sample line (fields.host_memory_available_bytes / host_memory_total_bytes); the last sample in each 10 m window. Inside a container the available figure is the limit less its use, so the ratio reads against physical memory the container may not be allowed to use. Ion System Metrics "Memory by engine process role" says which role holds it.'

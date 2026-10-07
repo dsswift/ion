@@ -22,6 +22,11 @@ import { readFileSync } from 'node:fs';
 
 export interface AzureTarget {
   readonly datasource: { readonly type: string; readonly uid: string };
+  // The Prometheus data source that reads the deployment's Azure Monitor
+  // workspace. A PromQL target (span metrics, relay metrics, the OTLP metrics
+  // export) is not compiled; it is pointed here unchanged, since the same
+  // PromQL runs against the local Prometheus and the workspace.
+  readonly prometheus: { readonly type: string; readonly uid: string };
   readonly resources: readonly string[];
   // Folder uid every rendered dashboard lands in. The Loki tree's pack folders
   // collapse into it, so one deployment keeps the whole suite in one folder.
@@ -45,6 +50,8 @@ export function parseTarget(raw: unknown): AzureTarget {
   const t = raw as Record<string, unknown>;
   const ds = t.datasource as Record<string, unknown> | undefined;
   need(!!ds && typeof ds.type === 'string' && typeof ds.uid === 'string', 'datasource needs type and uid');
+  const prom = t.prometheus as Record<string, unknown> | undefined;
+  need(!!prom && typeof prom.type === 'string' && typeof prom.uid === 'string', 'prometheus needs type and uid: the Prometheus data source over the Azure Monitor workspace');
   need(Array.isArray(t.resources) && t.resources.length > 0, 'resources must list at least one Log Analytics resource id');
   for (const r of t.resources as unknown[]) need(typeof r === 'string' && r.startsWith('/subscriptions/'), `resource "${String(r)}" is not an ARM id`);
   need(typeof t.folder === 'string' && /^[a-z0-9-]+$/.test(t.folder), 'folder must be a folder uid: lowercase letters, digits, and dashes');
