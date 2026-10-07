@@ -187,6 +187,9 @@ extension ConversationView {
                 ForEach(viewModel.composerActions(tabId: tabId), id: \.menuKey) { action in
                     Button(action.label) { runComposerAction(action) }
                 }
+                ForEach(viewModel.quickTools(tabId: tabId)) { tool in
+                    Button(tool.name) { runQuickTool(tool) }
+                }
                 Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog(

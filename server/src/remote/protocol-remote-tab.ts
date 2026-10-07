@@ -47,6 +47,13 @@ export interface RemoteTabState {
    */
   composerActions?: ComposerAction[]
   /**
+   * The viewer's own Quick Tools that apply to this conversation's directory.
+   * iOS lists them in the composer's `+` menu and runs one with
+   * `desktop_run_quick_tool`; the server looks the command up by id, so it
+   * is never sent. Omitted when none apply.
+   */
+  quickTools?: Array<{ id: string; name: string; icon: string }>
+  /**
    * Live extension elicitations (ctx.elicit) awaiting a user decision on the
    * active instance. Mirrors ConversationInstance.elicitationQueue. iOS renders
    * an approval card from the head entry and answers via

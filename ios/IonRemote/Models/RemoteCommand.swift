@@ -132,6 +132,10 @@ enum RemoteCommand: Sendable {
   case terminalInput(tabId: String, instanceId: String, data: String)
   case terminalResize(tabId: String, instanceId: String, cols: Int, rows: Int)
   case terminalAddInstance(tabId: String)
+  /// Run one of the operator's own Quick Tools in the conversation's
+  /// terminal. Only the id travels: the server reads the command from the
+  /// operator's settings, so the phone never supplies a shell command.
+  case runQuickTool(tabId: String, toolId: String)
   case terminalRemoveInstance(tabId: String, instanceId: String)
   case terminalSelectInstance(tabId: String, instanceId: String)
   case requestTerminalSnapshot(tabId: String)
@@ -453,6 +457,7 @@ enum RemoteCommand: Sendable {
     case terminalInput = "desktop_terminal_input"
     case terminalResize = "desktop_terminal_resize"
     case terminalAddInstance = "desktop_terminal_add_instance"
+    case runQuickTool = "desktop_run_quick_tool"
     case terminalRemoveInstance = "desktop_terminal_remove_instance"
     case terminalSelectInstance = "desktop_terminal_select_instance"
     case requestTerminalSnapshot = "desktop_request_terminal_snapshot"

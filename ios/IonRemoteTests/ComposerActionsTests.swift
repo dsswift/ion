@@ -38,6 +38,15 @@ final class ComposerActionsTests: XCTestCase {
         XCTAssertEqual(vm.renderedMessages(tabId: "tab-1").last?.content, "/briefing")
     }
 
+    func testTheSnapshotCarriesTheQuickToolsWithoutCommands() throws {
+        let vm = SessionViewModel()
+        let tools = #"[{"id":"fcea88f3","name":"Land","icon":"Upload"}]"#
+        let json = Data(#"{"id":"tab-1","title":"T","status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"quickTools":\#(tools)}"#.utf8)
+        vm.handleSnapshot(snapshotTabs: [try JSONDecoder().decode(RemoteTabState.self, from: json)], recentDirs: [])
+        XCTAssertEqual(vm.quickTools(tabId: "tab-1"), [RemoteQuickTool(id: "fcea88f3", name: "Land", icon: "Upload")])
+        XCTAssertEqual(vm.quickTools(tabId: "other"), [])
+    }
+
     func testMenuKeysStayDistinctAcrossExtensions() {
         let a = ComposerAction(id: "run", producer: "one", label: "Run", icon: "", command: "/run", conversationId: nil)
         let b = ComposerAction(id: "run", producer: "two", label: "Run", icon: "", command: "/go", conversationId: nil)

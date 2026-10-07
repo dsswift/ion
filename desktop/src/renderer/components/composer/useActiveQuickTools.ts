@@ -8,7 +8,7 @@ import { useMemo } from 'react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import type { QuickTool } from '@ion/shared/types'
 import type { ProjectQuickTool } from '@ion/shared/project-studio-config'
-import { visibleUserQuickTools } from './quick-tools-visible'
+import { visibleUserQuickTools } from '@ion/shared/quick-tools-visible'
 import { useProjectStudioConfig } from './useProjectStudioConfig'
 
 export interface ActiveQuickTools {

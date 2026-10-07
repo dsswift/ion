@@ -4520,7 +4520,7 @@
     {
       "id": "quick-tool",
       "term": "Quick Tool",
-      "definition": "A named shell command an operator runs from the lightning button in the Input Bar. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.",
+      "definition": "A named shell command an operator runs from the lightning button in the Input Bar, or from the composer's + sheet on iPhone. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -4539,6 +4539,13 @@
           "language": "typescript",
           "symbol": "export function ComposerQuickToolsButton",
           "path": "desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct RemoteQuickTool",
+          "path": "ios/IonRemote/Models/RemoteQuickTool.swift"
         }
       ]
     },

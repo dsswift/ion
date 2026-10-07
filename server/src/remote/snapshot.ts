@@ -33,7 +33,7 @@ import { projectRendererTab } from './snapshot-project'
 import { pollRendererTabStates } from './snapshot-renderer-poll'
 import { getMachineIdentity } from '../machine-identity'
 import { questionsCoordinator } from '../questions/questions-wiring'
-import { composerActionsBoard } from '../engine/composer-actions-wiring'
+import { applyComposerExtras } from './snapshot-composer'
 import { resourceCatalog } from '../engine/resource-catalog'
 import { terminalManager } from '../terminal/terminal-manager-instance'
 import { orderedSessionIds } from '@ion/shared/tab-predicates'
@@ -196,7 +196,6 @@ export async function getRemoteTabStates(forSubject?: string): Promise<RemoteTab
     // the QuestionsCoordinator is authoritative and its state never
     // round-trips through the renderer store.
     applyQuestionsState(mapped)
-    applyComposerActions(mapped)
 
     mapped.sort((a, b) => {
       const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
@@ -206,11 +205,13 @@ export async function getRemoteTabStates(forSubject?: string): Promise<RemoteTab
     })
 
     const scoped = forSubject ? filterBySubject(mapped, forSubject) : mapped
+    applyComposerExtras(scoped, forSubject)
     return { tabs: stampEnvironment(scoped), resourceManifest }
   }
 
   const cold = coldStartSnapshot()
   const coldScoped = forSubject ? filterBySubject(cold.tabs, forSubject) : cold.tabs
+  applyComposerExtras(coldScoped, forSubject)
   return { tabs: stampEnvironment(coldScoped), resourceManifest: cold.resourceManifest }
 }
 
@@ -531,7 +532,6 @@ function coldStartSnapshot(): RemoteTabSnapshot {
   // coordinator restored (and possibly confirmed) its records before any
   // renderer exists, and iOS first paint must see live guided waits.
   applyQuestionsState(results)
-  applyComposerActions(results)
 
   results.sort((a, b) => {
     const aRunning = a.status === 'running' || a.status === 'connecting' ? 1 : 0
@@ -558,18 +558,3 @@ function applyQuestionsState(tabs: RemoteTabState[]): void {
   }
 }
 
-/**
- * Merge the Composer Actions the server offers each tab, so a phone's `+`
- * menu is complete on first paint. Mutates the freshly-built tab array in
- * place, like applyQuestionsState. A tab that offers none gets no field.
- */
-function applyComposerActions(tabs: RemoteTabState[]): void {
-  let offered = 0
-  for (const tab of tabs) {
-    const actions = composerActionsBoard.actionsFor(tab.id)
-    if (actions.length === 0) continue
-    tab.composerActions = actions
-    offered++
-  }
-  debug('desktop_snapshot', 'composer actions merged', { tab_count: tabs.length, tabs_with_actions: offered })
-}

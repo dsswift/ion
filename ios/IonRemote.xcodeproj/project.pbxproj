@@ -32,6 +32,7 @@
 		70CE0CD53A9C41ADA8005781 /* DeepLinkNavigateTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */; };
 		DB845B37C1964F16A5F1BB84 /* PlanModeRejection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */; };
 		CMPACT010000000000BF01 /* ComposerAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMPACT010000000000FR01 /* ComposerAction.swift */; };
+		CMPACT040000000000BF01 /* RemoteQuickTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMPACT040000000000FR01 /* RemoteQuickTool.swift */; };
 		FF64CF47FB2743BDA6AA1D0A /* FileLinkOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */; };
 		F62B6FEA30484E489AD07E10 /* FileLinkRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13184725F6AE4C22A28E116D /* FileLinkRequest.swift */; };
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
@@ -1032,6 +1033,7 @@
 		10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkNavigateTarget.swift; sourceTree = "<group>"; };
 		0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanModeRejection.swift; sourceTree = "<group>"; };
 		CMPACT010000000000FR01 /* ComposerAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerAction.swift; sourceTree = "<group>"; };
+		CMPACT040000000000FR01 /* RemoteQuickTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteQuickTool.swift; sourceTree = "<group>"; };
 		F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkOutcome.swift; sourceTree = "<group>"; };
 		13184725F6AE4C22A28E116D /* FileLinkRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLinkRequest.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
@@ -2120,6 +2122,7 @@
 				10B7AE224325406C9017042E /* DeepLinkNavigateTarget.swift */,
 				0C4926ED039D4F0EB69B243B /* PlanModeRejection.swift */,
 				CMPACT010000000000FR01 /* ComposerAction.swift */,
+				CMPACT040000000000FR01 /* RemoteQuickTool.swift */,
 				F8D1F227A9BF457EBED4F30C /* FileLinkOutcome.swift */,
 				13184725F6AE4C22A28E116D /* FileLinkRequest.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
@@ -3549,6 +3552,7 @@
 				70CE0CD53A9C41ADA8005781 /* DeepLinkNavigateTarget.swift in Sources */,
 				DB845B37C1964F16A5F1BB84 /* PlanModeRejection.swift in Sources */,
 				CMPACT010000000000BF01 /* ComposerAction.swift in Sources */,
+				CMPACT040000000000BF01 /* RemoteQuickTool.swift in Sources */,
 				FF64CF47FB2743BDA6AA1D0A /* FileLinkOutcome.swift in Sources */,
 				F62B6FEA30484E489AD07E10 /* FileLinkRequest.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,

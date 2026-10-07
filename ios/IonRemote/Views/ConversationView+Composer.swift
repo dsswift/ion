@@ -165,6 +165,14 @@ extension ConversationView {
         viewModel.runComposerAction(tabId: tabId, action: action)
     }
 
+    /// A Quick Tool runs in the conversation's terminal on the server, so the
+    /// terminal opens to show it working.
+    func runQuickTool(_ tool: RemoteQuickTool) {
+        Haptic.light()
+        viewModel.runQuickTool(tabId: tabId, tool: tool)
+        showTerminal = true
+    }
+
     // MARK: - Buttons
 
     /// Every control in the row is a `ComposerControlSize` square so the

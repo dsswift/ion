@@ -23,3 +23,23 @@ extension SessionViewModel {
         submit(tabId: tabId, text: action.command)
     }
 }
+
+// MARK: - Quick Tools
+
+extension SessionViewModel {
+    /// The operator's own Quick Tools that apply to this conversation, as the
+    /// last snapshot carried them. Empty when none apply.
+    func quickTools(tabId: String) -> [RemoteQuickTool] {
+        tab(for: tabId)?.quickTools ?? []
+    }
+
+    /// Run a Quick Tool in the conversation's terminal on the server.
+    @MainActor
+    func runQuickTool(tabId: String, tool: RemoteQuickTool) {
+        DiagnosticLog.log("quick tool chosen", tag: "session", level: .info, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "tool_id": tool.id,
+        ])
+        send(.runQuickTool(tabId: tabId, toolId: tool.id), intent: .userInitiated)
+    }
+}

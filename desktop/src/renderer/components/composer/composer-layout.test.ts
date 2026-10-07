@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { COMPOSER_ROW_EXPAND_HYSTERESIS, resolveComposerRowCollapsed } from './useComposerRowLayout'
-import { visibleUserQuickTools } from './quick-tools-visible'
+import { visibleUserQuickTools } from '@ion/shared/quick-tools-visible'
 
 describe('resolveComposerRowCollapsed', () => {
   it('collapses when the expanded layout does not fit', () => {

@@ -357,6 +357,14 @@
       "args": "[tabId, 'user']",
       "result": "value is the new instance id; the client then reads terminal.paneSnapshot [{tabId}] and synthesizes desktop_terminal_snapshot from it, which names every instance and the active one"
     },
+    "desktop_run_quick_tool": {
+      "action": "runQuickTool",
+      "alsoActions": [
+        "terminal.paneSnapshot"
+      ],
+      "args": "[tabId, toolId]",
+      "result": "none from the run; the client then reads terminal.paneSnapshot [{tabId}] and synthesizes desktop_terminal_snapshot from it, which names the tool's terminal as the active one"
+    },
     "desktop_terminal_remove_instance": {
       "action": "removeTerminalInstance",
       "args": "[tabId, instanceId]",

@@ -21,6 +21,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// The Composer Actions this conversation offers, as the server decided
     /// them. The composer's `+` menu lists them. Nil when it offers none.
     var composerActions: [ComposerAction]?
+    /// The operator's own Quick Tools that apply to this conversation, as the
+    /// server listed them. Commands are not sent. Nil when none apply.
+    var quickTools: [RemoteQuickTool]?
     /// Live extension elicitations (ctx.elicit) awaiting a user decision on the
     /// active instance. The head entry renders an approval card; iOS answers via
     /// the `desktop_respond_elicitation` command. Optional/absent on older

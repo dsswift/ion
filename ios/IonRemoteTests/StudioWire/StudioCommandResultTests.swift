@@ -183,6 +183,16 @@ final class StudioCommandResultTests: XCTestCase {
 
     // MARK: - Terminals
 
+    func testRunningAQuickToolSendsOnlyItsIdThenReadsThePaneBack() {
+        let command = RemoteCommand.runQuickTool(tabId: "t1", toolId: "fcea88f3")
+        guard case .action(let call, _) = mapping.request(for: command) else { return XCTFail("expected an action") }
+        XCTAssertEqual(call.action, "runQuickTool")
+        XCTAssertEqual(call.args, [.string("t1"), .string("fcea88f3")])
+        XCTAssertEqual(events(command, "runQuickTool", .null).count, 0)
+        XCTAssertEqual(mapping.next(for: command, after: call, result: .null)?.action, "terminal.paneSnapshot")
+        XCTAssertNil(mapping.next(for: command, after: .fields("terminal.paneSnapshot", ["tabId": .string("t1")]), result: .null))
+    }
+
     func testAddingAnInstanceReadsThePaneBackAndReportsTheWholePane() {
         let command = RemoteCommand.terminalAddInstance(tabId: "t1")
         // The add answers an id, which is not a pane, so it becomes no event.

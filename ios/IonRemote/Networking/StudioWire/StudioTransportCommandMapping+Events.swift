@@ -77,7 +77,7 @@ extension StudioTransportCommandMapping {
             let commands = Self.decode(result, as: [DiscoveredSlashCommand].self, what: "discovered commands") ?? []
             return [.discoverCommandsResponse(directory: directory, commands: commands)]
 
-        case .terminalAddInstance(let tabId), .requestTerminalSnapshot(let tabId):
+        case .terminalAddInstance(let tabId), .requestTerminalSnapshot(let tabId), .runQuickTool(let tabId, _):
             // The add answers only the new instance's id, so the pane is read
             // back (see `next`) and the whole pane becomes the event: it names
             // every instance and which one is active, which an "added" event
@@ -154,6 +154,10 @@ extension StudioTransportCommandMapping {
         switch command {
         // Adding an instance answers its id only; read the pane back for the rest.
         case .terminalAddInstance(let tabId) where call.action == "addTerminalInstance":
+            return .fields("terminal.paneSnapshot", ["tabId": .string(tabId)])
+        // A Quick Tool runs in a terminal the server opens and selects; read
+        // the pane back so the phone shows that terminal.
+        case .runQuickTool(let tabId, _) where call.action == "runQuickTool":
             return .fields("terminal.paneSnapshot", ["tabId": .string(tabId)])
 
         // A write the older wire answered with a pushed refresh. The read runs
