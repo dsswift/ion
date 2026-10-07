@@ -3268,6 +3268,7 @@ A row an extension adds to the + menu of the Input Bar through the Studio SDK. C
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface ComposerAction` in `packages/shared/src/studio-sdk-contract.ts`
   - `studio` / `ui` / `typescript`: `export function useComposerActions` in `desktop/src/renderer/components/composer/useComposerActions.tsx`
+  - `ios` / `code` / `swift`: `struct ComposerAction` in `ios/IonRemote/Models/ComposerAction.swift`
 
 #### Fleet Report {#term-fleet-report}
 
@@ -3545,7 +3546,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
-| Composer Action | None | `export interface ComposerAction`, `export function useComposerActions` | None | None | Overlay, iOS |
+| Composer Action | None | `export interface ComposerAction`, `export function useComposerActions` | None | `struct ComposerAction` | Overlay |
 | Composer Draft | None | `useComposerDraft` | None | `adoptRemoteDraft` | Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
 | Conversation | `export interface RemoteTabState` | `export interface RemoteTabState` | `export interface RemoteTabState` | None | iOS |

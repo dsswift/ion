@@ -667,6 +667,13 @@
           "language": "typescript",
           "symbol": "export function useComposerActions",
           "path": "desktop/src/renderer/components/composer/useComposerActions.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct ComposerAction",
+          "path": "ios/IonRemote/Models/ComposerAction.swift"
         }
       ]
     },

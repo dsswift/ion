@@ -156,6 +156,15 @@ extension ConversationView {
         )
     }
 
+    /// A Composer Action from the `+` menu sends its command at once, leaving
+    /// the draft alone, as choosing the row does in Studio.
+    func runComposerAction(_ action: ComposerAction) {
+        isNearBottom = true
+        forceScrollCounter += 1
+        Haptic.light()
+        viewModel.runComposerAction(tabId: tabId, action: action)
+    }
+
     // MARK: - Buttons
 
     /// Every control in the row is a `ComposerControlSize` square so the

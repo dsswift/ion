@@ -10,6 +10,7 @@
 
 import type { TabStatus, PermissionRequest, ElicitationRequest } from '@ion/shared/types'
 import type { DispatchTelemetryEntry } from '@ion/shared/types-engine'
+import type { ComposerAction } from '@ion/shared/studio-sdk-contract'
 
 // ─── Remote Tab State (lightweight projection for mobile clients) ───
 
@@ -39,6 +40,12 @@ export interface RemoteTabState {
    */
   thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   permissionQueue: PermissionRequest[]
+  /**
+   * The Composer Actions this conversation offers, as the server decided them
+   * (`server/src/engine/composer-actions.ts`). iOS lists them in the
+   * composer's `+` menu. Omitted when the conversation offers none.
+   */
+  composerActions?: ComposerAction[]
   /**
    * Live extension elicitations (ctx.elicit) awaiting a user decision on the
    * active instance. Mirrors ConversationInstance.elicitationQueue. iOS renders

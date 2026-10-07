@@ -71,6 +71,10 @@ your extension registered with the engine SDK.
 Studio shows the name of the extension that contributed each row. The engine
 assigns that name, so an extension cannot claim to be another one.
 
+Ion Remote on iPhone lists the same rows in its composer's `+` sheet, from the
+list the server sends with each conversation. It shows the label only, with no
+icon.
+
 There are two ways to publish:
 
 - **`register`** is for start-up. It records the actions and answers Studio's
