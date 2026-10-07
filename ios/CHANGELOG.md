@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.12.1](https://github.com/dsswift/ion/compare/ios-v2.12.0...ios-v2.12.1) (2026-10-07)
+
+### Bug Fixes
+
+* **ios:** keep the screen awake while dictating ([ef1a80a](https://github.com/dsswift/ion/commit/ef1a80a0eedd39295c47d6e35934c13fefdd5095))
+* **ios:** keep the open conversation across rotation ([643653e](https://github.com/dsswift/ion/commit/643653e257fa9dc75fa73fb9afd57b13f72fc313))
+* **ios:** always name the worktree in its inbox header ([1d82b9b](https://github.com/dsswift/ion/commit/1d82b9b68178b3d6c30a10bd105090a7a275622b))
+* **ios:** dim working conversations in the inbox ([e772be1](https://github.com/dsswift/ion/commit/e772be1c72b84201f449f9e2587206cb6133aff2))
+* **ios:** open the bench terminal when tapping the bench header ([a0423d6](https://github.com/dsswift/ion/commit/a0423d66edf6398b4fd67aa67850a11fb2dbf1c7))
+* **ios:** drop the bench header's duplicate terminal button ([54bf860](https://github.com/dsswift/ion/commit/54bf8600530bcd4c17fa272fbb7cd33b47e6787f))
+
 ## [2.12.0](https://github.com/dsswift/ion/compare/ios-v2.11.1...ios-v2.12.0) (2026-10-06)
 
 ### Features

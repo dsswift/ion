@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.14.1](https://github.com/dsswift/ion/compare/desktop-v2.14.0...desktop-v2.14.1) (2026-10-07)
+
+### Bug Fixes
+
+* **desktop:** dim working conversations in the inbox ([a144230](https://github.com/dsswift/ion/commit/a144230a439f729145ae7fee6d1a5a7ee22779dd))
+
 ## [2.14.0](https://github.com/dsswift/ion/compare/desktop-v2.13.2...desktop-v2.14.0) (2026-10-07)
 
 ### Features
