@@ -145,7 +145,79 @@ describe('BrowserStudioHost unauthorized refusal', () => {
 
     ws.simulateMessage(JSON.stringify({ type: 'studio_refused', reason: 'unauthorized' }))
 
-    expect(window.location.href).toBe(`/auth/login?returnTo=${encodeURIComponent('/some/tab?x=1')}`)
+    // Silent first: the provider answers from the person's own sign-in with nothing on screen, and the
+    // server sends them on to the interactive sign-in page itself when that sign-in has ended too.
+    expect(window.location.href).toBe(`/auth/login?silent=1&returnTo=${encodeURIComponent('/some/tab?x=1')}`)
+  })
+})
+
+describe('BrowserStudioHost waking after sleep', () => {
+  function stubSession(status: number): ReturnType<typeof vi.fn> {
+    const fetchSpy = vi.fn(async () => new Response('{}', { status }))
+    ;(globalThis as unknown as { fetch: unknown }).fetch = fetchSpy
+    return fetchSpy
+  }
+  function setVisibility(state: 'visible' | 'hidden'): void {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  it('signs in silently, before redialing, when the tab comes back and the server has forgotten its session', async () => {
+    const host = new BrowserStudioHost()
+    await host.connectEnvironment('local', 'This Server', { kind: 'local' })
+    await flush()
+    const first = FakeWebSocket.instances[0]
+    first.simulateOpen()
+    first.simulateMessage(welcomeFrame())
+    // The laptop slept: the socket died with it.
+    first.simulateClose(1006)
+    const socketsBefore = FakeWebSocket.instances.length
+
+    const fetchSpy = stubSession(401)
+    setVisibility('visible')
+    await flush()
+    await flush()
+
+    expect(fetchSpy).toHaveBeenCalledWith('/auth/session', expect.objectContaining({ credentials: 'same-origin' }))
+    expect(window.location.href).toBe(`/auth/login?silent=1&returnTo=${encodeURIComponent('/some/tab?x=1')}`)
+    // Nothing was dialed with the dead session on the way.
+    expect(FakeWebSocket.instances.length).toBe(socketsBefore)
+  })
+
+  it('redials at once, with no sign-in, when the tab comes back and the session is still good', async () => {
+    const host = new BrowserStudioHost()
+    await host.connectEnvironment('local', 'This Server', { kind: 'local' })
+    await flush()
+    const first = FakeWebSocket.instances[0]
+    first.simulateOpen()
+    first.simulateMessage(welcomeFrame())
+    first.simulateClose(1006)
+    const socketsBefore = FakeWebSocket.instances.length
+
+    stubSession(200)
+    setVisibility('visible')
+    await flush()
+    await flush()
+
+    expect(window.location.href).toBe('')
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(socketsBefore)
+  })
+
+  it('neither signs in nor redials into a refusal when the sign-in service cannot be reached', async () => {
+    const host = new BrowserStudioHost()
+    await host.connectEnvironment('local', 'This Server', { kind: 'local' })
+    await flush()
+    const first = FakeWebSocket.instances[0]
+    first.simulateOpen()
+    first.simulateMessage(welcomeFrame())
+    first.simulateClose(1006)
+
+    stubSession(503)
+    setVisibility('visible')
+    await flush()
+    await flush()
+
+    expect(window.location.href).toBe('')
   })
 })
 

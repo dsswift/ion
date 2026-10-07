@@ -53,6 +53,7 @@ import { promptForSavePath, promptForDirectory } from './save-path-prompt-state'
 import { BRIDGED_CAPABILITIES } from './browser-shell-bridge'
 import { createBridgedShell, refuseUnbridged } from './bridged-shell'
 import { BrowserLogForwarder } from './browser-log-forward'
+import { SessionGuard, TICK_MS, browserSessionGuardDeps } from './browser-session-guard'
 import { WIRE_PING_CAPABILITY } from '@ion/shared/studio-wire/types'
 import { ClientWireLatency } from '@ion/shared/client-wire-latency'
 import { tabClientId } from './browser-client-id'
@@ -152,6 +153,9 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
   // observed in production as "every fresh Studio session takes ~30s to
   // become interactive."
   private pendingFrames: StudioFrame[] = []
+  /** Checks the session when the tab wakes, so a forgotten one signs in again before anything else fires. */
+  private sessionGuard: SessionGuard | null = null
+  private sessionGuardTimer: ReturnType<typeof setInterval> | null = null
   private readonly clientId = tabClientId()
   private readonly frameListeners = new Set<(environmentId: string, frame: StudioFrame) => void>()
   private readonly connectionListeners = new Set<(snapshot: ConnectionPhaseSnapshot[]) => void>()
@@ -322,9 +326,48 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
     this.environmentId = environmentId
     this.label = label
     this.latency.start()
+    this.watchSession()
     if (this.ws) return { ok: true }
     this.beginConnect()
     return { ok: true }
+  }
+
+  /**
+   * Starts watching for the tab waking up: it came to the front, the browser
+   * came online, or a timer ran far later than it should have (a sleeping
+   * laptop sends no event). Each asks the session guard to check the session
+   * before anything else the page does.
+   */
+  private watchSession(): void {
+    if (this.sessionGuard) return
+    const guard = new SessionGuard(browserSessionGuardDeps((level, msg, fields) => (level === 'warn' ? rWarn : rInfo)('BrowserStudioHost', msg, fields)))
+    this.sessionGuard = guard
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.wake(guard, 'visible') })
+    window.addEventListener('online', () => this.wake(guard, 'online'))
+    // A tick that comes far later than it was due means the page was frozen (a sleeping laptop sends no event).
+    this.sessionGuardTimer = setInterval(() => { if (guard.tick()) this.wake(guard, 'slept') }, TICK_MS)
+  }
+
+  /**
+   * The tab woke. The socket is dropped and redialed after the session is
+   * known good: reconnecting first would present a forgotten session and
+   * start a round of refusals. A guard that says the session is fine lets the
+   * normal reconnect proceed.
+   */
+  private wake(guard: SessionGuard, reason: 'visible' | 'online' | 'slept'): void {
+    void guard.check(reason).then(() => this.afterWake(guard))
+  }
+
+  /** Once the session is known good (or a sign-in is under way), redial a socket that died while the page slept. */
+  private afterWake(guard: SessionGuard): void {
+    if (guard.signingIn) return
+    if (!this.closedByUser && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
+      if (this.retryTimer) clearTimeout(this.retryTimer)
+      this.retryTimer = null
+      this.attempts = 0
+      this.windowStartMs = 0
+      this.beginConnect()
+    }
   }
 
   /** A browser client holds no stored secret; forgetting is disconnecting. */
@@ -334,6 +377,9 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
 
   disconnectEnvironment(_environmentId: string): void {
     this.closedByUser = true
+    this.sessionGuard?.stop()
+    if (this.sessionGuardTimer) clearInterval(this.sessionGuardTimer)
+    this.sessionGuardTimer = null
     if (this.retryTimer) clearTimeout(this.retryTimer)
     this.retryTimer = null
     this.ws?.close()
@@ -378,7 +424,9 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
    */
   private redirectToLogin(): void {
     const returnTo = window.location.pathname + window.location.search
-    window.location.href = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`
+    // Silent first: the provider answers from the person's existing sign-in and sends them back with nothing on
+    // screen. When that sign-in has ended, the server sends them on to the interactive sign-in page itself.
+    window.location.href = `/auth/login?silent=1&returnTo=${encodeURIComponent(returnTo)}`
   }
 
   private openSocket(): void {
@@ -494,6 +542,8 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
       // forwarded afterward targeted 'local' while this host had silently
       // renamed itself to the server's UUID.
       this.setPhase({ phase: 'connected', transport: 'tcp' })
+      // Authenticated again: log lines held while signed out can go.
+      logForwarder.resume()
       this.flushPendingFrames()
       void setEnvCache(this.environmentId, { welcome: frame, cachedAt: Date.now() })
     } else if (frame.type === 'studio_refused') {
