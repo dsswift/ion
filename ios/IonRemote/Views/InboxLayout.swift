@@ -69,6 +69,13 @@ enum InboxLayout {
         }
     }
 
+    /// Whether a row sits on its own tinted band inside the card. Group
+    /// headers do, so a worktree or bench header reads as a label over its
+    /// conversations even when one of them carries the same name.
+    static func hasHeaderBand(_ kind: Kind) -> Bool {
+        kind == .groupHeader
+    }
+
     /// Levels: 0 is a project header or a row outside any card, 1 is anything
     /// directly inside a card, 2 is a conversation inside a group.
     static func insets(level: Int) -> EdgeInsets {
@@ -149,8 +156,15 @@ struct InboxRowBackdrop: View {
         case .groupHeader, .content:
             Rectangle()
                 .fill(theme.surfaceElevated)
+                .overlay(headerBand)
                 .overlay(highlight)
         }
+    }
+
+    private var headerBand: some View {
+        RoundedRectangle(cornerRadius: IonRadius.container)
+            .fill(InboxLayout.hasHeaderBand(kind) ? theme.surfaceSecondary : Color.clear)
+            .padding(.horizontal, IonSpace.hairlineGap)
     }
 
     private var highlight: some View {

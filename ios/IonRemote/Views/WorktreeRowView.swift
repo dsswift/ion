@@ -64,11 +64,6 @@ struct WorktreeRowView: View {
     /// Draws the disclosure chevron in the leading column every inbox header
     /// uses. Nil for a row that heads nothing.
     var disclosureExpanded: Bool?
-    /// Leave the worktree's name off the row. Set by a host that draws the
-    /// worktree's only conversation directly beneath, under the same name:
-    /// the header then carries the worktree's identity and state, and the
-    /// title is read once instead of twice.
-    var hidesTitle: Bool = false
     /// Another worktree or bench action is in flight on this repository. The
     /// row's action buttons are disabled so a second action cannot be started
     /// over the first; `busy` is the narrower fact that the action is THIS
@@ -254,12 +249,13 @@ struct WorktreeRowView: View {
                     // first prompt sent inside it, and that is the only string
                     // here that says what the work is about. The branch stays
                     // beside it because every git verb names the branch.
-                    if !hidesTitle {
-                        Text(worktree.displayName)
-                            .font(IonType.sectionLabel)
-                            .foregroundStyle(theme.textSecondary)
-                            .lineLimit(1)
-                    }
+                    // Always drawn, even when the one conversation beneath
+                    // carries the same name: the header's band and label type
+                    // keep the two apart.
+                    Text(worktree.displayName)
+                        .font(IonType.sectionLabel)
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1)
 
                     // The worktree ID: the token shared with every other
                     // surface (the directory name under ~/.ion/worktrees/ and
