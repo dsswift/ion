@@ -28,10 +28,11 @@ import { checkEngineVersion } from './engine/version-check'
 import { startHealth, type HealthHandle } from './http/health'
 import { authConfigRoute } from './http/auth-config'
 import { authPairRoute } from './http/auth-pair'
-import { authLoginRoute, authCallbackRoute, authLogoutRoute } from './http/auth-browser-login'
+import { authLoginRoute, authCallbackRoute, authLogoutRoute, authSessionRoute } from './http/auth-browser-login'
 import { subscriptionStates } from './subscription'
 import { authGitCallbackRoute } from './http/auth-git-callback'
-import { browserSessionStore } from './auth/browser-session-store'
+import { browserSessionStore, startSessionPruning } from './auth/browser-session-store'
+import { SESSION_IDLE_TTL_SECONDS } from './auth/session-cookie'
 import { logIngestRoute } from './http/log-ingest'
 import { versionzRoute } from './http/versionz'
 import { setCompatContext } from './compat/runtime'
@@ -327,6 +328,7 @@ export async function main(): Promise<ServerHandle> {
       '/auth/pair': authPairRoute(credentialsStore()),
       '/auth/login': authLoginRoute(() => config.oidc),
       '/auth/callback': authCallbackRoute(() => config.oidc, browserSessionStore()),
+      '/auth/session': authSessionRoute(() => config.oidc, browserSessionStore()),
       '/auth/logout': authLogoutRoute(browserSessionStore(), (subject) => subscriptionStates().forget(subject)),
       '/auth/git/callback': authGitCallbackRoute(() => config.git),
       '/versionz': versionzRoute(engineBridge),
@@ -560,6 +562,9 @@ export async function main(): Promise<ServerHandle> {
   // announcement, a person opens a window, and no enterprise seal forbids it.
   startDiscovery({ environmentId: () => authRuntime.environmentId, serverVersion: authRuntime.serverVersion, port })
 
+  // A session idle past the identity provider's refresh-token window can never refresh again; its cookie has expired too.
+  const stopSessionPruning = startSessionPruning(browserSessionStore(), SESSION_IDLE_TTL_SECONDS * 1000)
+
   startup.end({ listening: true, environment_id: serverId, port, studio_listener_count: studio.wssList.length, relay_count: relays.clients.length })
   log('server boot complete', { serverId, port, socket_path: socketPath, studio_listener_count: studio.wssList.length, relay_count: relays.clients.length, relay_studio_channels: relayStudio.channelCount(), trace_id: startup.traceId })
   return {
@@ -567,6 +572,7 @@ export async function main(): Promise<ServerHandle> {
     studio,
     relays,
     close: async () => {
+      stopSessionPruning()
       stopFleetHubs()
       stopDiscovery()
       unsubscribePairing()

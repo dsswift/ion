@@ -142,6 +142,26 @@ export class BrowserSessionStore {
     return record
   }
 
+  /**
+   * Deletes every session not used for `idleMs`, and returns how many went.
+   *
+   * A session is kept alive only by use: each accepted connection touches it
+   * and each token refresh rewrites it. One idle past the identity
+   * provider's refresh-token window can never refresh again, so keeping it
+   * only grows the file. Its cookie expires on the same clock
+   * (`SESSION_IDLE_TTL_SECONDS`), so nobody still holds it.
+   */
+  pruneIdle(idleMs: number, now: number = Date.now()): number {
+    const file = readFile(this.dir)
+    const kept = file.sessions.filter((s) => now - s.lastSeenAt <= idleMs)
+    const removed = file.sessions.length - kept.length
+    if (removed === 0) return 0
+    file.sessions = kept
+    writeFile(this.dir, file)
+    log('idle sessions pruned', { removed, remaining: kept.length })
+    return removed
+  }
+
   /** Updates `lastSeenAt` on a successful `session` authentication. */
   touch(sessionId: string): void {
     const file = readFile(this.dir)
@@ -190,6 +210,23 @@ export class BrowserSessionStore {
       refreshToken: record.refreshTokenRef ? decryptFromDisk(record.refreshTokenRef) : null,
     }
   }
+}
+
+/** How often idle sessions are swept: once at boot, then daily. */
+const PRUNE_INTERVAL_MS = 24 * 60 * 60_000
+
+/**
+ * Starts pruning sessions idle past `idleMs` (see `pruneIdle`), once now and
+ * then daily. Returns a stopper. The timer never keeps the process alive.
+ */
+export function startSessionPruning(store: BrowserSessionStore, idleMs: number): () => void {
+  const sweep = (): void => {
+    try { store.pruneIdle(idleMs) } catch (err) { warn('idle session pruning failed', { error: String(err) }) }
+  }
+  sweep()
+  const timer = setInterval(sweep, PRUNE_INTERVAL_MS)
+  timer.unref()
+  return () => clearInterval(timer)
 }
 
 let sharedStore: BrowserSessionStore | null = null

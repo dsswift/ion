@@ -147,4 +147,43 @@ describe('BrowserSessionStore', () => {
     store.create({ sessionId: newSessionId(), principal: bob, scopes: [], accessToken: 'a', refreshToken: null, accessExpiresAt: 0 })
     expect(store.mostRecentSessionFor('josh')).toBeUndefined()
   })
+
+  describe('pruneIdle', () => {
+    const make = (id: string) => store.create({ sessionId: id, principal, scopes: [], accessToken: 'a', refreshToken: 'r', accessExpiresAt: Date.now() + 3600_000 })
+
+    it('removes a session not used within the window, and keeps one that was', () => {
+      make('old')
+      make('fresh')
+      const day = 24 * 60 * 60_000
+      const file = JSON.parse(readFileSync(join(dir, 'browser-sessions.json'), 'utf-8'))
+      file.sessions.find((s: { sessionId: string }) => s.sessionId === 'old').lastSeenAt = Date.now() - 100 * day
+      writeFileSync(join(dir, 'browser-sessions.json'), JSON.stringify(file))
+
+      expect(store.pruneIdle(90 * day)).toBe(1)
+      expect(store.get('old')).toBeUndefined()
+      expect(store.get('fresh')).toBeDefined()
+    })
+
+    it('keeps a session that was used just inside the window', () => {
+      make('edge')
+      const day = 24 * 60 * 60_000
+      expect(store.pruneIdle(90 * day, Date.now() + 89 * day)).toBe(0)
+      expect(store.get('edge')).toBeDefined()
+    })
+
+    it('does nothing, and writes nothing, when every session is in use', () => {
+      make('a')
+      expect(store.pruneIdle(1000)).toBe(0)
+    })
+
+    it('treats using a session as keeping it: a touch resets its clock', () => {
+      make('used')
+      const day = 24 * 60 * 60_000
+      const file = JSON.parse(readFileSync(join(dir, 'browser-sessions.json'), 'utf-8'))
+      file.sessions[0].lastSeenAt = Date.now() - 100 * day
+      writeFileSync(join(dir, 'browser-sessions.json'), JSON.stringify(file))
+      store.touch('used')
+      expect(store.pruneIdle(90 * day)).toBe(0)
+    })
+  })
 })

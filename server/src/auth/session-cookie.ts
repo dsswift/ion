@@ -35,9 +35,19 @@ export function isSecureRequest(req: IncomingMessage): boolean {
   return req.headers['x-forwarded-proto'] === 'https'
 }
 
+/**
+ * How long the server honors a session that is not used. It is the identity
+ * provider's refresh-token inactivity window: Microsoft Entra issues refresh
+ * tokens that stay valid for 90 days since last use, and each refresh extends
+ * them. The cookie lives exactly as long, so closing and reopening the
+ * browser does not sign a person out while the server still holds a session
+ * that works, and it never outlives the server's own record.
+ */
+export const SESSION_IDLE_TTL_SECONDS = 90 * 24 * 60 * 60
+
 /** Writes the `Set-Cookie` header that establishes a session. */
 export function setSessionCookie(res: ServerResponse, sessionId: string, secure: boolean): void {
-  const attrs = [`${SESSION_COOKIE_NAME}=${sessionId}`, 'HttpOnly', 'SameSite=Lax', 'Path=/']
+  const attrs = [`${SESSION_COOKIE_NAME}=${sessionId}`, 'HttpOnly', 'SameSite=Lax', 'Path=/', `Max-Age=${SESSION_IDLE_TTL_SECONDS}`]
   if (secure) attrs.push('Secure')
   res.setHeader('Set-Cookie', attrs.join('; '))
 }
