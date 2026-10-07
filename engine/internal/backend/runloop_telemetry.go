@@ -249,6 +249,9 @@ func buildRetryConfig(run *activeRun, opts *types.RunOptions, model, runIDCopy s
 		MaxRetries:    opts.MaxRetries,
 		FallbackChain: opts.FallbackChain,
 		Persistent:    opts.Persistent,
+		// Each request to the provider is an llm.attempt span under the
+		// turn's llm.call (runloop_attempt_span.go).
+		OnAttemptStart: attemptSpanStarter(retryTelem, run, turnCopy),
 		// Subject powers the auth-rejection self-heal (child 07, R-19):
 		// InvalidatePrincipal needs to know WHICH principal's cached state
 		// to drop before the one-shot re-resolution retry.

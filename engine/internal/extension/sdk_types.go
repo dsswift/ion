@@ -74,6 +74,13 @@ type Context struct {
 	// `_ctx.spanId`. RunSpanID itself is not sent.
 	RunSpanID string
 
+	// HookFanoutSpanID is the span-id of the hook.fanout span the engine
+	// records around one hook point's fan-out to every extension host
+	// (ExtensionGroup). Set by the group on the copy of the context it hands
+	// each host, so each host's extension.hook_latency span is the fan-out's
+	// child rather than the run's. Empty outside a group fire. Never sent.
+	HookFanoutSpanID string
+
 	// Depth is the dispatch depth of the session that fired the hook: 0 for
 	// the root (orchestrator) session, 1 for a directly dispatched child,
 	// 2 for a grandchild, and so on. This is the explicit root-vs-child

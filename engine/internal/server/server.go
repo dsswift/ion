@@ -165,6 +165,17 @@ type Server struct {
 	// sysMetrics is the System Metrics sampler. Nil when sampling is
 	// disabled. Guarded by s.mu.
 	sysMetrics *sysmetrics.Sampler
+
+	// pprofStop closes the debug.pprof.listen HTTP listener; pprofAddr is
+	// the address it bound. Both empty when no listener serves
+	// (pprof_listener.go). Guarded by s.mu.
+	pprofStop func()
+	pprofAddr string
+
+	// startup is the daemon.startup trace: set by SetStartupTiming before
+	// SetConfig, recorded as spans once the collector exists
+	// (startup_trace.go). Guarded by s.mu.
+	startup *startupTrace
 }
 
 // SetConversationEventsTelemetry installs the standalone collector for the
@@ -224,6 +235,9 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 		// enforcement audit events (the session-limit rejection fires before
 		// any per-session collector exists).
 		s.manager.SetProcessTelemetry(collector)
+		// The config read that enabled this collector is the first child of
+		// the daemon.startup trace; record it now that something can.
+		s.recordConfigLoadSpan(collector)
 	}
 	// Install the standalone conversation.* telemetry collector (issue #378).
 	// Independent gate from Telemetry above — conversationEvents.enabled
@@ -401,6 +415,8 @@ func (s *Server) Start() error {
 	utils.LogWithFields(utils.LevelInfo, "server", "listening", map[string]any{"path": s.socketPath})
 
 	go s.acceptLoop()
+	// The socket accepts clients: the daemon's start-up is over.
+	s.endStartupSpan()
 	return nil
 }
 
@@ -487,6 +503,13 @@ func (s *Server) Stop() error {
 
 		if s.ownership != nil {
 			s.ownership.stopAll()
+		}
+
+		s.mu.Lock()
+		pprofStop := s.pprofStop
+		s.mu.Unlock()
+		if pprofStop != nil {
+			pprofStop()
 		}
 
 		s.manager.PrepareForProcessShutdown()

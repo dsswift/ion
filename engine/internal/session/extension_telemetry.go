@@ -64,3 +64,46 @@ func (m *Manager) emitExtensionColdstartTelemetry(s *engineSession, key string, 
 	}, correlationCtx(key, s.conversationID))
 	utils.LogWithFields(utils.LevelDebug, "session", "extension.coldstart telemetry emitted ext=", map[string]any{"model": h.Name()})
 }
+
+// extensionSpawnSpan is one extension.spawn span in progress: process launch
+// through the init handshake. Nil-safe: a session without a collector gets
+// a handle whose end records nothing.
+type extensionSpawnSpan struct {
+	span    *telemetry.SpanHandle
+	extPath string
+}
+
+// startExtensionSpawnSpan opens the extension.spawn span for one host load.
+// It is a client span (the engine waits on another process) under the trace
+// in flight: session.start on a fresh start, the run on a per-prompt load.
+func (m *Manager) startExtensionSpawnSpan(s *engineSession, key, extPath string) *extensionSpawnSpan {
+	if s == nil || s.telemetry == nil {
+		return &extensionSpawnSpan{extPath: extPath}
+	}
+	return &extensionSpawnSpan{
+		extPath: extPath,
+		span: s.telemetry.StartSpanCtx(telemetry.ExtensionSpawn, map[string]any{
+			"extension_path": extPath,
+			"transpiled_ts":  strings.HasSuffix(extPath, ".ts"),
+			"span_kind":      telemetry.SpanKindClient,
+		}, m.sessionSpanCtx(s, key)),
+	}
+}
+
+// end closes the span with the extension's name (known after init) and the
+// load error, if any.
+func (e *extensionSpawnSpan) end(h *extension.Host, err error) {
+	if e == nil || e.span == nil {
+		return
+	}
+	attrs := map[string]any{}
+	if h != nil && h.Name() != "" {
+		attrs["extension"] = h.Name()
+	}
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	e.span.End(attrs, errMsg)
+	utils.LogWithFields(utils.LevelDebug, "session", "extension.spawn span recorded", map[string]any{"extension_path": e.extPath, "span_id": e.span.SpanID(), "error": errMsg})
+}

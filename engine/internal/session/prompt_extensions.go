@@ -41,15 +41,19 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	buildIdentity := m.engineBuildIdentitySnapshot()
 
 	group := extension.NewExtensionGroup()
+	group.SetSpanStarter(hookSpanStarter(s.telemetry))
 	for _, extPath := range overrides.Extensions {
 		host, extCfg := newPerPromptExtensionHost(buildIdentity, extPath, s.config.WorkingDirectory)
+		host.SetSpawnSessionKey(key)
 		if rpcTimeout > 0 {
 			host.SetRPCTimeout(rpcTimeout)
 		}
 		if len(requiredHooks) > 0 {
 			host.RegisterRequiredHooks(requiredHooks)
 		}
+		spawnSpan := m.startExtensionSpawnSpan(s, key, extPath)
 		if err := host.Load(extPath, extCfg); err != nil {
+			spawnSpan.end(host, err)
 			stderrTail := host.StderrTail()
 			utils.LogWithFields(utils.LevelError, "session", "per-prompt extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
 			m.emit(key, types.EngineEvent{
@@ -60,6 +64,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			})
 			continue
 		}
+		spawnSpan.end(host, nil)
 		capturedKey := key
 		host.SetOnDeath(func(h *extension.Host) {
 			m.handleHostDeath(capturedKey, h)

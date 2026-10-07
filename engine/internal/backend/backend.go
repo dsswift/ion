@@ -183,6 +183,9 @@ type TelemetryCollector interface {
 // Span tracks the lifetime of a telemetry span.
 type Span interface {
 	End(attrs map[string]interface{}, errMsg ...string)
+	// SpanID is the span's own W3C span-id. Work started inside the span
+	// records it as parent_span_id so the trace nests correctly.
+	SpanID() string
 }
 
 // RunHooks bundles every per-run callback the ApiBackend may invoke during a
@@ -641,12 +644,12 @@ type RunConfig struct {
 	// conversation.Save call succeeds for a MUTATING compaction pass (issue
 	// #378, child 04). It never fires for a no-op compaction (nothing
 	// cleared, nothing dropped — see performCompact's noOp guard) and never
-	// fires before Save: the existing telemetry.Compaction event at
-	// runloop_compaction_execute.go emits BEFORE Save, and that ordering
-	// defect is deliberately NOT copied here — conversation.lifecycle's
-	// "compacted" action must observe a durably persisted compaction, per
-	// the conversation.* telemetry family's own contract (frozen contract G:
-	// lifecycle actions fire only after their underlying mutation succeeds).
+	// fires before Save: the telemetry.Compaction span at
+	// runloop_compaction_execute.go also ends after Save, and
+	// conversation.lifecycle's "compacted" action must observe a durably
+	// persisted compaction, per the conversation.* telemetry family's own
+	// contract (frozen contract G: lifecycle actions fire only after their
+	// underlying mutation succeeds).
 	//
 	// Nil is a valid no-op, exactly like OnCallCost above — every invocation
 	// site nil-checks before calling. Takes no arguments: the caller already

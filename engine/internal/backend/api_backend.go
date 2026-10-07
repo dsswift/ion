@@ -213,7 +213,7 @@ func (b *ApiBackend) FlushConversations() {
 		if run.conv == nil {
 			continue
 		}
-		if err := conversation.Save(run.conv, ""); err != nil {
+		if err := persistConversation(run, run.conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "FlushConversations: save failed", map[string]any{
 				"run_id": run.requestID,
 				"error":  utils.ErrStr(err),

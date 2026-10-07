@@ -24,6 +24,10 @@ import (
 )
 
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
+	// command.dispatch spans the command, accept to reply, and rewrites
+	// cmd.Traceparent so the work it starts nests under it (dispatch_span.go).
+	end := s.beginCommandSpan(cmd)
+	defer end()
 	s.dispatchWithRecovery(conn, cmd, s.dispatchCommand)
 }
 
@@ -70,7 +74,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 			s.sendResult(conn, cmd, err, nil)
 			break
 		}
-		result, err := s.manager.StartSession(cmd.Key, *cmd.Config, cmd.Principal)
+		result, err := s.manager.StartSessionTraced(cmd.Key, *cmd.Config, cmd.Principal, cmd.Traceparent)
 		if err == nil {
 			s.ownership.claim(conn, cmd.Key)
 			if cmd.Config.Pinned {
@@ -727,6 +731,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchPluginRemove(conn, cmd)
 	case "get_system_metrics":
 		s.dispatchGetSystemMetrics(conn, cmd)
+
+	case "debug_profile":
+		s.dispatchDebugProfile(conn, cmd)
 
 	case "system_metrics_watch":
 		s.dispatchSystemMetricsWatch(conn, cmd)

@@ -92,7 +92,7 @@ const (
 )
 
 // Event is one expanded telemetry data point. The file target compacts a flush
-// into a v4 telemetry frame; in-memory and non-file targets retain this shape.
+// into a compact telemetry frame; in-memory and non-file targets retain this shape.
 type Event = telemetryformat.Event
 
 // Collector buffers telemetry events and flushes them to configured targets.
@@ -415,12 +415,22 @@ func isValidTraceID(traceID string) bool {
 
 // Event records a named event with payload and optional context.
 func (c *Collector) Event(name string, payload, ctx map[string]any) {
+	c.eventAt(name, payload, ctx, time.Time{})
+}
+
+// eventAt is Event stamped at an explicit instant; a zero at means now. Only
+// a span ended with SpanHandle.EndAt passes a non-zero at, so that a span
+// timed before the collector existed records its true end.
+func (c *Collector) eventAt(name string, payload, ctx map[string]any, at time.Time) {
 	if !c.config.Enabled {
 		return
 	}
 	// ts and, for conversation.* events, seq are taken together so the two
 	// orderings a consumer may sort by can never disagree.
 	ts, seq := c.sequencer.stamp(name, payload)
+	if !at.IsZero() {
+		ts = at.UTC()
+	}
 	if seq > 0 {
 		payload["seq"] = seq
 		if isTerminalLifecycle(name, payload) {
@@ -605,7 +615,7 @@ func flushToFile(events []Event, path string, rotation rotationPolicy) error {
 	})
 }
 
-// appendFrameLocked appends exactly one complete v4 frame. The caller owns the
+// appendFrameLocked appends exactly one complete compact frame. The caller owns the
 // telemetry file transaction or schema checkpoint lock while this executes.
 func appendFrameLocked(line []byte, path string, rotation rotationPolicy) error {
 	rotateIfOversize(path, rotation)

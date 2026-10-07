@@ -58,6 +58,11 @@ type ClientCommand struct {
 	Label         string   `json:"label,omitempty"`
 	Limit         int      `json:"limit,omitempty"`
 	Offset        int      `json:"offset,omitempty"`
+	// debug_profile: which runtime profile to capture ("cpu", "heap",
+	// "goroutine", or "trace") and, for cpu and trace, how many seconds to
+	// record (default 10). Additive optional fields.
+	ProfileKind string `json:"profileKind,omitempty"`
+	Seconds     int    `json:"seconds,omitempty"`
 	// system_metrics_watch: the interval (ms) this connection wants
 	// engine_system_metrics samples at; 0 stops watching.
 	IntervalMs         int64  `json:"intervalMs,omitempty"`
@@ -655,6 +660,11 @@ var validCommands = map[string]bool{
 	// engine_system_metrics to the calling connection only.
 	"get_system_metrics":   true,
 	"system_metrics_watch": true,
+	// debug_profile: captures one Go runtime profile of the daemon (cpu,
+	// heap, goroutine, or execution trace) into <data dir>/profiles/ and
+	// answers with the file path. Needs no pprof listener; `ion debug
+	// profile` is its CLI.
+	"debug_profile": true,
 	// scan_wiki_links: read-only link integrity scan of a session's working
 	// directory. The result data is a WikiLinkIntegrityReport.
 	"scan_wiki_links": true,

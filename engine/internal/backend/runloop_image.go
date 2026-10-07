@@ -55,7 +55,7 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 	start := time.Now()
 
 	// Resolve conversation so generated images land in the right images/ dir.
-	conv, convErr := loadOrCreateConversation(opts, model)
+	conv, convErr := loadOrCreateConversationSpan(run, opts, model)
 	if convErr != nil {
 		msg := fmt.Sprintf("Failed to load conversation %s: %v. Your conversation history is safe on disk — please retry.", opts.ConversationID, convErr)
 		utils.Error("backend.image", msg)
@@ -77,7 +77,7 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 	// from duplicating the user row after an interrupted-run recovery.
 	if opts.PrePersistedUserEntryID == "" {
 		AppendInboundUserMessage(conv, &opts)
-		if saveErr := conversation.Save(conv, ""); saveErr != nil {
+		if saveErr := persistConversation(run, conv); saveErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.image", "failed to save conversation after user message", map[string]any{
 				"run_id": run.requestID,
 				"error":  utils.ErrStr(saveErr),
@@ -267,7 +267,7 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 	// reloads the conversation file.
 	if len(persistBlocks) > 0 {
 		conversation.AddAssistantMessage(conv, persistBlocks, types.LlmUsage{})
-		if saveErr := conversation.Save(conv, ""); saveErr != nil {
+		if saveErr := persistConversation(run, conv); saveErr != nil {
 			utils.LogWithFields(utils.LevelError, "backend.image", "failed to save conversation after assistant image message", map[string]any{
 				"run_id": run.requestID,
 				"error":  utils.ErrStr(saveErr),

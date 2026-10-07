@@ -37,6 +37,16 @@ type SpanHandle struct {
 	collector *Collector
 }
 
+// WithSpanID makes the handle record under a span-id minted elsewhere (a
+// trace root whose id children were already parented to before the span
+// could end). An invalid id leaves the minted one.
+func (s *SpanHandle) WithSpanID(id string) *SpanHandle {
+	if utils.IsValidSpanID(id) {
+		s.spanID = id
+	}
+	return s
+}
+
 // SpanID returns the span-id this handle records under. Work started inside
 // the span passes it as its own parent_span_id.
 func (s *SpanHandle) SpanID() string {
@@ -48,7 +58,18 @@ func (s *SpanHandle) SpanID() string {
 // StartSpanCtx) is forwarded to Collector.Event so span-based events carry the
 // same session_id / conversation_id as every other telemetry event.
 func (s *SpanHandle) End(attrs map[string]any, errMsg ...string) {
-	end := time.Now()
+	s.EndAt(time.Now(), attrs, errMsg...)
+}
+
+// EndAt completes the span at an explicit end time. It is for an operation
+// timed before the collector existed (the daemon's own start-up phases,
+// recorded once the config that enables telemetry has been read): the event
+// is stamped at end, not at the call, so the span's start and end are both
+// the true instants. A zero end means now.
+func (s *SpanHandle) EndAt(end time.Time, attrs map[string]any, errMsg ...string) {
+	if end.IsZero() {
+		end = time.Now()
+	}
 	// Sub-millisecond precision: microseconds→float milliseconds preserves the
 	// fractional value that end.Sub(start).Milliseconds() would floor to 0.
 	durationMs := float64(end.Sub(s.start).Microseconds()) / 1000.0
@@ -65,9 +86,9 @@ func (s *SpanHandle) End(attrs map[string]any, errMsg ...string) {
 	if len(errMsg) > 0 && errMsg[0] != "" {
 		payload["error"] = errMsg[0]
 	}
-	// Collector.Event hands the event to the OtelBridge, which records it as
-	// a timed span because the payload carries span_id and duration_ms.
-	s.collector.Event(s.name, payload, s.ctx)
+	// Collector.eventAt hands the event to the OtelBridge, which records it
+	// as a timed span because the payload carries span_id and duration_ms.
+	s.collector.eventAt(s.name, payload, s.ctx, end)
 }
 
 // StartSpan begins a timed span. Call End on the returned handle to complete it.
@@ -83,10 +104,19 @@ func (c *Collector) StartSpan(name string, attrs map[string]any) *SpanHandle {
 // like every direct Collector.Event call site that passes buildTelemCtx(run).
 // A ctx `parent_span_id` makes this span that span's child.
 func (c *Collector) StartSpanCtx(name string, attrs, ctx map[string]any) *SpanHandle {
+	return c.StartSpanCtxAt(name, attrs, ctx, time.Now())
+}
+
+// StartSpanCtxAt is StartSpanCtx for an operation that began at start, before
+// the handle could be made (see SpanHandle.EndAt). A zero start means now.
+func (c *Collector) StartSpanCtxAt(name string, attrs, ctx map[string]any, start time.Time) *SpanHandle {
+	if start.IsZero() {
+		start = time.Now()
+	}
 	return &SpanHandle{
 		name:      name,
 		spanID:    utils.NewSpanID(),
-		start:     time.Now(),
+		start:     start,
 		attrs:     attrs,
 		ctx:       ctx,
 		collector: c,

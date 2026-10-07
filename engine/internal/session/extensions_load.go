@@ -26,6 +26,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	}
 	extPaths := plans
 	group := extension.NewExtensionGroup()
+	group.SetSpanStarter(hookSpanStarter(s.telemetry))
 	for _, plan := range extPaths {
 		extPath := plan.Path
 		m.emit(key, types.EngineEvent{
@@ -60,7 +61,10 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		if policyCfg != nil && policyCfg.Enterprise != nil && len(policyCfg.Enterprise.ExtensionAllowlist) > 0 {
 			extCfg.ExtensionAllowlist = policyCfg.Enterprise.ExtensionAllowlist
 		}
+		host.SetSpawnSessionKey(key)
+		spawnSpan := m.startExtensionSpawnSpan(s, key, extPath)
 		if err := host.Load(extPath, extCfg); err != nil {
+			spawnSpan.end(host, err)
 			stderrTail := host.StderrTail()
 			// A block by the enterprise extension allowlist is surfaced with a
 			// distinct error code so clients can tell "policy refused to load
@@ -103,8 +107,10 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			})
 			continue
 		}
-		// extension.coldstart telemetry (family 4e): the host is up and its init
-		// handshake completed. Nil-safe on the session collector.
+		// The host is up and its init handshake completed: the extension.spawn
+		// span ends, and the extension.coldstart scalar (family 4e) reports the
+		// same readiness latency as ready_ms. Nil-safe on the session collector.
+		spawnSpan.end(host, nil)
 		m.emitExtensionColdstartTelemetry(s, key, host, extPath)
 		capturedKey := key
 		host.SetOnDeath(func(h *extension.Host) {

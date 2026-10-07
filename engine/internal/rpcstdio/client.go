@@ -54,6 +54,10 @@ type Options struct {
 	// error, or Close). The error is nil for a clean Close and non-nil for an
 	// unexpected end. Nil skips the notification.
 	OnClosed func(err error)
+	// SessionID is the engine session the process is spawned for, when the
+	// spawn site knows one: Spawn registers the process with System Metrics
+	// under it. Empty for a probe or a process no session owns.
+	SessionID string
 }
 
 // response is the internal delivery envelope for a matched peer response.

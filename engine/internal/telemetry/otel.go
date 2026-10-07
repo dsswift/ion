@@ -225,6 +225,12 @@ func (b *OtelBridge) RecordEvent(event Event) {
 			attrs["ctx."+key] = value
 		}
 	}
+	// The acting identity rides on every span so span metrics slice by
+	// user. It is the event's resolved User (identityForEvent), the same
+	// value the compact frame interns per identity.
+	if event.User != "" {
+		attrs["user"] = event.User
+	}
 
 	b.recordSpan(event.Name, start, end, attrs, spanIdentifiers{
 		traceID:      event.TraceID,

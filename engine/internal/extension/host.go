@@ -124,6 +124,12 @@ type Host struct {
 	// loads pay only a nil check). The signature matches telemetry.Collector.Event.
 	telemFn func(event string, payload, ctx map[string]any)
 
+	// spawnSessionKey is the engine session this host is loaded for, set
+	// by the session manager before Load so the subprocess is registered
+	// with System Metrics under that session (sysmetrics.RegisterSessionProcess).
+	// Empty for a host loaded outside a session. Guarded by notifMu.
+	spawnSessionKey string
+
 	// persistentPublishResource is the fallback for ext/publish_resource
 	// when no hook/tool context is active (e.g., onComplete callbacks
 	// from background dispatches fire after the run exits). Set by the
@@ -334,6 +340,22 @@ func (h *Host) SetPersistentEmit(fn func(types.EngineEvent)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentEmit = fn
+}
+
+// SetSpawnSessionKey names the engine session this host is spawned for, so
+// its subprocess is attributed to that session in System Metrics. Call it
+// before Load; a respawn reuses it.
+func (h *Host) SetSpawnSessionKey(key string) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.spawnSessionKey = key
+}
+
+// spawnSessionKey_ reads the session key SetSpawnSessionKey set.
+func (h *Host) spawnSessionKey_() string {
+	h.notifMu.RLock()
+	defer h.notifMu.RUnlock()
+	return h.spawnSessionKey
 }
 
 // SetTelemetrySink sets the session-scoped telemetry sink used by callHook to

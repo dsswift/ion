@@ -39,6 +39,12 @@ HOME="$TH" ION_SOCKET_PATH="$TH/engine.sock" ION_PID_PATH="$TH/engine.pid" ./bin
 
 `~/.ion` holds live OAuth grants, API keys, and conversation state. Refresh tokens are single-use at most providers: a probe that refreshes one spends the operator's grant for good. Writing `~/.ion/engine.json` changes every later conversation. A daemon on the default socket competes with the operator's. If a probe truly needs the real credential, ask first. `internal/session` redirects `HOME` in `TestMain` for the same reason.
 
+## Profiling
+
+- `debug.pprof.listen` in `engine.json` (for example `"127.0.0.1:6060"`) serves `net/http/pprof`. Unset is off. A non-loopback host is refused and logged; the engine runs without it.
+- `ion debug profile cpu|heap|goroutine|trace [--seconds N]` asks the running daemon for one capture (`debug_profile` command). It writes to `<data dir>/profiles/` and prints the path. `cpu` and `trace` record for N seconds (default 10, max 300).
+- `make bench` (repo root) runs every `Benchmark*` under `internal/` six times into `engine/bench.txt` (gitignored); `make bench-compare OLD=<file> NEW=<file>` runs `benchstat`.
+
 ## Core principle
 
 Engine executes, harness decides (grounding § 2). "Never blocks for user input" is about the **socket**: no dispatch arm holds the client's read loop waiting on a human. Engine-driven interactive flows (delegated-CLI login, OIDC grants) return `{started: true}` and continue on a bounded, cancellable goroutine that awaits a value delivered by a follow-up command.

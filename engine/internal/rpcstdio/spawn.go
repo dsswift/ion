@@ -98,7 +98,7 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 	utils.LogWithFields(utils.LevelInfo, "rpcstdio", "process spawned", map[string]any{"tag": opts.Tag, "bin": binPath, "args": args, "pid": cmd.Process.Pid})
 	// Every rpcstdio process is a delegated-CLI backend (codex, the ACP
 	// CLIs) or a probe of one; the tag names which.
-	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, opts.Tag)
+	sysmetrics.RegisterSessionProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, opts.Tag, opts.SessionID)
 
 	ring := NewRingBuffer(stderrRingSize)
 	go func() {

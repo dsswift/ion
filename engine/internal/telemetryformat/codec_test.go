@@ -139,7 +139,10 @@ func TestDecodeLineSupportsLegacyAndV4(t *testing.T) {
 	}
 }
 
-func TestV4WireContract(t *testing.T) {
+// TestCompactFrameWireContract pins the compact frame's wire shape: the
+// record discriminator, the current FrameVersion as schema, and the absence
+// of the pre-v4 abbreviated keys.
+func TestCompactFrameWireContract(t *testing.T) {
 	line, err := EncodeCompactLine([]Event{testEvent()})
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +154,7 @@ func TestV4WireContract(t *testing.T) {
 	if got, want := frame["record"], "telemetry.frame"; got != want {
 		t.Errorf("record = %v, want %v", got, want)
 	}
-	if got, want := frame["schema"], float64(4); got != want {
+	if got, want := frame["schema"], float64(FrameVersion); got != want {
 		t.Errorf("schema = %v, want %v", got, want)
 	}
 	for _, forbidden := range []string{"v", "s", "e"} {

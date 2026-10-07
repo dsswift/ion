@@ -432,7 +432,10 @@ type EngineRuntimeConfig struct {
 	FeatureFlags          *FeatureFlagsConfig `json:"featureFlags,omitempty"`
 	Relay                 *RelayConfig        `json:"relay,omitempty"`
 	Timeouts              *TimeoutsConfig     `json:"timeouts,omitempty"`
-	WebSearch             *WebSearchConfig    `json:"webSearch,omitempty"`
+	// Debug holds operator diagnostics switches (the pprof listener). Nil
+	// means every one is off. See types.DebugConfig.
+	Debug     *DebugConfig     `json:"debug,omitempty"`
+	WebSearch *WebSearchConfig `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the

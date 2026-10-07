@@ -167,8 +167,9 @@ func (b *ApiBackend) executeTools(
 		planWriteToCanonical := planGate.planWriteToCanonical
 		planFileHadContentBefore := planGate.planFileHadContentBefore
 
-		// Permission check (Step 3)
+		// Permission check (Step 3), spanned as permission.decide.
 		if permEng != nil {
+			permSpan := startPermissionDecideSpan(telem, run, block.Name)
 			// Classify first so the tier flows into the permission engine
 			// (for tier_rules matching) and onto the permission_request
 			// hook payload (for audit/observation). The classifier may
@@ -191,6 +192,7 @@ func (b *ApiBackend) executeTools(
 				Tier:   tier,
 				Grants: run.skillGrantsSnapshot(),
 			})
+			endPermissionDecideSpan(permSpan, checkResult, tier)
 			if permReqFn != nil {
 				payload := map[string]interface{}{
 					"tool_name": block.Name,
@@ -487,6 +489,11 @@ func (b *ApiBackend) executeTools(
 		var toolCancel context.CancelFunc
 		var toolSuspender *types.DeadlineSuspenderHandle
 		toolCtx, toolCancel = context.WithCancel(gCtx)
+		if toolSpan.span != nil {
+			// Work the tool does under this context (an mcp.call) parents
+			// under the tool.execute span.
+			toolCtx = utils.WithSpanID(toolCtx, toolSpan.span.SpanID())
+		}
 		ds := types.NewDeadlineSuspender(toolTimeout, toolCancel)
 		toolSuspender = ds
 		toolCtx = types.WithDeadlineSuspender(toolCtx, ds)
@@ -731,7 +738,7 @@ func (b *ApiBackend) executeTools(
 					PlanFilePath: run.planFilePath,
 					PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 				})
-				if err := conversation.Save(run.conv, ""); err != nil {
+				if err := persistConversation(run, run.conv); err != nil {
 					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "plan_marker: failed to save", map[string]any{
 						"error": utils.ErrStr(err),
 					})

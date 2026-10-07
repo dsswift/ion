@@ -296,9 +296,17 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}
 	if hookSpanID != "" {
 		corr["trace_id"] = ctx.TraceID
-		corr["parent_span_id"] = ctx.RunSpanID
+		// Under a group fire the hook.fanout span is the parent; a hook
+		// fired on one host directly sits under the run's span.
+		parent := ctx.HookFanoutSpanID
+		if parent == "" {
+			parent = ctx.RunSpanID
+		}
+		corr["parent_span_id"] = parent
 		hookPayload["span_id"] = hookSpanID
 		hookPayload["duration_ms"] = latencyMs
+		// An outbound call into the extension subprocess: a client span.
+		hookPayload["span_kind"] = "client"
 	}
 
 	telemFn("extension.hook_latency", hookPayload, corr)

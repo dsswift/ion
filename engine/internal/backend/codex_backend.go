@@ -55,7 +55,7 @@ type CodexBackend struct {
 // on the same process inherit that first trace; see
 // docs/observability/log-schema.md § Propagation). Empty keeps the inherited
 // environment untouched.
-type codexLauncher func(h codexrpc.Handlers, extraEnv []string) (client *codexrpc.Client, kill func(), err error)
+type codexLauncher func(h codexrpc.Handlers, extraEnv []string, sessionID string) (client *codexrpc.Client, kill func(), err error)
 
 // codexRun tracks one active engine run mapped onto a codex thread+turn.
 type codexRun struct {
@@ -104,7 +104,7 @@ func NewCodexBackend() *CodexBackend {
 }
 
 // defaultCodexLauncher spawns the real `codex app-server` subprocess.
-func defaultCodexLauncher(h codexrpc.Handlers, extraEnv []string) (*codexrpc.Client, func(), error) {
+func defaultCodexLauncher(h codexrpc.Handlers, extraEnv []string, sessionID string) (*codexrpc.Client, func(), error) {
 	binPath, err := cliprobe.Find(codexBinaryName, nil)
 	if err != nil {
 		return nil, nil, err
@@ -115,7 +115,11 @@ func defaultCodexLauncher(h codexrpc.Handlers, extraEnv []string) (*codexrpc.Cli
 	if len(extraEnv) > 0 {
 		env = append(os.Environ(), extraEnv...)
 	}
-	proc, err := rpcstdio.Spawn(context.Background(), binPath, []string{"app-server"}, env, codexrpc.SpawnHandlers(h))
+	spawnOpts := codexrpc.SpawnHandlers(h)
+	// The process serves the session that first spawned it; System Metrics
+	// attributes it there.
+	spawnOpts.SessionID = sessionID
+	proc, err := rpcstdio.Spawn(context.Background(), binPath, []string{"app-server"}, env, spawnOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -578,7 +582,7 @@ func (b *CodexBackend) ensureStarted(runCtx context.Context) error {
 		OnDynamicToolCall:    b.onDynamicToolCall,
 		OnClosed:             b.onProcessClosed,
 	}
-	client, kill, err := b.launch(handlers, withTraceparentEnv(nil, runCtx, "backend.codex"))
+	client, kill, err := b.launch(handlers, withTraceparentEnv(nil, runCtx, "backend.codex"), spawnSessionID(runCtx))
 	if err != nil {
 		return err
 	}

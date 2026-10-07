@@ -83,7 +83,7 @@ type acpRun struct {
 // that first spawned the process (the agent is long-lived, so later runs on
 // the same process inherit that first trace in their environment; see
 // docs/observability/log-schema.md § Propagation).
-type acpLauncher func(spec acpSpec, h acp.Handlers, extraEnv []string) (client *acp.Client, kill func(), err error)
+type acpLauncher func(spec acpSpec, h acp.Handlers, extraEnv []string, sessionID string) (client *acp.Client, kill func(), err error)
 
 // NewGrokBackend constructs an ACP backend for the grok CLI.
 func NewGrokBackend() *AcpBackend {
@@ -129,14 +129,18 @@ func newAcpBackend(spec acpSpec) *AcpBackend {
 }
 
 // defaultAcpLauncher spawns the real ACP agent subprocess.
-func defaultAcpLauncher(spec acpSpec, h acp.Handlers, extraEnv []string) (*acp.Client, func(), error) {
+func defaultAcpLauncher(spec acpSpec, h acp.Handlers, extraEnv []string, sessionID string) (*acp.Client, func(), error) {
 	binPath, err := cliprobe.Find(spec.binary, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	env := append(os.Environ(), spec.envExtra...)
 	env = append(env, extraEnv...)
-	proc, err := rpcstdio.Spawn(context.Background(), binPath, spec.args, env, acp.SpawnOptions(spec.kind, h))
+	spawnOpts := acp.SpawnOptions(spec.kind, h)
+	// The process serves the session that first spawned it; System Metrics
+	// attributes it there.
+	spawnOpts.SessionID = sessionID
+	proc, err := rpcstdio.Spawn(context.Background(), binPath, spec.args, env, spawnOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -516,7 +520,7 @@ func (b *AcpBackend) ensureStarted(runCtx context.Context) (*acp.Client, bool, e
 		OnExtRequest:    b.onExtRequest,
 		OnClosed:        b.onProcessClosed,
 	}
-	client, kill, err := b.launch(b.spec, handlers, withTraceparentEnv(nil, runCtx, "backend.acp"))
+	client, kill, err := b.launch(b.spec, handlers, withTraceparentEnv(nil, runCtx, "backend.acp"), spawnSessionID(runCtx))
 	if err != nil {
 		return nil, false, err
 	}

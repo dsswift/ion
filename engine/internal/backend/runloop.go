@@ -93,7 +93,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	}
 
 	// Load or create conversation
-	conv, convErr := loadOrCreateConversation(opts, model)
+	conv, convErr := loadOrCreateConversationSpan(run, opts, model)
 	if convErr != nil {
 		msg := fmt.Sprintf("Failed to load conversation %s: %v. Your conversation history is safe on disk — please retry.", opts.ConversationID, convErr)
 		utils.Error("ApiBackend", msg)
@@ -343,6 +343,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			}, buildTelemCtx(run))
 		}
 
+		// context.assemble spans the model-context build below, through the
+		// stream options and the context breakdown (runloop_context_span.go).
+		assembleSpan := startContextAssembleSpan(run, turn)
+
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		sanitized := conversation.SanitizeMessages(conv.Messages)
 
@@ -393,6 +397,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// the first turn that has assembled stream options. See
 		// runloop_context_breakdown.go for the build/emit + reconcile helpers.
 		b.maybeEmitContextBreakdown(ctx, run, model, provider, &streamOpts, conv, contextWindow)
+		endContextAssembleSpan(assembleSpan, &streamOpts, len(initialMsgs))
 
 		// Call provider with retry (with telemetry span)
 		runIDCopy, turnCopy := run.requestID, turn
@@ -423,6 +428,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				spanAttrs["prompt"] = truncatePreview(promptTextForTelemetry(messages), telemPreviewLimit)
 			}
 			llmSpan = telem.StartSpanCtx("llm.call", spanAttrs, buildTelemCtx(run))
+			run.setLlmCallSpan(llmSpan.SpanID())
 		}
 
 		// Fire the before_provider_request extension hook immediately before
@@ -486,6 +492,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				endAttrs["response"] = truncatePreview(assistantTextForTelemetry(assistantBlocks), telemPreviewLimit)
 			}
 			llmSpan.End(endAttrs, errStr)
+			run.setLlmCallSpan("")
 		}
 
 		if streamErr != nil {
@@ -686,7 +693,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			// Persist immediately so the assistant turn survives mid-loop crashes.
 			// The end-of-turn Save() below remains as the canonical write that
 			// also captures stop-reason transitions.
-			if err := conversation.Save(conv, ""); err != nil {
+			if err := persistConversation(run, conv); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddAssistantMessage", map[string]any{
 					"error": utils.ErrStr(err),
 				})

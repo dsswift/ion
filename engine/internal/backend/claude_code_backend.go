@@ -390,7 +390,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"pid":        cmd.Process.Pid,
 		"request_id": run.requestID,
 	})
-	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, "claude")
+	sysmetrics.RegisterSessionProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, "claude", opts.SessionKey)
 
 	// Record spawn metadata for diagnostic use in the empty-stderr exit path.
 	run.spawnedAt = time.Now()

@@ -27,6 +27,13 @@ type RetryConfig struct {
 	PersistentMaxWaitMs         int64
 	OnRetryWait                 func(attempt, delayMs int, err *ProviderError)
 	OnFallback                  func(fromModel, toModel string, hopIndex int)
+	// OnAttemptStart observes one request to a provider: it is called as
+	// the attempt's Stream begins and returns the function WithRetry calls
+	// when the attempt ends, with how it ended (AttemptOutcome*), the time
+	// to the attempt's first event in milliseconds (0 when none arrived),
+	// and the error for every outcome but ok. Nil observes nothing. The
+	// backend records each attempt as an llm.attempt span through it.
+	OnAttemptStart func(attempt int, model, providerID string) func(outcome string, ttftMs float64, err error)
 	// AttachAuth re-resolves and attaches the acting principal's request
 	// credential for providerID, returning the context WithRequestCredential
 	// carries it on. Called before every Stream call -- the initial one and
@@ -103,6 +110,15 @@ func (c *RetryConfig) isPersistent() bool {
 // stream_reset marker (types.LlmStreamEventStreamReset) is sent before the
 // next attempt's events — the caller must discard all state accumulated for
 // the interrupted attempt on receipt.
+// How one provider attempt ended, as reported to RetryConfig.OnAttemptStart.
+const (
+	AttemptOutcomeOK        = "ok"        // the stream completed
+	AttemptOutcomeRetry     = "retry"     // a retryable error; the same model is tried again
+	AttemptOutcomeFallback  = "fallback"  // an overload moved to the next fallback model
+	AttemptOutcomeError     = "error"     // the error ends the call
+	AttemptOutcomeCancelled = "cancelled" // the caller's context ended it
+)
+
 func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOptions, config *RetryConfig) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 32)
 	errc := make(chan error, 1)
@@ -153,12 +169,37 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			if config != nil && config.AttachAuth != nil {
 				attemptCtx = config.AttachAuth(ctx, currentProvider.ID())
 			}
+			// One attempt, as the observer sees it. endAttempt is idempotent so
+			// every exit below can report without tracking which fired.
+			attemptStart := time.Now()
+			var firstEventAt time.Time
+			var attemptEnd func(outcome string, ttftMs float64, err error)
+			if config != nil && config.OnAttemptStart != nil {
+				attemptEnd = config.OnAttemptStart(attempt, currentModel, currentProvider.ID())
+			}
+			attemptEnded := false
+			endAttempt := func(outcome string, err error) {
+				if attemptEnded || attemptEnd == nil {
+					attemptEnded = true
+					return
+				}
+				attemptEnded = true
+				ttft := 0.0
+				if !firstEventAt.IsZero() {
+					ttft = float64(firstEventAt.Sub(attemptStart).Microseconds()) / 1000.0
+				}
+				attemptEnd(outcome, ttft, err)
+			}
 			evCh, errCh := currentProvider.Stream(attemptCtx, streamOpts)
 
 			// Forward each event to the caller immediately.
 			var streamErr error
 			for ev := range evCh {
+				if firstEventAt.IsZero() {
+					firstEventAt = time.Now()
+				}
 				if ctx.Err() != nil {
+					endAttempt(AttemptOutcomeCancelled, ctx.Err())
 					errc <- ctx.Err()
 					return
 				}
@@ -166,6 +207,7 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 				case events <- ev:
 					forwardedSinceReset = true
 				case <-ctx.Done():
+					endAttempt(AttemptOutcomeCancelled, ctx.Err())
 					errc <- ctx.Err()
 					return
 				}
@@ -178,11 +220,13 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 
 			// Stream completed without error — done.
 			if streamErr == nil {
+				endAttempt(AttemptOutcomeOK, nil)
 				return
 			}
 
 			// Context cancelled is not retryable
 			if ctx.Err() != nil {
+				endAttempt(AttemptOutcomeCancelled, ctx.Err())
 				errc <- ctx.Err()
 				return
 			}
@@ -190,6 +234,7 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			// Convert to ProviderError
 			pe, ok := streamErr.(*ProviderError)
 			if !ok {
+				endAttempt(AttemptOutcomeError, streamErr)
 				errc <- streamErr
 				return
 			}
@@ -214,9 +259,11 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 					"subject": config.Subject, "provider": currentProvider.ID(),
 				})
 				if !sendReset() {
+					endAttempt(AttemptOutcomeCancelled, ctx.Err())
 					errc <- ctx.Err()
 					return
 				}
+				endAttempt(AttemptOutcomeRetry, pe)
 				continue // re-resolve auth and retry immediately, no backoff
 			}
 
@@ -231,6 +278,7 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 						"subject": subject, "provider": currentProvider.ID(), "already_self_healed": authSelfHealed,
 					})
 				}
+				endAttempt(AttemptOutcomeError, pe)
 				errc <- pe
 				return
 			}
@@ -254,9 +302,11 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 						// Discard any partial output the failed attempt
 						// already forwarded before the fallback re-streams.
 						if !sendReset() {
+							endAttempt(AttemptOutcomeCancelled, ctx.Err())
 							errc <- ctx.Err()
 							return
 						}
+						endAttempt(AttemptOutcomeFallback, pe)
 						if config.OnFallback != nil {
 							config.OnFallback(currentModel, next, fallbackIdx+1)
 						}
@@ -273,12 +323,14 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 
 			// Check retry limits
 			if !config.isPersistent() && attempt > config.maxRetries() {
+				endAttempt(AttemptOutcomeError, pe)
 				errc <- pe
 				return
 			}
 
 			// Persistent mode: check total wall time
 			if config.isPersistent() && time.Since(startTime).Milliseconds() > config.persistentMaxWait() {
+				endAttempt(AttemptOutcomeError, pe)
 				errc <- pe
 				return
 			}
@@ -287,9 +339,11 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			// already forwarded — before the backoff wait, so consumers drop
 			// the stale partial state immediately rather than after the delay.
 			if !sendReset() {
+				endAttempt(AttemptOutcomeCancelled, ctx.Err())
 				errc <- ctx.Err()
 				return
 			}
+			endAttempt(AttemptOutcomeRetry, pe)
 
 			// Calculate delay with exponential backoff + jitter
 			cap := config.maxDelay()

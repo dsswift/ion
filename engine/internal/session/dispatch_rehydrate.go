@@ -1,12 +1,14 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -28,7 +30,7 @@ import (
 // on this session ID). A non-nil conv is returned even when there are no
 // dispatch entries — the file loaded fine, it just has nothing to rehydrate.
 func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversation.Conversation {
-	conv, err := conversation.Load(s.conversationID, "")
+	conv, err := m.loadConversationSpan(s, key)
 	if err != nil {
 		// No conversation file yet — first run on this session ID.
 		// Nothing to rehydrate; this is the normal path for new sessions.
@@ -739,4 +741,26 @@ func (m *Manager) persistRecallIntents(recalled []extcontext.RecalledDispatch) {
 		}
 		m.persistRecallIntent(session.conversationID, dispatch.DispatchID)
 	}
+}
+
+// loadConversationSpan reads the session's conversation from disk inside a
+// conversation.load span (a child of session.start on a fresh start). A
+// not-found read is the normal first-run case and is not a span error.
+func (m *Manager) loadConversationSpan(s *engineSession, key string) (*conversation.Conversation, error) {
+	if s.telemetry == nil {
+		return conversation.Load(s.conversationID, "")
+	}
+	span := s.telemetry.StartSpanCtx(telemetry.ConversationLoad, map[string]any{"source": "rehydrate"}, m.sessionSpanCtx(s, key))
+	conv, err := conversation.Load(s.conversationID, "")
+	attrs := map[string]any{"found": err == nil}
+	errMsg := ""
+	if err != nil && !errors.Is(err, conversation.ErrNotFound) {
+		errMsg = err.Error()
+	}
+	if conv != nil {
+		attrs["messages"] = len(conv.Messages)
+		attrs["entries"] = len(conv.Entries)
+	}
+	span.End(attrs, errMsg)
+	return conv, err
 }

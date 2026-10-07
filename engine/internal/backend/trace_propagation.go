@@ -25,6 +25,16 @@ func withTraceparentEnv(env []string, ctx context.Context, tag string) []string 
 	return append(env, traceparentEnvKey+"="+traceparent)
 }
 
+// spawnSessionID returns the session key a spawned backend process serves,
+// read from the spawning run's context, or "" when the context is nil or
+// carries none. System Metrics attributes the process to that session.
+func spawnSessionID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	return utils.SessionIDFromContext(ctx)
+}
+
 // withLlmCallSpan makes span the enclosing span of ctx, so a provider request
 // made under ctx sends traceparent 00-<trace>-<llm.call span>-01 and the
 // provider's own spans nest under the engine's llm.call. A span that does

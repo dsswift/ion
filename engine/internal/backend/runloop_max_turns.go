@@ -10,7 +10,7 @@ import (
 )
 
 func (b *ApiBackend) emitMaxTurns(run *activeRun, conv *conversation.Conversation, maxTurns, turn int) {
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
 			"error": utils.ErrStr(err),
 		})

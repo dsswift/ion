@@ -82,6 +82,11 @@ type ElicitationReply struct {
 // ConnectionOptions attach Ion-owned behavior around generic protocol mechanics.
 type ConnectionOptions struct {
 	Elicit func(context.Context, ElicitationRequest) (ElicitationReply, error)
+	// SessionID is the engine session the server is connected for, when
+	// one is: a stdio server's process is registered with System Metrics
+	// under it so its CPU and memory attribute to that conversation. Empty
+	// for a probe or a connection no session owns.
+	SessionID string
 }
 
 // Connection is a negotiated MCP client session. Protocol mechanics belong to
@@ -185,7 +190,7 @@ func ConnectContext(ctx context.Context, name string, config types.McpServerConf
 	// A stdio server's process exists once Connect returns; label it for
 	// System Metrics. The transport cleanup unregisters it.
 	if ct, ok := transport.(*mcpgo.CommandTransport); ok && ct.Command != nil && ct.Command.Process != nil {
-		sysmetrics.RegisterProcess(ct.Command.Process.Pid, types.SystemMetricsRoleMcp, name)
+		sysmetrics.RegisterSessionProcess(ct.Command.Process.Pid, types.SystemMetricsRoleMcp, name, opts.SessionID)
 	}
 	conn := &Connection{name: name, session: session, close: cleanup}
 	if config.TimeoutSeconds > 0 {

@@ -290,7 +290,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		verb = "respawned"
 	}
 	utils.LogWithFields(utils.LevelInfo, "extension", "extension from (pid )", map[string]any{"verb": verb, "extension_path": extensionPath, "run_id": cmd.Process.Pid})
-	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleExtension, h.name_())
+	sysmetrics.RegisterSessionProcess(cmd.Process.Pid, types.SystemMetricsRoleExtension, h.name_(), h.spawnSessionKey_())
 	return nil
 }
 

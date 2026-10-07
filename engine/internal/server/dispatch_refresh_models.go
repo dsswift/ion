@@ -6,6 +6,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -21,7 +22,15 @@ func (s *Server) dispatchRefreshModels(conn net.Conn, cmd *protocol.ClientComman
 	} else {
 		resolveKey = func(string) (string, error) { return "", nil }
 	}
+	// provider.probe: HTTP model discovery, under the command's dispatch span.
+	var span *telemetry.SpanHandle
+	if telem := s.Telemetry(); telem != nil {
+		span = telem.StartSpanCtx(telemetry.ProviderProbe, map[string]any{"probe": "models", "provider": cmd.Provider}, commandSpanCtx(cmd))
+	}
 	results := providers.RefreshModels(cmd.Provider, true, resolveKey, providerConfigs)
+	if span != nil {
+		span.End(map[string]any{"results": len(results)})
+	}
 	// When the request is attributed, also refresh the acting
 	// principal's OWN entitlement (R-12) -- the process-wide
 	// RefreshModels call above only re-fetches the shared metadata

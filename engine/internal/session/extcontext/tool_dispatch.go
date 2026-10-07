@@ -94,7 +94,7 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 		for _, conn := range mcpConns {
 			if conn.Name() == serverName {
 				callCtx, callCancel := context.WithTimeout(ctx, mcp.DefaultCallTimeout)
-				mcpResult, err := conn.CallTool(callCtx, innerName, input)
+				mcpResult, err := conn.CallToolSpan(callCtx, innerName, input, sa.Telemetry(), mcp.SpanCorrelation(ctx, sa.SessionKey(), sa.ConversationID()))
 				callCancel()
 				if err != nil {
 					// Log at the call site so an MCP tool failure — which server,

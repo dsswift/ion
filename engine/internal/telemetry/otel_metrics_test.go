@@ -25,10 +25,14 @@ func fixtureSample(at int64) *types.SystemMetricsSample {
 		},
 		Processes: []types.SystemMetricsProcess{
 			{Role: "engine", CPUPercent: &engineCPU, RSSBytes: 200 << 20},
-			{Role: "mcp", CPUPercent: &mcpCPU, RSSBytes: 30 << 20},
-			{Role: "mcp", RSSBytes: 10 << 20},
+			{Role: "mcp", CPUPercent: &mcpCPU, RSSBytes: 30 << 20, SessionID: "sess-a"},
+			{Role: "mcp", RSSBytes: 10 << 20, SessionID: "sess-a"},
+			{Role: "extension", RSSBytes: 5 << 20, SessionID: "sess-b"},
 		},
-		Runtime: types.SystemMetricsRuntime{HeapBytes: 50 << 20, Goroutines: 42, Sessions: 3},
+		Runtime: types.SystemMetricsRuntime{
+			HeapBytes: 50 << 20, Goroutines: 42, Sessions: 3,
+			GCPauseP99Ms: 1.5, AllocRateBytesPerS: 2048, SchedLatencyP99Ms: 0.25,
+		},
 	}
 }
 
@@ -60,6 +64,7 @@ func TestSystemMetricsGaugesCarryNamesValuesAndRole(t *testing.T) {
 	for _, name := range []string{
 		"ion.host.cpu.utilization", "ion.host.memory.available", "ion.host.memory.limit", "ion.host.disk.free",
 		"ion.process.cpu.utilization", "ion.process.memory.rss", "ion.engine.heap", "ion.engine.goroutines", "ion.engine.sessions",
+		"ion.engine.gc_pause.p99", "ion.engine.alloc_rate", "ion.engine.sched_latency.p99",
 	} {
 		if _, ok := got[name]; !ok {
 			t.Fatalf("instrument %s not exported; got %v", name, got)
@@ -74,15 +79,28 @@ func TestSystemMetricsGaugesCarryNamesValuesAndRole(t *testing.T) {
 	}
 	rss := got["ion.process.memory.rss"].Data.(metricdata.Gauge[int64]).DataPoints
 	byRole := map[string]int64{}
+	sessionOf := map[string]string{}
 	for _, dp := range rss {
-		if dp.Attributes.Len() != 1 {
-			t.Fatalf("process metrics must carry role only, got %v", dp.Attributes.ToSlice())
+		if dp.Attributes.Len() != 2 {
+			t.Fatalf("process metrics must carry role and session_id only, got %v", dp.Attributes.ToSlice())
 		}
 		role, _ := dp.Attributes.Value(attribute.Key("role"))
+		session, _ := dp.Attributes.Value(attribute.Key("session_id"))
 		byRole[role.AsString()] = dp.Value
+		sessionOf[role.AsString()] = session.AsString()
 	}
-	if byRole["mcp"] != 40<<20 || byRole["engine"] != 200<<20 {
+	if byRole["mcp"] != 40<<20 || byRole["engine"] != 200<<20 || byRole["extension"] != 5<<20 {
 		t.Fatalf("rss by role = %v", byRole)
+	}
+	// The role gauges split by owning session: the two mcp rows share one
+	// session and sum under it; the engine's own row has none.
+	if sessionOf["mcp"] != "sess-a" || sessionOf["extension"] != "sess-b" || sessionOf["engine"] != "" {
+		t.Fatalf("session_id by role = %v", sessionOf)
+	}
+	for name, want := range map[string]float64{"ion.engine.gc_pause.p99": 1.5, "ion.engine.alloc_rate": 2048, "ion.engine.sched_latency.p99": 0.25} {
+		if v := got[name].Data.(metricdata.Gauge[float64]).DataPoints[0].Value; v != want {
+			t.Fatalf("%s = %v, want %v", name, v, want)
+		}
 	}
 	cpu := got["ion.process.cpu.utilization"].Data.(metricdata.Gauge[float64]).DataPoints
 	for _, dp := range cpu {

@@ -191,7 +191,7 @@ func (b *ApiBackend) reconcilePlanMode(
 		run.mu.Lock()
 		run.planNoticeMemo = nil
 		run.mu.Unlock()
-		if err := conversation.Save(conv, ""); err != nil {
+		if err := persistConversation(run, conv); err != nil {
 			utils.LogWithFields(utils.LevelError, "backend.plan_mode", "failed to save conversation after plan-mode notice", map[string]any{
 				"run_id": run.requestID, "kind": string(kind), "error": utils.ErrStr(err),
 			})

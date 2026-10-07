@@ -53,6 +53,7 @@ type Sampler struct {
 	sampleMu sync.Mutex // serializes readers (they keep previous readings)
 	host     *hostReader
 	procs    *procReader
+	goRT     *runtimeReader
 
 	mu         sync.Mutex
 	latest     *types.SystemMetricsSample
@@ -77,6 +78,7 @@ func New(opts Options) *Sampler {
 		sessions:      opts.Sessions,
 		host:          newHostReader(),
 		procs:         newProcReader(),
+		goRT:          newRuntimeReader(),
 		watchers:      newWatchSet(),
 		wake:          make(chan struct{}, 1),
 		stop:          make(chan struct{}),
@@ -261,6 +263,7 @@ func (s *Sampler) SampleNow() types.SystemMetricsSample {
 	now := start.UnixMilli()
 	host := s.host.read(ctx, s.diskPath)
 	procs := s.procs.read(ctx, now)
+	rt := s.goRT.read(start)
 	s.sampleMu.Unlock()
 
 	var ms runtime.MemStats
@@ -285,6 +288,10 @@ func (s *Sampler) SampleNow() types.SystemMetricsSample {
 			Goroutines:    runtime.NumGoroutine(),
 			NumGC:         ms.NumGC,
 			Sessions:      sessions,
+			// Interval figures from runtime/metrics (runtime_metrics.go).
+			GCPauseP99Ms:       rt.gcPauseP99Ms,
+			AllocRateBytesPerS: rt.allocRateBytesPerS,
+			SchedLatencyP99Ms:  rt.schedLatencyP99Ms,
 		},
 	}
 	s.mu.Lock()
@@ -341,6 +348,9 @@ func SampleLogFields(sample types.SystemMetricsSample) map[string]any {
 		"goroutines":                  r.Goroutines,
 		"num_gc":                      r.NumGC,
 		"sessions":                    r.Sessions,
+		"gc_pause_p99_ms":             r.GCPauseP99Ms,
+		"alloc_rate_bytes_per_s":      r.AllocRateBytesPerS,
+		"sched_latency_p99_ms":        r.SchedLatencyP99Ms,
 		"process_count":               len(sample.Processes),
 	}
 	if h.CPUUtilization != nil {

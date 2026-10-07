@@ -31,7 +31,7 @@ func (b *ApiBackend) drainCompletedChildDispatches(run *activeRun, conv *convers
 	}
 
 	deliveries := run.pendingChildCompletionMessages
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "failed to save completed child dispatch results", map[string]any{
 			"run_id": run.requestID, "count": len(deliveries), "error": utils.ErrStr(err),
 		})

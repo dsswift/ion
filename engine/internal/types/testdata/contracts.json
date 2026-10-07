@@ -1068,13 +1068,17 @@
       "pid",
       "role",
       "rssBytes",
+      "sessionId",
       "startTimeMs"
     ],
     "SystemMetricsRuntime": [
+      "allocRateBytesPerS",
+      "gcPauseP99Ms",
       "goroutines",
       "heapBytes",
       "memLimitBytes",
       "numGC",
+      "schedLatencyP99Ms",
       "sessions",
       "sysBytes"
     ],

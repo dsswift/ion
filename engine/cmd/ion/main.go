@@ -78,6 +78,8 @@ func main() {
 		cmdHookRelay(flags)
 	case "telemetry":
 		cmdTelemetry(positional, flags)
+	case "debug":
+		cmdDebug(positional, flags)
 	case "studio":
 		cmdStudio(positional, flags)
 	case "fleet":
@@ -145,6 +147,7 @@ func printUsageTo(w io.Writer) {
 	b.WriteString("  plugin remove <name>         Remove a plugin" + "\n")
 	b.WriteString("  telemetry expand [FILE|-] Expand telemetry frames as JSONL" + "\n")
 	b.WriteString("  telemetry forward          Forward telemetry to Loki" + "\n")
+	b.WriteString("  debug profile <kind>     Capture a cpu|heap|goroutine|trace profile of the running engine (--seconds N)" + "\n")
 	b.WriteString("  version [--json]         Show version (also: --version, -v); --json adds the Format Versions" + "\n")
 	b.WriteString("  help                     Show this help (also: --help, -h)" + "\n")
 	b.WriteString("\n")

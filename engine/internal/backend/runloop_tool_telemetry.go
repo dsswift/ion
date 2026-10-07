@@ -1,7 +1,9 @@
 package backend
 
 import (
+	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/procres"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -82,4 +84,30 @@ func endToolExecuteSpan(exec *toolExecution, telem TelemetryCollector, toolResul
 		endAttrs["output"] = truncatePreview(toolResult.Content, telemPreviewLimit)
 	}
 	exec.span.End(endAttrs, errStr)
+}
+
+// startPermissionDecideSpan opens the permission.decide span for one tool
+// call: the classifier (when one is wired), then the permission engine's
+// rails, to the decision. A child of run.execute beside the tool.execute
+// span that follows an allowed call. Nil without a collector.
+func startPermissionDecideSpan(telem TelemetryCollector, run *activeRun, toolName string) Span {
+	if telem == nil {
+		return nil
+	}
+	return telem.StartSpanCtx(telemetry.PermissionDecide, map[string]interface{}{"tool": toolName}, buildTelemCtx(run))
+}
+
+// endPermissionDecideSpan closes the span with the decision, the rail that
+// made it, and the classifier tier. The permission.decision scalar (the
+// session's audit callback) keeps its own full record beside it.
+func endPermissionDecideSpan(span Span, result *permissions.CheckResult, tier string) {
+	if span == nil {
+		return
+	}
+	attrs := map[string]interface{}{"tier": tier}
+	if result != nil {
+		attrs["decision"] = result.Decision
+		attrs["deciding_layer"] = result.Layer
+	}
+	span.End(attrs)
 }
