@@ -64,10 +64,18 @@ type pushRequest struct {
 	resourceId  string // resource ID for deep-link routing on the client
 	channelId   string // relay channel ID (pairing identity for multi-device routing)
 	tabId       string // desktop tab ID (conversation routing on the client)
+	// traceparent is the doorbell's W3C trace context, copied into the APNs
+	// payload so the phone's push.open span joins the server's trace. Empty
+	// when the doorbell carried none.
+	traceparent string
 
 	// onFailure is called with a stable reason string when the push fails.
 	// It is optional (nil means no callback).
 	onFailure func(reason string)
+
+	// enqueuedAt is when Enqueue accepted the request; the worker derives
+	// queue_wait_ms and duration_ms from it.
+	enqueuedAt time.Time
 }
 
 // APNsPusher sends push notifications via Apple's HTTP/2 APNs API.
@@ -87,6 +95,9 @@ type APNsPusher struct {
 	tokenExpiry time.Time
 
 	queue chan pushRequest
+
+	// metrics receives queue depth, outcome latency, and drops. Nil-safe.
+	metrics *relayMetrics
 }
 
 // newAPNsTransport builds the transport every APNs request goes out on. APNs
@@ -173,6 +184,8 @@ type apnsPayload struct {
 	IonResourceId string     `json:"ionResourceId,omitempty"`
 	IonChannelId  string     `json:"ionChannelId,omitempty"`
 	IonTabId      string     `json:"ionTabId,omitempty"`
+	// Traceparent is the doorbell's trace context (W3C), when it had one.
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 type apsPayload struct {
@@ -200,7 +213,7 @@ func (p *APNsPusher) Send(device apnsDevice, title, body, kind, resourceId, chan
 // any stage (queue full, token error, transport error, or a non-200 APNs
 // response). Callers that do not need failure notification may use Send instead.
 func (p *APNsPusher) SendWithNotify(device apnsDevice, title, body, kind, resourceId, channelId, tabId string, onFailure func(reason string)) error {
-	req := pushRequest{
+	return p.Enqueue(pushRequest{
 		deviceToken: device.Token,
 		env:         device.Env,
 		title:       title,
@@ -210,13 +223,22 @@ func (p *APNsPusher) SendWithNotify(device apnsDevice, title, body, kind, resour
 		channelId:   channelId,
 		tabId:       tabId,
 		onFailure:   onFailure,
-	}
+	})
+}
+
+// Enqueue hands a fully built request to the worker. It stamps enqueuedAt
+// and returns ErrQueueFull when the queue is at capacity; the caller then
+// invokes req.onFailure itself.
+func (p *APNsPusher) Enqueue(req pushRequest) error {
+	req.enqueuedAt = time.Now()
 	select {
 	case p.queue <- req:
+		p.metrics.apnsQueued(len(p.queue))
 		return nil
 	default:
+		p.metrics.apnsDroppedPush()
 		logger.Warn("APNs push queue full", "tag", "relay.apns.error",
-			"kind", kind, "resource_id", resourceId)
+			"kind", req.kind, "resource_id", req.resourceId, "queue_depth", len(p.queue))
 		return ErrQueueFull
 	}
 }
@@ -225,15 +247,21 @@ func (p *APNsPusher) SendWithNotify(device apnsDevice, title, body, kind, resour
 func (p *APNsPusher) Start() {
 	go func() {
 		for req := range p.queue {
-			if err := p.sendAsync(req); err != nil {
-				if req.onFailure != nil {
-					reason := "transient" // default when classification is unavailable
-					var apnsErr *apnsError
-					if errors.As(err, &apnsErr) {
-						reason = apnsErr.reason
-					}
-					req.onFailure(reason)
+			p.metrics.apnsQueued(len(p.queue))
+			err := p.sendAsync(req)
+			outcome := apnsOutcomeDelivered
+			if err != nil {
+				outcome = "transient" // default when classification is unavailable
+				var apnsErr *apnsError
+				if errors.As(err, &apnsErr) {
+					outcome = apnsErr.reason
 				}
+			}
+			if !req.enqueuedAt.IsZero() {
+				p.metrics.apnsFinished(outcome, time.Since(req.enqueuedAt))
+			}
+			if err != nil && req.onFailure != nil {
+				req.onFailure(outcome)
 			}
 		}
 	}()
@@ -242,11 +270,29 @@ func (p *APNsPusher) Start() {
 // sendAsync executes a single APNs push synchronously (called from the worker
 // goroutine). Returns nil on HTTP 200; otherwise returns a classified *apnsError.
 func (p *APNsPusher) sendAsync(req pushRequest) error {
+	startedAt := time.Now()
+	// timing is appended to every outcome line: queue_wait_ms is enqueue to
+	// worker pickup, duration_ms is enqueue to this outcome. A request built
+	// without Enqueue (a direct test call) reports zero wait.
+	timing := func() []any {
+		wait := time.Duration(0)
+		total := time.Since(startedAt)
+		if !req.enqueuedAt.IsZero() {
+			wait = startedAt.Sub(req.enqueuedAt)
+			total = time.Since(req.enqueuedAt)
+		}
+		return []any{"queue_wait_ms", durationMS(wait), "duration_ms", durationMS(total)}
+	}
+	fail := func(reason string, err error, extra ...any) error {
+		args := append([]any{"tag", "relay.apns.error", "err", err, "reason", reason,
+			"kind", req.kind, "resource_id", req.resourceId}, extra...)
+		logger.Error("APNs "+reason+" error", append(args, timing()...)...)
+		return newAPNsError(reason, err)
+	}
+
 	token, err := p.getToken()
 	if err != nil {
-		logger.Error("APNs token error", "tag", "relay.apns.error", "err", err,
-			"kind", req.kind, "resource_id", req.resourceId)
-		return newAPNsError("token", fmt.Errorf("apns token: %w", err))
+		return fail("token", fmt.Errorf("apns token: %w", err))
 	}
 
 	payload := apnsPayload{
@@ -263,21 +309,18 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 		IonResourceId: req.resourceId,
 		IonChannelId:  req.channelId,
 		IonTabId:      req.tabId,
+		Traceparent:   req.traceparent,
 	}
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("APNs marshal error", "tag", "relay.apns.error", "err", err,
-			"kind", req.kind, "resource_id", req.resourceId)
-		return newAPNsError("marshal", fmt.Errorf("apns marshal: %w", err))
+		return fail("marshal", fmt.Errorf("apns marshal: %w", err))
 	}
 
 	url := fmt.Sprintf("%s/3/device/%s", p.endpoint(req.env), req.deviceToken)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(data))
 	if err != nil {
-		logger.Error("APNs request error", "tag", "relay.apns.error", "err", err,
-			"kind", req.kind, "resource_id", req.resourceId)
-		return newAPNsError("request", fmt.Errorf("apns request: %w", err))
+		return fail("request", fmt.Errorf("apns request: %w", err))
 	}
 
 	httpReq.Header.Set("Authorization", "bearer "+token)
@@ -287,24 +330,21 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		logger.Error("APNs send error", "tag", "relay.apns.error", "err", err,
-			"kind", req.kind, "resource_id", req.resourceId)
-		return newAPNsError("transport", fmt.Errorf("apns transport: %w", err))
+		return fail("transport", fmt.Errorf("apns transport: %w", err))
 	}
 	defer func() { resp.Body.Close() }() //nolint:errcheck // response body close
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		reason := classifyAPNsStatus(resp.StatusCode)
-		logger.Error("APNs response error", "tag", "relay.apns.error",
-			"status", resp.StatusCode, "body", string(respBody),
-			"reason", reason, "kind", req.kind, "resource_id", req.resourceId, "apns_env", req.env)
-		return newAPNsError(reason, fmt.Errorf("apns response: status %d reason %s", resp.StatusCode, reason))
+		return fail(reason, fmt.Errorf("apns response: status %d reason %s", resp.StatusCode, reason),
+			"status", resp.StatusCode, "body", string(respBody), "apns_env", req.env)
 	}
 
-	logger.Info("APNs push delivered", "tag", "relay.apns.delivered",
+	logger.Info("APNs push delivered", append([]any{"tag", "relay.apns.delivered",
 		"status", resp.StatusCode, "kind", req.kind, "resource_id", req.resourceId,
-		"channel_id", req.channelId, "tab_id", req.tabId, "apns_env", req.env)
+		"channel_id", req.channelId, "tab_id", req.tabId, "apns_env", req.env,
+		"traced", req.traceparent != ""}, timing()...)...)
 	return nil
 }
 

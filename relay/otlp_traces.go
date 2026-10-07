@@ -1,9 +1,11 @@
 package main
 
 // otlp_traces.go — relay.forward spans. A forwarded frame whose outer
-// envelope carries a W3C traceparent gets one span covering receive to
-// peer-write, parented to the traceparent's span. The frame itself is never
-// touched; only the already-parsed envelope fields feed the span.
+// envelope carries a W3C traceparent gets one span, parented to the
+// traceparent's span, running from the previous frame boundary (the start
+// of the read) to the last peer write. The span's id is minted before the
+// write so forward.go can put it on the wire in the traceparent's span-id
+// slot; the sealed payload is never touched.
 
 import (
 	"crypto/rand"
@@ -119,14 +121,23 @@ type otlpSpanStatus struct {
 
 // forwardSpan describes one forwarded frame for recordForward.
 type forwardSpan struct {
+	SpanID    string // the span's own id, already on the wire
 	Parent    traceContext
-	Start     time.Time
-	End       time.Time
-	Direction string // "mobile_to_ion" | "ion_to_mobile"
+	Start     time.Time // the previous frame boundary: when the read began
+	End       time.Time // after the last peer write
+	Direction string    // "mobile_to_ion" | "ion_to_mobile"
 	ChannelID string
 	Seq       int64 // outer envelope seq; 0 when absent
 	Bytes     int
-	WriteErr  error
+	// ReadTime is read start to frame received; WriteTime is the whole write
+	// phase; PeerWriteTime is the slowest single peer write and SlowPeer that
+	// peer's id ("ion" for the server). Peers is how many were written.
+	ReadTime      time.Duration
+	WriteTime     time.Duration
+	Peers         int
+	PeerWriteTime time.Duration
+	SlowPeer      string
+	WriteErr      error
 }
 
 // forwardDirection names the direction of a frame read from role.
@@ -140,20 +151,26 @@ func forwardDirection(role string) string {
 // tracing reports whether forward spans are being collected.
 func (s *otlpShipper) tracing() bool { return s != nil }
 
-// recordForward queues a relay.forward span. It returns false when no span
-// was queued (shipping disabled, or no span id could be generated).
+// recordForward queues a relay.forward span under f.SpanID. It returns
+// false when no span was queued (shipping disabled, or no span id).
 func (s *otlpShipper) recordForward(f forwardSpan) bool {
 	if s == nil {
 		return false
 	}
-	spanID, err := newSpanID()
-	if err != nil {
-		s.local.Warn("otlp: span id generation failed; span dropped", "tag", "relay.otlp", "err", err)
+	if !isValidSpanID(f.SpanID) {
+		s.local.Warn("otlp: forward span has no valid span id; span dropped", "tag", "relay.otlp", "span_id", f.SpanID)
 		return false
 	}
 	attrs := []otlpAttr{
 		{Key: "bytes", Value: otlpInt64(int64(f.Bytes))},
 		{Key: "direction", Value: otlpString(f.Direction)},
+		{Key: "read_ms", Value: otlpNumber(durationMS(f.ReadTime))},
+		{Key: "write_ms", Value: otlpNumber(durationMS(f.WriteTime))},
+		{Key: "peers", Value: otlpInt64(int64(f.Peers))},
+		{Key: "peer_write_ms", Value: otlpNumber(durationMS(f.PeerWriteTime))},
+	}
+	if f.SlowPeer != "" {
+		attrs = append(attrs, otlpAttr{Key: "slow_peer", Value: otlpString(f.SlowPeer)})
 	}
 	if f.ChannelID != "" {
 		attrs = append(attrs, otlpAttr{Key: "channel_id", Value: otlpString(f.ChannelID)})
@@ -167,7 +184,7 @@ func (s *otlpShipper) recordForward(f forwardSpan) bool {
 	}
 	s.spans.push(otlpSpan{
 		TraceID:      f.Parent.TraceID,
-		SpanID:       spanID,
+		SpanID:       f.SpanID,
 		ParentSpanID: f.Parent.SpanID,
 		Name:         "relay.forward",
 		// The relay answers the peer that sent the frame, so the forward is a
@@ -179,6 +196,12 @@ func (s *otlpShipper) recordForward(f forwardSpan) bool {
 		Status:            status,
 	})
 	return true
+}
+
+// durationMS is d in milliseconds with microsecond precision, the unit the
+// span attributes and log lines share.
+func durationMS(d time.Duration) float64 {
+	return float64(d.Microseconds()) / 1000
 }
 
 // buildTracesPayload renders a batch of spans as an OTLP/HTTP JSON

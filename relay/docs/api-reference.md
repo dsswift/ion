@@ -23,6 +23,15 @@ Use this endpoint for Kubernetes liveness and readiness probes.
 
 ---
 
+### `GET /metrics`
+
+Prometheus metrics in the text exposition format. No authentication
+required; present unless `RELAY_METRICS_ENABLED=false`. The series
+(`relay_connections`, `relay_frames_total`, `relay_forward_seconds`, and
+the rest) are listed in `docs/observability/log-schema.md` § "relay".
+
+---
+
 ### `GET /v1/auth/config`
 
 Returns the authentication modes currently active on this relay instance.

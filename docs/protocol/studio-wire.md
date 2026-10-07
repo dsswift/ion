@@ -582,9 +582,13 @@ sealed frame, in plaintext, on the frame that carries a `session.prompt`.
 Studio does the same for a `studio_action` frame that carries a `traceparent`
 (a prompt `submit`) when it reaches an environment through a relay. The same
 value is in the action's arguments. A relay reads it to record its
-`relay.forward` span as a child of the phone's `prompt.send` span; the server
-opens the envelope the same way with or without it. It names a span and never
-carries content. See [log schema § Spans](../observability/log-schema.md#spans).
+`relay.forward` span as a child of the phone's `prompt.send` span, and when
+it records one it replaces the span id in the envelope's `traceparent` with
+its own, so the receiver parents under the relay; the sealed frame is
+untouched and the server opens it the same way with or without the field. It
+names a span and never carries content. See
+[log schema § Spans](../observability/log-schema.md#spans) and
+§ "relay" there for the rewrite.
 
 ### Presence
 

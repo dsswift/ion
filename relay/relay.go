@@ -53,11 +53,16 @@ type Hub struct {
 	// otlp records relay.forward spans for frames carrying a traceparent.
 	// Nil when OTLP shipping is off.
 	otlp *otlpShipper
+
+	// metrics is the Prometheus set served on /metrics. Nil when
+	// RELAY_METRICS_ENABLED=false; every method is nil-safe.
+	metrics *relayMetrics
 }
 
 func NewHub() *Hub {
 	return &Hub{
 		channels:       make(map[string]*Channel),
+		metrics:        newRelayMetrics(),
 		trust:          NewTrustStore(),
 		oidcRegistry:   NewOIDCRegistry(os.Getenv("RELAY_TRUSTED_ISSUERS")),
 		WriteTimeout:   10 * time.Second,
@@ -188,7 +193,7 @@ type forwardAck struct {
 
 // wireEnvelope extracts only the outer WireMessage envelope fields the relay
 // uses: seq for forward ACKs and the optional W3C traceparent for
-// relay.forward spans. The relay never reads deeper than this.
+// relay.forward spans (forward.go). The relay never reads deeper than this.
 type wireEnvelope struct {
 	Seq         int64  `json:"seq"`
 	Traceparent string `json:"traceparent,omitempty"`
@@ -215,20 +220,6 @@ func sendControlPayload(conn *websocket.Conn, payload any, timeout time.Duration
 	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
 		log.Warn("sendControlPayload write error", "tag", "relay.control_error", "err", err)
 	}
-}
-
-// relayMessage wraps a forwarded payload to check for push flags.
-type relayMessage struct {
-	Push             bool   `json:"push,omitempty"`
-	PushTitle        string `json:"pushTitle,omitempty"`
-	PushBody         string `json:"pushBody,omitempty"`
-	NotifyKind       string `json:"notifyKind,omitempty"`
-	NotifyResourceId string `json:"notifyResourceId,omitempty"`
-	PushTabId        string `json:"pushTabId,omitempty"`
-	// The phone's push address. The server owns it (the phone registered it
-	// there) and sends it with every push; the relay keeps no address book.
-	PushToken string `json:"pushToken,omitempty"`
-	PushEnv   string `json:"pushEnv,omitempty"`
 }
 
 // HandleWebSocket upgrades the HTTP connection to WebSocket and runs the relay
@@ -288,6 +279,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	case "ion":
 		if ch.ion != nil {
 			ch.ion.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
+			h.metrics.reconnected(role)
 		}
 		ch.ion = conn
 		ch.multi = r.URL.Query().Get("multi") == "1"
@@ -307,6 +299,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		}
 	case "mobile":
 		if !ch.multi {
+			if len(ch.mobiles) > 0 {
+				h.metrics.reconnected(role)
+			}
 			ch.closeMobilesLocked(nil)
 		}
 		self = &mobilePeer{id: newPeerID(), conn: conn}
@@ -337,12 +332,13 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	}
 
 	connLog.Info("client connected", "tag", "relay.connect", "multi", multi)
+	h.metrics.connectionOpened(role)
 
 	// Start keepalive pings. Essential for public internet deployments where
 	// NAT timeouts, load balancer idle limits, and mobile network switches
 	// can silently kill connections.
 	done := make(chan struct{})
-	go ping(conn, done, h.PingInterval, h.PingTimeout, connLog)
+	go ping(conn, done, h.PingInterval, h.PingTimeout, h.metrics, connLog)
 
 	// Token expiry enforcement: for OIDC connections with a finite exp, close
 	// the connection at expiry time with close code 4401.
@@ -350,8 +346,11 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		go watchTokenExpiry(conn, done, identity, channelID, role, connLog)
 	}
 
-	// Read loop: forward messages to the peer.
+	// Read loop: forward messages to the peer. readStart is when the loop
+	// last went back to conn.Read: the previous frame boundary, which is
+	// where the next frame's span and read_ms begin.
 	sawFirstIonFrame := false
+	readStart := time.Now()
 	for {
 		msgType, data, err := conn.Read(context.Background())
 		recvAt := time.Now()
@@ -362,6 +361,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			connLog.Info("read loop ended", "tag", "relay.disconnect", "role", role, "err", err)
 			break
 		}
+		h.metrics.frameRead(forwardDirection(role), len(data))
 
 		// Server-announced trust (manifest C7): the ion peer's FIRST frame
 		// after upgrade may be a relay_announce, naming the issuer/audience/
@@ -401,207 +401,19 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			}
 		}
 
-		// Who the frame goes to. A client's frame goes to the server,
-		// stamped with the client's id when the server is multi-client. A
-		// server's frame goes to the client it names, or to every client
-		// when it names none.
-		ch.mu.Lock()
-		var peers []*websocket.Conn
-		named := false
-		if role == "mobile" {
-			if ch.ion != nil {
-				peers = append(peers, ch.ion)
-			}
-			if ch.multi && self != nil {
-				if stamped, ok := stampPeer(data, self.id); ok {
-					data = stamped
-				} else {
-					connLog.Warn("client frame is not a JSON object; forwarded unstamped", "tag", "relay.forward_error")
-				}
-			}
-		} else {
-			var to peerEnvelope
-			if ch.multi && json.Unmarshal(data, &to) == nil && to.Peer != "" {
-				named = true
-				if p := ch.mobileLocked(to.Peer); p != nil {
-					peers = append(peers, p.conn)
-				}
+		out := h.forwardFrame(ch, conn, role, self, channelID, inboundFrame{
+			msgType: msgType, data: data, readStart: readStart, recvAt: recvAt,
+		}, connLog)
+		if out.peers == 0 && role == "ion" {
+			if out.named {
+				// The client this frame names has left; the server hears so in
+				// its own relay:peer-left.
+				connLog.Debug("frame for a client that left; dropped", "tag", "relay.forward_error")
 			} else {
-				peers = ch.mobileConnsLocked()
+				h.handleDoorbell(ch, conn, pusher, channelID, data, connLog)
 			}
 		}
-		ch.mu.Unlock()
-
-		// One read of the outer envelope serves both the mobile ACK and the
-		// forward span. An ion frame is only parsed when spans are on.
-		var env wireEnvelope
-		envOK := false
-		if role == "mobile" || h.otlp.tracing() {
-			envOK = json.Unmarshal(data, &env) == nil
-		}
-
-		if len(peers) > 0 {
-			var writeErr error
-			for _, peer := range peers {
-				writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
-				err := peer.Write(writeCtx, msgType, data)
-				writeCancel()
-				if err != nil {
-					connLog.Warn("forward error", "tag", "relay.forward_error", "err", err)
-					if writeErr == nil {
-						writeErr = err
-					}
-				}
-			}
-
-			if envOK && env.Traceparent != "" && h.otlp.tracing() {
-				if tc, ok := parseTraceparent(env.Traceparent); ok {
-					h.otlp.recordForward(forwardSpan{
-						Parent:    tc,
-						Start:     recvAt,
-						End:       time.Now(),
-						Direction: forwardDirection(role),
-						ChannelID: channelID,
-						Seq:       env.Seq,
-						Bytes:     len(data),
-						WriteErr:  writeErr,
-					})
-				} else {
-					connLog.Debug("invalid traceparent; no span recorded",
-						"tag", "relay.trace", "seq", env.Seq)
-				}
-			}
-
-			if role == "mobile" {
-				if envOK && env.Seq > 0 {
-					if writeErr == nil {
-						connLog.Debug("forward ack sent",
-							"tag", "relay.forward_ack",
-							"seq", env.Seq,
-							"outcome", "forwarded",
-						)
-						sendControlPayload(conn, forwardAck{
-							Type: "relay:forwarded",
-							Seq:  env.Seq,
-						}, h.WriteTimeout, connLog)
-					} else {
-						connLog.Warn("forward ack: peer write failed",
-							"tag", "relay.forward_ack",
-							"seq", env.Seq,
-							"outcome", "peer-unavailable",
-							"reason", "write_failed",
-						)
-						sendControlPayload(conn, forwardAck{
-							Type:   "relay:peer-unavailable",
-							Seq:    env.Seq,
-							Reason: "write_failed",
-						}, h.WriteTimeout, connLog)
-					}
-				}
-			}
-		} else if role == "mobile" {
-			if envOK && env.Seq > 0 {
-				connLog.Debug("forward ack: no peer connected",
-					"tag", "relay.forward_ack",
-					"seq", env.Seq,
-					"outcome", "peer-unavailable",
-					"reason", "no_peer",
-				)
-				sendControlPayload(conn, forwardAck{
-					Type:   "relay:peer-unavailable",
-					Seq:    env.Seq,
-					Reason: "no_peer",
-				}, h.WriteTimeout, connLog)
-			}
-		} else if named {
-			// The client this frame names has left; the server hears so in
-			// its own relay:peer-left.
-			connLog.Debug("frame for a client that left; dropped", "tag", "relay.forward_error")
-		} else if role == "ion" && pusher != nil {
-			// Mobile peer not connected; check if this message requests a push.
-			var msg relayMessage
-			if err := json.Unmarshal(data, &msg); err != nil {
-				// A push-eligible frame that fails to unmarshal is silently
-				// skipped otherwise — no push, no push-failed frame back to ion.
-				connLog.Warn("push-eligible frame unmarshal failed",
-					"tag", "relay.apns.error",
-					"channel_id", channelID,
-					"err", err)
-			} else if msg.Push {
-				env, envOK := parseAPNsEnv(msg.PushEnv)
-				if !envOK {
-					// Keep the push: the pusher's default environment may still
-					// be the right one for this token.
-					connLog.Warn("unknown pushEnv from server; using the relay default",
-						"tag", "relay.apns.error", "channel_id", channelID, "apns_env", msg.PushEnv)
-				}
-				apnsDevice := apnsDevice{Token: msg.PushToken, Env: env}
-				if apnsDevice.Token == "" {
-					// The server sent no push address: the phone has not
-					// registered one with it (an older app build), or the server
-					// predates owning push addresses.
-					connLog.Error("push skipped: the server sent no push address",
-						"tag", "relay.apns.skipped_no_token",
-						"channel_id", channelID,
-						"kind", msg.NotifyKind,
-						"resource_id", msg.NotifyResourceId)
-					// The sender is the ion peer; tell it, so the push that did
-					// not happen shows up in the server's log too.
-					sendControlPayload(conn, pushFailedControl{Type: "relay:push-failed", Reason: "no_token", ResourceId: msg.NotifyResourceId}, h.WriteTimeout, connLog)
-				} else {
-					title := msg.PushTitle
-					body := msg.PushBody
-					if title == "" {
-						title = "Ion needs your attention"
-					}
-					if body == "" {
-						body = "Approval required"
-					}
-
-					resourceId := msg.NotifyResourceId
-
-					// Build the failure callback before enqueuing so both the
-					// queue-full path (Send return value) and the async worker path
-					// (onFailure callback) funnel through the same closure.
-					onFailure := func(reason string) {
-						ch.mu.Lock()
-						ionConn := ch.ion
-						ch.mu.Unlock()
-						if ionConn == nil {
-							return
-						}
-						frame := pushFailedControl{
-							Type:       "relay:push-failed",
-							Reason:     reason,
-							ResourceId: resourceId,
-						}
-						connLog.Info("emitting push-failed to ion peer",
-							"tag", "relay.apns.push_failed",
-							"reason", reason,
-							"resource_id", resourceId)
-						sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
-					}
-
-					if err := pusher.SendWithNotify(apnsDevice, title, body, msg.NotifyKind, resourceId, channelID, msg.PushTabId, onFailure); err != nil {
-						// Queue was full — report back to the ion peer immediately.
-						onFailure("queue_full")
-					}
-				}
-			}
-		} else if role == "ion" && pusher == nil {
-			// No mobile peer and push disabled (relay booted without APNs). If
-			// the frame actually wanted a push, log once so "why no
-			// notification" is debuggable instead of a silent no-op.
-			var msg relayMessage
-			if err := json.Unmarshal(data, &msg); err == nil && msg.Push {
-				connLog.Warn("push requested but push is unavailable (relay booted without APNs)",
-					"tag", "relay.apns.unavailable",
-					"channel_id", channelID,
-					"kind", msg.NotifyKind,
-					"resource_id", msg.NotifyResourceId)
-				sendControlPayload(conn, pushFailedControl{Type: "relay:push-failed", Reason: "push_unavailable", ResourceId: msg.NotifyResourceId}, h.WriteTimeout, connLog)
-			}
-		}
+		readStart = time.Now()
 	}
 
 	// Cleanup on disconnect. A connection that was replaced is already off
@@ -636,6 +448,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	}
 
 	connLog.Info("client disconnected", "tag", "relay.disconnect")
+	h.metrics.connectionClosed(role)
 	h.removeIfEmpty(channelID)
 	close(done)
 	conn.CloseNow() //nolint:errcheck // connection teardown
@@ -643,8 +456,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 
 // ping sends WebSocket pings at the configured interval to detect dead connections.
 // If a pong is not received within pingTimeout, the connection is closed,
-// which causes the read loop to exit.
-func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time.Duration, log *slog.Logger) {
+// which causes the read loop to exit. Each answered ping's round trip (sent
+// to pong received) is observed on relay_ping_rtt_seconds.
+func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time.Duration, metrics *relayMetrics, log *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -653,8 +467,12 @@ func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time
 			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+			sentAt := time.Now()
 			err := conn.Ping(ctx)
 			cancel()
+			if err == nil {
+				metrics.pingRoundTrip(time.Since(sentAt))
+			}
 			if err != nil {
 				// A keepalive ping timeout tears the connection down. Log the
 				// reason before closing — this is often the one signal that

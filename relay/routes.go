@@ -6,12 +6,21 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
+// metricsPath is where the Prometheus registry is served when metrics are on.
+const metricsPath = "/metrics"
+
 // newRelayMux builds every route the relay serves. pusher may be nil (no
-// push notifications configured).
+// push notifications configured). GET /metrics is registered only while
+// hub.metrics is set (RELAY_METRICS_ENABLED).
 func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, pusher *APNsPusher) *http.ServeMux {
 	mux := http.NewServeMux()
+
+	if hub.metrics != nil {
+		mux.Handle("GET "+metricsPath, hub.metrics.handler())
+	}
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -87,8 +96,10 @@ func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, push
 		// looked at, in case a pairing channel's single use was already
 		// consumed by a concurrent request.
 		var identity *UserIdentity
+		authStart := time.Now()
 		if role == "mobile" {
 			if outcome, announced := validateAgainstAnnouncedTrust(r, channelID, hub.trust, hub.oidcRegistry); announced {
+				hub.metrics.authObserved(authOutcome(outcome.reason), time.Since(authStart))
 				if outcome.reason != "" {
 					logAuthFailure(r, outcome.reason)
 					status := http.StatusUnauthorized
@@ -116,6 +127,7 @@ func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, push
 		// before manifest C7 existed.
 		var reason AuthFailureReason
 		identity, reason = auth.ValidateDetailed(r)
+		hub.metrics.authObserved(authOutcome(reason), time.Since(authStart))
 		if reason != "" {
 			logAuthFailure(r, reason)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -217,4 +229,13 @@ func newRelayMux(hub *Hub, auth *AuthMiddleware, owners *channelOwnerStore, push
 	})
 
 	return mux
+}
+
+// authOutcome is the relay_auth_seconds outcome label for a validation
+// result: "success", or the failure reason (a closed enum).
+func authOutcome(reason AuthFailureReason) string {
+	if reason == "" {
+		return "success"
+	}
+	return string(reason)
 }

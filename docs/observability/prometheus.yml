@@ -1,8 +1,21 @@
 # Prometheus for the local observability stack: the metrics store the engine's
-# OTLP metrics export writes to (see docker-compose.yml). Nothing is scraped;
-# every series arrives on the OTLP receiver (--web.enable-otlp-receiver).
+# OTLP metrics export writes to (see docker-compose.yml). Every engine series
+# arrives on the OTLP receiver (--web.enable-otlp-receiver); the one scrape
+# job is the relay, which exposes a Prometheus /metrics page instead.
 global:
   evaluation_interval: 1m
+
+scrape_configs:
+  # The relay service of the `relay` compose profile (relay/metrics.go lists
+  # the series). When the profile is not up the target is down and Prometheus
+  # logs a resolution failure on each scrape; nothing else is affected.
+  - job_name: ion-relay
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["relay:8443"]
+        labels:
+          service_name: ion-relay
 
 otlp:
   # Keep OTel resource attributes queryable as labels on every series, so a
