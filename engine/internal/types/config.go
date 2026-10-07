@@ -871,6 +871,10 @@ type ProviderConfig struct {
 	//   all others→ "api"
 	// An invalid value is reset to "" (default rule) with an ERROR log.
 	Backend string `json:"backend,omitempty"`
+	// ScenarioFile is read only by the "mock" provider: the path of the
+	// scenario that scripts its streams (providers.MockScenario). Every other
+	// provider ignores it.
+	ScenarioFile string `json:"scenarioFile,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.

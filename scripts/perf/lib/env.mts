@@ -9,7 +9,9 @@ import { mkdirSync, writeFileSync, existsSync, openSync } from 'fs'
 import { createServer } from 'net'
 import { join } from 'path'
 
-export interface ProviderScenario { seed: number; turns: Array<{ ttft_ms: number; tokens: number; tokens_per_s: number; tool_calls: unknown[] }>; repeat: boolean }
+/** The engine mock provider's script (engine/internal/providers/mock_scenario.go, MockScenario). */
+export interface MockToolCall { name: string; input?: Record<string, unknown> }
+export interface ProviderScenario { seed: number; turns: Array<{ ttft_ms: number; tokens: number; tokens_per_s: number; tool_calls: MockToolCall[] }>; repeat: boolean }
 export interface DrivePlan { tabs: number; promptsPerTab: number; bodyLoadsPerTab: number; snapshotPolls: number; pacingMs: number; promptTimeoutMs: number; settleMs: number }
 export interface Scenario { name: string; description?: string; provider: ProviderScenario; plan: DrivePlan }
 
@@ -55,7 +57,7 @@ export function writeEnvironment(opts: EnvOptions, scenario: Scenario): string {
   const engine = {
     logLevel: 'info',
     defaultModel: 'mock/default',
-    providers: { mock: { enabled: true, scenarioFile: scenarioPath } },
+    providers: { mock: { scenarioFile: scenarioPath } },
     telemetry: { enabled: true, targets: ['file'], filePath: join(opts.dataDir, 'telemetry.jsonl'), maxSizeMB: 200, maxFiles: 3 },
     security: { principalPartitioning: { enabled: false } },
     logging,

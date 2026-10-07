@@ -540,6 +540,8 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 			RegisterImageProvider(NewOpenAIImageProvider(opts))
 		case "google":
 			RegisterProvider(NewGoogleProvider(opts))
+		case MockProviderID:
+			registerMockFromConfig(cfg)
 		default:
 			// Re-register known OpenAI-compatible providers when config overrides exist.
 			// Check defaultBaseURLs to confirm this is a known compatible provider

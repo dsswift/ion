@@ -29,9 +29,9 @@ make perf SCENARIO=soak ALLOY=http://localhost:4318
 ```
 
 `make perf` starts an isolated Environment under `/tmp/ion-perf-<timestamp>`: its own
-`ION_DATA_DIR`, an `engine.json` with the mock provider on (`providers.mock.enabled`, scripted by
-the scenario's `provider` block: per-turn TTFT, token count, token rate, deterministic from
-`seed`), telemetry to a file, and a `server.json` with the local listener only. It then drives the
+`ION_DATA_DIR`, an `engine.json` with the mock provider on (`providers.mock.scenarioFile` names
+the scenario's `provider` block: per-turn TTFT, token count, token rate, tool calls, deterministic
+from `seed`; the model is `mock/default`), telemetry to a file, and a `server.json` with the local listener only. It then drives the
 scenario's `plan` over the Studio wire through the server's local socket (tabs, prompts with a
 fresh `traceparent` each, body loads, snapshot polls), stops only the two processes it started,
 reduces every span inside the window, and prints a table. Your own `~/.ion` is never touched.
@@ -70,7 +70,7 @@ six times into `engine/bench.txt`; `make bench-compare OLD=<file> NEW=<file>` ru
 
 | Surface | How | Reference |
 |---|---|---|
-| Engine | `debug.pprof.listen` in `engine.json` opens Go's pprof endpoint on a loopback address; `ion debug profile --kind cpu\|heap\|goroutine --seconds N` writes a profile file to the data dir | `engine/AGENTS.md` |
+| Engine | `debug.pprof.listen` in `engine.json` opens Go's pprof endpoint on a loopback address; `ion debug profile cpu\|heap\|goroutine\|trace [--seconds N]` writes a profile file to `<data dir>/profiles/` | `engine/AGENTS.md` |
 | Server | The `profile.capture` developer surface (Settings, Developer) captures a CPU profile or heap snapshot of the server process into `<ION_DATA_DIR>/profiles/`; disabled for every connection by `customFields['ion-server'].developerSurfaces` | `packages/shared/src/developer-surfaces.ts` |
 | Desktop | The same `profile.capture` surface on the Studio window captures the renderer; the main process via Electron's own `--inspect` | `desktop/AGENTS.md` |
 | Relay | `RELAY_PPROF_LISTEN=127.0.0.1:6060` starts pprof; `go tool pprof http://127.0.0.1:6060/debug/pprof/profile` | `relay/pprof.go` |
