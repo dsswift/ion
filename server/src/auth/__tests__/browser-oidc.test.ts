@@ -5,6 +5,7 @@ const { verifyBearer } = vi.hoisted(() => ({ verifyBearer: vi.fn() }))
 vi.mock('../bearer', () => ({ verifyBearer }))
 
 import {
+  abandonedLogin,
   beginLogin,
   completeLogin,
   refreshAccessToken,
@@ -87,6 +88,51 @@ describe('beginLogin', () => {
     await beginLogin(oidc, { origin: 'https://ion.example.test', returnTo: '/' })
     await beginLogin(oidc, { origin: 'https://ion.example.test', returnTo: '/' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('silent sign-in', () => {
+  it('asks the provider for prompt=none only when the page asked for a silent sign-in', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+    const silent = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/x', silent: true })
+    expect(new URL(silent.authorizeUrl).searchParams.get('prompt')).toBe('none')
+
+    const interactive = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/x' })
+    expect(new URL(interactive.authorizeUrl).searchParams.has('prompt')).toBe(false)
+  })
+
+  it('sends a silent sign-in the provider could not finish on to an interactive one, back to the same place', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+    const { state } = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/deep/path?x=1', silent: true })
+
+    expect(abandonedLogin(state, 'login_required')).toEqual({ nextInteractive: true, returnTo: '/deep/path?x=1' })
+    // Single use: the state is spent.
+    expect(abandonedLogin(state, 'login_required')).toBeNull()
+  })
+
+  it('treats the other "needs the person" answers the same way', async () => {
+    for (const error of ['interaction_required', 'consent_required', 'account_selection_required']) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      const { state } = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/', silent: true })
+      expect(abandonedLogin(state, error)?.nextInteractive).toBe(true)
+    }
+  })
+
+  it('does not loop: an interactive sign-in the provider refused is a real failure, not another sign-in', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+    const { state } = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/' })
+    expect(abandonedLogin(state, 'login_required')).toBeNull()
+  })
+
+  it('does not hide a real provider error behind another sign-in', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+    const { state } = await beginLogin(oidc, { origin: 'https://studio.example.test', returnTo: '/', silent: true })
+    expect(abandonedLogin(state, 'access_denied')).toBeNull()
+  })
+
+  it('ignores a state it never issued', () => {
+    expect(abandonedLogin('never-issued', 'login_required')).toBeNull()
+    expect(abandonedLogin(null, 'login_required')).toBeNull()
   })
 })
 
@@ -181,6 +227,46 @@ describe('refreshAccessToken', () => {
     fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }))
     const result = await refreshAccessToken(oidc, 'old-refresh-token')
     expect(result.ok).toBe(false)
+  })
+
+  // The refresh token may be perfectly good when the provider could not be asked. A session must
+  // survive that, or one bad minute at the provider signs everyone out.
+  describe('says whether a refusal is the refresh token or the provider', () => {
+    it('is permanent when the provider refuses the refresh token (invalid_grant, 400)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }))
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: false })
+    })
+
+    it('is transient when the provider answers 5xx', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      fetchMock.mockResolvedValueOnce(new Response('bad gateway', { status: 502 }))
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: true })
+    })
+
+    it('is transient when the provider throttles (429)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }))
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: true })
+    })
+
+    it('is transient when discovery cannot be reached', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }))
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: true })
+    })
+
+    it('is transient when the request itself fails (network down)', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      fetchMock.mockRejectedValueOnce(new Error('ECONNRESET'))
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: true })
+    })
+
+    it('is permanent when the refreshed token will not verify', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: 'bad-token', expires_in: 3600 }))
+      verifyBearer.mockResolvedValueOnce({ ok: false, reason: 'wrong_audience' })
+      expect(await refreshAccessToken(oidc, 'old-refresh-token')).toEqual({ ok: false, transient: false })
+    })
   })
 })
 

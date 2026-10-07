@@ -4,10 +4,10 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { startHealth, type HealthHandle } from '../health'
 
-const { beginLogin, completeLogin } = vi.hoisted(() => ({ beginLogin: vi.fn(), completeLogin: vi.fn() }))
-vi.mock('../../auth/browser-oidc', () => ({ beginLogin, completeLogin }))
+const { beginLogin, completeLogin, abandonedLogin, refreshAccessToken } = vi.hoisted(() => ({ beginLogin: vi.fn(), completeLogin: vi.fn(), abandonedLogin: vi.fn(), refreshAccessToken: vi.fn() }))
+vi.mock('../../auth/browser-oidc', () => ({ beginLogin, completeLogin, abandonedLogin, refreshAccessToken }))
 
-import { authLoginRoute, authCallbackRoute, authLogoutRoute } from '../auth-browser-login'
+import { authLoginRoute, authCallbackRoute, authLogoutRoute, authSessionRoute } from '../auth-browser-login'
 import { BrowserSessionStore } from '../../auth/browser-session-store'
 import type { ServerOidcConfig } from '../../config/server-config'
 
@@ -37,12 +37,15 @@ beforeEach(() => {
   sessions = new BrowserSessionStore(dir)
   beginLogin.mockReset()
   completeLogin.mockReset()
+  abandonedLogin.mockReset()
+  refreshAccessToken.mockReset()
   health = startHealth({
     port: 0,
     routes: {
       '/auth/login': authLoginRoute(() => OIDC),
       '/auth/callback': authCallbackRoute(() => OIDC, sessions),
       '/auth/logout': authLogoutRoute(sessions),
+      '/auth/session': authSessionRoute(() => OIDC, sessions),
     },
   })
 })
@@ -59,6 +62,14 @@ describe('GET /auth/login', () => {
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('https://login.example.test/tenant/authorize?foo=bar')
     expect(beginLogin).toHaveBeenCalledWith(OIDC, expect.objectContaining({ returnTo: '/some/path' }))
+  })
+
+  it('starts a silent sign-in only when the page asks for one', async () => {
+    beginLogin.mockResolvedValue({ authorizeUrl: 'https://login.example.test/authorize', state: 's' })
+    await fetch(`${baseUrl(health)}/auth/login?returnTo=/x&silent=1`, { redirect: 'manual' })
+    expect(beginLogin).toHaveBeenLastCalledWith(OIDC, expect.objectContaining({ silent: true }))
+    await fetch(`${baseUrl(health)}/auth/login?returnTo=/x`, { redirect: 'manual' })
+    expect(beginLogin).toHaveBeenLastCalledWith(OIDC, expect.objectContaining({ silent: false }))
   })
 
   it('rejects an absolute-URL returnTo (open-redirect guard) by falling back to /', async () => {
@@ -96,6 +107,7 @@ describe('GET /auth/callback', () => {
     expect(cookie).toContain('ion_session=')
     expect(cookie).toContain('HttpOnly')
     expect(cookie).toContain('SameSite=Lax')
+    expect(cookie).toContain('Max-Age=7776000')
 
     const sessionId = cookie!.match(/ion_session=([^;]+)/)![1]
     const record = sessions.get(sessionId)
@@ -115,6 +127,56 @@ describe('GET /auth/callback', () => {
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe('/')
     expect(completeLogin).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /auth/callback when the provider answers with an error', () => {
+  it('sends a silent sign-in that needs the person on to an interactive one, to the same place', async () => {
+    abandonedLogin.mockReturnValueOnce({ nextInteractive: true, returnTo: '/deep/path?x=1' })
+    const res = await fetch(`${baseUrl(health)}/auth/callback?error=login_required&state=s1`, { redirect: 'manual' })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`/auth/login?returnTo=${encodeURIComponent('/deep/path?x=1')}`)
+    expect(abandonedLogin).toHaveBeenCalledWith('s1', 'login_required')
+    expect(res.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('lands on / with no cookie for any other provider error', async () => {
+    abandonedLogin.mockReturnValueOnce(null)
+    const res = await fetch(`${baseUrl(health)}/auth/callback?error=access_denied&state=s1`, { redirect: 'manual' })
+    expect(res.headers.get('location')).toBe('/')
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(completeLogin).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /auth/session', () => {
+  const live = () => sessions.create({ sessionId: 'live', principal: { subject: 'josh', displayName: 'Josh' }, scopes: [], accessToken: 'a', refreshToken: 'r', accessExpiresAt: Date.now() + 3600_000 })
+
+  it('says 200 for a session that works, and extends its cookie', async () => {
+    const { sessionId } = live()
+    const res = await fetch(`${baseUrl(health)}/auth/session`, { headers: { Cookie: `ion_session=${sessionId}` } })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('set-cookie')).toContain('Max-Age=')
+    expect(res.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('says 401 for a session the server has forgotten, and for no cookie at all', async () => {
+    const forgotten = await fetch(`${baseUrl(health)}/auth/session`, { headers: { Cookie: 'ion_session=wiped-yesterday' } })
+    expect(forgotten.status).toBe(401)
+    expect(forgotten.headers.get('set-cookie')).toBeNull()
+    expect((await fetch(`${baseUrl(health)}/auth/session`)).status).toBe(401)
+  })
+
+  it('says 503, not 401, when the sign-in service is down, and keeps the session', async () => {
+    sessions.create({ sessionId: 'stale', principal: { subject: 'josh', displayName: 'Josh' }, scopes: [], accessToken: 'a', refreshToken: 'r', accessExpiresAt: Date.now() - 1000 })
+    refreshAccessToken.mockResolvedValueOnce({ ok: false, transient: true })
+    const res = await fetch(`${baseUrl(health)}/auth/session`, { headers: { Cookie: 'ion_session=stale' } })
+    expect(res.status).toBe(503)
+    expect(sessions.get('stale')).toBeDefined()
+  })
+
+  it('refuses anything but GET', async () => {
+    expect((await fetch(`${baseUrl(health)}/auth/session`, { method: 'POST' })).status).toBe(405)
   })
 })
 
