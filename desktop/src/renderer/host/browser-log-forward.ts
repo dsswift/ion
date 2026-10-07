@@ -16,6 +16,14 @@
  * the refused lines that explain it. So every line the server has not yet
  * accepted, whether refused or still in flight, is kept in `sessionStorage`
  * (per tab, survives a page load) and the next page's forwarder replays it.
+ * A refused line never turns into a request storm. On 401 the forwarder
+ * stops sending altogether and holds everything: the person has no session,
+ * the page is already on its way to sign-in, and every further request would
+ * only fail and fill the console. It resumes when told the connection is
+ * authenticated again (`resume()`). Any other failure (429, a 5xx, the
+ * network) backs off with a growing delay and a cap on requests in flight, so
+ * a server that is down or throttling is asked rarely, not constantly.
+ *
  * Each line carries `fields.client_ts`, the page's own time, because a
  * replayed line reaches the server long after it happened, and
  * `fields.line_id`, because a line still in flight when the page left may
@@ -24,6 +32,13 @@
 
 /** Lines held while the route is refusing. Small: this is a diagnostic tail, not a queue. */
 const MAX_BUFFERED = 200
+
+/** Requests allowed in flight at once. A burst of lines waits its turn instead of opening a connection each. */
+const MAX_IN_FLIGHT = 4
+
+/** The wait after a failure that is not a sign-in problem, doubling per consecutive failure up to the cap. */
+const BACKOFF_START_MS = 2_000
+const BACKOFF_MAX_MS = 60_000
 
 /** The `sessionStorage` key the unaccepted lines survive a page load under. */
 export const PENDING_STORAGE_KEY = 'ion.browserLogForward.pending.v1'
@@ -64,7 +79,7 @@ function defaultStorage(): PendingStorage | null {
 interface PendingLine {
   id: number
   line: ForwardableLine
-  /** False while its first send is in flight; true once refused, failed, or carried over from an earlier page. */
+  /** True while the line waits to be sent (never sent, refused, or carried over from an earlier page); false while its send is in flight. */
   held: boolean
 }
 
@@ -73,17 +88,28 @@ interface SavedState {
   overflowed: number
 }
 
-const isRefusal = (status: number): boolean => status === 401 || status === 429 || status === 0
+/** The route refused this line or could not be reached: hold it, do not drop it. */
+const isRefusal = (status: number): boolean => status === 401 || status === 429 || status === 0 || status >= 500
+
+/** The server does not know this tab's session. Not a failure to retry: the page signs in again. */
+const isSignedOut = (status: number): boolean => status === 401
 
 export class BrowserLogForwarder {
   private pending: PendingLine[] = []
   private overflowed = 0
   private replaying = false
   private nextId = 0
+  private inFlight = 0
+  /** True after a 401, until `resume()`: nothing is sent, so nothing can fail. */
+  private signedOut = false
+  private failures = 0
+  private backoffUntilMs = 0
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly post: PostFn = defaultPost,
     private readonly storage: PendingStorage | null = defaultStorage(),
+    private readonly now: () => number = Date.now,
   ) {
     const saved = this.load()
     this.overflowed = saved.overflowed
@@ -96,26 +122,80 @@ export class BrowserLogForwarder {
     // page re-sends one whose reply the page did not live to read.
     const stamped: ForwardableLine = {
       ...line,
-      fields: { ...line.fields, client_ts: new Date().toISOString(), line_id: crypto.randomUUID() },
+      fields: { ...line.fields, client_ts: new Date(this.now()).toISOString(), line_id: crypto.randomUUID() },
     }
-    const entry: PendingLine = { id: this.nextId++, line: stamped, held: false }
-    this.pending.push(entry)
+    this.pending.push({ id: this.nextId++, line: stamped, held: true })
+    this.trim()
     this.save()
-    void this.post(stamped)
-      .then(({ status }) => {
-        if (isRefusal(status)) {
-          this.hold(entry)
-          return
-        }
-        this.accepted(entry)
-        // Accepted: anything held while it was refusing can go now.
-        void this.replay()
-      })
-      .catch(() => {
-        // A network failure is the same situation as a refusal: hold it, and
-        // let the next accepted line carry the backlog.
-        this.hold(entry)
-      })
+    this.drain()
+  }
+
+  /**
+   * The connection is authenticated again: send what was held. Called by the
+   * host when it is welcomed, which is the one moment a 401 stops being true.
+   */
+  resume(): void {
+    this.signedOut = false
+    this.failures = 0
+    this.backoffUntilMs = 0
+    this.drain()
+  }
+
+  /** Whether the forwarder is waiting for a sign-in. For the host's log line and for tests. */
+  get isSignedOut(): boolean {
+    return this.signedOut
+  }
+
+  /**
+   * Send held lines oldest-first, a few at a time, unless the person is signed
+   * out or a backoff is running. A line in flight is not held, so it is never
+   * sent twice by the same drain.
+   */
+  private drain(): void {
+    if (this.signedOut) return
+    const wait = this.backoffUntilMs - this.now()
+    if (wait > 0) {
+      this.scheduleDrain(wait)
+      return
+    }
+    while (this.inFlight < MAX_IN_FLIGHT) {
+      const next = this.pending.find((p) => p.held)
+      if (!next) return
+      next.held = false
+      this.inFlight += 1
+      void this.post(next.line)
+        .catch(() => ({ status: 0 }))
+        .then(({ status }) => this.settle(next, status))
+    }
+  }
+
+  private settle(entry: PendingLine, status: number): void {
+    this.inFlight -= 1
+    if (isSignedOut(status)) {
+      this.hold(entry)
+      this.signedOut = true
+      return
+    }
+    if (isRefusal(status)) {
+      this.hold(entry)
+      this.failures += 1
+      const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_START_MS * 2 ** (this.failures - 1))
+      this.backoffUntilMs = this.now() + delay
+      this.scheduleDrain(delay)
+      return
+    }
+    this.failures = 0
+    this.accepted(entry)
+    this.drain()
+    if (this.pending.every((p) => !p.held) && this.inFlight === 0) void this.reportOverflow()
+  }
+
+  private scheduleDrain(ms: number): void {
+    if (this.retryTimer) return
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.drain()
+    }, ms)
   }
 
   private hold(entry: PendingLine): void {
@@ -140,29 +220,21 @@ export class BrowserLogForwarder {
     }
   }
 
-  /**
-   * Drain held lines oldest-first, stopping at the first line the server
-   * still refuses so the rest keep their order.
-   */
-  private async replay(): Promise<void> {
-    if (this.replaying) return
+  /** Says once, after the backlog is out, how many lines the buffer had to drop. */
+  private async reportOverflow(): Promise<void> {
+    if (this.overflowed === 0 || this.replaying) return
     this.replaying = true
+    const lost = this.overflowed
     try {
-      for (let next = this.pending.find((p) => p.held); next; next = this.pending.find((p) => p.held)) {
-        const { status } = await this.post(next.line).catch(() => ({ status: 0 }))
-        if (isRefusal(status)) return
-        this.accepted(next)
-      }
-      if (this.overflowed > 0) {
-        const lost = this.overflowed
+      const { status } = await this.post({
+        level: 'WARN',
+        tag: 'log-forward',
+        msg: 'browser log lines were dropped while the server would not accept them',
+        fields: { log_suppressed: lost, buffer_limit: MAX_BUFFERED, client_ts: new Date(this.now()).toISOString() },
+      }).catch(() => ({ status: 0 }))
+      if (!isRefusal(status)) {
         this.overflowed = 0
         this.save()
-        await this.post({
-          level: 'WARN',
-          tag: 'log-forward',
-          msg: 'browser log lines were dropped while the server would not accept them',
-          fields: { log_suppressed: lost, buffer_limit: MAX_BUFFERED, client_ts: new Date().toISOString() },
-        }).catch(() => ({ status: 0 }))
       }
     } finally {
       this.replaying = false
@@ -201,6 +273,12 @@ export class BrowserLogForwarder {
   /** TEST ONLY: how many lines are waiting, and how many were lost. */
   _stateForTest(): { buffered: number; overflowed: number } {
     return { buffered: this.pending.filter((p) => p.held).length, overflowed: this.overflowed }
+  }
+
+  /** TEST ONLY: stop the backoff timer. */
+  _stopForTest(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = null
   }
 }
 

@@ -60,9 +60,10 @@ describe('BrowserLogForwarder', () => {
     expect(route.received).toEqual([])
 
     route.accept()
+    forwarder.resume()
     forwarder.send(line('third'))
 
-    await vi.waitFor(() => expect(route.received.map((l) => l.msg)).toEqual(['third', 'first', 'second']))
+    await vi.waitFor(() => expect(route.received.map((l) => l.msg).sort()).toEqual(['first', 'second', 'third']))
     expect(forwarder._stateForTest().buffered).toBe(0)
   })
 
@@ -91,6 +92,7 @@ describe('BrowserLogForwarder', () => {
     await vi.waitFor(() => expect(forwarder._stateForTest().overflowed).toBe(5))
 
     route.accept()
+    forwarder.resume()
     forwarder.send(line('the one that gets through'))
 
     await vi.waitFor(() => {
@@ -112,15 +114,15 @@ describe('BrowserLogForwarder across a page load', () => {
     const refused = fakeRoute(401)
     const neverAnswers = vi.fn((_line: ForwardableLine) => new Promise<{ status: number }>(() => {}))
     const pageA = new BrowserLogForwarder(async (l) => (l.msg === 'in flight' ? neverAnswers(l) : refused.post(l)), storage)
-    pageA.send(line('refused before sign-in'))
     pageA.send(line('in flight'))
+    pageA.send(line('refused before sign-in'))
     await vi.waitFor(() => expect(pageA._stateForTest().buffered).toBe(1))
 
     const after = fakeRoute(200)
     const pageB = new BrowserLogForwarder(after.post, storage)
     pageB.send(line('first line after sign-in'))
 
-    await vi.waitFor(() => expect(after.received.map((l) => l.msg)).toEqual(['first line after sign-in', 'refused before sign-in', 'in flight']))
+    await vi.waitFor(() => expect(after.received.map((l) => l.msg).sort()).toEqual(['first line after sign-in', 'in flight', 'refused before sign-in']))
     await vi.waitFor(() => expect(storage.data.has(PENDING_STORAGE_KEY)).toBe(false))
   })
 
@@ -158,13 +160,104 @@ describe('BrowserLogForwarder across a page load', () => {
     const storage = memoryStorage()
     const pageA = new BrowserLogForwarder(fakeRoute(401).post, storage)
     for (let i = 0; i < 203; i++) pageA.send(line(`line ${i}`))
-    await vi.waitFor(() => expect(pageA._stateForTest().overflowed).toBe(3))
+    await vi.waitFor(() => expect(pageA.isSignedOut).toBe(true))
+    const lost = pageA._stateForTest().overflowed
+    expect(lost).toBeGreaterThan(0)
 
+    // The next page starts with the full buffer, so its own first line pushes one more out.
     const after = fakeRoute(200)
     new BrowserLogForwarder(after.post, storage).send(line('after'))
     await vi.waitFor(() => {
       const report = after.received.find((l) => l.msg.includes('dropped while the server would not accept them'))
-      expect(report?.fields).toMatchObject({ log_suppressed: 3 })
+      expect(report?.fields).toMatchObject({ log_suppressed: lost + 1 })
     })
+  })
+})
+
+describe('BrowserLogForwarder when the session is gone', () => {
+  // The failure this pins: a tab that woke up with a session the server had
+  // forgotten fired its log lines at /log, every one a 401, while the page
+  // was already on its way to sign in. The console showed hundreds.
+  it('sends nothing more after the first 401, however many lines the page logs', async () => {
+    const route = fakeRoute(401)
+    const forwarder = new BrowserLogForwarder(route.post, memoryStorage())
+
+    for (let i = 0; i < 300; i++) forwarder.send(line(`burst ${i}`))
+    await vi.waitFor(() => expect(forwarder.isSignedOut).toBe(true))
+    const afterFirstRefusals = route.post.mock.calls.length
+
+    for (let i = 0; i < 300; i++) forwarder.send(line(`more ${i}`))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // At most the few requests that were already in flight when the first 401 came back.
+    expect(afterFirstRefusals).toBeLessThanOrEqual(4)
+    expect(route.post.mock.calls.length).toBe(afterFirstRefusals)
+  })
+
+  it('keeps what it held, bounded, and sends it once told the connection is authenticated again', async () => {
+    const route = fakeRoute(401)
+    const forwarder = new BrowserLogForwarder(route.post, memoryStorage())
+    for (let i = 0; i < 250; i++) forwarder.send(line(`line ${i}`))
+    await vi.waitFor(() => expect(forwarder.isSignedOut).toBe(true))
+    expect(forwarder._stateForTest().buffered).toBeLessThanOrEqual(200)
+
+    route.accept()
+    forwarder.resume()
+
+    await vi.waitFor(() => expect(forwarder._stateForTest().buffered).toBe(0))
+    expect(route.received.length).toBeGreaterThan(190)
+    expect(forwarder.isSignedOut).toBe(false)
+  })
+
+  it('never has more than four requests in flight', async () => {
+    let inFlight = 0
+    let peak = 0
+    const forwarder = new BrowserLogForwarder(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      return { status: 200 }
+    }, memoryStorage())
+
+    for (let i = 0; i < 60; i++) forwarder.send(line(`l${i}`))
+    await vi.waitFor(() => expect(forwarder._stateForTest().buffered).toBe(0))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    expect(peak).toBeLessThanOrEqual(4)
+  })
+})
+
+describe('BrowserLogForwarder when the server is failing, not signing out', () => {
+  it('backs off with a growing wait instead of retrying in a tight loop', async () => {
+    let clock = 1_000_000
+    const route = fakeRoute(503)
+    const forwarder = new BrowserLogForwarder(route.post, memoryStorage(), () => clock)
+
+    forwarder.send(line('one'))
+    await vi.waitFor(() => expect(route.post).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    // Real time barely moved, and the forwarder's own clock says the wait has not passed.
+    forwarder.send(line('two'))
+    forwarder.send(line('three'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(route.post).toHaveBeenCalledTimes(1)
+    expect(forwarder.isSignedOut).toBe(false)
+    expect(forwarder._stateForTest().buffered).toBe(3)
+
+    // Once the wait has passed, a send tries again.
+    route.accept()
+    clock += 2_500
+    forwarder.send(line('four'))
+    await vi.waitFor(() => expect(route.received.length).toBe(4))
+    forwarder._stopForTest()
+  })
+
+  it('treats a 5xx like a 429: hold the line, do not drop it', async () => {
+    const forwarder = new BrowserLogForwarder(fakeRoute(502).post, memoryStorage())
+    forwarder.send(line('held'))
+    await vi.waitFor(() => expect(forwarder._stateForTest().buffered).toBe(1))
+    forwarder._stopForTest()
   })
 })
