@@ -11,6 +11,7 @@ import { settledTabsSnapshot } from './snapshot-settled'
 import { effectiveProjects } from '@ion/shared/project-registry'
 import { remoteClientsPresent, sendRemoteEvent, thinConnections } from '../thin-view/remote-out'
 import { publishThinSnapshots } from '../thin-view/thin-sync'
+import { withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('snapshot-polling', msg, fields) }
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug('snapshot-polling', msg, fields) }
@@ -138,7 +139,11 @@ export function resetSnapshotHash(): void {
  * remote-display fields on top; those are hash-excluded (see
  * HASH_EXCLUDED_TOP_FIELDS) so the layering cannot desynchronize the gate.
  */
-export async function buildSnapshotEvent(forSubject?: string): Promise<{ event: Record<string, unknown>; tabs: RemoteTabState[] }> {
+export function buildSnapshotEvent(forSubject?: string): Promise<{ event: Record<string, unknown>; tabs: RemoteTabState[] }> {
+  return withSpan('snapshot.build', { attrs: { view: 'thin', ...(forSubject ? { user: forSubject } : {}) } }, () => buildSnapshotEventNow(forSubject))
+}
+
+async function buildSnapshotEventNow(forSubject?: string): Promise<{ event: Record<string, unknown>; tabs: RemoteTabState[] }> {
   const { tabs, resourceManifest } = await getRemoteTabStates(forSubject)
   // The subject's effective settings, not the Environment document alone:
   // recent directories and tab groups are Account settings, written to that

@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { WIRE_WINDOW_FIELDS } from '../wire-latency'
-import { CLIENT_WINDOW_FIELDS } from '@ion/shared/client-wire-latency'
+import { CLIENT_WINDOW_FIELDS, ELECTRON_CLIENT_WINDOW_FIELDS } from '@ion/shared/client-wire-latency'
 
 // server/src/protocol/__tests__/ → repo root
 const DASHBOARD_PATH = join(
@@ -41,7 +41,7 @@ describe('ion-wire-latency Grafana dashboard', () => {
   })
 
   it('queries only fields the server or a client actually emits', () => {
-    const emitted = new Set<string>([...WIRE_WINDOW_FIELDS, ...CLIENT_WINDOW_FIELDS])
+    const emitted = new Set<string>([...WIRE_WINDOW_FIELDS, ...CLIENT_WINDOW_FIELDS, ...ELECTRON_CLIENT_WINDOW_FIELDS])
     const orphans = queriedFields().filter((f) => !emitted.has(f))
 
     expect(

@@ -22,6 +22,8 @@ export function mergeEnvironmentMetrics(engine: SystemMetricsSample, server: Ser
     processes: [...engine.processes, server.process],
     runtime: engine.runtime,
     serverEventLoopUtilization: server.eventLoopUtilization,
+    serverEventLoopDelayP50Ms: server.eventLoopDelay?.p50Ms ?? null,
+    serverEventLoopDelayP99Ms: server.eventLoopDelay?.p99Ms ?? null,
   }
 }
 

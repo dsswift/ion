@@ -59,7 +59,7 @@ export type RemoteCommand =
       }>;
       implementationPhase?: boolean;
       instanceId?: string;
-      /** W3C traceparent of the client's prompt.send span; the server's prompt.handle span joins its trace. */
+      /** W3C traceparent of the client's prompt.send span; the server's action.handle span joins its trace. */
       traceparent?: string;
     }
   | {

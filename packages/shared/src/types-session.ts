@@ -600,7 +600,7 @@ export interface RunOptions {
   deliveryId?: string;
   /**
    * W3C traceparent for this prompt's trace. From a client it names the client's
-   * span; once the server's prompt.handle span starts it names that span, and it
+   * span; once the server's action.handle span starts it names that span, and it
    * is what send_prompt carries to the engine.
    */
   traceparent?: string;

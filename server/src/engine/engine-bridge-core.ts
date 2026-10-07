@@ -8,6 +8,8 @@ import {
 } from "./engine-bridge-prompts";
 import type { SendPromptArgs } from "./engine-bridge-prompts";
 import { startEngineCallSpan, traceFields } from "../tracing/prompt-span";
+import { ENGINE_PEER_SERVICE, runWithTrace, startServerSpan } from "../tracing/op-span";
+import { isValidSpanId, isValidTraceId, type Span } from "@ion/shared/trace-context";
 import {
   debug as _debug,
   error as _error,
@@ -129,8 +131,16 @@ export function handleMessage(bridge: EngineBridge, line: string): void {
     // projection, notifications) must see the display name, so it is applied
     // here, before the first of them runs. See event-wiring-tool-names.ts.
     applyToolDisplayNames(msg.event);
-    bridge.emit("event", routedKey, msg.event as EngineEvent);
+    // Under the event's trace: everything its listeners do synchronously
+    // (the store update, the Studio fan-out, every frame and envelope
+    // written) names the engine's trace without being handed it.
+    runWithTrace(eventTrace(msg.event), () => bridge.emit("event", routedKey, msg.event as EngineEvent));
   }
+}
+
+/** The trace the engine stamped on an event (`NormalizedEvent.trace_id` / `span_id`), when it carries a valid one. */
+function eventTrace(event: { trace_id?: unknown; span_id?: unknown }): { traceId: string; spanId: string } | undefined {
+  return isValidTraceId(event.trace_id) && isValidSpanId(event.span_id) ? { traceId: event.trace_id, spanId: event.span_id } : undefined;
 }
 
 const MAX_PENDING_OUTBOUND = 256;
@@ -213,6 +223,23 @@ export function sendWithData<T>(
   return sendWithResponse<T>(bridge, msg, false);
 }
 
+/**
+ * The server's client span for one engine round trip, `engine.request`, a
+ * child of whatever span is ambient (an `action.handle`, usually). Its
+ * `traceparent` rides the command so the engine's `command.dispatch` server
+ * span is its child. A command that already names a traceparent has its own
+ * call span (`engine.send_prompt`) and gets none here.
+ */
+function startRequestSpan(msg: { cmd?: unknown; key?: unknown; traceparent?: unknown }): Span | undefined {
+  if (typeof msg.traceparent === "string") return undefined;
+  const span = startServerSpan("engine.request", {
+    kind: "client",
+    attrs: { "peer.service": ENGINE_PEER_SERVICE, command: String(msg.cmd ?? ""), ...(typeof msg.key === "string" ? { session_key: msg.key } : {}) },
+  });
+  msg.traceparent = span.traceparent;
+  return span;
+}
+
 function sendWithResponse<T>(
   bridge: EngineBridge,
   msg: any,
@@ -220,6 +247,7 @@ function sendWithResponse<T>(
 ): Promise<BridgeRequestResult<T>> {
   const requestId = `bridge-${++bridge.requestCounter}-${Date.now()}`;
   msg.requestId = requestId;
+  const span = startRequestSpan(msg);
 
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -228,12 +256,15 @@ function sendWithResponse<T>(
       if (logTimeout)
         warn("request_timeout", { request_id: requestId, cmd: msg.cmd });
       bridge._onRequestTimeout();
+      span?.end({ answered: false }, "request timed out");
       resolve({ ok: false, error: "Request timed out", unanswered: true });
     }, 30000);
 
     bridge.requestCallbacks.set(requestId, (result) => {
       clearTimeout(timer);
       bridge.consecutiveTimeouts = 0;
+      // An engine refusal is an answer, so only a missing one fails the span.
+      span?.end({ answered: !result.unanswered, ok: result.ok }, result.unanswered ? result.error ?? "unanswered" : undefined);
       resolve({ ok: result.ok, error: result.error, ...(result.code ? { code: result.code } : {}), data: result.data as T, ...(result.unanswered ? { unanswered: true } : {}) });
     });
 
@@ -245,6 +276,7 @@ function sendWithResponse<T>(
         cmd: msg.cmd,
         key: msg.key,
       });
+      span?.end({ answered: false }, "engine connection unavailable");
       resolve({ ok: false, error: "Engine connection unavailable", unanswered: true });
     }
   });

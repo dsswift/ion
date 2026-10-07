@@ -29,6 +29,7 @@ import { join, sep } from 'path'
 import { ensureRepoRemote, projectsIoFor } from './repo-remote'
 import type { TransferPaths } from './paths'
 import { log as _log, warn as _warn } from '../logger'
+import { annotateSpan, withSpan } from '../tracing/op-span'
 
 const TAG = 'transfer.export'
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -102,7 +103,15 @@ export type RunTransferExportResult =
   | { ok: true; archivePath: string; totalBytes: number; manifest: TransferManifest; rootConversationId: string; sealedAt: number }
   | { ok: false; refusal: ExportRefusal }
 
-export async function runTransferExport(args: RunTransferExportArgs): Promise<RunTransferExportResult> {
+export function runTransferExport(args: RunTransferExportArgs): Promise<RunTransferExportResult> {
+  return withSpan('transfer.export', { attrs: { tab_id: args.tab.id, source_environment_id: args.sourceEnvironmentId, target_environment_id: args.targetEnvironmentId, carry_worktree: !!args.carryWorktree } }, () =>
+    exportNow(args).then((result) => {
+      annotateSpan({ ok: result.ok, ...(result.ok ? {} : { refusal: result.refusal.code }) })
+      return result
+    }))
+}
+
+async function exportNow(args: RunTransferExportArgs): Promise<RunTransferExportResult> {
   const { tab, tabRecord } = args
   const logFields = { source_environment_id: args.sourceEnvironmentId, target_environment_id: args.targetEnvironmentId, tab_id: tab.id }
 

@@ -104,7 +104,7 @@ export function performanceDashboard(): Dashboard {
       id: 3,
       title: 'Server spans p95',
       description:
-        'p95 of every Ion Studio Server span per step: action.handle, engine.request, engine.send_prompt, prompt.handle, snapshot.build, tabs_index.build, thin.first_paint, transcript.patch, body.serve, settled.publish, store.broadcast, git.exec, worktree.*, bench.rebuild, transfer.*, http.request, log.ingest, hello.auth, relay.frame, fleet.deploy, push.ring. Client kind filters the spans that carry it. Source: traces_spanmetrics_latency_bucket{service="ion-server"}.',
+        'p95 of every Ion Studio Server span per step: action.handle, engine.request, engine.send_prompt, snapshot.build, tabs_index.build, thin.first_paint, transcript.patch, body.serve, settled.publish, store.broadcast, git.exec, worktree.*, bench.rebuild, transfer.*, http.request, log.ingest, hello.auth, relay.frame, fleet.deploy, push.ring. Client kind filters the spans that carry it. Source: traces_spanmetrics_latency_bucket{service="ion-server"}.',
       gridPos: { h: 9, w: 8, x: 8, y: 1 },
       fieldConfig: seconds(),
       options: legend(),
@@ -286,12 +286,13 @@ export function performanceDashboard(): Dashboard {
       id: 20,
       title: 'Prompt hand-off and engine command dispatch p95',
       description:
-        'prompt.handle and engine.send_prompt (server): a prompt from receipt to the engine accepting it. command.dispatch (engine): one client command from receipt to its result, per command. Source: traces_spanmetrics_latency_bucket.',
+        'action.handle with action=submit (server, the prompt case) and engine.send_prompt (server): a prompt from receipt to the engine accepting it. command.dispatch (engine): one client command from receipt to its result, per command. Source: traces_spanmetrics_latency_bucket.',
       gridPos: { h: 9, w: 12, x: 12, y: 53 },
       fieldConfig: seconds(),
       options: legend(),
       targets: [
-        { e: p(0.95, { span: ['prompt.handle', 'engine.send_prompt'], service: 'ion-server' }, ['span_name']), legend: '{{span_name}}' },
+        { e: p(0.95, { span: 'action.handle', service: 'ion-server', extra: ['action="submit"'] }), legend: 'action.handle submit' },
+        { e: p(0.95, { span: 'engine.send_prompt', service: 'ion-server' }), legend: 'engine.send_prompt', refId: 'C' },
         { e: p(0.95, { span: 'command.dispatch', service: 'ion-engine' }, ['command']), legend: 'command.dispatch {{command}}', refId: 'B' },
       ],
     }),

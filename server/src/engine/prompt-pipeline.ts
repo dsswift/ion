@@ -234,7 +234,7 @@ export interface IncomingPrompt {
   clientWorkspaceContext?: import('@ion/shared/types-engine').ClientWorkspaceContext
   resolveSlash?: boolean
   temporaryAutoFromPlan?: boolean
-  /** The server's prompt.handle span as a traceparent. The engine bridge's `engine.send_prompt` call span is its child, and the run is that call's child. */
+  /** The server's action.handle span as a traceparent. The engine bridge's `engine.send_prompt` call span is its child, and the run is that call's child. */
   traceparent?: string
   /** Set by the send that reached the engine: whether the engine accepted it. Absent when the prompt never reached the engine. */
   engineOutcome?: { ok: boolean; error?: string }

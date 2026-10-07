@@ -1,6 +1,6 @@
 /**
- * Developer surfaces: the source-control and repository features an
- * organization can switch off.
+ * Developer surfaces: the source-control, repository, and diagnostic features
+ * an organization can switch off.
  *
  * Two policies name them, and they answer different questions:
  *
@@ -19,7 +19,7 @@
 import type { EnterprisePolicy } from './types-enterprise'
 import type { StudioWorktreeSnapshot } from './types-studio'
 
-export const DEVELOPER_SURFACES = ['sourceControl', 'commitGraph', 'repositoryStatus', 'worktrees'] as const
+export const DEVELOPER_SURFACES = ['sourceControl', 'commitGraph', 'repositoryStatus', 'worktrees', 'profiling'] as const
 
 export type DeveloperSurface = (typeof DEVELOPER_SURFACES)[number]
 
@@ -34,6 +34,7 @@ export const ALL_DEVELOPER_SURFACES_ENABLED: DeveloperSurfaceState = {
   commitGraph: true,
   repositoryStatus: true,
   worktrees: true,
+  profiling: true,
 }
 
 /** Reads a configured `developerSurfaces` object. Anything but `"disabled"` leaves a surface on. */
@@ -70,6 +71,7 @@ export function intersectDeveloperSurfaces(a: DeveloperSurfaceState, b: Develope
     commitGraph: a.commitGraph && b.commitGraph,
     repositoryStatus: a.repositoryStatus && b.repositoryStatus,
     worktrees: a.worktrees && b.worktrees,
+    profiling: a.profiling && b.profiling,
   }
 }
 
@@ -88,6 +90,7 @@ export function isDeveloperSurfaceState(value: unknown): value is DeveloperSurfa
 const SC: readonly DeveloperSurface[] = ['sourceControl']
 const CG: readonly DeveloperSurface[] = ['commitGraph']
 const WT: readonly DeveloperSurface[] = ['worktrees']
+const PROFILING: readonly DeveloperSurface[] = ['profiling']
 const SC_CG: readonly DeveloperSurface[] = ['sourceControl', 'commitGraph']
 const SC_WT: readonly DeveloperSurface[] = ['sourceControl', 'worktrees']
 const SC_RS_WT: readonly DeveloperSurface[] = ['sourceControl', 'repositoryStatus', 'worktrees']
@@ -201,6 +204,9 @@ const ACTION_SURFACES: Record<string, readonly DeveloperSurface[]> = {
   benchApplyOverlapFastLane: WT,
   retireLandedWorktrees: WT,
   sealLandedWorktree: WT,
+
+  // ── Profiling: a CPU profile or heap snapshot of the server process ──
+  'profile.capture': PROFILING,
 }
 
 /** The surfaces `action` serves, or undefined when it is not a developer-surface action. */

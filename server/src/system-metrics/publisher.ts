@@ -72,6 +72,7 @@ export class SystemMetricsPublisher {
   private readonly watchers = new Map<string, Watcher>()
   private engineIntervalMs = 0
   private lastInfoLogAt = 0
+  private readonly sampleListeners = new Set<(sample: EnvironmentSystemMetrics) => void>()
 
   constructor(private readonly engine: SystemMetricsEngineLink) {}
 
@@ -95,6 +96,12 @@ export class SystemMetricsPublisher {
 
   latest(): EnvironmentSystemMetrics | null {
     return this.store.latest()
+  }
+
+  /** Hear every merged sample (the OTLP metrics exporter). Returns the unsubscribe. */
+  onSample(listener: (sample: EnvironmentSystemMetrics) => void): () => void {
+    this.sampleListeners.add(listener)
+    return () => { this.sampleListeners.delete(listener) }
   }
 
   /** Start or stop one connection's watch. Returns the latest sample. */
@@ -126,6 +133,7 @@ export class SystemMetricsPublisher {
   ingest(sample: SystemMetricsSample, now: number = Date.now()): EnvironmentSystemMetrics {
     const merged = mergeEnvironmentMetrics(sample, this.serverSampler.sample(now))
     this.store.record(merged)
+    for (const listener of this.sampleListeners) listener(merged)
     let studio = 0
     let thin = 0
     for (const [id, w] of this.watchers) {
@@ -202,6 +210,8 @@ export function serverSampleLogFields(m: EnvironmentSystemMetrics, watchers: num
     server_cpu_percent: server?.cpuPercent ?? 0,
     server_rss_bytes: server?.rssBytes ?? 0,
     server_event_loop_utilization: m.serverEventLoopUtilization ?? 0,
+    server_event_loop_p50_ms: m.serverEventLoopDelayP50Ms ?? 0,
+    server_event_loop_p99_ms: m.serverEventLoopDelayP99Ms ?? 0,
     watchers,
   }
 }

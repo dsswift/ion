@@ -7,7 +7,9 @@
  * transcript (dispatch-transcript-publisher.ts) differ only in where their
  * rows come from. Publishing is the same, so it lives here once.
  */
-import { diffTranscript, type TranscriptPatchEvent } from '@ion/shared/transcript/transcript-patch'
+import { diffTranscript, type TranscriptChange, type TranscriptPatchEvent } from '@ion/shared/transcript/transcript-patch'
+import type { TraceParent } from '@ion/shared/trace-context'
+import { annotateSpan, runWithTrace, withSpan } from '../tracing/op-span'
 import type { TranscriptRow } from '@ion/shared/transcript/transcript-row'
 import { sendThinEventTo } from '../thin-view/remote-out'
 import { shouldStreamThinkingToRemote } from '../persistence/settings-store'
@@ -87,9 +89,16 @@ export type TranscriptPatchOwner = Pick<TranscriptPatchEvent, 'tabId' | 'instanc
  * the rows last published. A subscriber whose connection refuses the send is
  * dropped. Returns true when the channel still has subscribers.
  */
-export function publishTranscriptRows(channel: TranscriptChannelCore, next: TranscriptRow[], owner: TranscriptPatchOwner): boolean {
+export function publishTranscriptRows(channel: TranscriptChannelCore, next: TranscriptRow[], owner: TranscriptPatchOwner, trace?: TraceParent): boolean {
   const change = diffTranscript(channel.rows, next)
   if (!change) return channel.subscribers.size > 0
+  // One span for the delta: computed above, and queued to every subscriber
+  // below. Under the engine event's trace when the change came from one.
+  return runWithTrace(trace, () => withSpan('transcript.patch', { attrs: { stream_id: channel.streamId, kind: change.kind } }, () =>
+    sendPatch(channel, next, owner, change, trace)))
+}
+
+function sendPatch(channel: TranscriptChannelCore, next: TranscriptRow[], owner: TranscriptPatchOwner, change: TranscriptChange, trace: TraceParent | undefined): boolean {
   const baseRev = channel.rev
   channel.rev += 1
   channel.rows = next
@@ -102,6 +111,7 @@ export function publishTranscriptRows(channel: TranscriptChannelCore, next: Tran
     rev: channel.rev,
     total: next.length,
     change,
+    ...(trace ? { trace_id: trace.traceId, span_id: trace.spanId } : {}),
   }
   if (change.kind === 'reset') {
     log('transcript patch is a reset; subscribers will take a snapshot', {
@@ -113,11 +123,15 @@ export function publishTranscriptRows(channel: TranscriptChannelCore, next: Tran
       rows: change.kind === 'splice' ? change.rows.length : 1,
     })
   }
+  let sent = 0
   for (const conn of [...channel.subscribers]) {
     if (!sendThinEventTo(conn, patch as unknown as Record<string, unknown>)) {
       channel.subscribers.delete(conn)
       log('transcript subscriber dropped: send refused', { stream_id: channel.streamId, connection_id: conn.id })
+    } else {
+      sent++
     }
   }
+  annotateSpan({ rev: channel.rev, total: next.length, subscribers: sent })
   return channel.subscribers.size > 0
 }

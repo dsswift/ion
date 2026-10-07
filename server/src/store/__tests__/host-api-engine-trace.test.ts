@@ -1,5 +1,6 @@
 /**
- * The store's prompt sink opens the server's `prompt.handle` span: a child of
+ * The store's prompt sink, reached with no action in flight, opens the
+ * server's own `action.handle` span (`action=submit`): a child of
  * the client's span when the client sent a valid traceparent, a new root
  * (logged with the reason) otherwise. The engine is handed the SERVER span as
  * the run's parent, so client, server, and engine share one trace. A prompt
@@ -52,7 +53,7 @@ beforeEach(() => {
   deps.processIncomingPrompt.mockImplementation(async (p) => { p.engineOutcome = { ok: true } })
 })
 
-describe('prompt.handle in the store prompt sink', () => {
+describe('action.handle in the store prompt sink', () => {
   it('joins the client trace and hands the engine the server span as parent', async () => {
     await prompt('t1', 'req-1', options({ traceparent: CLIENT_TRACEPARENT }))
 
@@ -63,10 +64,10 @@ describe('prompt.handle in the store prompt sink', () => {
     expect(incoming.traceparent).toBe(incoming.runOptions?.traceparent)
 
     const [span] = spanLines(deps.log)
-    expect(span.msg).toBe('prompt.handle')
+    expect(span.msg).toBe('action.handle')
     expect(span.fields).toMatchObject({
       trace_id: TRACE, span_id: toEngine?.spanId, parent_span_id: CLIENT_SPAN, span_kind: 'server',
-      tab_id: 't1', request_id: 'req-1', surface: 'studio', accepted: true, engine_dispatched: true,
+      action: 'submit', surface: 'server', tab_id: 't1', request_id: 'req-1', prompt_surface: 'studio', accepted: true, engine_dispatched: true,
     })
     expect(deps.log).toHaveBeenCalledWith('trace', 'prompt trace joined the client trace', expect.objectContaining({ trace_id: TRACE }))
     // The sink's own lines about the prompt carry the trace.

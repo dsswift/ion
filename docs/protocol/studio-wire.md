@@ -165,6 +165,7 @@ argument is one object. Shapes: `@ion/shared/types-environment-admin`.
 | `environment.systemMetrics.latest` | `conversations:read` | `{latest, telemetryHealth}` (`EnvironmentSystemMetricsLatest`): the newest full sample, `null` before the first or where the server samples nothing, and the delivery state of every telemetry target. Reads without starting or stopping a watch, for a client that refreshes on its own timer. |
 | `environment.systemMetrics.history` `{windowSec?}` | `conversations:read` | `{buckets, windowMs}`: the last `windowSec` (default 900, at most 3600) of System Metrics in 10-second buckets, each `{at, hostCpuAvg, hostCpuMax, memoryUsedMaxBytes, ionCpuAvgPercent, ionRssMaxBytes}`. The server keeps an hour whether or not anyone watches. |
 | `environment.server.logTail` `{file, lines?}` | `admin` | The tail of `engine.jsonl` or `server.jsonl`. |
+| `profile.capture` `{kind: 'cpu' \| 'heap', seconds?}` | `admin` | A CPU profile (sampled for `seconds`, default 10, at most 120) or a heap snapshot of the server process, written under `<data dir>/profiles/`. Answers `{kind, path, durationMs, bytes}`. A `profiling` developer surface; refused `surface_disabled` where it is off. |
 | `environment.server.restart` / `.update` `{version?}` | `admin` | The host restarts, or installs a release, on itself. A Studio Server bundle runs its own `ion studio restart` / `update`, scheduled detached. A server a desktop runs hands the request to that desktop on its on-host connection, which uses the app's own updater (the newest release only). Answers `{scheduled, by}` before the host goes down, or refuses with why it cannot: `no_bundle`, `needs_sudo`, `host_app_unreachable`. |
 | `environment.server.installArtifact` `{transferId, totalBytes, sha256, name}` | `admin` | The host installs a build the client sends: a server bundle tarball, or a desktop update archive. The file follows as `FILE_CHUNK` frames keyed by `transferId`. The host checks its SHA-256 against the request before installing, and refuses `checksum_mismatch`. |
 | `environment.server.reportInstall` `{stage, kind, code?, message?}` | `admin`, on the host only | The desktop that runs the server reports a host install it was handed. Republished on `ion:host-install-progress`. |
@@ -181,7 +182,7 @@ argument is one object. Shapes: `@ion/shared/types-environment-admin`.
 | `terminal.openApplication` `{tabId, url}` | `terminal:operate` | Opens a web application as a Studio Browser Surface tab. Answers `false` unless a terminal of that tab still serves `url`. |
 | `voice.setConfig` `{enabled, mode, systemPrompt?}` | `conversations:operate` | The calling client's voice configuration, read when that client submits a prompt. |
 | `worktree.state` `{repoPath}` / `worktree.syncAll` `{repoPath}` | `git:write` | The worktree and bench projection a thin client renders; and the mechanical bulk sync, whose outcome and refreshed state are published as events. |
-| `session.prompt` `{tabId, text, attachments?, clientMsgId?, instanceId?, implementationPhase?, traceparent?}` | `conversations:operate` | A prompt as a client typed it, slash commands and `!` shell lines included. Naming `instanceId` (empty means the active one) targets an extension-hosted conversation and creates its first instance when it has none. `traceparent` names the client's `prompt.send` span; the server's `prompt.handle` span joins that trace ([log schema § Spans](../observability/log-schema.md#spans)). Answers `{accepted, reason?, clientMsgId}` once the engine admits or rejects it, so a composer keeps its text on a rejection. |
+| `session.prompt` `{tabId, text, attachments?, clientMsgId?, instanceId?, implementationPhase?, traceparent?}` | `conversations:operate` | A prompt as a client typed it, slash commands and `!` shell lines included. Naming `instanceId` (empty means the active one) targets an extension-hosted conversation and creates its first instance when it has none. `traceparent` names the client's `prompt.send` span; the server's `action.handle` span joins that trace ([log schema § Spans](../observability/log-schema.md#spans)). Answers `{accepted, reason?, clientMsgId}` once the engine admits or rejects it, so a composer keeps its text on a rejection. |
 | `tabs.create` `{workingDirectory?, profileId?, useWorktree?, sourceBranch?, ephemeralWorktree?, rememberWorktreeChoice?, pinToGroupId?, clientCmdId?}` / `tabs.createTerminal` `{workingDirectory?, clientCmdId?}` | `conversations:operate` / `terminal:operate` | A conversation (or a terminal-only tab with its first shell) made without moving the desktop's active tab, which the store's own create actions do move. No directory means the configured default. `ephemeralWorktree` makes the requested worktree close with the conversation; absent, the project's remembered answer decides, then its `ephemeralDefault`. `rememberWorktreeChoice` saves `sourceBranch` and `ephemeralWorktree` as the project's worktree choice. A repeated `clientCmdId` answers the tab the first call made. Answers `{tabId}`, `null` on failure. |
 | `tabs.close` `{tabId}` | `conversations:operate` | Closes unless the orchestrator, a dispatched agent, or a background shell is running. Answers `{closed, blocked, orchestratorRunning, agentCount, shellCount}`. The store action `closeTab` asks no such question; Studio asks it first through `requestCloseTab`. |
 | `session.forkFromMessage` `{tabId, messageId}` | `conversations:operate` | `{tabId, pendingInput}`: the new tab and the draft the fork seeded it with, or `null` when refused. |
@@ -577,16 +578,23 @@ already rang for its ask.
 
 ### Trace context on the envelope
 
-The phone sets `traceparent` (W3C, `00-<32 hex>-<16 hex>-<2 hex>`) beside the
-sealed frame, in plaintext, on the frame that carries a `session.prompt`.
-Studio does the same for a `studio_action` frame that carries a `traceparent`
-(a prompt `submit`) when it reaches an environment through a relay. The same
-value is in the action's arguments. A relay reads it to record its
-`relay.forward` span as a child of the phone's `prompt.send` span, and when
-it records one it replaces the span id in the envelope's `traceparent` with
-its own, so the receiver parents under the relay; the sealed frame is
-untouched and the server opens it the same way with or without the field. It
-names a span and never carries content. See
+A client sets `traceparent` (W3C, `00-<32 hex>-<16 hex>-<2 hex>`) beside the
+sealed frame, in plaintext, on every frame that carries an action: the span
+the action belongs to (`prompt.send`, `action.send`). A relay reads it to
+record its `relay.forward` span as a child, and when it records one it
+replaces the span id in the envelope's `traceparent` with its own, so the
+receiver parents under the relay; the sealed frame is untouched and the
+server opens it the same way with or without the field. The server prefers
+the envelope's value as the parent of its `action.handle` span, then the
+frame's `traceparent`, then one in the action's arguments.
+
+The server sets `traceparent` on every sealed envelope it sends: the
+`action.handle` span on an answer, the engine event's span on an event, the
+`push.ring` span on a push doorbell. A `studio_event` frame that carries or
+was derived from an engine event also carries that event's `trace_id` and
+`span_id` on the frame itself (and a `desktop_transcript_patch` carries them
+in its payload), so a client's render span joins the run's trace. A
+`traceparent` names a span and never carries content. See
 [log schema § Spans](../observability/log-schema.md#spans) and
 § "relay" there for the rewrite.
 
@@ -725,10 +733,11 @@ at all is a separate rule: each of those actions requires the `admin` scope.
 
 ### Developer surfaces
 
-A developer surface is one of four source-control features an organization
-can switch off: `sourceControl` (the changes list and every repository write),
-`commitGraph`, `repositoryStatus` (branch and status indicators), and
-`worktrees` (worktrees and integration benches). The shared rule is
+A developer surface is a source-control or diagnostic feature an
+organization can switch off: `sourceControl` (the changes list and every
+repository write), `commitGraph`, `repositoryStatus` (branch and status
+indicators), `worktrees` (worktrees and integration benches), and `profiling`
+(`profile.capture`). The shared rule is
 `packages/shared/src/developer-surfaces.ts`.
 
 `studio_welcome.developerSurfaces` and

@@ -32,6 +32,7 @@ describe('parseDeveloperSurfaces', () => {
       commitGraph: false,
       repositoryStatus: true,
       worktrees: false,
+      profiling: true,
     })
   })
 
@@ -51,7 +52,7 @@ describe('parseDeveloperSurfaces', () => {
   it('intersects two states', () => {
     const a = parseDeveloperSurfaces({ sourceControl: 'disabled' })
     const b = parseDeveloperSurfaces({ worktrees: 'disabled' })
-    expect(intersectDeveloperSurfaces(a, b)).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: false })
+    expect(intersectDeveloperSurfaces(a, b)).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: false, profiling: true })
   })
 
   it('guards the wire shape', () => {

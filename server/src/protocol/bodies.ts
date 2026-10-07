@@ -37,6 +37,7 @@ import { openTabTranscript } from '../transcript/transcript-publisher'
 import { openDispatchTranscript } from '../transcript/dispatch-transcript-publisher'
 import { clampTranscriptPageRows, pageTranscript } from '@ion/shared/transcript/transcript-page'
 import { log as _log, warn as _warn } from '../logger'
+import { withSpan } from '../tracing/op-span'
 import type { Connection } from './connection'
 import { tabIdVisibleToSubject } from './tabs-index'
 
@@ -53,7 +54,9 @@ export async function handleBodyRequest(conn: Connection, frame: StudioBodyReque
   // A body is an answer the client asked for, and a client asks for many at
   // once when it connects: each is built and sent only after the previous
   // one left the socket (see Connection.answerInTurn).
-  await conn.answerInTurn(() => answerBody(conn, frame))
+  await conn.answerInTurn(() => withSpan('body.serve', {
+    attrs: { tab_id: frame.tabId, view: conn.view, connection_id: conn.id, ...(frame.conversationId ? { conversation_id: frame.conversationId } : {}) },
+  }, () => answerBody(conn, frame)))
 }
 
 async function answerBody(conn: Connection, frame: StudioBodyRequestFrame): Promise<void> {

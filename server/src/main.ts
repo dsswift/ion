@@ -10,6 +10,8 @@ import { cacheEnterprisePolicy } from './enterprise-policy-cache'
 import { applyMachineIdentity, initServerEgress, installCrashHandlers } from './process-logging'
 import { installExitHandlers } from './process-exit'
 import { startWireLatency } from './protocol/wire-latency-probe'
+import { startServerSpan } from './tracing/op-span'
+import { performance } from 'node:perf_hooks'
 import { readServerVersion } from './server-version'
 import { loadStateFiles, StateFileCorrupt } from './persistence/state-files'
 import { localPrincipal } from './identity/local-principal'
@@ -76,6 +78,7 @@ import { startFleetHubs } from './fleet/hub-run'
 import { installTelemetryHealthConsumer } from './engine/telemetry-health'
 import { installMcpServersBroadcast } from './engine/mcp-servers-broadcast'
 import { installSystemMetrics } from './system-metrics/runtime'
+import { installServerMetricsExport } from './system-metrics/otlp-export'
 import { startConversationCleanup } from './maintenance/conversation-cleanup'
 import { enterprisePolicyCache } from './state'
 import {
@@ -239,7 +242,11 @@ export interface ServerHandle extends HealthHandle {
  */
 export async function main(): Promise<ServerHandle> {
   const dir = dataDir()
-  log('server boot starting', { dir })
+  // The root span of the process's start-up trace: process start to the
+  // listeners accepting clients. It starts at the process's own start, not
+  // this call, so the time Node spent loading the bundle is in it.
+  const startup = startServerSpan('server.startup', { root: true, startMs: Math.round(performance.timeOrigin), attrs: { pid: process.pid } })
+  log('server boot starting', { dir, trace_id: startup.traceId })
 
   const config = loadServerConfig(dir)
   setCurrentServerConfig(config)
@@ -342,6 +349,7 @@ export async function main(): Promise<ServerHandle> {
         reason: 'state_file_corrupt',
         detail: `${err.filename}: ${err.parseError.message}`,
       })
+      startup.end({ listening: false, reason: 'state_file_corrupt' }, `${err.filename}: ${err.parseError.message}`)
       return { ...health, studio: null, relays: null, close: () => health.close() }
     }
     throw err
@@ -465,7 +473,8 @@ export async function main(): Promise<ServerHandle> {
   // for whichever client wants to interrupt the operator about it.
   installTelemetryHealthConsumer(engineBridge)
   installMcpServersBroadcast(engineBridge)
-  installSystemMetrics(engineBridge)
+  const systemMetrics = installSystemMetrics(engineBridge)
+  installServerMetricsExport(config.telemetry.otel.metrics, systemMetrics)
   wireSessionPlaneEvents()
   wireEngineBridgeEvents()
   wireRemoteSessionPlaneForwarding()
@@ -551,7 +560,8 @@ export async function main(): Promise<ServerHandle> {
   // announcement, a person opens a window, and no enterprise seal forbids it.
   startDiscovery({ environmentId: () => authRuntime.environmentId, serverVersion: authRuntime.serverVersion, port })
 
-  log('server boot complete', { serverId, port, socket_path: socketPath, studio_listener_count: studio.wssList.length, relay_count: relays.clients.length, relay_studio_channels: relayStudio.channelCount() })
+  startup.end({ listening: true, environment_id: serverId, port, studio_listener_count: studio.wssList.length, relay_count: relays.clients.length })
+  log('server boot complete', { serverId, port, socket_path: socketPath, studio_listener_count: studio.wssList.length, relay_count: relays.clients.length, relay_studio_channels: relayStudio.channelCount(), trace_id: startup.traceId })
   return {
     ...health,
     studio,

@@ -37,6 +37,8 @@ import {
   endLinger, holdsCurrent, publishTranscriptRows, rowsForThinClients, startLinger,
   type HeldRevision, type TranscriptChannelCore,
 } from './transcript-channel'
+import type { TraceParent } from '@ion/shared/trace-context'
+import { currentTrace } from '../tracing/op-span'
 import { onStreamThinkingToRemoteChange } from '../persistence/settings-store'
 import type { Connection } from '../protocol/connection'
 import { log as _log, warn as _warn } from '../logger'
@@ -67,6 +69,12 @@ interface TabChannel extends TranscriptChannelCore {
    * value: a row OBJECT can be edited in place.
    */
   source: readonly Message[]
+  /**
+   * The trace of the engine event whose store change last dirtied this
+   * channel (ambient while the event is handled). Stamped on the next patch,
+   * then cleared, so a thin client's render span joins the engine's trace.
+   */
+  pendingTrace?: TraceParent
 }
 
 /** What a snapshot reply needs about the stream it opens. */
@@ -129,7 +137,9 @@ function flushChannel(channel: TabChannel): void {
   // Rows are compared by value, never by identity (publishTranscriptRows).
   const rows = rowsForThinClients(projectTranscript(messages))
   channel.source = messages
-  if (!publishTranscriptRows(channel, rows, { tabId: channel.tabId, instanceId: channel.instanceId })) {
+  const trace = channel.pendingTrace
+  channel.pendingTrace = undefined
+  if (!publishTranscriptRows(channel, rows, { tabId: channel.tabId, instanceId: channel.instanceId }, trace)) {
     keepForResume(channel)
   }
 }
@@ -150,13 +160,17 @@ function flushDirty(): void {
  * projection per conversation per token while anything streams.
  */
 function onStoreChange(): void {
+  const trace = currentTrace()
   for (const channel of [...channels.values()]) {
     const messages = instanceMessages(channel.tabId, channel.instanceId)
     if (channel.subscribers.size === 0) {
       if (!messages) closeChannel(channel, 'instance_gone')
       continue
     }
-    if (messages !== channel.source) dirty.add(channel.streamId)
+    if (messages !== channel.source) {
+      dirty.add(channel.streamId)
+      if (trace) channel.pendingTrace = trace
+    }
   }
   if (dirty.size > 0 && !flushTimer) flushTimer = setTimeout(flushDirty, TRANSCRIPT_FLUSH_MS)
 }

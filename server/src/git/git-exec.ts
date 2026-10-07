@@ -13,6 +13,7 @@ import type { ExecFileOptions } from 'child_process'
 import { promisify } from 'util'
 import { warn as _warn } from '../logger'
 import { getCliPath } from '../cli-env'
+import { withSpan } from '../tracing/op-span'
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('main', msg, fields)
@@ -47,7 +48,12 @@ let promisified: PromisifiedExecFile | null = null
  */
 export function gitExec(file: string, args?: readonly string[], options?: ExecFileOptions): Promise<{ stdout: string; stderr: string }> {
   promisified ??= promisify(execFileCb) as unknown as PromisifiedExecFile
-  return promisified(file, args, { ...options, env: withCliPath(options?.env) })
+  // One span per subprocess, start to exit. The subcommand (the first
+  // argument that is not an option) is the attribute span metrics split on.
+  const subcommand = args?.find((arg) => !arg.startsWith('-')) ?? ''
+  const cwd = typeof options?.cwd === 'string' ? options.cwd : ''
+  return withSpan('git.exec', { kind: 'client', attrs: { git_command: subcommand, cwd } }, () =>
+    promisified!(file, args, { ...options, env: withCliPath(options?.env) }))
 }
 
 /** `env` (or the inherited environment) with PATH replaced by the operator's login-shell PATH. */

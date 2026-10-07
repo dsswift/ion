@@ -44,6 +44,7 @@ import {
 } from '../transcript-publisher'
 import { TRANSCRIPT_LINGER_MS } from '../transcript-channel'
 import { recordingConnection } from '../../protocol/__tests__/recording-connection'
+import { runWithTrace } from '../../tracing/op-span'
 
 function setRows(tabId: string, rows: Row[]): void {
   store.panes.set(tabId, { activeInstanceId: 'main', instances: [{ id: 'main', messages: rows }] })
@@ -297,5 +298,28 @@ describe('transcript publisher', () => {
       for (const p of patches(sent)) rows = applyTranscriptChange(rows, p.change)!
       expect(rows[1].content).toBe('secret reasoning')
     })
+  })
+})
+
+describe('the engine trace on a patch', () => {
+  it('stamps the trace of the engine event whose store change made the patch, and none on a change outside one', () => {
+    _resetTranscriptPublisherForTest()
+    const { conn, sent } = recordingConnection({ view: 'thin' })
+    setRows('tab-trace', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }])
+    openTabTranscript('tab-trace', undefined, conn)
+    runWithTrace({ traceId: '4bf92f3577b34da6a3ce929d0e0e4736', spanId: '00f067aa0ba902b7' }, () => {
+      setRows('tab-trace', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }, { id: 'a1', role: 'assistant', content: 'hello', timestamp: 2 }])
+    })
+    flushTranscript('tab-trace')
+    setRows('tab-trace', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }, { id: 'a1', role: 'assistant', content: 'hello there', timestamp: 2 }])
+    flushTranscript('tab-trace')
+    const patches = sent.filter((f): f is Extract<StudioFrame, { type: 'studio_event' }> => f.type === 'studio_event').map((f) => f.payload as TranscriptPatchEvent).filter((p) => p.type === 'desktop_transcript_patch')
+    expect(patches).toHaveLength(2)
+    expect(patches[0]).toMatchObject({ trace_id: '4bf92f3577b34da6a3ce929d0e0e4736', span_id: '00f067aa0ba902b7' })
+    expect(patches[1]).not.toHaveProperty('trace_id')
+    // The frame carries the same ids, so the phone's render span joins the run's trace.
+    const frames = sent.filter((f): f is Extract<StudioFrame, { type: 'studio_event' }> => f.type === 'studio_event' && (f.payload as TranscriptPatchEvent).type === 'desktop_transcript_patch')
+    expect(frames[0].trace_id).toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+    expect(frames[1].trace_id).toBeUndefined()
   })
 })

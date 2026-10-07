@@ -83,22 +83,3 @@ export type GitEvent =
       revision: number
       state: MergeState
     }
-  | {
-      kind: 'op:started'
-      repoPath: string
-      opId: string
-      opKind: string
-    }
-  | {
-      kind: 'op:completed'
-      repoPath: string
-      opId: string
-      ok: boolean
-      error?: string
-      durationMs: number
-    }
-  | {
-      kind: 'op:cancelled'
-      repoPath: string
-      opId: string
-    }

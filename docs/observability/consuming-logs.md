@@ -568,10 +568,10 @@ The pivot workflow (from [`docs/enterprise/telemetry.md`](../enterprise/telemetr
 1. Find an error in the operational stream: `{level="ERROR"} | json | session_id = "..."`.
 2. Copy its `trace_id` — that is the prompt the error happened in. Pull every line of it, on every
    surface: `{service_name=~".+"} | trace_id = "..."` returns the client's `prompt.send` span
-   line, the server's lines and its `prompt.handle` span, and the engine and extension lines of the
+   line, the server's lines and its `action.handle` span, and the engine and extension lines of the
    run. The same value opens the span tree in any OTLP backend the spans were exported to (Tempo in
    the local stack): `prompt.send` → `relay.forward` (phone prompts over a relay) and
-   `prompt.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
+   `action.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
    `hook.fanout` and the rest of the engine's spans, and the client's `prompt.visible`
    ([`log-schema.md`](log-schema.md#spans) § "Spans" has the whole tree).
 3. Widen from the run to the whole conversation: take `conversation_id` off any of those lines and

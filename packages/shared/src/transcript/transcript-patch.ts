@@ -60,6 +60,13 @@ export interface TranscriptPatchEvent {
   /** Row count after this change. */
   total: number
   change: TranscriptChange
+  /**
+   * The trace of the engine event whose store change this patch publishes,
+   * when one was in flight (`NormalizedEvent.trace_id` / `span_id`). A patch
+   * from a change no engine event made (a user turn echo) carries none.
+   */
+  trace_id?: string
+  span_id?: string
 }
 
 /** Stream fields a `studio_body` reply carries for a thin connection. */

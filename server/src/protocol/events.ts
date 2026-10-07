@@ -34,11 +34,14 @@ import { startupReportForAttach } from '../store/startup-progress'
 import { listAgentRosters } from '../engine/agent-state-mirror'
 import { log as _log, debug as _debug } from '../logger'
 import type { Connection, ConnectionRegistry } from './connection'
+import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { tabIdVisibleToSubject } from './tabs-index'
 import { unownedTabsVisible, isSharedTenancy } from '../config/current'
 import { projectForConnection } from './mirror-projection'
 import { developerSurfaceChannelAllowed, developerSurfaceThinEventAllowed, projectWorktreeSnapshotForSurfaces } from '@ion/shared/developer-surfaces'
 import type { StudioWorktreeSnapshot } from '@ion/shared/types-studio'
+import { isValidSpanId, isValidTraceId, type TraceParent } from '@ion/shared/trace-context'
+import { annotateSpan, currentEventTrace, runWithTrace, withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('studio-events', msg, fields)
@@ -47,7 +50,8 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('studio-events', msg, fields)
 }
 
-type Listener = (channel: string, args: unknown[]) => void
+/** Returns true when the connection was sent the event. `trace` is the engine event's, when the payload or the ambient context names one. */
+type Listener = (channel: string, args: unknown[], trace: TraceParent | undefined) => boolean
 const listeners = new Set<Listener>()
 
 /**
@@ -65,7 +69,45 @@ export function publishStudioEvent(channel: string, args: unknown[]): void {
     debug('channel not in the Studio wire contract; not fanned out', { channel })
     return
   }
-  for (const listener of listeners) listener(channel, args)
+  // Under the engine event's trace when the payload carries one, so every
+  // frame and envelope the fan-out writes names it; the span is the server's
+  // fan-out to every connection, a child of the engine's span.
+  // No connection means no fan-out to time: nothing is written.
+  if (listeners.size === 0) return
+  const trace = eventTrace(channel, args) ?? currentEventTrace()
+  runWithTrace(trace, () => withSpan('store.broadcast', { attrs: { channel } }, () => {
+    let delivered = 0
+    for (const listener of listeners) {
+      if (listener(channel, args, trace)) delivered++
+    }
+    annotateSpan({ connections: listeners.size, delivered })
+  }))
+}
+
+/**
+ * The trace of the engine event `args` carry: the `NormalizedEvent` on
+ * `ion:normalized-event` (after the tab id), or a thin event projected from
+ * one (`event-wiring-wire-projection.ts` spreads the event's fields, ids
+ * included). Undefined when the payload names no valid trace.
+ */
+export function eventTrace(channel: string, args: unknown[]): TraceParent | undefined {
+  const carrier = channel === 'ion:normalized-event' ? args[1] : args[0]
+  if (!carrier || typeof carrier !== 'object') return undefined
+  const { trace_id: traceId, span_id: spanId } = carrier as { trace_id?: unknown; span_id?: unknown }
+  return isValidTraceId(traceId) && isValidSpanId(spanId) ? { traceId, spanId } : undefined
+}
+
+/**
+ * A `studio_event` frame, stamped with the trace of the engine event it
+ * carries or was derived from. The default is the engine event's trace while
+ * one is being handled (`engine-bridge-core.ts` carries it with
+ * `runWithTrace`), whatever server spans are open inside it, and nothing
+ * otherwise: a frame never names the server's own span.
+ */
+export function studioEventFrame(channel: string, payload: unknown, trace: TraceParent | undefined = currentEventTrace()): Extract<StudioFrame, { type: 'studio_event' }> {
+  return trace
+    ? { type: 'studio_event', channel, payload, trace_id: trace.traceId, span_id: trace.spanId }
+    : { type: 'studio_event', channel, payload }
 }
 
 function subscribeStudioEvents(listener: Listener): () => void {
@@ -203,18 +245,18 @@ export function attachConnectionToEvents(conn: Connection): () => void {
     conn.send({ type: 'studio_event', channel: STARTUP_PROGRESS_CHANNEL, payload: formatEventPayload(STARTUP_PROGRESS_CHANNEL, [inFlight]) })
   }
   replayAgentRosters(conn)
-  return subscribeStudioEvents((channel, args) => {
-    if (conn.isClosed) return
-    if (!channelDeliveredToView(channel, conn.view)) return
-    if (!visibleTo(conn, channel, args)) return
+  return subscribeStudioEvents((channel, args, trace) => {
+    if (conn.isClosed) return false
+    if (!channelDeliveredToView(channel, conn.view)) return false
+    if (!visibleTo(conn, channel, args)) return false
     const projected = eventChannelScope(channel) === 'per-principal'
       ? projectForConnection(channel, formatEventPayload(channel, args), conn)
       : formatEventPayload(channel, args)
     const payload = channel === WORKTREE_SYNC_CHANNEL
       ? projectWorktreeSnapshotForSurfaces(projected as StudioWorktreeSnapshot, conn.developerSurfaces)
       : projected
-    if (channelKeepsLatestOnly(channel)) conn.sendLatest(channel, { type: 'studio_event', channel, payload })
-    else conn.send({ type: 'studio_event', channel, payload })
+    const frame = studioEventFrame(channel, payload, trace)
+    return channelKeepsLatestOnly(channel) ? conn.sendLatest(channel, frame) : conn.send(frame)
   })
 }
 

@@ -9,6 +9,17 @@
  * is the same code path as admitting a TCP one.
  */
 
+/**
+ * What a transport knows about an inbound frame beyond its bytes. A sealed
+ * socket reports the plaintext `traceparent` from the frame's envelope (a
+ * relay with tracing on rewrote it with its own span), so the action the
+ * frame carries can parent under the hop that delivered it. A plain `ws`
+ * socket reports nothing here.
+ */
+export interface InboundFrameMeta {
+  traceparent?: string
+}
+
 export interface ConnectionSocket {
   /** Sends one text or binary frame; `cb` fires once it left the socket (or with the error). */
   send(data: string | Buffer, cb?: (err?: Error) => void): void
@@ -17,7 +28,7 @@ export interface ConnectionSocket {
   terminate(): void
   /** Liveness probe; the socket answers with a `pong` event. */
   ping(): void
-  on(event: 'message', listener: (data: Buffer | string, isBinary: boolean) => void): this
+  on(event: 'message', listener: (data: Buffer | string, isBinary: boolean, meta?: InboundFrameMeta) => void): this
   on(event: 'close', listener: (code: number, reason: Buffer) => void): this
   on(event: 'error', listener: (err: Error) => void): this
   on(event: 'pong', listener: () => void): this

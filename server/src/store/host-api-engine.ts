@@ -271,9 +271,10 @@ export async function prompt(tabId: string, requestId: string, options: RunOptio
   // -- or keeps the text -- on a real outcome.
   const remoteDelivery = takeRemotePromptDelivery(requestId)
   // The server's hop in the prompt's trace. A submitter that registered a
-  // delivery already opened prompt.handle and ends it itself; any other
-  // prompt (Studio's submit, a server-originated turn) opens it here, as a
-  // child of the client's span when the client sent one.
+  // delivery already holds the action.handle span and records the outcome
+  // on it itself; any other prompt (Studio's submit, a server-originated
+  // turn) takes the ambient action's span here, or opens one when no action
+  // is in flight, as a child of the client's span when the client sent one.
   const handleSpan = remoteDelivery?.traceparent
     ? undefined
     : startPromptHandleSpan({
@@ -364,7 +365,7 @@ export async function prompt(tabId: string, requestId: string, options: RunOptio
 }
 
 /**
- * Ends the prompt.handle span this call opened, with what the engine answered
+ * Ends the action.handle span this call opened, with what the engine answered
  * when the prompt reached it. A prompt the pipeline handled without the
  * engine (a command the engine ran, a shell line) has no engine outcome.
  */

@@ -1,7 +1,8 @@
 /**
- * A client's `session.prompt` (the phone) opens the server's `prompt.handle`
- * span at receipt, as a child of the client's `prompt.send` span, and ends it
- * once the outcome is settled. The span's traceparent rides the prompt through
+ * A client's `session.prompt` (the phone) handled outside an action opens the
+ * server's own `action.handle` span (`action=submit`) at receipt, as a child
+ * of the client's `prompt.send` span, and ends it once the outcome is
+ * settled. The span's traceparent rides the prompt through
  * the pipeline and the delivery the store claims, so the engine run is its
  * child; an invalid client traceparent starts a new root and says so.
  */
@@ -36,7 +37,7 @@ const CLIENT_SPAN = '00f067aa0ba902b7'
 const caller = { kind: 'caller' as const, clientId: 'phone-1' }
 
 function spanLines(fn: typeof deps.log): Array<Record<string, unknown>> {
-  return fn.mock.calls.filter((c) => c[0] === 'span' && c[1] === 'prompt.handle').map((c) => c[2] as Record<string, unknown>)
+  return fn.mock.calls.filter((c) => c[0] === 'span' && c[1] === 'action.handle').map((c) => c[2] as Record<string, unknown>)
 }
 
 beforeEach(() => {
@@ -44,7 +45,7 @@ beforeEach(() => {
   deps.processIncomingPrompt.mockImplementation(async () => undefined)
 })
 
-describe('prompt.handle for a client prompt', () => {
+describe('action.handle for a client prompt outside an action', () => {
   it('joins the client trace, hands its span to the store claim, and ends on the outcome', async () => {
     let claimed: string | undefined
     deps.processIncomingPrompt.mockImplementation(async (p) => {
@@ -63,7 +64,7 @@ describe('prompt.handle for a client prompt', () => {
     const [span] = spanLines(deps.log)
     expect(span).toMatchObject({
       trace_id: TRACE, span_id: server?.spanId, parent_span_id: CLIENT_SPAN, span_kind: 'server',
-      surface: 'session.prompt', request_id: 'msg-1', accepted: true,
+      action: 'submit', surface: 'server', prompt_surface: 'session.prompt', request_id: 'msg-1', accepted: true,
     })
     expect(deps.log).toHaveBeenCalledWith('main', 'submit_prompt: outcome', expect.objectContaining({ trace_id: TRACE }))
   })

@@ -26,6 +26,7 @@ import { resolveSecretRef } from './secret-ref'
 import { parseGit, type ServerGitConfig } from './git-config'
 import { parseSubscriptionLookup, type ServerSubscriptionLookupConfig } from './subscription-lookup-config'
 import { defaultLoggingConfig, parseLogging, type ServerLoggingConfig } from './logging-config'
+import { defaultTelemetryConfig, parseTelemetry, type ServerTelemetryConfig } from './telemetry-config'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('server-config', msg, fields)
@@ -179,6 +180,8 @@ export interface ServerConfig {
   logLevel: LogLevel
   /** `server.json.logging` -- whether this server ships its own log lines, and which files it carries. */
   logging: ServerLoggingConfig
+  /** `server.json.telemetry` -- the server process's OTLP metrics export (`telemetry.otel.metrics`). */
+  telemetry: ServerTelemetryConfig
   /** Absent (default) on a shared/team instance: no home project is provisioned. */
   homeProject: ServerHomeProjectConfig | null
 }
@@ -271,6 +274,7 @@ export function defaultServerConfig(): ServerConfig {
     subscriptionLookup: null,
     logLevel: 'DEBUG',
     logging: defaultLoggingConfig(),
+    telemetry: defaultTelemetryConfig(),
     homeProject: null,
   }
 }
@@ -508,6 +512,7 @@ export function loadServerConfig(dir: string): ServerConfig {
     subscriptionLookup: parseSubscriptionLookup(raw.subscriptionLookup),
     logLevel: parseLogLevel(raw.logLevel, defaults.logLevel),
     logging: parseLogging(raw.logging),
+    telemetry: parseTelemetry(raw.telemetry),
     homeProject: parseHomeProject(raw.homeProject),
   }
 
@@ -523,6 +528,8 @@ export function loadServerConfig(dir: string): ServerConfig {
     subscription_lookup_configured: config.subscriptionLookup !== null,
     log_egress_targets: config.logging.egress?.egressTargets ?? [],
     log_ship_sources: config.logging.shipSources,
+    otel_metrics_enabled: config.telemetry.otel.metrics.enabled,
+    otel_metrics_interval_ms: config.telemetry.otel.metrics.intervalMs,
   })
   return config
 }

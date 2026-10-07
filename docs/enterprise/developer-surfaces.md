@@ -1,14 +1,15 @@
 # Developer surfaces
 
 Ion Studio shows source-control features beside every conversation: a changes
-list, a commit graph, branch and status indicators, and worktree controls. An
-organization can switch each one off.
+list, a commit graph, branch and status indicators, and worktree controls; and
+it lets an administrator profile the server process. An organization can
+switch each one off.
 
 Switching a surface off removes the capability, not only the button. The
 server refuses the actions behind it, stops sending its data, and every client
 drops the controls that would reach it.
 
-## The four surfaces
+## The five surfaces
 
 | Surface            | What it covers                                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,6 +17,7 @@ drops the controls that would reach it.
 | `commitGraph`      | The commit graph and commit details.                                                                                                                          |
 | `repositoryStatus` | Read-only indicators: branch names and status badges.                                                                                                         |
 | `worktrees`        | Worktrees and integration benches: create, convert, sync, land, retire, the overlap window, and the worktree grouping in the Inbox.                           |
+| `profiling`        | A CPU profile or heap snapshot of the server process (`profile.capture`, `admin` scope), written under the data directory's `profiles/` folder.             |
 
 Each surface is `"enabled"` or `"disabled"`. A surface that is not listed is
 enabled, so a config with no `developerSurfaces` block changes nothing.

@@ -14,6 +14,7 @@
  */
 import type { RelayPushMeta } from '@ion/shared/studio-wire/relay-envelope'
 import { log as _log, debug as _debug } from '../logger'
+import { withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('thin-view', msg, fields)
@@ -22,8 +23,12 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('thin-view', msg, fields)
 }
 
-/** Rings every offline mobile client. Returns how many relay channels carried the doorbell. */
-export type PushRinger = (push: RelayPushMeta) => number
+/**
+ * Rings every offline mobile client. Returns how many relay channels carried
+ * the doorbell. `traceparent` is the `push.ring` span, set on each doorbell
+ * envelope so the relay's push and the phone's `push.open` join its trace.
+ */
+export type PushRinger = (push: RelayPushMeta, traceparent: string) => number
 
 let ringer: PushRinger | null = null
 
@@ -39,6 +44,9 @@ export function ringOfflineThinClients(push: RelayPushMeta): void {
     debug('push not rung: no relay listener is running', { tab_id: push.pushTabId ?? '', kind: push.notifyKind ?? '' })
     return
   }
-  const channels = ringer(push)
-  log('push rung for offline thin clients', { channel_count: channels, tab_id: push.pushTabId ?? '', kind: push.notifyKind ?? '' })
+  withSpan('push.ring', { kind: 'client', attrs: { tab_id: push.pushTabId ?? '', kind: push.notifyKind ?? '' } }, (span, ctx) => {
+    const channels = ringer!(push, span.traceparent)
+    ctx.annotate({ channel_count: channels })
+    log('push rung for offline thin clients', { channel_count: channels, tab_id: push.pushTabId ?? '', kind: push.notifyKind ?? '' })
+  })
 }

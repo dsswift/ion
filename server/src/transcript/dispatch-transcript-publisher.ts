@@ -38,6 +38,7 @@ import {
   endLinger, holdsCurrent, publishTranscriptRows, rowsForThinClients, startLinger,
   type HeldRevision, type TranscriptChannelCore,
 } from './transcript-channel'
+import { currentTrace } from '../tracing/op-span'
 import { onStreamThinkingToRemoteChange } from '../persistence/settings-store'
 import { TRANSCRIPT_FLUSH_MS } from './transcript-publisher'
 import type { Connection } from '../protocol/connection'
@@ -177,9 +178,10 @@ function currentRows(channel: DispatchChannel): TranscriptRow[] {
 
 /** Publish the channel's current rows to its subscribers. */
 function publish(channel: DispatchChannel): boolean {
+  // A dispatch push arrives on an engine event, so the ambient trace is that event's.
   return publishTranscriptRows(channel, currentRows(channel), {
     tabId: channel.tabId, conversationId: channel.conversationId, dispatchId: channel.dispatchId,
-  })
+  }, currentTrace())
 }
 
 /** Keep the backstop timer running exactly while the dispatch runs. */

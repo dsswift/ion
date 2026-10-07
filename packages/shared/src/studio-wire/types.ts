@@ -308,6 +308,13 @@ export type StudioFrame =
       type: 'studio_event'
       channel: string
       payload: unknown
+      /**
+       * The trace of the engine event this frame carries or was derived from
+       * (`NormalizedEvent.trace_id` / `span_id`), so a client's render span
+       * joins the same trace. Absent on a frame no engine event produced.
+       */
+      trace_id?: string
+      span_id?: string
     }
   | {
       type: 'studio_command'

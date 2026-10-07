@@ -28,6 +28,7 @@ import { basename, join } from "path";
 import { runGit } from "../git/git-runner";
 import { repositoryManager } from "../git/repositoryManager";
 import { log as _log, warn as _warn } from "../logger";
+import { annotateSpan, failSpan, withSpan } from "../tracing/op-span";
 import { registerWorktree, unregisterWorktree } from "./inventory";
 import { triggerWorktreeLifecycleAutomation } from "./lifecycle-automation-trigger";
 import { disenrollWorktree } from "../integration/bench-ops";
@@ -293,9 +294,18 @@ export async function retireWorktree(
  * repository mutation slot. This lets a terminal land-and-retire operation use
  * one slot for both halves without waiting on itself.
  */
-export async function retireWorktreeUnqueued(
+export function retireWorktreeUnqueued(
   opts: RetireOptions,
 ): Promise<WorktreeMoveResult> {
+  return withSpan("worktree.retire", { attrs: { repo_path: opts.repoPath, worktree_path: opts.worktreePath, branch: opts.branchName ?? "", force: !!opts.force } }, () =>
+    retireNow(opts).then((result) => {
+      annotateSpan({ ok: result.ok });
+      if (!result.ok) failSpan(result.error ?? "retire failed");
+      return result;
+    }));
+}
+
+async function retireNow(opts: RetireOptions): Promise<WorktreeMoveResult> {
   const { repoPath, worktreePath, branchName, force } = opts;
   log("retire: starting", {
     repo_path: repoPath,

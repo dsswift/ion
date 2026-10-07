@@ -702,7 +702,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           // re-dispatching the extension command (which corrupts the
           // command-await FIFO queue and causes a 5s timeout + lost prompt).
           resolveSlash,
-          // The client span's traceparent; the server's prompt.handle span joins it.
+          // The client span's traceparent; the server's action.handle span joins it.
           traceparent,
         })
         .catch((err: Error) => {

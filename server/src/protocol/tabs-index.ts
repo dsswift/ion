@@ -35,6 +35,7 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { dataDir } from '../paths'
 import { warn as _warn, error as _error } from '../logger'
+import { annotateSpan, withSpan } from '../tracing/op-span'
 import { unownedTabsVisible, isSharedTenancy } from '../config/current'
 import type { StudioPrincipalSummary, StudioSnapshotTab } from '@ion/shared/studio-wire/types'
 
@@ -57,16 +58,19 @@ function stripTabFields(raw: unknown): StudioSnapshotTab {
 
 /** Read `tabs.json` and strip `terminalBuffers`/`conversationPane`. Tolerates a missing or corrupt file. */
 export function loadSnapshotTabs(): StudioSnapshotTab[] {
-  const tabsFile = tabsFilePath()
-  if (!existsSync(tabsFile)) return []
-  try {
-    const parsed = JSON.parse(readFileSync(tabsFile, 'utf-8')) as { tabs?: unknown[] } | unknown[]
-    const rawTabs = Array.isArray(parsed) ? parsed : Array.isArray(parsed.tabs) ? parsed.tabs : []
-    return rawTabs.map(stripTabFields)
-  } catch (err) {
-    error('persisted tabs read failed for snapshot', { error: String(err) })
-    return []
-  }
+  return withSpan('tabs_index.build', {}, () => {
+    const tabsFile = tabsFilePath()
+    if (!existsSync(tabsFile)) return []
+    try {
+      const parsed = JSON.parse(readFileSync(tabsFile, 'utf-8')) as { tabs?: unknown[] } | unknown[]
+      const rawTabs = Array.isArray(parsed) ? parsed : Array.isArray(parsed.tabs) ? parsed.tabs : []
+      annotateSpan({ tab_count: rawTabs.length })
+      return rawTabs.map(stripTabFields)
+    } catch (err) {
+      error('persisted tabs read failed for snapshot', { error: String(err) })
+      return []
+    }
+  })
 }
 
 /**

@@ -89,6 +89,9 @@ export interface EnvironmentSystemMetrics {
   runtime: SystemMetricsRuntime
   /** Share of the server's event loop spent busy since its previous sample, 0..1. */
   serverEventLoopUtilization: number | null
+  /** How late the server's event loop ran its timers since its previous sample: the median and the 99th percentile, milliseconds. Null before the first full interval. */
+  serverEventLoopDelayP50Ms?: number | null
+  serverEventLoopDelayP99Ms?: number | null
 }
 
 /** One 10-second bucket of Environment System Metrics history. */

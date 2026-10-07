@@ -4,7 +4,7 @@ import Foundation
 /// answered, keyed by the caller's own id.
 ///
 /// Every action's trace starts on the phone. Its `traceparent` rides the
-/// action to the server, whose `action.handle` (or `prompt.handle`) span
+/// action to the server, whose `action.handle` span
 /// joins the trace. The phone's span ends when the server answers, accepted
 /// or rejected (a failed or timed-out action answers rejected too), so every
 /// span opened here is closed.

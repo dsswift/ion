@@ -415,7 +415,8 @@ final class StudioTransport: RemoteTransport, @unchecked Sendable {
         DiagnosticLog.log("studio transport: developer surfaces changed", tag: "studio.transport", fields: [
             "device": devicePrefix, "source": source,
             "source_control": String(next.sourceControl), "commit_graph": String(next.commitGraph),
-            "repository_status": String(next.repositoryStatus), "worktrees": String(next.worktrees)
+            "repository_status": String(next.repositoryStatus), "worktrees": String(next.worktrees),
+            "profiling": String(next.profiling)
         ])
     }
 

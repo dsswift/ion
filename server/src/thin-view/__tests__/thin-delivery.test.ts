@@ -157,7 +157,10 @@ describe('sendRemoteEvent', () => {
       sendRemoteEvent(event)
       expect(ringer).not.toHaveBeenCalled()
       sendRemoteEvent(event, true, { title: 'Done', body: 'Build finished', tabId: 'tab-x', kind: 'briefing', resourceId: 'res-1' })
-      expect(ringer).toHaveBeenCalledExactlyOnceWith({ pushTitle: 'Done', pushBody: 'Build finished', pushTabId: 'tab-x', notifyKind: 'briefing', notifyResourceId: 'res-1' })
+      expect(ringer).toHaveBeenCalledExactlyOnceWith(
+        { pushTitle: 'Done', pushBody: 'Build finished', pushTabId: 'tab-x', notifyKind: 'briefing', notifyResourceId: 'res-1' },
+        expect.stringMatching(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/),
+      )
     } finally {
       setPushRinger(null)
     }

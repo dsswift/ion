@@ -85,7 +85,7 @@
         "x": 8,
         "y": 1
       },
-      "description": "p95 of every Ion Studio Server span per step: action.handle, engine.request, engine.send_prompt, prompt.handle, snapshot.build, tabs_index.build, thin.first_paint, transcript.patch, body.serve, settled.publish, store.broadcast, git.exec, worktree.*, bench.rebuild, transfer.*, http.request, log.ingest, hello.auth, relay.frame, fleet.deploy, push.ring. Client kind filters the spans that carry it. Source: traces_spanmetrics_latency_bucket{service=\"ion-server\"}.",
+      "description": "p95 of every Ion Studio Server span per step: action.handle, engine.request, engine.send_prompt, snapshot.build, tabs_index.build, thin.first_paint, transcript.patch, body.serve, settled.publish, store.broadcast, git.exec, worktree.*, bench.rebuild, transfer.*, http.request, log.ingest, hello.auth, relay.frame, fleet.deploy, push.ring. Client kind filters the spans that carry it. Source: traces_spanmetrics_latency_bucket{service=\"ion-server\"}.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1134,7 +1134,7 @@
         "x": 12,
         "y": 53
       },
-      "description": "prompt.handle and engine.send_prompt (server): a prompt from receipt to the engine accepting it. command.dispatch (engine): one client command from receipt to its result, per command. Source: traces_spanmetrics_latency_bucket.",
+      "description": "action.handle with action=submit (server, the prompt case) and engine.send_prompt (server): a prompt from receipt to the engine accepting it. command.dispatch (engine): one client command from receipt to its result, per command. Source: traces_spanmetrics_latency_bucket.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1167,13 +1167,26 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~\"prompt.handle|engine.send_prompt\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"action.handle\", service=\"ion-server\", action=\"submit\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
           "instant": false,
           "range": true,
-          "legendFormat": "{{span_name}}"
+          "legendFormat": "action.handle submit"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name=\"engine.send_prompt\", service=\"ion-server\", host_name=~\"$host\", user=~\"$user\"}[$__rate_interval])))",
+          "queryType": "range",
+          "refId": "C",
+          "__ionClass": "windowed-stat",
+          "instant": false,
+          "range": true,
+          "legendFormat": "engine.send_prompt"
         },
         {
           "datasource": {

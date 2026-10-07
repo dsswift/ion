@@ -97,8 +97,8 @@ export async function submitClientPrompt(
   // turn will produce. Both the engine and CLI branches use `echoTs`.
   const echoTs = Date.now();
   const reqId = cmd.clientMsgId || `remote-${echoTs}`;
-  // The server's hop in the prompt's trace, from receipt until the engine
-  // accepts it. Ended in dispatchToPipeline once the outcome is known.
+  // The server's hop in the prompt's trace: the action.handle span of the
+  // `session.prompt` action. Its outcome is recorded in dispatchToPipeline.
   const span = startPromptHandleSpan({
     traceparent: cmd.traceparent,
     tabId: cmd.tabId,
@@ -297,7 +297,7 @@ async function dispatchToPipeline(
   const trace = { trace_id: span.traceId };
   markDriving(tabId, origin);
   // The store's submit claims this entry and sends the span's traceparent to
-  // the engine instead of opening a second prompt.handle.
+  // the engine instead of opening a second action.handle.
   const outcome = awaitPromptDelivery(reqId, tabId, span.traceparent);
   try {
     await processIncomingPrompt(prompt);

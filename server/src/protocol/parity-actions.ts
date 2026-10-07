@@ -93,7 +93,7 @@ export const PARITY_ACTIONS: Record<string, SessionActionSpec> = {
   // store row the prompt made, so a thin client can match its pending bubble
   // to that row in the transcript it is sent. It is not written to disk.
   // `traceparent` names the client's prompt.send span; the server's
-  // prompt.handle span joins that trace (a missing or invalid one starts a new root).
+  // action.handle span joins that trace (a missing or invalid one starts a new root).
   'session.prompt': wrap('session.prompt', 'conversations:operate', (a, conn) => {
     const tabId = requireTab(a)
     if (typeof a.text !== 'string') throw new Declined('text is required')

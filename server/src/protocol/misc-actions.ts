@@ -42,6 +42,7 @@ import { STUDIO_ACTIONS } from './studio-actions'
 import { REMOTE_ACTIONS } from './remote-actions'
 import { LIFECYCLE_ACTIONS } from './lifecycle-actions'
 import { GRAPH_VIEW_ACTIONS } from './graph-view-actions'
+import { PROFILE_ACTIONS } from './profile-actions'
 import { TRANSCRIBE_ACTIONS } from './transcribe-actions'
 import { DEEPLINK_ACTIONS } from './deeplink-actions'
 import { BACKUP_ACTIONS } from './backup-actions'
@@ -95,6 +96,7 @@ export const MISC_ACTIONS: Record<string, MiscActionSpec> = {
   ...LIFECYCLE_ACTIONS,
   ...GRAPH_VIEW_ACTIONS,
   ...TRANSCRIBE_ACTIONS,
+  ...PROFILE_ACTIONS,
   ...DEEPLINK_ACTIONS,
   ...BACKUP_ACTIONS,
   ...WORKTREE_OVERLAP_ACTIONS,

@@ -142,14 +142,14 @@ describe('thinSummary', () => {
   it('reports fractions of the container limit when one applies', () => {
     const m = mergeEnvironmentMetrics(
       { ...sample(1), host: { ...sample(1).host, memoryLimitBytes: 8_000, memoryAvailableBytes: 2_000 } },
-      { process: { pid: 1, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: null, cpuTimeMs: 0, rssBytes: 0 }, eventLoopUtilization: null },
+      { process: { pid: 1, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: null, cpuTimeMs: 0, rssBytes: 0 }, eventLoopUtilization: null, eventLoopDelay: null },
     )
     expect(thinSummary(m)).toEqual({ type: 'desktop_system_metrics', cpuUtilization: 0.5, memoryUsedFraction: 0.75, diskFreeFraction: 0.25, sampledAt: 1 })
   })
 })
 
 describe('SystemMetricsStore history', () => {
-  const server = { process: { pid: 1, startTimeMs: 1, role: 'server' as const, name: 'ion-server', cpuPercent: 10, cpuTimeMs: 0, rssBytes: 50 }, eventLoopUtilization: 0.1 }
+  const server = { process: { pid: 1, startTimeMs: 1, role: 'server' as const, name: 'ion-server', cpuPercent: 10, cpuTimeMs: 0, rssBytes: 50 }, eventLoopUtilization: 0.1, eventLoopDelay: { p50Ms: 1, p99Ms: 4, maxMs: 9 } }
 
   it('buckets samples by ten seconds with average and maximum', () => {
     const store = new SystemMetricsStore()

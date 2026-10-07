@@ -310,16 +310,6 @@ export class GitRepository extends EventEmitter {
     this.emit('event', event)
   }
 
-  // ─── Operation hooks ───
-
-  notifyOpStarted(opId: string, opKind: string): void {
-    this.emitEvent({ kind: 'op:started', repoPath: this.path, opId, opKind })
-  }
-
-  notifyOpCompleted(opId: string, ok: boolean, durationMs: number, error?: string): void {
-    this.emitEvent({ kind: 'op:completed', repoPath: this.path, opId, ok, error, durationMs })
-  }
-
   // ─── Cached reads ───
 
   async getStatus(): Promise<{ files: StatusEntry[]; branch: string; ahead: number; behind: number; isGitRepo: boolean }> {
