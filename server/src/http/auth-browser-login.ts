@@ -111,14 +111,17 @@ export function authCallbackRoute(getOidc: () => ServerOidcConfig | null, sessio
 }
 
 /** Builds the `POST /auth/logout` route handler. */
-export function authLogoutRoute(sessions: BrowserSessionStore): (req: IncomingMessage, res: ServerResponse) => void {
+export function authLogoutRoute(sessions: BrowserSessionStore, onSignedOut: (subject: string) => void = () => undefined): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     if (req.method !== 'POST') {
       writeJson(res, 405, { error: 'method_not_allowed' })
       return
     }
     const sessionId = parseCookie(req.headers.cookie, SESSION_COOKIE_NAME)
+    // The person this session belonged to, read before it is deleted: their applied key goes with the session.
+    const subject = sessionId ? sessions.get(sessionId)?.principal.subject : undefined
     if (sessionId) sessions.delete(sessionId)
+    if (subject) onSignedOut(subject)
     clearSessionCookie(res, isSecureRequest(req))
     log('logout completed', { had_session: !!sessionId })
     writeJson(res, 200, { ok: true })

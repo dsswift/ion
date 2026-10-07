@@ -93,10 +93,11 @@ vi.mock('@ion/server/store/sessionStore', () => ({
   ),
 }))
 
+const preferenceState = { inboxAutoSettleDays: 0, enterpriseNewConversationDefaults: null as null | { locked: boolean; baseDirectory: string; engineProfileId: string } }
 vi.mock('../../preferences', () => ({
   usePreferencesStore: Object.assign(
-    (selector: (s: { inboxAutoSettleDays: number }) => unknown) => selector({ inboxAutoSettleDays: 0 }),
-    { getState: () => ({ inboxAutoSettleDays: 0 }) },
+    (selector: (s: typeof preferenceState) => unknown) => selector(preferenceState),
+    { getState: () => preferenceState },
   ),
 }))
 

@@ -28,6 +28,7 @@ import { UpdateButton } from "../components/UpdateButton";
 import { NotificationsBell } from "../components/NotificationsPanel";
 import { EnvironmentStatusIndicator } from "./connection/EnvironmentStatusIndicator";
 import { DirectoryPicker } from "../components/DirectoryPicker";
+import { useNewConversationLock } from "../lib/new-conversation-lock";
 import { useActiveTerminalAccess } from "./connection/terminal-access";
 import { zoomRect } from "../viewport-zoom";
 import { rDebug, rError } from "../rendererLogger";
@@ -75,7 +76,11 @@ export function StudioTitleBar({
   const [terminalPickerAnchor, setTerminalPickerAnchor] = useState<{ x: number; y: number; bottom: number } | null>(null);
   const terminalPickerGestureUntil = React.useRef(0);
 
+  const foldersLocked = useNewConversationLock()?.foldersLocked === true;
+
   const openTerminalPicker = (button: HTMLButtonElement): void => {
+    // A terminal opens in a folder the person picks; a lock on the folder takes that choice away.
+    if (foldersLocked) return;
     const rect = zoomRect(button.getBoundingClientRect());
     setTerminalPickerAnchor({ x: rect.left, y: rect.top, bottom: rect.bottom });
     rDebug("studio.terminal", "terminal directory picker opened", { source: "title_bar" });
@@ -191,17 +196,24 @@ export function StudioTitleBar({
       >
         {tab && projectLabel && (
           <>
-            <Tooltip text={`${tab.workingDirectory} — start a new conversation`}>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
-                aria-label="Start a new conversation"
-                data-drag-region="no-drag"
-                style={breadcrumbButtonStyle(colors)}
-              >
+            {foldersLocked ? (
+              <span data-testid="studio-title-bar-project" title={tab.workingDirectory} style={{ ...breadcrumbButtonStyle(colors), cursor: 'default' }}>
                 <FolderSimple size={11} />
                 <span style={ellipsisStyle}>{projectLabel}</span>
-              </button>
-            </Tooltip>
+              </span>
+            ) : (
+              <Tooltip text={`${tab.workingDirectory} — start a new conversation`}>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
+                  aria-label="Start a new conversation"
+                  data-drag-region="no-drag"
+                  style={breadcrumbButtonStyle(colors)}
+                >
+                  <FolderSimple size={11} />
+                  <span style={ellipsisStyle}>{projectLabel}</span>
+                </button>
+              </Tooltip>
+            )}
             <CaretRight
               size={8}
               style={{ color: colors.textTertiary, opacity: 0.5, flexShrink: 0 }}

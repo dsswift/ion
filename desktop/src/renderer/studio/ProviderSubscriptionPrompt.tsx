@@ -158,14 +158,14 @@ function PromptDialog({ prompt }: { prompt: SubscriptionPrompt }): React.JSX.Ele
             icon={<ArrowClockwise size={12} />}
             primary={!choosing}
             disabled={busy}
-            onClick={() => { void run('refresh', 'provider.refreshSubscription', []) }}
+            onClick={() => { void run('refresh', 'provider.refreshOwnSubscription', []) }}
           />
           {choosing && (
             <PromptButton
               label="Use subscription"
               primary
               disabled={busy || choice === ''}
-              onClick={() => { void run('select', 'provider.selectSubscription', [{ id: choice }]) }}
+              onClick={() => { void run('select', 'provider.selectOwnSubscription', [{ id: choice }]) }}
             />
           )}
         </div>

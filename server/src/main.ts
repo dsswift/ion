@@ -27,6 +27,7 @@ import { startHealth, type HealthHandle } from './http/health'
 import { authConfigRoute } from './http/auth-config'
 import { authPairRoute } from './http/auth-pair'
 import { authLoginRoute, authCallbackRoute, authLogoutRoute } from './http/auth-browser-login'
+import { subscriptionStates } from './subscription'
 import { authGitCallbackRoute } from './http/auth-git-callback'
 import { browserSessionStore } from './auth/browser-session-store'
 import { logIngestRoute } from './http/log-ingest'
@@ -319,7 +320,7 @@ export async function main(): Promise<ServerHandle> {
       '/auth/pair': authPairRoute(credentialsStore()),
       '/auth/login': authLoginRoute(() => config.oidc),
       '/auth/callback': authCallbackRoute(() => config.oidc, browserSessionStore()),
-      '/auth/logout': authLogoutRoute(browserSessionStore()),
+      '/auth/logout': authLogoutRoute(browserSessionStore(), (subject) => subscriptionStates().forget(subject)),
       '/auth/git/callback': authGitCallbackRoute(() => config.git),
       '/versionz': versionzRoute(engineBridge),
       '/log': logIngestRoute({ getOidc: () => config.oidc, sessions: browserSessionStore() }),

@@ -15,6 +15,7 @@ import { LOCAL_ENVIRONMENT_ID, type EnvironmentCatalogEntry } from '@ion/shared/
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { zoomDelta } from '../viewport-zoom'
+import { useNewConversationLock } from '../lib/new-conversation-lock'
 import { usePreferencesStore } from '../preferences'
 import { host } from '../host/host-instance'
 import { policyStore } from '../studio/connection/policy-store'
@@ -60,7 +61,8 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   useEffect(() => policyStore.subscribe(() => setPolicyVersion((v) => v + 1)), [])
   // eslint-disable-next-line react-hooks/exhaustive-deps -- policyVersion is the trigger; the groups are read fresh
   const hiddenGroups = useMemo(() => policyStore.deviceHiddenGroups(), [policyVersion])
-  const filter = useMemo((): SectionFilter => ({ hiddenGroups, capabilities }), [hiddenGroups, capabilities])
+  const foldersLocked = useNewConversationLock()?.foldersLocked === true
+  const filter = useMemo((): SectionFilter => ({ hiddenGroups, capabilities, foldersLocked }), [hiddenGroups, capabilities, foldersLocked])
   const pagesFor = useCallback((scope: Exclude<SettingsPageScope, 'server'>) => visiblePages(SETTINGS_PAGES, scope, filter), [filter])
   const serverPages = useMemo(() => visiblePages(SETTINGS_PAGES, 'server', filter), [filter])
 

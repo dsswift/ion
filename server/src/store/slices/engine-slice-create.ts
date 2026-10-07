@@ -4,6 +4,7 @@ import type { StoreSet, StoreGet } from '../session-store-types'
 import { makeLocalTab, nextMsgId, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
 import { makeMainPane } from '../conversation-instance'
 import { registerTabOwner } from '../../protocol/tabs-index'
+import { activeNewConversationLock } from '../../new-conversation-lock'
 import { formatSessionStartDivider } from '@ion/shared/clear-divider'
 import { rError, rInfo, rWarn } from '../rendererLogger'
 import { setTabStatus } from './tab-status-transition'
@@ -95,6 +96,18 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const homeDir = s.staticInfo?.homePath || '~'
     const prefs = usePreferencesStore.getState()
     const defaultProjectDirectory = Object.keys(prefs.projects ?? {}).find((path) => prefs.projects?.[path]?.isDefault) ?? ''
+    // An enterprise lock decides where a NEW conversation opens and what runs
+    // in it, whatever the caller asked for. A restore keeps what it recorded.
+    const lock = opts.reuseTabId || opts.restoring ? null : activeNewConversationLock()
+    if (lock) {
+      rInfo('engine.create', 'new-conversation lock applied', { requested_directory: dir, locked_directory: lock.baseDirectory, requested_profile: opts.profileId ?? '', locked_profile: lock.engineProfileId })
+      opts = { ...opts, profileId: lock.engineProfileId || undefined, extensions: undefined }
+      if (lock.baseDirectory) {
+        // A worktree is a folder the caller picks, so a lock on the folder drops it too.
+        opts = { ...opts, useWorktree: false, sourceBranch: undefined, ephemeralWorktree: undefined, rememberWorktreeChoice: false }
+        dir = lock.baseDirectory
+      }
+    }
     const baseWorkingDirectory = dir || defaultProjectDirectory || homeDir
     // A caller names a directory on THIS server's machine. A client that is
     // connected to several servers can send one server a path that only

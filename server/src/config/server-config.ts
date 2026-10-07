@@ -24,6 +24,7 @@ import { log as _log, warn as _warn } from '../logger'
 import type { LogLevel } from '../logger'
 import { resolveSecretRef } from './secret-ref'
 import { parseGit, type ServerGitConfig } from './git-config'
+import { parseSubscriptionLookup, type ServerSubscriptionLookupConfig } from './subscription-lookup-config'
 import { defaultLoggingConfig, parseLogging, type ServerLoggingConfig } from './logging-config'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -173,6 +174,8 @@ export interface ServerConfig {
   git: ServerGitConfig
   /** `server.json.providerCredentials[]` -- FR-05 child 09's operator-managed `admin` source for model-provider credentials. Empty by default; a single-user server is unaffected. */
   providerCredentials: ServerProviderCredentialConfig[]
+  /** `server.json.subscriptionLookup` -- the per-person provider key lookup. Null (the default) runs none. */
+  subscriptionLookup: ServerSubscriptionLookupConfig | null
   logLevel: LogLevel
   /** `server.json.logging` -- whether this server ships its own log lines, and which files it carries. */
   logging: ServerLoggingConfig
@@ -265,6 +268,7 @@ export function defaultServerConfig(): ServerConfig {
     discovery: defaultDiscoveryConfig(),
     git: { credentials: [], hostCredentials: true, hosts: [], publicOrigin: '', exchange: { ado: { enabled: false }, gitlab: null, github: null } },
     providerCredentials: [],
+    subscriptionLookup: null,
     logLevel: 'DEBUG',
     logging: defaultLoggingConfig(),
     homeProject: null,
@@ -501,6 +505,7 @@ export function loadServerConfig(dir: string): ServerConfig {
     discovery: parseDiscovery(raw.discovery),
     git: parseGit(raw.git, dir, defaults.git),
     providerCredentials: parseProviderCredentials(raw.providerCredentials, dir),
+    subscriptionLookup: parseSubscriptionLookup(raw.subscriptionLookup),
     logLevel: parseLogLevel(raw.logLevel, defaults.logLevel),
     logging: parseLogging(raw.logging),
     homeProject: parseHomeProject(raw.homeProject),
@@ -515,6 +520,7 @@ export function loadServerConfig(dir: string): ServerConfig {
     relay_count: config.relays.length,
     web_enabled: config.web.enabled,
     home_project_configured: config.homeProject !== null,
+    subscription_lookup_configured: config.subscriptionLookup !== null,
     log_egress_targets: config.logging.egress?.egressTargets ?? [],
     log_ship_sources: config.logging.shipSources,
   })
@@ -522,6 +528,7 @@ export function loadServerConfig(dir: string): ServerConfig {
 }
 
 export type { ServerTenancyConfig } from './tenancy-config'
+export type { ServerSubscriptionLookupConfig } from './subscription-lookup-config'
 export type {
   ServerGitConfig,
   ServerGitCredentialConfig,

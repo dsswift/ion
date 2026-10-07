@@ -103,6 +103,39 @@ describe('studio_event: per-principal filtering', () => {
     await closeSocket(wsB)
   })
 
+  it('delivers a Provider Subscription snapshot only to the person it names, and a broadcast one to everyone, with no owner on the wire', async () => {
+    const wsA = connectLocal(harness)
+    await waitOpen(wsA)
+    sendFrame(wsA, helloFrame({ clientId: 'client-sub-a' }))
+    expect((await nextFrame(wsA)).type).toBe('studio_welcome')
+    const wsB = connectLocal(harness)
+    await waitOpen(wsB)
+    sendFrame(wsB, helloFrame({ clientId: 'client-sub-b' }))
+    expect((await nextFrame(wsB)).type).toBe('studio_welcome')
+
+    const { connectionRegistry } = await import('../connection')
+    const [connA, connB] = connectionRegistry.all()
+    connA.principal = { subject: 'local:alice', displayName: 'alice' }
+    connB.principal = { subject: 'local:bob', displayName: 'bob' }
+
+    const framesA: { type: string; channel?: string; payload?: unknown }[] = []
+    const framesB: { type: string; channel?: string; payload?: unknown }[] = []
+    wsA.on('message', (data, isBinary) => { if (!isBinary) framesA.push(JSON.parse((data as Buffer).toString('utf-8'))) })
+    wsB.on('message', (data, isBinary) => { if (!isBinary) framesB.push(JSON.parse((data as Buffer).toString('utf-8'))) })
+
+    const alices = { state: 'selection_required', options: [{ id: 'a', label: 'A' }] }
+    publishStudioEvent('ion:provider-subscription-changed', [alices, 'local:alice'])
+    publishStudioEvent('ion:provider-subscription-changed', [{ state: 'applied' }])
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const pick = (frames: typeof framesA) => frames.filter((f) => f.type === 'studio_event' && f.channel === 'ion:provider-subscription-changed')
+    expect(pick(framesA).map((f) => f.payload)).toEqual([alices, { state: 'applied' }])
+    expect(pick(framesB).map((f) => f.payload)).toEqual([{ state: 'applied' }])
+
+    await closeSocket(wsA)
+    await closeSocket(wsB)
+  })
+
   it('FR-02: shared tenancy delivers a tab-scoped event to every connection regardless of tab ownership', async () => {
     const { setCurrentServerConfig, currentServerConfig } = await import('../../config/current')
     setCurrentServerConfig({ ...currentServerConfig(), tenancy: { mode: 'shared' } })

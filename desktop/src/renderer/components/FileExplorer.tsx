@@ -29,6 +29,7 @@ import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
 import { FileExplorerRootSection } from './FileExplorerRootSection'
 import { ImageViewer } from './ImageViewer'
 import { Tooltip } from './git/Tooltip'
+import { useNewConversationLock } from '../lib/new-conversation-lock'
 import { rDebug, rError } from '../rendererLogger'
 import { pathSegments } from '@ion/shared/paths'
 
@@ -112,6 +113,9 @@ export function FileExplorer({
     },
     [],
   )
+
+  // A lock that names a directory means the person works in that folder alone.
+  const foldersLocked = useNewConversationLock()?.foldersLocked === true
 
   const handleAddFolder = useCallback(() => {
     if (!projectDir) return
@@ -198,7 +202,7 @@ export function FileExplorer({
           {[
             // Explorer-wide only. Anything scoped to one folder is a right-click
             // action on that folder, not a header button with an invisible target.
-            { Icon: Folders, title: 'Add Folder to Workspace', action: handleAddFolder },
+            ...(foldersLocked ? [] : [{ Icon: Folders, title: 'Add Folder to Workspace', action: handleAddFolder }]),
             // Explorer-wide, so it belongs here rather than on a folder's
             // context menu. The label states the resulting action, not the
             // current state, so it reads unambiguously either way.

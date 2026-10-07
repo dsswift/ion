@@ -1,5 +1,4 @@
 import type { TabState } from '@ion/shared/types'
-import { usePreferencesStore } from '../../persistence/preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, isEmptyConversation, needsHistoryHydration } from '../conversation-instance'
@@ -7,6 +6,7 @@ import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { registerTabOwner } from '../../protocol/tabs-index'
+import { newTabDefaults } from '../new-tab-defaults'
 import { createConversationTabAction } from './engine-slice-create'
 import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { forgetTabContentTracking } from '../tab-content-tracking'
@@ -65,10 +65,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     },
 
     createTab: async (useWorktree) => {
-      const homeDir = get().staticInfo?.homePath || '~'
-      const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
-      const startDir = defaultBase || homeDir
-      const hasChosen = !!defaultBase
+      const defaults = newTabDefaults(get().staticInfo?.homePath || '~')
+      const startDir = defaults.workingDirectory
+      const hasChosen = defaults.hasChosenDirectory
 
       const existingBlank = get().tabs.find(
         (t) => isReusableBlankConversationTab(t, startDir, instanceMessageCount(activeInstance(get().conversationPanes, t.id)))
@@ -102,6 +101,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         id: tabId,
         workingDirectory: resolved.dir,
         hasChosenDirectory: hasChosen,
+        engineProfileId: defaults.engineProfileId,
         worktree: resolved.worktree,
         pendingWorktreeSetup: resolved.pendingSetup,
       }
@@ -344,12 +344,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       if (s.activeTabId === tabId) {
         if (remaining.length === 0) {
-          const homeDir = get().staticInfo?.homePath || '~'
-          const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
-          const startDir = defaultBase || homeDir
+          const defaults = newTabDefaults(get().staticInfo?.homePath || '~')
           const newTab = makeLocalTab()
-          newTab.workingDirectory = startDir
-          newTab.hasChosenDirectory = !!defaultBase
+          newTab.workingDirectory = defaults.workingDirectory
+          newTab.hasChosenDirectory = defaults.hasChosenDirectory
+          newTab.engineProfileId = defaults.engineProfileId
           if (newTab.principalSubject) registerTabOwner(newTab.id, newTab.principalSubject)
           // Seed the single-instance `main` pane for the replacement tab so its
           // message/draft/model state has a home (2A invariant).

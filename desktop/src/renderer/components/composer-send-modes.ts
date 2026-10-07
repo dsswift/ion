@@ -20,6 +20,7 @@ import { placeAmong, savedPlacementMode } from '../studio/connection/placement'
 import { policyStore } from '../studio/connection/policy-store'
 import { selectTabWhenPresent } from '../studio/connection/select-when-present'
 import { tabEnvironmentId, withTargetEnvironment } from '../studio/connection/tab-environment'
+import { currentNewConversationLock } from '../lib/new-conversation-lock'
 import { rError, rInfo, rWarn } from '../rendererLogger'
 
 const TAG = 'composer.send-modes'
@@ -60,6 +61,8 @@ async function checkoutsOf(sourceEnvironmentId: string, projectDir: string): Pro
 /** Where the fresh conversation opens: beside its source, or on Auto the checkout with the most room. */
 async function placeSibling(sourceEnvironmentId: string, projectDir: string): Promise<Checkout> {
   const own: Checkout = { environmentId: sourceEnvironmentId, label: sourceEnvironmentId, dir: projectDir }
+  // A locked folder is the only place a conversation can open: no other machine's checkout is a choice.
+  if (currentNewConversationLock()?.foldersLocked) return own
   if (savedPlacementMode() !== 'auto') return own
   const checkouts = await checkoutsOf(sourceEnvironmentId, projectDir)
   if (checkouts.length < 2) return own
@@ -77,7 +80,9 @@ async function placeSibling(sourceEnvironmentId: string, projectDir: string): Pr
  */
 export async function openSiblingConversation(tab: TabState): Promise<string | null> {
   const sourceEnvironmentId = tabEnvironmentId(tab)
-  const projectDir = tab.worktree?.repoPath ?? tab.workingDirectory
+  const lock = currentNewConversationLock()
+  // Under a lock the fresh conversation opens in the locked folder on the locked profile, whatever this one ran in.
+  const projectDir = lock?.foldersLocked ? lock.directory : tab.worktree?.repoPath ?? tab.workingDirectory
   try {
     const target = await placeSibling(sourceEnvironmentId, projectDir)
     const refusal = refusalForDraftEnvironment(target.environmentId, deriveDesktopEnvironmentPolicy(policyStore.devicePolicy()))
@@ -88,8 +93,8 @@ export async function openSiblingConversation(tab: TabState): Promise<string | n
     const sameServer = target.environmentId === sourceEnvironmentId
     const opts = {
       // A profile id names a profile on one server only.
-      ...(sameServer && tab.engineProfileId ? { profileId: tab.engineProfileId } : {}),
-      ...(tab.worktree && policyStore.developerSurfacesFor(target.environmentId).worktrees ? { useWorktree: true, sourceBranch: tab.worktree.sourceBranch } : {}),
+      ...(lock ? (lock.profileId ? { profileId: lock.profileId } : {}) : sameServer && tab.engineProfileId ? { profileId: tab.engineProfileId } : {}),
+      ...(!lock?.foldersLocked && tab.worktree && policyStore.developerSurfacesFor(target.environmentId).worktrees ? { useWorktree: true, sourceBranch: tab.worktree.sourceBranch } : {}),
       projectDirectory: target.dir,
     }
     const created = await withTargetEnvironment(target.environmentId, () => useSessionStore.getState().createConversationTab(target.dir, opts))

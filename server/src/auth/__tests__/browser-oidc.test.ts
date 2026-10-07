@@ -8,6 +8,7 @@ import {
   beginLogin,
   completeLogin,
   refreshAccessToken,
+  refreshForScope,
   generatePkcePair,
   redirectUriFor,
   _resetBrowserOidcDiscoveryCacheForTest,
@@ -229,3 +230,57 @@ describe('confidential-client mode', () => {
     expect(bodyOfLastPost().has('client_secret')).toBe(false)
   })
 })
+
+describe('refreshForScope', () => {
+  const SCOPE = 'api://dci-orion/Gateway.Keys.Read'
+
+  it('exchanges the refresh token for ANOTHER API\'s scope and verifies nothing against this server\'s audience', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'gateway-access', refresh_token: 'rotated', expires_in: 1800 }))
+    const result = await refreshForScope(oidc, 'refresh-1', SCOPE)
+    expect(result).toMatchObject({ ok: true, accessToken: 'gateway-access', refreshToken: 'rotated' })
+    const [, init] = fetchMock.mock.calls[1]
+    const body = new URLSearchParams(String(init.body))
+    expect(body.get('grant_type')).toBe('refresh_token')
+    expect(body.get('refresh_token')).toBe('refresh-1')
+    expect(body.get('client_id')).toBe('browser-client-id')
+    expect(body.get('scope')).toBe(`openid profile ${SCOPE} offline_access`)
+    expect(verifyBearer).not.toHaveBeenCalled()
+  })
+
+  it('keeps the caller\'s refresh token when the provider returns none', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'gateway-access', expires_in: 1800 }))
+    expect(await refreshForScope(oidc, 'refresh-1', SCOPE)).toMatchObject({ ok: true, refreshToken: 'refresh-1' })
+  })
+
+  it('sends the confidential-client secret when one is configured', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'a' }))
+    await refreshForScope({ ...oidc, clientSecret: 'shh' }, 'refresh-1', SCOPE)
+    expect(new URLSearchParams(String(fetchMock.mock.calls[1][1].body)).get('client_secret')).toBe('shh')
+  })
+
+  it.each([
+    ['missing consent', { error: 'invalid_grant', error_codes: [65001] }, /administrator must grant consent/],
+    ['an interaction requirement', { error: 'interaction_required', error_codes: [50076] }, /administrator must grant consent/],
+    ['a scope the app is not set up for', { error: 'invalid_scope', error_codes: [70011] }, /not set up to request the key lookup scope/],
+    ['an expired sign-in', { error: 'invalid_grant', error_codes: [700082] }, /sign in again/],
+  ])('says what to do about %s', async (_name, body, message) => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC))
+      .mockResolvedValueOnce(jsonResponse(body, 400))
+    const result = await refreshForScope(oidc, 'refresh-1', SCOPE)
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.reason).toMatch(message)
+  })
+
+  it('says the sign-in service could not be reached when the request fails', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(DISCOVERY_DOC)).mockRejectedValueOnce(new Error('network down'))
+    expect(await refreshForScope(oidc, 'refresh-1', SCOPE)).toEqual({ ok: false, reason: 'the sign-in service could not be reached' })
+  })
+})
+
