@@ -39,6 +39,8 @@ A successful `npm run typecheck`, lint, package test, or file-size check is reus
 
 CI: `.github/workflows/quality.yml` is the test lane on every push to `main` (and on pull requests); `.github/workflows/build.yml` builds and publishes releases. How they relate: [Delivery pipeline](delivery-pipeline.md).
 
+Performance is measured nightly by `.github/workflows/perf.yml`, outside this gate and every release path, report only: [Performance](performance.md).
+
 ## Heavy gates — never run during development
 
 The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because CI runs them once, authoritatively, on every push to `main`.

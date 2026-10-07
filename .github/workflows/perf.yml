@@ -1,0 +1,138 @@
+# Nightly performance harness. Report only: this workflow is never referenced
+# from quality.yml or any release workflow, and it gates nothing. It runs one
+# scenario against an isolated Environment with the mock provider, compares
+# the result to the previous one recorded for the same scenario on main, posts
+# the table to the run summary, and on main commits the result file.
+# Reference: docs/contributing/performance.md.
+name: Perf
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Scenario to run
+        type: choice
+        options: [smoke, soak]
+        default: smoke
+      sha:
+        description: Commit to measure (default main HEAD)
+        type: string
+        default: ''
+      fail_on_regression:
+        description: Fail the job when a span regressed (default report only)
+        type: boolean
+        default: false
+
+concurrency:
+  group: perf
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCENARIO: ${{ inputs.scenario || 'smoke' }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha || 'main' }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        # Not --ignore-scripts: the server's node-pty addon must be built for
+        # the headless server to boot.
+        run: npm ci
+
+      - name: Build the engine and the server
+        run: make perf-build
+
+      - name: Run the scenario
+        id: run
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          out="perf/results/${SCENARIO}/${sha}.json"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "out=${out}" >> "$GITHUB_OUTPUT"
+          make perf SCENARIO="${SCENARIO}" OUT="${out}" MAX_MINUTES=20
+
+      - name: Find the previous result for this scenario on main
+        id: previous
+        if: always() && steps.run.outputs.out != ''
+        run: |
+          set -euo pipefail
+          # Latest by the commit date that added each file on main, excluding this run's own.
+          prev=""
+          best=0
+          for f in $(git ls-tree -r --name-only origin/main -- "perf/results/${SCENARIO}/" | grep '\.json$' || true); do
+            [ "$f" = "${{ steps.run.outputs.out }}" ] && continue
+            t=$(git log -1 --format=%ct origin/main -- "$f")
+            if [ "${t:-0}" -gt "$best" ]; then best="$t"; prev="$f"; fi
+          done
+          if [ -n "$prev" ]; then
+            git show "origin/main:$prev" > /tmp/perf-previous.json
+            echo "path=/tmp/perf-previous.json" >> "$GITHUB_OUTPUT"
+            echo "name=$prev" >> "$GITHUB_OUTPUT"
+          else
+            echo "No previous ${SCENARIO} result on main; nothing to compare against." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Compare with the previous result
+        if: always() && steps.previous.outputs.path != '' && hashFiles(steps.run.outputs.out) != ''
+        run: |
+          set -euo pipefail
+          echo "Baseline: ${{ steps.previous.outputs.name }}" >> "$GITHUB_STEP_SUMMARY"
+          make perf-compare A="${{ steps.previous.outputs.path }}" B="${{ steps.run.outputs.out }}" SUMMARY="$GITHUB_STEP_SUMMARY" FAIL="${{ inputs.fail_on_regression == true && '1' || '' }}"
+
+      - name: Upload the result
+        if: always() && hashFiles(steps.run.outputs.out) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ env.SCENARIO }}-${{ steps.run.outputs.sha }}
+          path: ${{ steps.run.outputs.out }}
+          if-no-files-found: error
+
+      - name: Record the result on main
+        if: always() && github.ref == 'refs/heads/main' && (inputs.sha == '' || inputs.sha == null) && hashFiles(steps.run.outputs.out) != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.run.outputs.out }}"
+          if git diff --staged --quiet; then
+            echo "result already recorded"
+            exit 0
+          fi
+          git commit -m "chore(repo): record perf result for ${{ steps.run.outputs.sha }} [skip ci]"
+          # The scheduled run checked out main; a push since then only needs a rebase of this one commit.
+          git pull --rebase origin main
+          git push origin HEAD:main
