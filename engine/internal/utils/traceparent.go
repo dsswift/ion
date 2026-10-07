@@ -79,3 +79,19 @@ func SpanIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// TraceparentFromContext renders the trace position ctx carries (its
+// trace-id and the enclosing span-id) as a sampled W3C `traceparent` value
+// for an outbound hop: a provider request header, a delegated CLI's or MCP
+// server's TRACEPARENT environment variable. Returns "" when ctx carries no
+// valid pair, so the hop sends nothing rather than a malformed value.
+func TraceparentFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	traceID, spanID := TraceIDFromContext(ctx), SpanIDFromContext(ctx)
+	if !IsValidTraceID(traceID) || !IsValidSpanID(spanID) {
+		return ""
+	}
+	return FormatTraceparent(traceID, spanID)
+}

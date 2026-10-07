@@ -30,6 +30,11 @@ type dispatchSpanStart struct {
 	// extension. Both are omit-when-empty (absent for non-extension runs).
 	extensionName    string
 	extensionVersion string
+	// traceID and parentSpanID place the span in the trace tree: the
+	// dispatching run's trace and span (dispatch_trace.go). parentSpanID is
+	// empty when the dispatch started a trace of its own.
+	traceID      string
+	parentSpanID string
 }
 
 // beginDispatch emits the engine_dispatch_start workflow event on the parent
@@ -88,11 +93,18 @@ func startDispatchSpan(sa SessionAccessor, s dispatchSpanStart) *telemetry.SpanH
 	// identityProvider is unconfigured (every hosted instance pod), so
 	// dispatch.agent shipped with no user at all instead of falling back
 	// the way a session-scoped event does elsewhere.
-	ctx := map[string]any{}
+	//
+	// trace_id and parent_span_id are the correlation keys Collector.Event
+	// lifts onto the event, so the span exports in the dispatching run's
+	// trace under that run's span instead of as an orphan.
+	ctx := map[string]any{"trace_id": s.traceID}
+	if s.parentSpanID != "" {
+		ctx["parent_span_id"] = s.parentSpanID
+	}
 	if identity := sa.Principal().AttributionForTelemetry(); identity != "" {
 		ctx["principal_identity"] = identity
 	}
-	return telem.StartSpanCtx("dispatch.agent", attrs, ctx)
+	return telem.StartSpanCtx(telemetry.DispatchAgent, attrs, ctx)
 }
 
 // dispatchSpanEnd bundles the terminal metrics stamped on the dispatch.agent

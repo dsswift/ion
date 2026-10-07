@@ -229,6 +229,9 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 	if err := p.signRequest(ctx, req, raw); err != nil {
 		return NewProviderError(ErrAuth, fmt.Sprintf("AWS signing failed: %v", err), 0, false)
 	}
+	// After signing: SigV4 verifies only the headers it signed, so an
+	// unsigned traceparent is accepted and never invalidates the signature.
+	applyTraceparent(ctx, req, p.ID())
 
 	resp, err := p.client.Do(req)
 	if err != nil {

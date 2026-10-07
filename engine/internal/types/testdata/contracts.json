@@ -327,6 +327,11 @@
       "message"
     ]
   },
+  "normalizedEventEnvelope": [
+    "span_id",
+    "trace_id",
+    "type"
+  ],
   "engineEvent": [
     "active",
     "activePathChanged",
@@ -555,6 +560,7 @@
     "slashModelTierRequested",
     "slashModelTierServing",
     "source",
+    "span_id",
     "stderrTail",
     "steerClientMessageId",
     "steerDegradedMessageLength",
@@ -595,6 +601,7 @@
     "toolId",
     "toolName",
     "totalBytes",
+    "trace_id",
     "type",
     "url",
     "usage",

@@ -391,6 +391,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx = fireTraceContext(ctx, route, requestID)
 	payload := buildRequestPayload(r, route, body)
 	timeout := s.cfg.FireTimeout
 	raw, err := host.FireAsync(asyncreg.KindWebhook, route.Path, ctx, payload, timeout)

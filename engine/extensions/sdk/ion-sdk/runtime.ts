@@ -417,6 +417,9 @@ function buildContext(ctxData: any): IonContext {
     // traceparent header; runId is the engine-native join key.
     runId: typeof ctxData?.runId === "string" ? ctxData.runId : "",
     traceId: typeof ctxData?.traceId === "string" ? ctxData.traceId : "",
+    // spanId is the engine's span for this hook call; omitted (so '') when
+    // the call is not a span.
+    spanId: typeof ctxData?.spanId === "string" ? ctxData.spanId : "",
     // Dispatch identity: the engine omits both keys for root sessions, so
     // the defaults (0 / '') ARE the root-session shape.
     depth: typeof ctxData?.depth === "number" ? ctxData.depth : 0,

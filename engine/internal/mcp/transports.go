@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // DiscoveryProtocolVersion remains on discovery requests for legacy gateways. Modern
@@ -20,10 +21,14 @@ const DiscoveryProtocolVersion = "2026-07-28"
 // newSDKTransport selects an official MCP SDK transport plus Ion's HTTP policy
 // wrapper. The wrapper is deliberately transport-level: protocol negotiation,
 // headers, and request framing stay owned by the SDK.
-func newSDKTransport(name string, config types.McpServerConfig) (mcpgo.Transport, func() error, error) {
+//
+// ctx is the connecting caller's context. A stdio server spawned under a run
+// receives that run's trace as TRACEPARENT; HTTP transports read the trace
+// per request from the request context instead (mcpHeaderRoundTripper).
+func newSDKTransport(ctx context.Context, name string, config types.McpServerConfig) (mcpgo.Transport, func() error, error) {
 	switch config.Type {
 	case "", "stdio":
-		transport, err := commandTransport(config)
+		transport, err := commandTransport(ctx, config)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -168,6 +173,13 @@ func (r *mcpHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 	}
 	if err := applyMCPSecretHeaders(clone, r.serverName, r.secretHeaders); err != nil {
 		return nil, err
+	}
+	// The MCP call made under a run's context names that run's trace, so the
+	// server's own spans join the engine's trace. A request outside a run
+	// (connect-time discovery) sends no traceparent.
+	if traceparent := utils.TraceparentFromContext(req.Context()); traceparent != "" {
+		clone.Header.Set("traceparent", traceparent)
+		utils.LogWithFields(utils.LevelDebug, "mcp", "traceparent set on mcp request", map[string]any{"serverName": r.serverName, "traceparent": traceparent})
 	}
 	base := r.base
 	if base == nil {

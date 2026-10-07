@@ -118,6 +118,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 		return pe
 	}
 	req.Header.Set("anthropic-version", "2023-06-01")
+	applyTraceparent(ctx, req, p.id)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)

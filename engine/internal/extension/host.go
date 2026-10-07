@@ -612,6 +612,11 @@ type SendPromptPayload struct {
 	// PromptInjectedEvent.Kind and the engine_prompt_injected wire field
 	// InjectedPromptKind.
 	Kind string
+	// Traceparent is the W3C trace context the prompt's run joins. Set for a
+	// prompt sent from a schedule or webhook handler (FireTraceparent): the
+	// run becomes a child of the fire's root span. Empty otherwise, and the
+	// run starts a trace of its own.
+	Traceparent string
 }
 
 // SetOnSendMessage sets the callback invoked when the extension sends an

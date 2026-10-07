@@ -574,8 +574,9 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 		}
 	}
 
+	ctx = fireTraceContext(ctx, job)
 	timeout := s.fireTimeoutForJob(job)
-	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "reason": job.Kind, "duration_ms": timeout.Milliseconds()})
+	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "reason": job.Kind, "duration_ms": timeout.Milliseconds(), "trace_id": ctx.TraceID})
 	startTs := s.now()
 	payload := map[string]interface{}{
 		"firedAt": startTs.UTC().Format(time.RFC3339),

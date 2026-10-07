@@ -7,7 +7,7 @@ import (
 func TestBuildHookEnvelope_NilContext(t *testing.T) {
 	h := NewHost()
 
-	env := h.buildHookEnvelope(nil, map[string]interface{}{"action": "created"})
+	env := h.buildHookEnvelope(nil, map[string]interface{}{"action": "created"}, "")
 	ctxMap, ok := env["_ctx"].(map[string]interface{})
 	if !ok {
 		t.Fatal("nil-context envelope must contain an _ctx object")
@@ -35,7 +35,7 @@ func TestBuildHookEnvelope_DispatchIdentity(t *testing.T) {
 	root := h.buildHookEnvelope(&Context{
 		Cwd:        "/tmp",
 		SessionKey: "sess-root",
-	}, nil)
+	}, nil, "")
 	rootCtx := root["_ctx"].(map[string]interface{})
 	if _, present := rootCtx["depth"]; present {
 		t.Errorf("root envelope must omit depth, got %v", rootCtx["depth"])
@@ -50,7 +50,7 @@ func TestBuildHookEnvelope_DispatchIdentity(t *testing.T) {
 		SessionKey: "sess-child",
 		Depth:      2,
 		DispatchId: "dispatch-abc",
-	}, nil)
+	}, nil, "")
 	childCtx := child["_ctx"].(map[string]interface{})
 	if got := childCtx["depth"]; got != 2 {
 		t.Errorf("child envelope depth = %v, want 2", got)
@@ -76,7 +76,7 @@ func TestBuildHookEnvelope_RunIdentity(t *testing.T) {
 	idle := h.buildHookEnvelope(&Context{
 		Cwd:        "/tmp",
 		SessionKey: "sess-idle",
-	}, nil)
+	}, nil, "")
 	idleCtx := idle["_ctx"].(map[string]interface{})
 	if _, present := idleCtx["runId"]; present {
 		t.Errorf("idle envelope must omit runId, got %v", idleCtx["runId"])
@@ -91,7 +91,7 @@ func TestBuildHookEnvelope_RunIdentity(t *testing.T) {
 		SessionKey: "sess-running",
 		RunID:      "sess-running-1730000000000",
 		TraceID:    wantTrace,
-	}, nil)
+	}, nil, "")
 	runCtx := running["_ctx"].(map[string]interface{})
 	if got := runCtx["runId"]; got != "sess-running-1730000000000" {
 		t.Errorf("in-run envelope runId = %v, want sess-running-1730000000000", got)
@@ -111,7 +111,7 @@ func TestBuildHookEnvelope_BaseFieldsAndPayloadMerge(t *testing.T) {
 		Cwd:            "/work",
 		SessionKey:     "sess-1",
 		ConversationID: "conv-1",
-	}, map[string]interface{}{"name": "researcher"})
+	}, map[string]interface{}{"name": "researcher"}, "")
 
 	ctxMap := env["_ctx"].(map[string]interface{})
 	if got := ctxMap["cwd"]; got != "/work" {
@@ -128,8 +128,27 @@ func TestBuildHookEnvelope_BaseFieldsAndPayloadMerge(t *testing.T) {
 	}
 
 	// Non-map payload falls back to the _payload wrapper.
-	wrapped := h.buildHookEnvelope(&Context{Cwd: "/work"}, "bare-string")
+	wrapped := h.buildHookEnvelope(&Context{Cwd: "/work"}, "bare-string", "")
 	if got := wrapped["_payload"]; got != "bare-string" {
 		t.Errorf("_payload = %v, want bare-string", got)
+	}
+}
+
+// TestBuildHookEnvelope_SpanID pins the `_ctx.spanId` wire shape: the hook
+// span's id is published when the call is a span and omitted otherwise, so
+// an extension parents its own spans under the engine's hook span rather than
+// directly under the run.
+func TestBuildHookEnvelope_SpanID(t *testing.T) {
+	h := NewHost()
+	const trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+	const span = "00f067aa0ba902b7"
+
+	withSpan := h.buildHookEnvelope(&Context{Cwd: "/tmp", TraceID: trace, RunSpanID: "1111222233334444"}, nil, span)
+	if got := withSpan["_ctx"].(map[string]interface{})["spanId"]; got != span {
+		t.Errorf("spanId = %v, want %s", got, span)
+	}
+	without := h.buildHookEnvelope(&Context{Cwd: "/tmp"}, nil, "")
+	if _, present := without["_ctx"].(map[string]interface{})["spanId"]; present {
+		t.Errorf("envelope outside a span must omit spanId")
 	}
 }

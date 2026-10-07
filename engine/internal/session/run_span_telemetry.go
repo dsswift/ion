@@ -7,12 +7,11 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// runSpanEvent names the telemetry span covering one run, dispatch to exit.
-// llm.call, tool.execute, and hook spans inside the run are its children.
-const runSpanEvent = "run.execute"
-
-// emitRunSpanLocked records the exiting run's span. Called from
-// handleRunExit under Manager.mu, before the run identity is cleared.
+// emitRunSpanLocked records the exiting run's telemetry.RunExecute span,
+// dispatch to exit; llm.call, tool.execute, hook, and dispatch.agent spans
+// inside the run are its children. Called from handleRunExit under
+// Manager.mu, before the run identity is cleared. A dispatched child's run
+// never reaches handleRunExit; extcontext.childRunTrace writes its span.
 func emitRunSpanLocked(s *engineSession, key, runID string, code *int, signal *string) {
 	activeRunID, traceID := s.runIdentitySnapshot()
 	span := s.runSpanSnapshot()
@@ -45,6 +44,6 @@ func emitRunSpanLocked(s *engineSession, key, runID string, code *int, signal *s
 	if ctx != nil && span.parentSpanID != "" {
 		ctx["parent_span_id"] = span.parentSpanID
 	}
-	s.telemetry.Event(runSpanEvent, payload, ctx)
+	s.telemetry.Event(telemetry.RunExecute, payload, ctx)
 	utils.LogWithFields(utils.LevelInfo, "session", "run span emitted", map[string]any{"key": key, "run_id": runID, "trace_id": traceID, "span_id": span.spanID, "parent_span_id": span.parentSpanID, "duration_ms": payload["duration_ms"]})
 }

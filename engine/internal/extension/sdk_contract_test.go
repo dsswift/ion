@@ -139,7 +139,7 @@ func contextEnvelopeSchema() sdkJSONSchema {
 			WorkingDirectory: "/workspace",
 			McpConfigPath:    "/workspace/mcp.json",
 		},
-	}, nil)
+	}, nil, "00f067aa0ba902b7")
 	ctx, ok := envelope["_ctx"].(map[string]interface{})
 	if !ok {
 		panic("buildHookEnvelope returned no _ctx object")

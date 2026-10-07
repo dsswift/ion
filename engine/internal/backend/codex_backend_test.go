@@ -164,7 +164,7 @@ func newTestCodexBackend(t *testing.T) (*CodexBackend, chan *fakeCodexPeer) {
 	t.Helper()
 	b := NewCodexBackend()
 	peerCh := make(chan *fakeCodexPeer, 1)
-	b.launch = func(h codexrpc.Handlers) (*codexrpc.Client, func(), error) {
+	b.launch = func(h codexrpc.Handlers, _ []string) (*codexrpc.Client, func(), error) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
 		peer := &fakeCodexPeer{toClient: outW, fromClient: bufio.NewReader(inR), seen: map[string]json.RawMessage{}}

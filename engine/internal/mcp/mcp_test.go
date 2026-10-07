@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -488,14 +489,14 @@ func TestJoinNonEmpty(t *testing.T) {
 // --- newSDKTransport validation ---
 
 func TestNewSDKTransport_EmptyDefaultsToStdio(t *testing.T) {
-	_, _, err := newSDKTransport("test", types.McpServerConfig{Type: "", Command: "echo"})
+	_, _, err := newSDKTransport(context.Background(), "test", types.McpServerConfig{Type: "", Command: "echo"})
 	if err != nil {
 		t.Fatalf("expected stdio fallback for empty type, got: %v", err)
 	}
 }
 
 func TestNewSDKTransport_HTTPReturnsStreamable(t *testing.T) {
-	transport, cleanup, err := newSDKTransport("test", types.McpServerConfig{Type: "http", URL: "http://localhost:9999/mcp"})
+	transport, cleanup, err := newSDKTransport(context.Background(), "test", types.McpServerConfig{Type: "http", URL: "http://localhost:9999/mcp"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -508,7 +509,7 @@ func TestNewSDKTransport_HTTPReturnsStreamable(t *testing.T) {
 }
 
 func TestNewSDKTransport_SSEReturnsTransport(t *testing.T) {
-	transport, _, err := newSDKTransport("test", types.McpServerConfig{Type: "sse", URL: "http://localhost:9999/sse"})
+	transport, _, err := newSDKTransport(context.Background(), "test", types.McpServerConfig{Type: "sse", URL: "http://localhost:9999/sse"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

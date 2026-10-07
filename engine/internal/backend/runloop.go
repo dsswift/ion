@@ -440,6 +440,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// unchanged when the block is nil.
 		streamCtx := providers.WithTelemetryCorrelation(ctx, buildTelemCtx(run))
 		streamCtx = providers.WithStreamProgress(streamCtx, run.bumpProgress)
+		// The provider request is made under the llm.call span, so its
+		// traceparent header names that span (trace_propagation.go).
+		streamCtx = withLlmCallSpan(streamCtx, llmSpan)
 
 		// Clear the steer-interrupt latch before starting this provider call.
 		// Every steer buffered up to this point has already been drained by the

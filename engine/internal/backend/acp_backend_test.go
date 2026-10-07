@@ -2,6 +2,7 @@ package backend
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -139,7 +140,7 @@ func wireFakeAcpAgent(
 ) (*AcpBackend, chan *fakeAcpAgent) {
 	t.Helper()
 	agentCh := make(chan *fakeAcpAgent, 1)
-	b.launch = func(spec acpSpec, h acp.Handlers) (*acp.Client, func(), error) {
+	b.launch = func(spec acpSpec, h acp.Handlers, _ []string) (*acp.Client, func(), error) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
 		agent := &fakeAcpAgent{
@@ -457,11 +458,11 @@ func TestAcpBackend_CursorStickyPlanModeReset(t *testing.T) {
 
 func TestAcpBackend_LauncherWithoutClientFailsCleanly(t *testing.T) {
 	b := NewGrokBackend()
-	b.launch = func(acpSpec, acp.Handlers) (*acp.Client, func(), error) {
+	b.launch = func(acpSpec, acp.Handlers, []string) (*acp.Client, func(), error) {
 		return nil, nil, nil
 	}
 
-	client, _, err := b.ensureStarted()
+	client, _, err := b.ensureStarted(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "launcher returned no client") {
 		t.Fatalf("ensureStarted error = %v, want missing-client error", err)
 	}

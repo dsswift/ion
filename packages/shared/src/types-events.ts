@@ -26,7 +26,21 @@ export interface BackgroundWorkInfo {
   items: BackgroundWorkItem[];
   remainingTaskIds?: string[];
 }
-export type NormalizedEvent =
+/**
+ * Trace position stamped on every event a run emits: the run's W3C trace-id
+ * and the run span's id (`run.execute`). Both are absent on an event emitted
+ * outside a run. Wire keys mirror the Go envelope
+ * (engine/internal/types/normalized_event_envelope.go) and the telemetry
+ * vocabulary (`trace_id`, `span_id`).
+ */
+export interface EventTraceContext {
+  trace_id?: string;
+  span_id?: string;
+}
+
+export type NormalizedEvent = NormalizedEventVariant & EventTraceContext;
+
+export type NormalizedEventVariant =
   | {
       type: "session_init";
       sessionId: string;

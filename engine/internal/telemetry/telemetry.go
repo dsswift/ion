@@ -41,6 +41,10 @@ const (
 	SecretContainment  = "secret.containment"
 
 	// Family 4b — Agent-loop / Dispatch-tree
+	// RunExecute is a run's server span: the root session's run (written at
+	// run exit, session/run_span_telemetry.go) and a dispatched child's run
+	// (written when its dispatch finishes, extcontext/dispatch_trace.go).
+	RunExecute    = "run.execute"
 	DispatchAgent = "dispatch.agent"
 	ToolFailure   = "tool.failure"
 	// DispatchControlMismatch fires when a steer or recall misses a dispatch

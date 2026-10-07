@@ -297,7 +297,14 @@ export async function dispatchFireAsync(params: any, buildContext: (raw: any) =>
   const kind = String(params?.kind ?? '')
   const id = String(params?.id ?? '')
   const payload = params?.payload ?? {}
-  const ctx = buildContext({ sessionKey: params?.sessionKey, identity: params?.identity })
+  // traceId/spanId are the fire's trace root the engine minted for this
+  // delivery (absent from envelopes sent by an engine that predates them).
+  const ctx = buildContext({
+    sessionKey: params?.sessionKey,
+    identity: params?.identity,
+    traceId: params?.traceId,
+    spanId: params?.spanId,
+  })
 
   if (kind === 'webhook') {
     const handler = webhookHandlers.get(id)

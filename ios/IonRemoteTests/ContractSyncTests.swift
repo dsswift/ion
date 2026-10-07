@@ -55,6 +55,9 @@ final class ContractSyncTests: XCTestCase {
 
   private struct Manifest: Decodable {
     let normalizedEvents: [String: [String]?]
+    /// The keys the Go marshaler writes around every NormalizedEvent variant:
+    /// `type` plus the emitting run's trace position (`trace_id`, `span_id`).
+    let normalizedEventEnvelope: [String]
     let engineEvent: [String]
     let sharedTypes: [String: [String]]
   }
@@ -1008,6 +1011,26 @@ final class ContractSyncTests: XCTestCase {
       Set(manifest.engineEvent).contains("resourceProducers"),
       "EngineEvent manifest is missing resourceProducers"
     )
+  }
+
+  // MARK: - Run trace position
+
+  /// Pins the run trace position on the engine wire: every event a run emits
+  /// carries `trace_id` and `span_id`, as the NormalizedEvent envelope and as
+  /// EngineEvent fields. iOS does not decode engine events directly (it
+  /// renders the server's `desktop_*` payloads), so there is no Swift
+  /// property to mirror; this gate catches the fields' removal, which would
+  /// break every trace-correlating consumer of the engine socket.
+  func testRunTracePositionInManifest() throws {
+    let manifest = try loadManifest()
+    XCTAssertEqual(
+      Set(manifest.normalizedEventEnvelope), ["span_id", "trace_id", "type"],
+      "NormalizedEvent envelope keys drifted")
+    let goEventFields = Set(manifest.engineEvent)
+    let missing = Set(["trace_id", "span_id"]).subtracting(goEventFields)
+    XCTAssert(
+      missing.isEmpty,
+      "EngineEvent manifest is missing the run trace position: \(missing.sorted())")
   }
 
   // MARK: - EngineEvent dispatch field coverage

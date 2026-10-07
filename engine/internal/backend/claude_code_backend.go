@@ -316,14 +316,18 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
 	procctl.Configure(cmd)
 
+	// The CLI joins this run's trace through TRACEPARENT (ctx derives from
+	// the run's ParentCtx, which carries the trace and the run span).
+	env := withTraceparentEnv(os.Environ(), ctx, "backend.claude_code")
 	// When MCP tools are wired, disable tool search so all bridged tools
 	// appear in the model's upfront tool list. ENABLE_TOOL_SEARCH defaults
 	// on in Claude Code, which hides MCP tools behind a lazy search step
 	// in headless (-p) mode.
 	if opts.McpConfig != "" {
-		cmd.Env = append(os.Environ(), "ENABLE_TOOL_SEARCH=false")
+		env = append(env, "ENABLE_TOOL_SEARCH=false")
 		utils.Log("ClaudeCodeBackend", "set ENABLE_TOOL_SEARCH=false for MCP tools")
 	}
+	cmd.Env = env
 
 	// Set working directory if specified
 	if opts.ProjectPath != "" {

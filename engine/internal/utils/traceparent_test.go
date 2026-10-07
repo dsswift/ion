@@ -54,3 +54,22 @@ func TestSpanIDContext(t *testing.T) {
 		t.Errorf("SpanIDFromContext(empty) = %q, want empty", got)
 	}
 }
+
+func TestTraceparentFromContext(t *testing.T) {
+	const trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+	const span = "00f067aa0ba902b7"
+	ctx := WithSpanID(WithTraceID(context.Background(), trace), span)
+	if got, want := TraceparentFromContext(ctx), "00-"+trace+"-"+span+"-01"; got != want {
+		t.Errorf("traceparent = %q, want %q", got, want)
+	}
+	for name, ctx := range map[string]context.Context{
+		"nil":          nil,
+		"empty":        context.Background(),
+		"trace only":   WithTraceID(context.Background(), trace),
+		"invalid span": WithSpanID(WithTraceID(context.Background(), trace), "nope"),
+	} {
+		if got := TraceparentFromContext(ctx); got != "" {
+			t.Errorf("%s: traceparent = %q, want empty", name, got)
+		}
+	}
+}

@@ -64,6 +64,7 @@ func buildPromptOverrides(model string, bashAllowlistAdditions []string, kind st
 // the log line so an operator can tell which wiring site queued the prompt.
 func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extension.SendPromptPayload) {
 	overrides := buildPromptOverridesWithBoundary(payload.Model, payload.BashAllowlistAdditions, payload.Kind, payload.SlashModelTierApplyMidConversation)
+	overrides = withPayloadTraceparent(overrides, payload, key, origin)
 	if len(payload.BashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "onsendmessage(): forwarding bash-allowlist additions", map[string]any{"origin": origin, "key": key, "count": len(payload.BashAllowlistAdditions), "bash_allowlist_additions": payload.BashAllowlistAdditions})
 	}

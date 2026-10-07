@@ -98,6 +98,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 	if pe := applyRequestAuth(ctx, req, raw, p.id); pe != nil {
 		return pe
 	}
+	applyTraceparent(ctx, req, p.id)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)

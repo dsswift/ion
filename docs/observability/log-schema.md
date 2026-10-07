@@ -295,6 +295,18 @@ clients, and the relay apply the same rule.
 | Phone → server | The `session.prompt` action's `traceparent` argument, and the same value on the frame's outer sealed envelope, where the relay reads it ([Studio wire § Trace context on the envelope](../protocol/studio-wire.md#trace-context-on-the-envelope)) |
 | Server → engine | Every client command's `traceparent` (the `engine.request` client span, `engine.send_prompt` for a prompt; [client commands](../protocol/client-commands.md)) |
 | Engine → server → client | `trace_id` and `span_id` on every `NormalizedEvent` of the run, carried onto every outbound frame (§ "Correlation-ID vocabulary") |
+| Engine → extension | The hook envelope's `_ctx.traceId` and `_ctx.spanId` (the `extension.hook_latency` span for that call); on a schedule or webhook delivery, `engine/fire_async` `traceId` / `spanId` (the fire's root span) |
+| Extension → engine | A prompt sent from a schedule or webhook handler carries the fire's `traceparent`; its `run.execute` joins under the fire's root span. Every other extension prompt starts a trace of its own |
+| Engine → provider | `traceparent` header on every provider request (anthropic, openai-compatible, google, bedrock), parent `llm.call` |
+| Engine → delegated CLI | `TRACEPARENT` in the process environment, parent `run.execute`. A per-run process (claude-code) gets the run's; a long-lived agent process (codex, cursor, grok) gets the trace of the run that first spawned it |
+| Engine → MCP server | stdio: `TRACEPARENT` in the environment when the server is connected under a run; HTTP/SSE: a `traceparent` header on each request made under a run |
+
+A dispatched child agent repeats the engine subtree: `dispatch.agent` is a child of the dispatching
+run's `run.execute`, and the child's own `run.execute` is a child of `dispatch.agent`. A dispatch
+that starts with no trace in flight (a background dispatch from an idle session) mints a trace of its
+own, so `dispatch.agent` is then a root. A schedule or webhook fire also mints a trace with the fire
+as its root span: the handler's envelope, the hooks the engine records around its calls, and the
+prompts it sends all land in that trace.
 
 ### Span record shapes
 
