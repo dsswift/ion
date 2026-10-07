@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 // MARK: - SpeechRecognitionService
 
@@ -33,7 +34,16 @@ final class SpeechRecognitionService {
         case finishing
     }
 
-    private(set) var phase: DictationPhase = .idle
+    private(set) var phase: DictationPhase = .idle {
+        didSet {
+            guard isDictating != (oldValue != .idle) else { return }
+            DiagnosticLog.log("dictation screen awake", tag: "speech.recognition", fields: [
+                "awake": String(isDictating),
+                "phase": String(describing: phase)
+            ])
+            keepScreenAwake(isDictating)
+        }
+    }
 
     /// The composer text that was present when dictation began. Dictated words
     /// are appended after it; Cancel restores exactly this.
@@ -69,11 +79,21 @@ final class SpeechRecognitionService {
     let engine: any SpeechEngine
     let permissions: SpeechPermissionManager
 
+    /// Holds the screen on while a session is open. The system pauses audio
+    /// capture when the display sleeps, so letting the idle timer lock the
+    /// phone mid-dictation drops every word spoken until it is woken again.
+    private let keepScreenAwake: @MainActor (Bool) -> Void
+
     // MARK: - Init
 
-    init(engine: (any SpeechEngine)? = nil, permissions: SpeechPermissionManager = SpeechPermissionManager()) {
+    init(
+        engine: (any SpeechEngine)? = nil,
+        permissions: SpeechPermissionManager = SpeechPermissionManager(),
+        keepScreenAwake: @escaping @MainActor (Bool) -> Void = { UIApplication.shared.isIdleTimerDisabled = $0 }
+    ) {
         self.engine = engine ?? makeSpeechEngine()
         self.permissions = permissions
+        self.keepScreenAwake = keepScreenAwake
         DiagnosticLog.log("speech service init", tag: "speech.recognition", fields: [
             "engine": String(describing: type(of: self.engine))
         ])

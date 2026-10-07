@@ -4,7 +4,8 @@ import SwiftUI
 
 /// One conversation row in the Inbox view: the title over a single detail
 /// line, and a trailing status pill (Approval / Input / Working / Done /
-/// Failed) or quiet relative age. Read+idle rows recede (inbox-zero).
+/// Failed) or quiet relative age. Working rows recede furthest, read+idle
+/// rows a little (inbox-zero).
 ///
 /// PARITY: renders the desktop-derived fields only (`inboxState`, `unread`,
 /// `wokeAt` arrive in the snapshot) — no Swift classifier. Status pill
@@ -97,12 +98,36 @@ struct InboxRowView: View {
         return text.trimmingCharacters(in: .whitespaces)
     }
 
+    /// How loudly the row speaks. A busy conversation recedes furthest: the
+    /// person should see that it is working and then look elsewhere. A read,
+    /// idle row recedes a little. A row that asks something stays full.
+    /// PARITY: desktop `inboxRowEmphasis` (studio/inbox/inbox-row-emphasis.ts).
+    enum Emphasis: Equatable {
+        case full, quiet, working
+
+        var opacity: Double {
+            switch self {
+            case .full: 1
+            case .quiet: 0.62
+            case .working: 0.45
+            }
+        }
+    }
+
+    static func emphasis(for tab: RemoteTabState) -> Emphasis {
+        let pill = pill(for: tab)
+        let busy = pill == .working || pill == .connecting || (pill == nil && tab.backgroundLiveness != nil)
+        if busy && tab.wokeAt == nil { return .working }
+        // Receded rows ask nothing of the person. The server says which those
+        // are; a server that predates the flag leaves the old read-and-idle rule.
+        let quiet = tab.quiet ?? (!(tab.unread ?? false) && pill == nil)
+        return quiet ? .quiet : .full
+    }
+
     private var pill: Pill? { Self.pill(for: tab) }
     private var unread: Bool { tab.unread ?? false }
     private var woke: Bool { tab.wokeAt != nil }
-    /// Receded rows ask nothing of the person. The server says which those
-    /// are; a server that predates the flag leaves the old read-and-idle rule.
-    private var quiet: Bool { tab.quiet ?? (!unread && pill == nil) }
+    private var emphasis: Emphasis { Self.emphasis(for: tab) }
     private var heldLabel: String? { Self.heldLabel(for: tab) }
     private var backgroundLabel: String? {
         tab.backgroundLiveness == "monitoring" ? "Monitoring" : nil
@@ -121,7 +146,7 @@ struct InboxRowView: View {
             VStack(alignment: .leading, spacing: 2) { // design-geometry: 2pt title-to-detail gap inside a two-line row; below the 4pt rhythm floor
                 Text(tab.customTitle ?? tab.title)
                     .font(unread ? IonType.bodyStrong : IonType.body)
-                    .foregroundStyle(quiet ? theme.textSecondary : theme.textPrimary)
+                    .foregroundStyle(emphasis == .full ? theme.textPrimary : theme.textSecondary)
                     .lineLimit(1)
                 detailLine
             }
@@ -130,7 +155,7 @@ struct InboxRowView: View {
         }
         .padding(.vertical, IonSpace.hairlineGap)
         .contentShape(Rectangle())
-        .opacity(quiet ? 0.62 : 1)
+        .opacity(emphasis.opacity)
     }
 
     @ViewBuilder

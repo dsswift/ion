@@ -19,6 +19,9 @@ import XCTest
 ///      `settleAfterEngineEnded` closes the session and keeps the words.
 ///   3. Cancel restored a snapshot the view kept beside the draft. The base
 ///      draft now lives on the session and Cancel returns exactly it.
+///
+/// It also pins that the screen is held awake for exactly the life of a
+/// session: the display sleeping mid-dictation pauses capture and loses words.
 @MainActor
 final class DictationSessionTests: XCTestCase {
 
@@ -75,10 +78,19 @@ final class DictationSessionTests: XCTestCase {
         override var isDenied: Bool { true }
     }
 
+    /// Every screen-awake change the service asked for, in order.
+    private var screenAwakeCalls: [Bool] = []
+
+    override func setUp() {
+        super.setUp()
+        screenAwakeCalls = []
+    }
+
     private func makeService(engine: FakeSpeechEngine, granted: Bool = true) -> SpeechRecognitionService {
         SpeechRecognitionService(
             engine: engine,
-            permissions: granted ? GrantedPermissions() : RefusedPermissions()
+            permissions: granted ? GrantedPermissions() : RefusedPermissions(),
+            keepScreenAwake: { [weak self] in self?.screenAwakeCalls.append($0) }
         )
     }
 
@@ -175,6 +187,40 @@ final class DictationSessionTests: XCTestCase {
             XCTAssertEqual(service.phase, .idle)
             XCTAssertNil(service.startedAt)
         }
+    }
+
+    // MARK: - Screen awake
+
+    func testScreenStaysAwakeFromStartUntilFinish() async throws {
+        let engine = FakeSpeechEngine()
+        let service = makeService(engine: engine)
+
+        try await service.beginDictation(baseDraft: "")
+        XCTAssertEqual(screenAwakeCalls, [true], "held once across starting and listening")
+
+        _ = await service.finishDictation()
+        XCTAssertEqual(screenAwakeCalls, [true, false], "released once the session closes")
+    }
+
+    func testScreenIsReleasedWhenTheSessionEndsAnyOtherWay() async throws {
+        let engine = FakeSpeechEngine()
+        let service = makeService(engine: engine)
+
+        try await service.beginDictation(baseDraft: "")
+        _ = service.cancelDictation()
+        try await service.beginDictation(baseDraft: "")
+        engine.endUnexpectedly()
+        _ = service.settleAfterEngineEnded()
+        engine.startError = SpeechEngineError.recognizerUnavailable
+        try? await service.beginDictation(baseDraft: "")
+
+        XCTAssertEqual(screenAwakeCalls, [true, false, true, false, true, false])
+    }
+
+    func testRefusedPermissionNeverHoldsTheScreen() async {
+        let service = makeService(engine: FakeSpeechEngine(), granted: false)
+        try? await service.beginDictation(baseDraft: "")
+        XCTAssertEqual(screenAwakeCalls, [])
     }
 
     // MARK: - Draft writes through the view model

@@ -62,7 +62,6 @@ struct InboxBenchGroup<Row: View>: View {
     let state: RemoteWorktreeState
     let tabsByBenchPath: [String: [RemoteTabState]]
     let terminalTabsByID: [String: RemoteTabState]
-    let activeTabId: String?
     /// Full-featured inbox conversation row (same builder as worktree groups).
     @ViewBuilder let row: (RemoteTabState) -> Row
     @State private var confirmPipelineAi = false
@@ -79,10 +78,12 @@ struct InboxBenchGroup<Row: View>: View {
                 HStack(spacing: 0) {
                     // The bench does not collapse: while its project is open
                     // its terminal and conversations are always listed, so the
-                    // header has no chevron and its tap goes to the bench
-                    // conversation.
+                    // header has no chevron. Its tap opens the bench terminal,
+                    // because building and testing the assembled stack is what
+                    // the bench is for. The bench conversation lives in the
+                    // overflow menu.
                     Button {
-                        cycleBenchConversation(bench)
+                        openBenchTerminal(bench)
                     } label: {
                         InboxDisclosureHeader(
                             title: "Bench · \(bench.sourceBranch)",
@@ -103,6 +104,7 @@ struct InboxBenchGroup<Row: View>: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint(bench.benchTerminalTabId == nil ? "Open bench terminal" : "Go to bench terminal")
                     .contextMenu {
                         benchActionMenu(bench)
                     }
@@ -125,13 +127,6 @@ struct InboxBenchGroup<Row: View>: View {
                     .buttonStyle(.plain)
                     .disabled(actionsLocked)
                     .accessibilityLabel(actionsLocked ? "Syncing" : "Sync all worktrees")
-                    Button {
-                        openBenchTerminal(bench)
-                    } label: {
-                        headerGlyph("terminal")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(bench.benchTerminalTabId == nil ? "Open bench terminal" : "Go to bench terminal")
                     Menu {
                         benchActionMenu(bench)
                     } label: {
@@ -363,16 +358,6 @@ struct InboxBenchGroup<Row: View>: View {
         } else {
             viewModel.openBenchTerminal(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
         }
-    }
-
-    private func cycleBenchConversation(_ bench: RemoteBench) {
-        guard let next = InboxNavigator.nextBenchConversation(bench.openConversations, currentTabId: activeTabId) else {
-            // No conversation yet: the tap opens the persistent operator
-            // singleton, exactly like the desktop bar's cursor-gated click.
-            viewModel.openBenchConversation(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
-            return
-        }
-        viewModel.navigateToTab(next.tabId)
     }
 
     /// A header action glyph: one size, one tap target, for every action on

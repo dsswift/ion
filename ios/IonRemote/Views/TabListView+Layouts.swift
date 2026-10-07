@@ -68,15 +68,13 @@ extension TabListView {
             // intercept events to this device correctly.
             viewModel.sendReportFocus(tabId: tabId)
         }
-        // Same stale-destination rule as the iPhone stack. The detail pane
-        // already renders "Select a conversation" for an unresolvable selection, but the
-        // dead id was kept silently; clearing it keeps selection state honest
-        // and makes the event observable in the logs.
+        // The selection is the top of the shared stack, so the stack's
+        // stale-destination rule covers the detail pane too.
         .onChange(of: viewModel.tabIds) { _, _ in
-            clearStaleDetailSelection(reason: "tabs_changed")
+            pruneStaleNavigationDestinations(reason: "tabs_changed")
         }
         .onChange(of: viewModel.hasAppliedTabSnapshot) { _, _ in
-            clearStaleDetailSelection(reason: "snapshot_applied")
+            pruneStaleNavigationDestinations(reason: "snapshot_applied")
         }
     }
 
@@ -283,5 +281,29 @@ extension TabListView {
                 }
             }
         }
+    }
+
+    // MARK: - Layout switch
+
+    /// Carry the split view's sidebar across a size-class change.
+    ///
+    /// The open conversation needs no carrying: both layouts read the same
+    /// stack. The sidebar is the split view's alone, so it is remembered as
+    /// the split view leaves and decided as it returns.
+    func sizeClassChanged(from old: UserInterfaceSizeClass?, to new: UserInterfaceSizeClass?) {
+        if old == .regular {
+            lastSplitVisibility = columnVisibility
+        }
+        if new == .regular {
+            columnVisibility = OpenConversationLayout.sidebarVisibility(
+                openTabId: selectedTabId,
+                lastSplitVisibility: lastSplitVisibility
+            )
+        }
+        DiagnosticLog.log("nav layout switched", tag: "view.nav", fields: [
+            "tab_id": selectedTabId?.prefix(8).description ?? "nil",
+            "reason": new == .regular ? "split" : "stack",
+            "status": String(describing: columnVisibility)
+        ])
     }
 }

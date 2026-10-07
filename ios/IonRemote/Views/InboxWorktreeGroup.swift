@@ -38,14 +38,6 @@ struct InboxWorktreeGroup<Row: View>: View {
     private var expansionKey: String { InboxNavigator.worktreeExpansionKey(worktree.worktreePath) }
     private var isExpanded: Bool { expanded.contains(expansionKey) }
 
-    /// Whether the header's name would be read twice: the worktree is named
-    /// after its conversation, and that conversation is the only row drawn
-    /// beneath it. Pure so the rule is pinned without a view.
-    static func headerRepeatsRow(worktree: RemoteWorktree, visibleTabs: [RemoteTabState]) -> Bool {
-        guard visibleTabs.count == 1, let only = visibleTabs.first else { return false }
-        return only.displayTitle == worktree.displayName
-    }
-
     var body: some View {
         let visibleTabs = isExpanded ? tabs : InboxNavigator.collapsedRows(tabs, activeTabId: activeTabId)
         WorktreeRowView(
@@ -74,7 +66,6 @@ struct InboxWorktreeGroup<Row: View>: View {
                 viewModel.benchConflictAssist(repoPath: repoPath, sourceBranch: sourceBranch)
             },
             disclosureExpanded: isExpanded,
-            hidesTitle: Self.headerRepeatsRow(worktree: worktree, visibleTabs: visibleTabs),
             actionsLocked: viewModel.worktreeActionsLocked(repoPath: repoPath),
         )
         // The chevron's own target, over the chevron the row draws. In the

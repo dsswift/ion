@@ -25,6 +25,7 @@ import { contentRouter } from '../../lib/file-open-router'
 import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 import { host } from '../../host/host-instance'
 import { PillColorPicker } from '../../components/PillColorPicker'
+import { INBOX_ROW_OPACITY, inboxRowEmphasis, type InboxRowStatus } from './inbox-row-emphasis'
 
 export type InboxRowVariant = 'card' | 'slim'
 
@@ -88,7 +89,7 @@ export function InboxRow({
   // the failed run is the limit, and the row says when it lifts.
   const limitedUntil = usageLimitedUntil(tab, Date.now())
   const held = tab.deferredSend ?? null
-  const status = pendingAsk ? 'Approval'
+  const status: InboxRowStatus | null = pendingAsk ? 'Approval'
     : waiting === 'plan-ready' ? 'Plan Ready'
     : waiting ? 'Input'
     : limitedUntil !== null ? 'Limited'
@@ -105,7 +106,7 @@ export function InboxRow({
     : status === 'Working' || status === 'Monitoring' ? colors.statusRunning
     : status === 'Connecting' ? colors.textTertiary
     : colors.statusComplete
-  const quiet = !isActive && !selected && !unread && !woke && (status === null || status === 'Connecting' || status === 'Working' || status === 'Monitoring' || (status === 'Limited' && held !== null))
+  const emphasis = inboxRowEmphasis({ status, focused: isActive || !!selected, unread, woke, held: held !== null })
   const title = tab.customTitle || tab.title || 'Untitled'
   // Worktree and branch labels are developer surfaces of the machine the
   // conversation is on.
@@ -175,7 +176,7 @@ export function InboxRow({
         padding: compact ? '5px 9px' : '8px 10px', cursor: 'pointer', borderRadius: 6,
         backgroundColor: interactiveBg(colors, { hover, pressed }, isActive || selected ? colors.accentLight : 'transparent'),
         backgroundImage: colorTint,
-        opacity: quiet ? (hover ? 1 : 0.62) : 1, transition: `background ${transitions.base}, opacity ${transitions.base}`,
+        opacity: hover ? 1 : INBOX_ROW_OPACITY[emphasis], transition: `background ${transitions.base}, opacity ${transitions.base}`,
         fontFamily: 'system-ui, sans-serif', minWidth: 0, width: '100%', boxSizing: 'border-box',
       }}
     >
