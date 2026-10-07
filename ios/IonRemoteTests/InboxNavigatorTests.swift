@@ -157,26 +157,6 @@ final class InboxNavigatorTests: XCTestCase {
         XCTAssertEqual(InboxNavigator.nextGroupTab(tabs, currentTabId: "old")?.id, "new")
     }
 
-    func testBenchCycleUsesProjectedConversationsAndLeavesAnEmptyBenchUntouched() {
-        let operatorConversation = RemoteOpenConversation(tabId: "talk", title: "Talk", status: "idle", index: 3, tabRole: "bench-conversation")
-        let autoFix = RemoteOpenConversation(tabId: "fix", title: "Fix", status: "running", index: 5, tabRole: "conflict-auto-fix")
-        let analysis = RemoteOpenConversation(tabId: "analysis", title: "Analysis", status: "idle", index: 7, tabRole: "verification-analysis")
-
-        XCTAssertNil(InboxNavigator.nextBenchConversation([], currentTabId: nil))
-        XCTAssertEqual(
-            InboxNavigator.nextBenchConversation([analysis, autoFix, operatorConversation], currentTabId: nil)?.tabId,
-            "talk"
-        )
-        XCTAssertEqual(
-            InboxNavigator.nextBenchConversation([analysis, autoFix, operatorConversation], currentTabId: "talk")?.tabId,
-            "fix"
-        )
-        XCTAssertEqual(
-            InboxNavigator.nextBenchConversation([analysis, autoFix, operatorConversation], currentTabId: "analysis")?.tabId,
-            "talk"
-        )
-    }
-
     func testInboxSortOrdersByRequestedField() throws {
         let alpha = try tab(id: "a", directory: "/repo", state: "active", settledAt: nil, activity: 100, title: "Alpha")
         let beta = try tab(id: "b", directory: "/repo", state: "active", settledAt: nil, activity: 200, title: "Beta")
@@ -389,7 +369,7 @@ final class InboxNavigatorTests: XCTestCase {
     /// The worktree host must honour the layout gate rather than hardcoding a
     /// cycle on tap. The bench has no such gate: it does not collapse, so its
     /// header has one job in every layout, which is opening the bench
-    /// conversation.
+    /// terminal. The bench conversation is reached from the overflow menu.
     func testGroupHostsGateHeaderTapOnLayout() throws {
         let worktreeGroup = try source("IonRemote/Views/InboxWorktreeGroup.swift")
         XCTAssertTrue(worktreeGroup.contains("guard cyclesOnHeaderTap else"),
@@ -398,7 +378,12 @@ final class InboxNavigatorTests: XCTestCase {
         let bench = try source("IonRemote/Views/InboxBenchGroup.swift")
         XCTAssertFalse(bench.contains("cyclesOnHeaderTap"),
                        "the bench does not collapse, so it has no expand-or-cycle choice to gate")
-        XCTAssertTrue(bench.contains("cycleBenchConversation(bench)"))
+        XCTAssertFalse(bench.contains("cycleBenchConversation"),
+                       "a header tap must never open or create a bench conversation")
+        let headerTap = try XCTUnwrap(bench.range(of: "InboxDisclosureHeader("))
+        let headerButton = String(bench[..<headerTap.lowerBound].suffix(120))
+        XCTAssertTrue(headerButton.contains("openBenchTerminal(bench)"),
+                      "the bench header's tap must open the bench terminal")
 
         let inbox = try source("IonRemote/Views/TabListView+Inbox.swift")
         XCTAssertTrue(inbox.contains("InboxNavigator.headerTapCycles(selectionStyle)"),

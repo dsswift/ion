@@ -372,20 +372,6 @@ struct InboxNavigator {
         return ordered[(index + 1) % ordered.count]
     }
 
-    /// Bench title navigation is deliberately based on the desktop's bench
-    /// conversation projection, not Inbox rows. The latter can include the
-    /// singleton terminal, which is a separate navigation target.
-    static func nextBenchConversation(
-        _ conversations: [RemoteOpenConversation],
-        currentTabId: String?
-    ) -> RemoteOpenConversation? {
-        let ordered = conversations.sorted { $0.index == $1.index ? $0.tabId < $1.tabId : $0.index < $1.index }
-        guard !ordered.isEmpty else { return nil }
-        guard let currentTabId,
-              let index = ordered.firstIndex(where: { $0.tabId == currentTabId }) else { return ordered[0] }
-        return ordered[(index + 1) % ordered.count]
-    }
-
     static func settledStack(liveTabs: [RemoteTabState], coldTabs: [RemoteTabState]) -> [RemoteTabState] {
         var byID = Dictionary(uniqueKeysWithValues: coldTabs.map { ($0.id, $0) })
         for tab in liveTabs where tab.inboxState == "settled" {

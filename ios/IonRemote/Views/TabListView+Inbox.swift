@@ -216,7 +216,6 @@ extension TabListView {
                     state: state,
                     tabsByBenchPath: benchTabsByPath(project.benchTabs, state: state),
                     terminalTabsByID: Dictionary(uniqueKeysWithValues: project.benchTerminals.map { ($0.id, $0) }),
-                    activeTabId: selectedTabId,
                     row: { tab in
                         inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Integration Bench", branch: nil, level: 2)
                     }
