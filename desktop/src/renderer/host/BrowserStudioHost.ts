@@ -69,6 +69,9 @@ const CAPABILITIES: Capability[] = [
 
 /** Attempt ladder for a failed connection — identical to `main/connections/broker.ts`'s, so a browser tab and the desktop app behave the same way under a flaky link. */
 const BACKOFF_LADDER_MS = [1000, 2000, 4000, 8000]
+/** Frames held while there is no open connection. Past this the oldest are dropped. */
+const MAX_PENDING_FRAMES = 100
+
 const BACKOFF_WINDOW_MS = 5 * 60_000
 const MAX_ATTEMPTS = 5
 /**
@@ -243,8 +246,14 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
       return
     }
     if (this.phase.phase !== 'connected' || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      rWarn('BrowserStudioHost', 'send queued: no open connection yet', { frame_type: frame.type })
       this.pendingFrames.push(frame)
+      // Background polls (tab health, dispatch and fleet refreshes) all pass through here, so a long outage
+      // would otherwise queue one per tick without end and replay the whole backlog on reconnect. The caller
+      // of a dropped action has long since timed out, so the oldest are the stale ones.
+      while (this.pendingFrames.length > MAX_PENDING_FRAMES) this.pendingFrames.shift()
+      if (this.pendingFrames.length === 1 || this.pendingFrames.length === MAX_PENDING_FRAMES) {
+        rWarn('BrowserStudioHost', 'send queued: no open connection yet', { frame_type: frame.type, queued: this.pendingFrames.length, limit: MAX_PENDING_FRAMES })
+      }
       return
     }
     this.ws.send(encodeFrame(frame))
@@ -345,7 +354,12 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.wake(guard, 'visible') })
     window.addEventListener('online', () => this.wake(guard, 'online'))
     // A tick that comes far later than it was due means the page was frozen (a sleeping laptop sends no event).
-    this.sessionGuardTimer = setInterval(() => { if (guard.tick()) this.wake(guard, 'slept') }, TICK_MS)
+    // Only a visible tab acts on it: a hidden tab's timers are throttled by the browser, which looks the
+    // same, and its own visibility event covers the moment the person comes back.
+    this.sessionGuardTimer = setInterval(() => {
+      const slept = guard.tick()
+      if (slept && document.visibilityState === 'visible') this.wake(guard, 'slept')
+    }, TICK_MS)
   }
 
   /**

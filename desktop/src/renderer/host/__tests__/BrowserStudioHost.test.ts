@@ -151,6 +151,25 @@ describe('BrowserStudioHost unauthorized refusal', () => {
   })
 })
 
+describe('BrowserStudioHost with no connection', () => {
+  it('holds a bounded number of background frames, newest kept, instead of growing without limit', async () => {
+    const host = new BrowserStudioHost()
+    // Never connected: every send queues.
+    for (let i = 0; i < 400; i++) host.send(LOCAL_ENVIRONMENT_ID, { type: 'studio_action', id: `poll-${i}`, action: 'session.health', args: [] } as never)
+
+    await host.connectEnvironment(LOCAL_ENVIRONMENT_ID, 'This Server', { kind: 'local' })
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    ws.simulateOpen()
+    ws.simulateMessage(welcomeFrame())
+
+    const replayed = ws.sent.map((s) => JSON.parse(s)).filter((f) => f.type === 'studio_action')
+    expect(replayed).toHaveLength(100)
+    expect(replayed[0].id).toBe('poll-300')
+    expect(replayed.at(-1).id).toBe('poll-399')
+  })
+})
+
 describe('BrowserStudioHost waking after sleep', () => {
   function stubSession(status: number): ReturnType<typeof vi.fn> {
     const fetchSpy = vi.fn(async () => new Response('{}', { status }))
@@ -201,6 +220,29 @@ describe('BrowserStudioHost waking after sleep', () => {
 
     expect(window.location.href).toBe('')
     expect(FakeWebSocket.instances.length).toBeGreaterThan(socketsBefore)
+  })
+
+  it('checks the session when a visible tab notices it was frozen, and does not poll from a hidden one', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchSpy = stubSession(200)
+      const host = new BrowserStudioHost()
+      await host.connectEnvironment('local', 'This Server', { kind: 'local' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      // A hidden tab whose timers the browser throttled to a minute apart.
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      expect(fetchSpy).not.toHaveBeenCalled()
+
+      // A visible tab whose page was frozen for hours (the clock jumps, the timer fires late).
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+      vi.setSystemTime(Date.now() + 8 * 60 * 60_000)
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(fetchSpy).toHaveBeenCalledWith('/auth/session', expect.anything())
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('neither signs in nor redials into a refusal when the sign-in service cannot be reached', async () => {
