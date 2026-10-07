@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.4](https://github.com/dsswift/ion/compare/engine-v1.100.3...engine-v1.100.4) (2026-10-07)
+
+### Bug Fixes
+
+* **engine:** ask the session running the turn for a credential ([869209f](https://github.com/dsswift/ion/commit/869209f9a0ef948caeee36e7f5d37b3d4d167137))
+
 ## [1.100.3](https://github.com/dsswift/ion/compare/engine-v1.100.2...engine-v1.100.3) (2026-10-06)
 
 ### Bug Fixes

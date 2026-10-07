@@ -8,6 +8,21 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.14.0](https://github.com/dsswift/ion/compare/server-v1.13.3...server-v1.14.0) (2026-10-07)
+
+### Features
+
+* **server:** look up a person's provider key with their own token ([8013ba9](https://github.com/dsswift/ion/commit/8013ba904bbf523bf979bb892aeff91cacf3089b))
+* **server:** enforce the new-conversation lock server-side ([d8de56d](https://github.com/dsswift/ion/commit/d8de56d370b215709dd509ad8ce685afeebaa14a))
+* **server:** open a person's first conversation on sign-in ([f9ce4e4](https://github.com/dsswift/ion/commit/f9ce4e439d82169647a4e5532d6401d5852dfeec))
+
+### Bug Fixes
+
+* **server:** ask for profile when minting the lookup token ([5a199da](https://github.com/dsswift/ion/commit/5a199dacba073f686a81069056c039af778b5370))
+* **server:** open replacement tabs in the default project ([990c1ca](https://github.com/dsswift/ion/commit/990c1ca5239211ffc32e475156126f34d967878f))
+* **server:** create no boot conversation on a hosted instance ([de0dc02](https://github.com/dsswift/ion/commit/de0dc02305e4595c37b45dd76839d7fbea1d2e31))
+* **server:** leave folder choice alone under a profile-only lock ([5b49d09](https://github.com/dsswift/ion/commit/5b49d0948682091646ce8115d00de5bc9e5ce1a4))
+
 ## [1.13.3](https://github.com/dsswift/ion/compare/server-v1.13.2...server-v1.13.3) (2026-10-06)
 
 ### Bug Fixes

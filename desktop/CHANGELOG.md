@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.14.0](https://github.com/dsswift/ion/compare/desktop-v2.13.2...desktop-v2.14.0) (2026-10-07)
+
+### Features
+
+* **desktop:** open new conversations straight into a locked folder ([a5f9f7e](https://github.com/dsswift/ion/commit/a5f9f7ec3842640c791639e971360652fab9e5a7))
+* **desktop:** hide project and folder controls under the lock ([7ebda26](https://github.com/dsswift/ion/commit/7ebda26d6e59dcbf5240e3a71510512fe059311e))
+* **desktop:** hide add-folder in the explorer under the lock ([cbc6569](https://github.com/dsswift/ion/commit/cbc6569be6ab8aefef1ea8dfb079adced7af3025))
+
+### Bug Fixes
+
+* **desktop:** let a person choose their own provider subscription ([cd28962](https://github.com/dsswift/ion/commit/cd2896272638b20b9799b4c6d68c8215caa2d418))
+* **desktop:** narrow an optional pack call in a bridge test ([754ad98](https://github.com/dsswift/ion/commit/754ad98b5c5571deb0673c052dfc6a7c43716b1a))
+
 ## [2.13.2](https://github.com/dsswift/ion/compare/desktop-v2.13.1...desktop-v2.13.2) (2026-10-06)
 
 ### Bug Fixes

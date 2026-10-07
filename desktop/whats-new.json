@@ -1,4 +1,10 @@
 {
+  "2.14.0": [
+    "When a folder is locked, new conversations open directly into it and options to add or rearrange folders are hidden.",
+    "Fixed a problem where you could not choose your own subscription without having administrator access.",
+    "Your first conversation now opens automatically when you sign in.",
+    "Fixed a problem where tabs that reopened landed in the wrong project."
+  ],
   "2.13.2": [
     "Fixed a problem where the Inbox did not open by default when you launched Ion Studio for the first time.",
     "You can now attach files and screenshots regardless of how you are accessing Ion Studio.",
