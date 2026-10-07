@@ -71,15 +71,11 @@ struct TabListView: View {
     @State var inboxRenameTabId: String? = nil
     @State var inboxRenameTitle = ""
 
-    // iPad: selection-based navigation. selectedTabId is internal (not private)
-    // so the same-module TabListView+DetailViews extension can read it — see the
-    // note on `theme` above.
-    @State var selectedTabId: String?
-    // columnVisibility, navigationPath, and flickerOpacity are internal for the
-    // same reason: TabListView+Layouts owns both size-class layout roots.
-    @State var columnVisibility: NavigationSplitViewVisibility = .all
-
-    // iPhone: path-based navigation.
+    // The open conversation, shared by both layouts. The iPhone stack pushes
+    // tab ids onto `navigationPath`; the split view's selection is the top of
+    // that same stack (see OpenConversationLayout). A large iPhone switches
+    // layouts on every rotation, and two separate values let each orientation
+    // keep its own conversation.
     //
     // Typed as [String] rather than NavigationPath so the pushed tab ids are
     // readable. A NavigationPath is write-only (append/removeLast), which meant
@@ -87,7 +83,28 @@ struct TabListView: View {
     // tab — a conversation closed on the desktop left its id on the stack and
     // ConversationView rendered a titleless, stateless shell for it. The stack
     // has to be inspectable to be revalidated.
+    //
+    // Internal (not private) so the same-module extensions can read it, like
+    // the rest of the state the layout roots and detail views share.
     @State var navigationPath: [String] = []
+
+    /// The split view's selection: the top of `navigationPath`.
+    var selectedTabId: String? {
+        get { OpenConversationLayout.selection(in: navigationPath) }
+        nonmutating set {
+            navigationPath = OpenConversationLayout.stack(selecting: newValue, from: navigationPath)
+        }
+    }
+
+    var selectedTabBinding: Binding<String?> {
+        Binding(get: { selectedTabId }, set: { selectedTabId = $0 })
+    }
+
+    // Split-view sidebar visibility, and what it was the last time the split
+    // view left the screen. Nil until the split view has been shown and left
+    // once, so the first rotation with a conversation open hides the sidebar.
+    @State var columnVisibility: NavigationSplitViewVisibility = .all
+    @State var lastSplitVisibility: NavigationSplitViewVisibility?
     @State var flickerOpacity: Double = 1.0
 
     // The presentation modifiers live in TabListView+Presentation.swift, applied
@@ -107,6 +124,9 @@ struct TabListView: View {
                             } else {
                                 iPhoneLayout
                             }
+                        }
+                        .onChange(of: sizeClass) { old, new in
+                            sizeClassChanged(from: old, to: new)
                         }
                     )
                 )
@@ -128,7 +148,7 @@ struct TabListView: View {
             .padding(.horizontal, IonSpace.rowInset)
             .padding(.vertical, IonSpace.compactGap)
 
-            List(selection: $selectedTabId) {
+            List(selection: selectedTabBinding) {
                 tabSections(selectionStyle: .selection)
             }
             .listStyle(.plain)

@@ -10,12 +10,11 @@ import SwiftUI
 // no messages and no instances. It looked like a real, broken conversation, and
 // the only way out was to back out to the list and find the tab again.
 //
-// The iPad detail pane already guarded its destination (falling back to "Select
-// a tab"), so the two size classes disagreed. Both now route through the same
-// validator and both log the outcome.
+// The split view's selection is the top of the same stack, so this one rule
+// covers both layouts.
 extension TabListView {
 
-    /// Remove any pushed conversation whose tab no longer exists, returning the
+    /// Remove any open conversation whose tab no longer exists, returning the
     /// user to the tab list.
     ///
     /// No-ops while no snapshot has been applied: absence is not authoritative
@@ -35,7 +34,7 @@ extension TabListView {
         // and the absence of any such log line is why an earlier occurrence of
         // this bug left no trace in ios-diagnostic-logs.jsonl at all.
         DiagnosticLog.log(
-            "nav iphone popped stale destination to tab list",
+            "nav popped stale destination to tab list",
             tag: "view.nav",
             level: .warn,
             fields: [
@@ -53,36 +52,5 @@ extension TabListView {
         if navigationPath.isEmpty {
             viewModel.sendReportFocus(tabId: nil)
         }
-    }
-
-    /// iPad equivalent: clear a detail selection whose tab has been closed.
-    ///
-    /// The detail pane already renders its "Select a conversation" empty state for an
-    /// unresolvable selection, so the visible outcome was acceptable — but the
-    /// stale id was retained silently and never logged. Clearing it keeps
-    /// `selectedTabId` honest (so list selection highlighting and focus
-    /// reporting agree with what is shown) and makes the event observable.
-    func clearStaleDetailSelection(reason: String) {
-        guard let tabId = selectedTabId else { return }
-        let outcome = NavigationDestinationValidator.classify(
-            tabId: tabId,
-            knownTabIds: viewModel.tabIds,
-            hasAppliedTabSnapshot: viewModel.hasAppliedTabSnapshot
-        )
-        guard outcome == .stale else { return }
-
-        DiagnosticLog.log(
-            "nav ipad cleared stale detail selection",
-            tag: "view.nav",
-            level: .warn,
-            fields: [
-                "tab_id": String(tabId.prefix(8)),
-                "reason": reason,
-                "status": String(viewModel.tabIds.count)
-            ]
-        )
-
-        selectedTabId = nil
-        viewModel.sendReportFocus(tabId: nil)
     }
 }

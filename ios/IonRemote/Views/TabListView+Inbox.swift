@@ -124,7 +124,7 @@ extension TabListView {
         let cyclesOnTap = InboxNavigator.headerTapCycles(selectionStyle)
         // A collapsed project can still show rows (pinned, selected, or
         // working ones), and then it is a card with a body, not a lone header.
-        let collapsedRows = InboxNavigator.collapsedRows(project.allTabs, activeTabId: currentTabId)
+        let collapsedRows = InboxNavigator.collapsedRows(project.allTabs, activeTabId: selectedTabId)
         let hasRowsBeneath = projectExpanded || !collapsedRows.isEmpty
         // ONE button spanning the whole row. The folder icon, the name, the
         // count, the gap, and the chevron are all label content, so every part
@@ -216,7 +216,7 @@ extension TabListView {
                     state: state,
                     tabsByBenchPath: benchTabsByPath(project.benchTabs, state: state),
                     terminalTabsByID: Dictionary(uniqueKeysWithValues: project.benchTerminals.map { ($0.id, $0) }),
-                    activeTabId: currentTabId,
+                    activeTabId: selectedTabId,
                     row: { tab in
                         inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Integration Bench", branch: nil, level: 2)
                     }
@@ -230,7 +230,7 @@ extension TabListView {
                     repoPath: project.id,
                     worktree: worktree,
                     tabs: project.worktreeTabs[worktree.worktreePath] ?? [],
-                    activeTabId: currentTabId,
+                    activeTabId: selectedTabId,
                     expanded: expansion,
                     cyclesOnHeaderTap: cyclesOnTap,
                     row: { tab in
@@ -247,7 +247,7 @@ extension TabListView {
                 // moment its group was closed.
                 let sourceRows = expansion.wrappedValue.contains(sourceKey)
                     ? project.sourceTabs
-                    : InboxNavigator.collapsedRows(project.sourceTabs, activeTabId: currentTabId)
+                    : InboxNavigator.collapsedRows(project.sourceTabs, activeTabId: selectedTabId)
                 ForEach(sourceRows) { tab in
                     inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Source Repository", branch: nil, level: 2)
                 }
@@ -291,12 +291,8 @@ extension TabListView {
             .contains { $0.id == inboxProjectFilter }
     }
 
-    private var currentTabId: String? {
-        selectedTabId ?? navigationPath.last
-    }
-
     private func cycle(_ tabs: [RemoteTabState]) {
-        guard let next = InboxNavigator.nextGroupTab(tabs, currentTabId: currentTabId) else { return }
+        guard let next = InboxNavigator.nextGroupTab(tabs, currentTabId: selectedTabId) else { return }
         viewModel.navigateToTab(next.id)
     }
 
@@ -308,7 +304,7 @@ extension TabListView {
     private func cycleProject(_ project: InboxNavigator.Project, expansion: Binding<Set<String>>) {
         let cycle = InboxNavigator.prepareProjectCycle(
             project.allTabs,
-            currentTabId: currentTabId,
+            currentTabId: selectedTabId,
             projectId: project.id,
             expansion: &expansion.wrappedValue
         )
@@ -485,7 +481,7 @@ extension TabListView {
                 }
             }
         }
-        .inboxRow(level: level, highlighted: selectionStyle == .selection && tab.id == currentTabId)
+        .inboxRow(level: level, highlighted: selectionStyle == .selection && tab.id == selectedTabId)
     }
 
     private func projectName(for tab: RemoteTabState) -> String {

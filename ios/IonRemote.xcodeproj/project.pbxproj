@@ -50,6 +50,7 @@
 		MTOIDCPKCE000000000002 /* OIDCTokenManager+PKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCPKCE000000000001 /* OIDCTokenManager+PKCE.swift */; };
 		MTOIDCREG0000000000002 /* OIDCTokenManagerRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCREG0000000000001 /* OIDCTokenManagerRegistry.swift */; };
 		NAVDESTVALTST000000001 /* NavigationDestinationValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVDESTVALTST000000002 /* NavigationDestinationValidatorTests.swift */; };
+		OPENCONVLAYTST00000001 /* OpenConversationLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = OPENCONVLAYTST00000002 /* OpenConversationLayoutTests.swift */; };
 		LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */; };
 		A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */; };
 		A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */; };
@@ -318,6 +319,7 @@
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
 		A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */; };
 		NAVDESTVAL0000000000001 /* NavigationDestinationValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVDESTVAL0000000000002 /* NavigationDestinationValidator.swift */; };
+		OPENCONVLAY00000000001 /* OpenConversationLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = OPENCONVLAY00000000002 /* OpenConversationLayout.swift */; };
 		A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */; };
 		DIAGLOG0000000000004 /* DiagnosticLog+Schema.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */; };
 		TRACECTX0000000000000001 /* TraceContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX0000000000000002 /* TraceContext.swift */; };
@@ -1045,6 +1047,7 @@
 		MTOIDCPKCE000000000001 /* OIDCTokenManager+PKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OIDCTokenManager+PKCE.swift"; sourceTree = "<group>"; };
 		MTOIDCREG0000000000001 /* OIDCTokenManagerRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerRegistry.swift; sourceTree = "<group>"; };
 		NAVDESTVALTST000000002 /* NavigationDestinationValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationDestinationValidatorTests.swift; sourceTree = "<group>"; };
+		OPENCONVLAYTST00000002 /* OpenConversationLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenConversationLayoutTests.swift; sourceTree = "<group>"; };
 		LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthRejectedTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECrypto.swift; sourceTree = "<group>"; };
@@ -1302,6 +1305,7 @@
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Events.swift"; sourceTree = "<group>"; };
 		NAVDESTVAL0000000000002 /* NavigationDestinationValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationDestinationValidator.swift; sourceTree = "<group>"; };
+		OPENCONVLAY00000000002 /* OpenConversationLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenConversationLayout.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Commands.swift"; sourceTree = "<group>"; };
 		DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Schema.swift"; sourceTree = "<group>"; };
 		TRACECTX0000000000000002 /* TraceContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceContext.swift; sourceTree = "<group>"; };
@@ -2589,6 +2593,7 @@
 				A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */,
 						MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */,
 				NAVDESTVALTST000000002 /* NavigationDestinationValidatorTests.swift */,
+				OPENCONVLAYTST00000002 /* OpenConversationLayoutTests.swift */,
 				MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */,
 				MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */,
 				RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */,
@@ -2699,6 +2704,7 @@
 				MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */,
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				NAVDESTVAL0000000000002 /* NavigationDestinationValidator.swift */,
+				OPENCONVLAY00000000002 /* OpenConversationLayout.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */,
 				TRACECTX0000000000000002 /* TraceContext.swift */,
@@ -3836,6 +3842,7 @@
 				MTRKIT00000000000000001 /* MetricKitCrashObserver.swift in Sources */,
 				A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */,
 				NAVDESTVAL0000000000001 /* NavigationDestinationValidator.swift in Sources */,
+				OPENCONVLAY00000000001 /* OpenConversationLayout.swift in Sources */,
 				A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */,
 				DIAGLOG0000000000004 /* DiagnosticLog+Schema.swift in Sources */,
 				TRACECTX0000000000000001 /* TraceContext.swift in Sources */,
@@ -4261,6 +4268,7 @@
 				CONNQUALTST00000000001 /* ConnectionQualityIndicatorTests.swift in Sources */,
 				CRASHBCTST0000000000001 /* CrashReporterBreadcrumbTests.swift in Sources */,
 				NAVDESTVALTST000000001 /* NavigationDestinationValidatorTests.swift in Sources */,
+				OPENCONVLAYTST00000001 /* OpenConversationLayoutTests.swift in Sources */,
 				LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */,
 				A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */,
 				A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */,
