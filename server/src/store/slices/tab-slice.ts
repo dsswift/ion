@@ -121,7 +121,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return tabId
     },
 
-    createTabInDirectory: async (dir, useWorktree, skipDuplicateCheck, sourceBranch, restoring) => {
+    createTabInDirectory: async (dir, useWorktree, skipDuplicateCheck, sourceBranch) => {
       if (!skipDuplicateCheck) {
         const existingBlank = get().tabs.find((t) => isReusableBlankConversationTab(t, dir, instanceMessageCount(activeInstance(get().conversationPanes, t.id))))
         if (existingBlank) {
@@ -141,7 +141,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         setActive: true,
         useWorktree,
         sourceBranch,
-        ...(restoring ? { restoring: true } : {}),
       })
 
       return tabId

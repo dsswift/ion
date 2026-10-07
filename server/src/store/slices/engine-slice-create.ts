@@ -60,8 +60,8 @@ export interface CreateConversationTabOpts {
    * client naming a path. It exempts the tab from the does-this-machine-have-
    * it check below, because a conversation that already existed keeps its
    * recorded directory even after that directory is gone. `reuseTabId` says
-   * the same thing for a tab that also keeps its id; a sessionless restore
-   * mints a fresh id and needs this instead.
+   * the same thing for a tab that also keeps its id; a restored record saved
+   * before ids were persisted has none and needs this instead.
    */
   restoring?: boolean
 }
@@ -162,7 +162,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     // picker used to call straight past `createTabInDirectory` and so ordered
     // by a count its own creations never fed. A restore is not a use -- it
     // reopens what was already counted.
-    if (!opts.reuseTabId) {
+    if (!opts.reuseTabId && !opts.restoring) {
       const projectDirectory = opts.projectDirectory || baseWorkingDirectory
       prefs.addRecentBaseDirectory(projectDirectory)
       rInfo('engine.create', 'project use recorded', { project_directory: projectDirectory, working_directory: workingDirectory })
