@@ -2,7 +2,7 @@
  * EnvironmentStatusIndicator — the title-bar answer to "where did my other
  * machine's conversations go?".
  *
- * An Environment that stops answering has its rows removed from the Tab
+ * An Environment this desktop is not connected to has its rows removed from the Tab
  * Strip and the Inbox, which is the honest thing to do with state this
  * desktop can no longer vouch for — but silently removing rows is its own
  * way of misleading someone. So the moment any catalogued Environment is
@@ -35,7 +35,10 @@ function howLong(since: number | null): string {
   return `${Math.round(minutes / 60)}h`
 }
 
-function describe(entry: EnvironmentAvailabilityEntry): string {
+export function describe(entry: EnvironmentAvailabilityEntry): string {
+  // The server is up and answered; this app could not read the answer.
+  // Retrying changes nothing, so say what will.
+  if (entry.reason === 'protocol_version') return 'incompatible version — update this app or that server'
   return entry.availability === 'reconnecting'
     ? `reconnecting, ${howLong(entry.since)}`
     : `offline for ${howLong(entry.since)} — its conversations are hidden`
@@ -94,7 +97,7 @@ export function EnvironmentStatusIndicator(): React.JSX.Element | null {
         data-degraded-count={degraded.length}
         className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors relative"
         style={{ color: tone }}
-        title={degraded.length === 1 ? `${degraded[0].label} is ${describe(degraded[0])}` : `${degraded.length} environments are not answering`}
+        title={degraded.length === 1 ? `${degraded[0].label} is ${describe(degraded[0])}` : `${degraded.length} environments are not connected`}
       >
         <WifiSlash size={14} />
       </button>
@@ -114,7 +117,7 @@ export function EnvironmentStatusIndicator(): React.JSX.Element | null {
             padding: 10, display: 'flex', flexDirection: 'column', gap: 8,
           }}
         >
-          <span style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary }}>Environments not answering</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary }}>Environments not connected</span>
           {degraded.map((entry) => (
             <div key={entry.environmentId} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               <span style={{ fontSize: 12, color: colors.textPrimary }}>{entry.label}</span>

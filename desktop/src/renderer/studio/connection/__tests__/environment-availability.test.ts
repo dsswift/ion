@@ -95,4 +95,22 @@ describe('environment availability', () => {
     phaseListener?.(phase('connected'))
     expect([...environmentAvailability.all().values()].filter((e) => e.availability !== 'connected')).toEqual([])
   })
+
+  /**
+   * The title bar says why an Environment is down. A retry starting carries
+   * no reason of its own and must not wipe the one the last attempt gave.
+   */
+  it('keeps why the wire is down across a retry, and clears it on reconnect', () => {
+    phaseListener?.(new Map([['devbox', { phase: 'offline', reason: 'protocol_version' } as EnvironmentPhaseState]]))
+    expect(environmentAvailability.all().get('devbox')?.reason).toBe('protocol_version')
+
+    phaseListener?.(phase('connecting'))
+    expect(environmentAvailability.all().get('devbox')?.reason).toBe('protocol_version')
+
+    phaseListener?.(new Map([['devbox', { phase: 'backoff', reason: 'server_unreachable' } as EnvironmentPhaseState]]))
+    expect(environmentAvailability.all().get('devbox')?.reason).toBe('server_unreachable')
+
+    phaseListener?.(phase('connected'))
+    expect(environmentAvailability.all().get('devbox')?.reason).toBeUndefined()
+  })
 })

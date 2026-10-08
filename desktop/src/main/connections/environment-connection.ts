@@ -6,7 +6,7 @@
  */
 import type { StudioSocketLike } from './transport-relay'
 import { sendFrame } from './send-frame'
-import { decodeFrame, encodeFrame, decodeBinary, encodeBinary } from '@ion/shared/studio-wire/codec'
+import { decodeFrame, encodeFrame, decodeBinary, encodeBinary, WireError } from '@ion/shared/studio-wire/codec'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import type { StudioCredential, StudioFrame } from '@ion/shared/studio-wire/types'
 import type { BinaryChannel } from '@ion/shared/studio-wire/channels'
@@ -253,9 +253,27 @@ export class EnvironmentConnection {
     try {
       frame = decodeFrame(typeof data === 'string' ? data : String(data))
     } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      const wire = err instanceof WireError ? err : null
+      if (wire?.frameType === 'studio_welcome' && !this.welcomed) {
+        // Nothing else will ever open this wire: the server has said its
+        // piece and waits for frames. Fail the attempt so the phase says
+        // why, instead of sitting in `connecting` with a socket open.
+        warn('welcome from server could not be read; failing the attempt', {
+          environment_id: this.target.environmentId,
+          field: wire.field,
+          error,
+        })
+        const ws = this.ws
+        this.handleFailure(`welcome could not be read: field ${wire.field ?? 'unknown'}`, undefined, true)
+        ws?.close()
+        return
+      }
       warn('malformed frame from server; ignoring', {
         environment_id: this.target.environmentId,
-        error: err instanceof Error ? err.message : String(err),
+        frame_type: wire?.frameType,
+        field: wire?.field,
+        error,
       })
       return
     }
@@ -373,7 +391,7 @@ export class EnvironmentConnection {
     return true
   }
 
-  private handleFailure(reason: string, refusalReason?: import('@ion/shared/studio-wire/types').StudioRefusalReason): void {
+  private handleFailure(reason: string, refusalReason?: import('@ion/shared/studio-wire/types').StudioRefusalReason, incompatible = false): void {
     this.ws = null
     this.welcomed = false
     // A failure after the welcome has no attempt span open; this is a no-op then.
@@ -393,7 +411,7 @@ export class EnvironmentConnection {
       // ladder exhausted and replaying it minutes later on an eventual
       // reconnect would be a stale action, not a real one.
       this.discardPending(reason)
-      this.setPhase({ phase: 'offline', transport: this.target.transport, reason, refusalReason })
+      this.setPhase({ phase: 'offline', transport: this.target.transport, reason, refusalReason, incompatible })
       this.retryTimer = setTimeout(() => this.connect(), OFFLINE_RETRY_MS)
       return
     }
@@ -403,6 +421,7 @@ export class EnvironmentConnection {
       transport: this.target.transport,
       reason,
       refusalReason,
+      incompatible,
       attempt: this.attempts,
       nextAttemptAtMs: now + delay,
     })

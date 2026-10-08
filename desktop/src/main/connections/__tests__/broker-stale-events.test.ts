@@ -221,4 +221,44 @@ describe('Broker stale socket events', () => {
       vi.useRealTimers()
     }
   })
+
+  /**
+   * A welcome this build cannot read used to be dropped like any other bad
+   * frame, which left the connection in `connecting` for good: the server
+   * had answered, so nothing else was coming. The attempt has to fail, and
+   * say that the two builds disagree rather than that the server is away.
+   */
+  it('fails the attempt as incompatible when the welcome cannot be read', async () => {
+    FakeWebSocket.instances.length = 0
+    vi.useFakeTimers()
+    try {
+      const broker = new Broker()
+      broker.connect(targetSpawning())
+      await flush()
+      const socket = FakeWebSocket.instances[0]
+      socket.simulateOpen()
+      socket.simulateMessage({ ...welcomeFrame(), settingsHiddenGroups: 'none' })
+
+      const phase = broker.phaseOf('env-local')
+      expect(phase?.phase).toBe('backoff')
+      expect(phase && 'incompatible' in phase ? phase.incompatible : undefined).toBe(true)
+      expect(phase && 'reason' in phase ? phase.reason : '').toContain('settingsHiddenGroups')
+      expect(socket.readyState).toBe(3)
+      broker.disconnect('env-local')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('opens the wire on a welcome from a server that names fewer developer surfaces', async () => {
+    FakeWebSocket.instances.length = 0
+    const broker = new Broker()
+    broker.connect(targetSpawning())
+    await flush()
+    const socket = FakeWebSocket.instances[0]
+    socket.simulateOpen()
+    socket.simulateMessage({ ...welcomeFrame(), developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true } })
+    expect(broker.phaseOf('env-local')?.phase).toBe('connected')
+    broker.disconnect('env-local')
+  })
 })

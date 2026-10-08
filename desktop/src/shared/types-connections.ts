@@ -30,10 +30,19 @@ export type ConnectionPhase =
       reason: string
       /** The precise wire-level refusal, when the failure came from a `studio_refused` frame (spec 13 registry classification) rather than a transport error. */
       refusalReason?: StudioRefusalReason
+      /** The server answered the hello with a welcome this client could not read: the two builds disagree on the wire. */
+      incompatible?: boolean
       attempt: number
       nextAttemptAtMs: number
     }
-  | { phase: 'offline'; transport: ConnectionTransportKind; reason: string; refusalReason?: StudioRefusalReason }
+  | {
+      phase: 'offline'
+      transport: ConnectionTransportKind
+      reason: string
+      refusalReason?: StudioRefusalReason
+      /** The server answered the hello with a welcome this client could not read: the two builds disagree on the wire. */
+      incompatible?: boolean
+    }
 
 /** One environment's phase, as pushed to the renderer over `studio:connections`. */
 export interface ConnectionPhaseSnapshot {

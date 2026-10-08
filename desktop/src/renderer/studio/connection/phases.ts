@@ -31,6 +31,12 @@ export function classifyRefusal(refusalReason: string | undefined): EnvironmentR
  * are registry-only classifications applied by the caller before/after this
  * mapping runs (duplicate-id detection, assignment refusal).
  */
+/** Why a connection that is not up is not up, in the registry's reason vocabulary. */
+function failureReason(phase: Extract<ConnectionPhase, { phase: 'backoff' | 'offline' }>): EnvironmentReasonCode {
+  if (phase.refusalReason) return classifyRefusal(phase.refusalReason)
+  return phase.incompatible ? 'protocol_version' : 'server_unreachable'
+}
+
 export function mapBrokerPhase(phase: ConnectionPhase): { phase: EnvironmentPhase; reason?: EnvironmentReasonCode } {
   switch (phase.phase) {
     case 'connecting':
@@ -38,8 +44,8 @@ export function mapBrokerPhase(phase: ConnectionPhase): { phase: EnvironmentPhas
     case 'connected':
       return { phase: 'connected' }
     case 'backoff':
-      return { phase: 'backoff', reason: phase.refusalReason ? classifyRefusal(phase.refusalReason) : 'server_unreachable' }
+      return { phase: 'backoff', reason: failureReason(phase) }
     case 'offline':
-      return { phase: 'offline', reason: phase.refusalReason ? classifyRefusal(phase.refusalReason) : 'server_unreachable' }
+      return { phase: 'offline', reason: failureReason(phase) }
   }
 }
