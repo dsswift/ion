@@ -80,11 +80,30 @@ export function repositoryFeedOffered(state: DeveloperSurfaceState): boolean {
   return state.sourceControl || state.commitGraph || state.repositoryStatus
 }
 
-/** Wire-decode guard for a `DeveloperSurfaceState`. */
-export function isDeveloperSurfaceState(value: unknown): value is DeveloperSurfaceState {
-  if (!value || typeof value !== 'object') return false
+/**
+ * The form a server sends: the surfaces it knows, each on or off. A server
+ * that predates a surface sends no key for it.
+ */
+export type DeveloperSurfaceWire = Partial<DeveloperSurfaceState>
+
+/** Wire-decode guard for a `DeveloperSurfaceWire`: every surface it names is a boolean. */
+export function isDeveloperSurfaceWire(value: unknown): value is DeveloperSurfaceWire {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const o = value as Record<string, unknown>
-  return DEVELOPER_SURFACES.every((surface) => typeof o[surface] === 'boolean')
+  return DEVELOPER_SURFACES.every((surface) => o[surface] === undefined || typeof o[surface] === 'boolean')
+}
+
+/**
+ * The surfaces a server offers, from what it sent. A surface is on unless
+ * the server says it is off, so one the server does not name is on.
+ */
+export function readDeveloperSurfaces(wire: DeveloperSurfaceWire | undefined): DeveloperSurfaceState {
+  const state = { ...ALL_DEVELOPER_SURFACES_ENABLED }
+  if (!wire) return state
+  for (const surface of DEVELOPER_SURFACES) {
+    if (wire[surface] === false) state[surface] = false
+  }
+  return state
 }
 
 const SC: readonly DeveloperSurface[] = ['sourceControl']

@@ -3,9 +3,10 @@
  *
  * Text frames are JSON-encoded `StudioFrame`s. `decodeFrame` throws
  * `WireError` on an unknown `type` or a shape that doesn't match its type —
- * callers (the server's connection handler, the desktop's wire client) close
- * the socket with `protocol` on that error rather than propagating a
- * malformed frame into the rest of the system.
+ * callers (the server's connection handler, the desktop's wire client) never
+ * pass a malformed frame into the rest of the system. The error names the
+ * frame type and the first field that failed, so a log line says what the
+ * two sides disagree on.
  *
  * Binary frames carry a 1-byte channel header, a 2-byte big-endian key
  * length, the UTF-8 key bytes, then the raw payload — never base64 (the
@@ -16,12 +17,19 @@
  */
 import { BinaryChannel, isBinaryChannel } from './channels'
 import type { StudioFrame, StudioFrameType } from './types'
-import { isDeveloperSurfaceState } from '../developer-surfaces'
+import { isDeveloperSurfaceWire } from '../developer-surfaces'
 
 export class WireError extends Error {
-  constructor(message: string) {
+  /** The frame's `type`, when the text parsed far enough to have a known one. */
+  readonly frameType?: StudioFrameType
+  /** The first field that failed its type's shape check. */
+  readonly field?: string
+
+  constructor(message: string, at?: { frameType: StudioFrameType; field: string }) {
     super(message)
     this.name = 'WireError'
+    this.frameType = at?.frameType
+    this.field = at?.field
   }
 }
 
@@ -61,68 +69,82 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every(isString)
 }
 
+/** Checks one field. Gets the whole frame too, for a field that must be present whatever its value. */
+type FieldCheck = (value: unknown, frame: Record<string, unknown>) => boolean
+
+const optional = (check: FieldCheck): FieldCheck => (v, o) => v === undefined || check(v, o)
+const oneOf = (...values: string[]): FieldCheck => (v) => isString(v) && values.includes(v)
+const isBoolean: FieldCheck = (v) => typeof v === 'boolean'
+const isNullOrPlainObject: FieldCheck = (v) => v === null || isPlainObject(v)
+
 /**
- * Per-type shape validation, one guard per `StudioFrame` member. Deliberately
+ * Per-type shape validation: the fields each `StudioFrame` member must
+ * carry, one check per field so a failure names the field. Deliberately
  * hand-rolled rather than a schema library — `packages/shared` has no
  * runtime-validation dependency today (see the shared `package.json`), and a
  * flat set of field-presence/type checks is easy to keep in lockstep with
  * `types.ts` by hand for a union this size.
+ *
+ * A field a newer peer adds is never checked here, and a field an older
+ * peer does not send must be `optional`, so two builds that differ by an
+ * additive field still decode each other's frames.
  */
-const VALIDATORS: Record<StudioFrameType, (obj: Record<string, unknown>) => boolean> = {
-  studio_hello: (o) =>
-    isNumber(o.protocolVersion) &&
-    isString(o.clientId) &&
-    (o.clientKind === 'desktop' || o.clientKind === 'web' || o.clientKind === 'mobile-bridge' || o.clientKind === 'mobile') &&
-    (o.view === undefined || o.view === 'mirror' || o.view === 'thin') &&
-    isStringArray(o.capabilities) &&
-    isPlainObject(o.credential) &&
-    isString(o.credential.kind) &&
-    ['local', 'paired', 'bearer', 'session'].includes(o.credential.kind as string),
-  studio_welcome: (o) =>
-    isNumber(o.protocolVersion) &&
-    isString(o.environmentId) &&
-    isString(o.label) &&
-    isString(o.platform) &&
-    isString(o.serverVersion) &&
-    isString(o.engineVersion) &&
-    isStringArray(o.capabilities) &&
-    isPlainObject(o.principal) &&
-    isString((o.principal as Record<string, unknown>).subject) &&
-    isStringArray(o.scopes) &&
-    (o.enterprisePolicy === null || isPlainObject(o.enterprisePolicy)) &&
-    isStringArray(o.settingsHiddenGroups) &&
-    (o.developerSurfaces === undefined || isDeveloperSurfaceState(o.developerSurfaces)) &&
-    (o.policyHash === undefined || isString(o.policyHash)) &&
-    isPlainObject(o.snapshot),
-  studio_refused: (o) =>
-    isString(o.reason) &&
-    ['protocol_version', 'unauthorized', 'not_ready', 'engine_incompatible', 'duplicate_client', 'scope'].includes(
-      o.reason as string,
-    ),
-  studio_action: (o) => isString(o.id) && isString(o.action) && Array.isArray(o.args),
-  studio_action_result: (o) => isString(o.id) && typeof o.ok === 'boolean',
-  studio_event: (o) => isString(o.channel) && 'payload' in o,
-  studio_command: (o) => isString(o.id) && isString(o.command) && 'args' in o && isNumber(o.timeoutMs),
-  studio_command_result: (o) => isString(o.id) && typeof o.ok === 'boolean',
-  studio_snapshot: (o) => isPlainObject(o.snapshot),
-  studio_reauth: (o) =>
-    isPlainObject(o.credential) && o.credential.kind === 'bearer' && isString((o.credential as Record<string, unknown>).token),
-  studio_environment_policy: (o) =>
-    (o.enterprisePolicy === null || isPlainObject(o.enterprisePolicy)) &&
-    isStringArray(o.settingsHiddenGroups) &&
-    (o.developerSurfaces === undefined || isDeveloperSurfaceState(o.developerSurfaces)) &&
-    isString(o.policyHash),
-  studio_snapshot_request: () => true,
-  studio_body_request: (o) =>
-    isString(o.tabId) &&
-    (o.before === undefined || isString(o.before)) &&
-    (o.limit === undefined || (typeof o.limit === 'number' && Number.isFinite(o.limit))) &&
-    (o.held === undefined || (isPlainObject(o.held) && isString(o.held.epoch) && isNumber(o.held.rev))),
-  studio_body: (o) => isString(o.tabId) && Array.isArray(o.rows),
-  studio_ping: (o) => isString(o.nonce) && isNumber(o.t),
-  studio_pong: (o) => isString(o.nonce) && isNumber(o.t),
-  studio_close: (o) =>
-    isString(o.reason) && ['slow_client', 'token_expired', 'revoked', 'shutdown', 'engine_lost', 'displaced'].includes(o.reason as string),
+const SHAPES: Record<StudioFrameType, Record<string, FieldCheck>> = {
+  studio_hello: {
+    protocolVersion: isNumber,
+    clientId: isString,
+    clientKind: oneOf('desktop', 'web', 'mobile-bridge', 'mobile'),
+    view: optional(oneOf('mirror', 'thin')),
+    capabilities: isStringArray,
+    credential: (v) => isPlainObject(v) && oneOf('local', 'paired', 'bearer', 'session')(v.kind, v),
+  },
+  studio_welcome: {
+    protocolVersion: isNumber,
+    environmentId: isString,
+    label: isString,
+    platform: isString,
+    serverVersion: isString,
+    engineVersion: isString,
+    capabilities: isStringArray,
+    principal: (v) => isPlainObject(v) && isString(v.subject),
+    scopes: isStringArray,
+    enterprisePolicy: isNullOrPlainObject,
+    settingsHiddenGroups: isStringArray,
+    developerSurfaces: optional(isDeveloperSurfaceWire),
+    policyHash: optional(isString),
+    snapshot: isPlainObject,
+  },
+  studio_refused: {
+    reason: oneOf('protocol_version', 'unauthorized', 'not_ready', 'engine_incompatible', 'duplicate_client', 'scope'),
+  },
+  studio_action: { id: isString, action: isString, args: Array.isArray },
+  studio_action_result: { id: isString, ok: isBoolean },
+  studio_event: { channel: isString, payload: (_v, o) => 'payload' in o },
+  studio_command: { id: isString, command: isString, args: (_v, o) => 'args' in o, timeoutMs: isNumber },
+  studio_command_result: { id: isString, ok: isBoolean },
+  studio_snapshot: { snapshot: isPlainObject },
+  studio_reauth: {
+    credential: (v) => isPlainObject(v) && v.kind === 'bearer' && isString(v.token),
+  },
+  studio_environment_policy: {
+    enterprisePolicy: isNullOrPlainObject,
+    settingsHiddenGroups: isStringArray,
+    developerSurfaces: optional(isDeveloperSurfaceWire),
+    policyHash: isString,
+  },
+  studio_snapshot_request: {},
+  studio_body_request: {
+    tabId: isString,
+    before: optional(isString),
+    limit: optional(isNumber),
+    held: optional((v) => isPlainObject(v) && isString(v.epoch) && isNumber(v.rev)),
+  },
+  studio_body: { tabId: isString, rows: Array.isArray },
+  studio_ping: { nonce: isString, t: isNumber },
+  studio_pong: { nonce: isString, t: isNumber },
+  studio_close: {
+    reason: oneOf('slow_client', 'token_expired', 'revoked', 'shutdown', 'engine_lost', 'displaced'),
+  },
 }
 
 /** Parse and validate one text frame. Throws `WireError` on any malformed input. */
@@ -138,9 +160,11 @@ export function decodeFrame(text: string): StudioFrame {
   if (!isString(type) || !FRAME_TYPES.has(type as StudioFrameType)) {
     throw new WireError(`studio wire frame has unknown type: ${String(type)}`)
   }
-  const validate = VALIDATORS[type as StudioFrameType]
-  if (!validate(parsed)) {
-    throw new WireError(`studio wire frame of type ${type} failed shape validation`)
+  const frameType = type as StudioFrameType
+  for (const [field, check] of Object.entries(SHAPES[frameType])) {
+    if (!check(parsed[field], parsed)) {
+      throw new WireError(`studio wire frame of type ${frameType} failed shape validation at field ${field}`, { frameType, field })
+    }
   }
   return parsed as StudioFrame
 }

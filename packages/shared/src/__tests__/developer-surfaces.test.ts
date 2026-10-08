@@ -9,9 +9,10 @@ import {
   developerSurfaceThinEventAllowed,
   developerSurfacesOfAction,
   intersectDeveloperSurfaces,
-  isDeveloperSurfaceState,
+  isDeveloperSurfaceWire,
   parseDeveloperSurfaces,
   projectWorktreeSnapshotForSurfaces,
+  readDeveloperSurfaces,
   repositoryFeedOffered,
 } from '../developer-surfaces'
 import { FORWARDED_ACTIONS } from '../studio-wire/actions'
@@ -56,9 +57,22 @@ describe('parseDeveloperSurfaces', () => {
   })
 
   it('guards the wire shape', () => {
-    expect(isDeveloperSurfaceState(ALL_DEVELOPER_SURFACES_ENABLED)).toBe(true)
-    expect(isDeveloperSurfaceState({ sourceControl: true })).toBe(false)
-    expect(isDeveloperSurfaceState(null)).toBe(false)
+    expect(isDeveloperSurfaceWire(ALL_DEVELOPER_SURFACES_ENABLED)).toBe(true)
+    expect(isDeveloperSurfaceWire({ sourceControl: true })).toBe(true)
+    expect(isDeveloperSurfaceWire({ sourceControl: 'enabled' })).toBe(false)
+    expect(isDeveloperSurfaceWire([])).toBe(false)
+    expect(isDeveloperSurfaceWire(null)).toBe(false)
+  })
+
+  it('reads a surface the server does not name as on', () => {
+    expect(readDeveloperSurfaces(undefined)).toEqual(ALL_DEVELOPER_SURFACES_ENABLED)
+    expect(readDeveloperSurfaces({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true })).toEqual({
+      sourceControl: false,
+      commitGraph: true,
+      repositoryStatus: true,
+      worktrees: true,
+      profiling: true,
+    })
   })
 })
 

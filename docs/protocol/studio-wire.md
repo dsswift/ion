@@ -757,7 +757,9 @@ Each surface is `"enabled"` or `"disabled"` in config, and on when absent.
 Both frames carry `policyHash`, a hash of the enterprise policy, so a client
 learns the policy changed without comparing values. A server that predates
 developer surfaces sends neither field on its welcome; a client reads that as
-every surface offered. `policy.getDeveloperSurfaces` returns the same
+every surface offered. A server that predates one surface omits that key, and
+a client reads the missing surface as offered too. A client must never reject
+a welcome for a surface it knows and the server does not name. `policy.getDeveloperSurfaces` returns the same
 `{developerSurfaces, policyHash}` on request and nothing else.
 
 A disabled surface is refused, not only hidden:
