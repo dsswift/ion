@@ -72,6 +72,7 @@ function makeHarness(paneOverrides: Record<string, unknown>, tabOverrides: Recor
     load: () => slice.loadSkeletonMessages!('tab-1'),
     rehydrate: () => slice.rehydrateFailedHistory!(),
     inst: () => activeInstance(get().conversationPanes, 'tab-1')!,
+    tab: () => get().tabs[0] as unknown as { conversationId: string | null },
     appendLive: (msg: Message) => {
       const pane = state.conversationPanes.get('tab-1')!
       const instances = pane.instances.map((i) => ({ ...i, messages: [...i.messages, msg] }))
@@ -290,6 +291,20 @@ describe('loadSkeletonMessages — externalized content (schema v4)', () => {
     expect(inst.messages).toHaveLength(1)
     expect(inst.messages[0].role).toBe('harness')
     expect(inst.historyHydrated).toBe(true)
+  })
+
+  it('loads the last known conversation when the tab id is blank, and adopts it', async () => {
+    mockLoadChainHistory.mockResolvedValue([{ role: 'user', content: 'kept prompt' }])
+    const h = makeHarness(
+      { messages: [], messageCount: 1, historyHydrated: false },
+      { conversationId: '', lastKnownSessionId: 'conv-1' },
+    )
+
+    await h.load()
+
+    expect(mockLoadChainHistory).toHaveBeenCalledWith(['conv-old', 'conv-1'])
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['kept prompt'])
+    expect(h.tab().conversationId).toBe('conv-1')
   })
 
   it('skips engine chain when tab has no conversationId', async () => {
