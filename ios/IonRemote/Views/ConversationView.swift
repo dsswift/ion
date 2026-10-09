@@ -48,7 +48,6 @@ struct ConversationView: View {
     /// A clearing command the operator submitted but has not confirmed yet.
     /// Held here so the send is deferred until they accept losing the history.
     @State var pendingClearingCommand: ClearingCommand.Pending?
-    @State var showAttachMenu = false
     @State var showAttachments = false
     @State var showBranches = false
     @State var showFilePicker = false

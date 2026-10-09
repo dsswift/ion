@@ -94,6 +94,19 @@ describe('studio:tabs-sync projection', () => {
     expect(result.queuedAttachments['tab-bob']).toBeUndefined()
   })
 
+  it('with sign-in configured, a settled conversation reaches its owner and nobody else', () => {
+    setCurrentServerConfig({
+      ...currentServerConfig(),
+      oidc: { issuer: 'https://issuer.example.org', audience: 'ion-server', scope: 'api://ion-server/.default', clientId: 'browser-client', rolesToScopes: {}, defaultScopes: [], allowedSubjects: [], clientSecret: '' },
+    })
+
+    const mine = projectForConnection('studio:tabs-sync', basePayload, connFor('local:alice')) as typeof basePayload
+    const theirs = projectForConnection('studio:tabs-sync', basePayload, connFor('local:bob')) as typeof basePayload
+
+    expect(mine.settledHistory?.map((t) => t.id)).toEqual(['tab-alice-old'])
+    expect(theirs.settledHistory).toEqual([])
+  })
+
   it('nulls activeTabIndex when the active tab was filtered away', () => {
     const conn = connFor('local:alice') // activeTabIndex 1 points at tab-bob, which Alice does not own
     const result = projectForConnection('studio:tabs-sync', basePayload, conn) as typeof basePayload

@@ -11,7 +11,7 @@ struct ComposerAction: Codable, Equatable, Sendable {
     /// The extension that contributed it, assigned by the engine.
     let producer: String
     let label: String
-    /// A Phosphor icon name from Studio. iOS shows no icon in the menu.
+    /// A Phosphor icon name from Studio.
     let icon: String
     /// The slash command sent when the row is chosen.
     let command: String
@@ -20,4 +20,7 @@ struct ComposerAction: Codable, Equatable, Sendable {
 
     /// Unique across extensions: `id` is unique only within one producer.
     var menuKey: String { "\(producer):\(id)" }
+
+    /// The menu icon. A name Studio does not know gets the extension icon.
+    var systemImage: String { PhosphorSymbol.systemName(for: icon, fallback: "puzzlepiece.extension") }
 }

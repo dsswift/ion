@@ -7,6 +7,9 @@ import Foundation
 struct RemoteQuickTool: Codable, Equatable, Sendable, Identifiable {
     let id: String
     let name: String
-    /// A Phosphor icon name from Studio. iOS shows no icon in the menu.
+    /// A Phosphor icon name from Studio.
     let icon: String
+
+    /// The menu icon. A name Studio does not know gets Studio's lightning.
+    var systemImage: String { PhosphorSymbol.systemName(for: icon, fallback: "bolt") }
 }
