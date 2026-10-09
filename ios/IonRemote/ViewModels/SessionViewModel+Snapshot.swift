@@ -42,10 +42,9 @@ extension SessionViewModel {
             connectionState = .connected
             cancelReconnectSafetyTimer()
             // RC-20: a reconnect gives the desktop a fresh chance to answer image
-            // fetches, so clear any transient failed/orphaned-pending state that
-            // accrued while disconnected — otherwise an image that failed to fetch
-            // during the outage stays blank forever.
-            RemoteImageFetcher.shared.resetTransientState()
+            // fetches, so ask again for every one still waiting — otherwise an
+            // image requested during the outage stays blank forever.
+            RemoteImageFetcher.shared.retryPending(viewModel: self)
             // The transport is now proven usable (we just got a real
             // snapshot back from the desktop), so release any commands
             // that were deferred via `runWhenConnected` during the

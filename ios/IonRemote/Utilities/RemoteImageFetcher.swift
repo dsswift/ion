@@ -75,10 +75,24 @@ final class RemoteImageFetcher {
         failureReasons[path]
     }
 
-    /// Clear transient fetch state on a transport reconnect or unpair. A
-    /// reconnect gives the desktop a fresh chance to answer, so any prior
-    /// failure/orphaned-pending must not suppress a retry. Called from the
-    /// reconnect path and alongside AttachmentImageCache.clearAll() on unpair.
+    /// Ask again for every fetch still waiting, on a transport reconnect. A
+    /// request made while disconnected was never sent, and one in flight when
+    /// the connection dropped will never be answered; the observers of both
+    /// are still waiting and get their image from this resend.
+    func retryPending(viewModel: SessionViewModel) {
+        failed.removeAll()
+        failureReasons.removeAll()
+        for path in pending.keys {
+            viewModel.send(.fsReadImage(filePath: path), intent: .automaticFireAndForget)
+        }
+        if !pending.isEmpty {
+            DiagnosticLog.log("image fetches resent on reconnect", tag: "image.fetcher", fields: [
+                "count": String(pending.count)
+            ])
+        }
+    }
+
+    /// Forget all fetch state on unpair, alongside AttachmentImageCache.clearAll().
     func resetTransientState() {
         failed.removeAll()
         pending.removeAll()

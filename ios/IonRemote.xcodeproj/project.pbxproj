@@ -524,6 +524,7 @@
 		A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */; };
 		A1B2C3D4E5F60003000401AB /* TerminalHistoryReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */; };
 		A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */; };
+		A1B2C3D4E5F60003000305AA /* AttachmentImageCacheDiskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000306AA /* AttachmentImageCacheDiskTests.swift */; };
 		A1B2C3D4E5F60003000303AA /* FileExplorerDestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */; };
@@ -1540,6 +1541,7 @@
 		A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotTerminalInstanceGateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalHistoryReplayTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorReopenTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60003000306AA /* AttachmentImageCacheDiskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCacheDiskTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerDestinationTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineRunStalled.swift"; sourceTree = "<group>"; };
@@ -2516,6 +2518,7 @@
 				A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */,
 				A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
+				A1B2C3D4E5F60003000306AA /* AttachmentImageCacheDiskTests.swift */,
 				A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */,
 				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
 				TGSTEER000000000000008 /* ToolGroupingSteerTests.swift */,
@@ -4321,6 +4324,7 @@
 				A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */,
 				A1B2C3D4E5F60003000401AB /* TerminalHistoryReplayTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
+				A1B2C3D4E5F60003000305AA /* AttachmentImageCacheDiskTests.swift in Sources */,
 				A1B2C3D4E5F60003000303AA /* FileExplorerDestinationTests.swift in Sources */,
 				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
 				TGSTEER000000000000007 /* ToolGroupingSteerTests.swift in Sources */,

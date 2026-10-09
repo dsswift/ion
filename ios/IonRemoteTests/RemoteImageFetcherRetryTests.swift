@@ -36,24 +36,26 @@ final class RemoteImageFetcherRetryTests: XCTestCase {
         XCTAssertTrue(retryResolved, "a successful deliver after a transient failure resolves the retry")
     }
 
-    func testResetTransientStateClearsFailed() {
+    func testReconnectKeepsWaitingObserversAndClearsFailures() {
         let fetcher = RemoteImageFetcher.shared
         fetcher.resetTransientState()
         let vm = SessionViewModel()
-        let path = "/tmp/img-\(UUID().uuidString).png"
+        let failedPath = "/tmp/img-\(UUID().uuidString).png"
+        let waitingPath = "/tmp/img-\(UUID().uuidString).png"
 
-        // Drive a request + nil deliver, then reset.
-        fetcher.request(path: path, viewModel: vm) { _ in }
-        fetcher.deliver(path: path, dataUrl: nil)
-        fetcher.resetTransientState()
+        fetcher.request(path: failedPath, viewModel: vm) { _ in }
+        fetcher.deliver(path: failedPath, dataUrl: nil, error: "The connection dropped")
 
-        // After reset, a fresh request enters pending (re-fetch), never a
-        // synchronous nil short-circuit.
-        var resolvedSync = false
-        var resolved = false
-        fetcher.request(path: path, viewModel: vm) { _ in resolved = true }
-        resolvedSync = resolved
-        XCTAssertFalse(resolvedSync, "resetTransientState must clear failed so a fresh request re-fetches")
+        // Asked while disconnected: the send was dropped, the observer waits.
+        var waiting: UIImage?
+        fetcher.request(path: waitingPath, viewModel: vm) { waiting = $0 }
+
+        fetcher.retryPending(viewModel: vm)
+        XCTAssertNil(fetcher.failureReason(for: failedPath), "a reconnect clears the old failure")
+
+        let onePx = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        fetcher.deliver(path: waitingPath, dataUrl: onePx)
+        XCTAssertNotNil(waiting, "the observer that was waiting across the reconnect gets the image")
     }
 
     func testFailureReasonIsKeptUntilTheFetchSucceeds() {
