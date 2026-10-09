@@ -185,6 +185,34 @@ final class TranscriptViewModelTests: XCTestCase {
         XCTAssertTrue(vm.transcriptResyncing.contains("t"))
     }
 
+    func testASnapshotOpensNoTranscriptThePhoneHasNotAskedFor() {
+        let vm = SessionViewModel()
+        vm.handleSnapshot(snapshotTabs: [T.tab("a"), T.tab("b")], recentDirs: [])
+        XCTAssertNil(queuedRequest(vm, "a"))
+        XCTAssertNil(queuedRequest(vm, "b"))
+        XCTAssertTrue(vm.transcriptResyncing.isEmpty)
+    }
+
+    func testAFinishedRunInAConversationNotHeldFetchesItsRowsToSpeakThem() throws {
+        let vm = SessionViewModel()
+        vm.tabs = [T.tab("t", status: .running)]
+        let wasEnabled = vm.voiceService.isEnabled
+        defer { vm.voiceService.isEnabled = wasEnabled }
+
+        vm.voiceService.isEnabled = false
+        vm.handleTaskComplete(tabId: "t")
+        XCTAssertNil(queuedRequest(vm, "t"), "with speech off there is nothing to fetch rows for")
+
+        vm.voiceService.isEnabled = true
+        vm.handleTaskComplete(tabId: "t")
+        XCTAssertNotNil(queuedRequest(vm, "t"))
+        XCTAssertTrue(vm.speechAwaitingTranscript.contains("t"))
+
+        vm.voiceService.isEnabled = false
+        vm.handleTranscriptPage(T.page(tabId: "t", rows: [T.row("u1", .user), T.row("a1")]))
+        XCTAssertFalse(vm.speechAwaitingTranscript.contains("t"))
+    }
+
     // MARK: - Older pages
 
     func testScrollingUpAsksForThePageBeforeTheFirstRowHeld() throws {

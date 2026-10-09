@@ -27,9 +27,8 @@ extension ConversationView {
     /// Open this conversation's transcript stream.
     ///
     /// Routed through `loadConversationIfNeeded`: this is a view-appear path,
-    /// and the snapshot pre-load has normally already opened the transcript
-    /// by the time the view is pushed. The retry banner calls
-    /// `loadConversation` directly.
+    /// and a conversation opened before is already held. The retry banner
+    /// calls `loadConversation` directly.
     @MainActor
     func loadConversationHistory() {
         viewModel.loadConversationIfNeeded(tabId: tabId)

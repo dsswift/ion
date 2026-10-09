@@ -136,6 +136,7 @@ extension SessionViewModel {
         // The server confirmed the revision; the rows it stands for must
         // still be where the views read them.
         if page.unchanged { verifyTranscriptWindow(tabId: tabId) }
+        if page.isNewest, speechAwaitingTranscript.remove(tabId) != nil { speakLastAssistantRow(tabId: tabId) }
         restartPendingLoadTimers()
     }
 
@@ -151,6 +152,7 @@ extension SessionViewModel {
         if isNewest {
             transcriptResyncing.remove(tabId)
             loadingConversation.remove(tabId)
+            speechAwaitingTranscript.remove(tabId)
             cancelLoadTimer(tabId: tabId)
             if reason != "no_stream" { conversationLoadFailed.insert(tabId) }
         } else {
@@ -232,6 +234,7 @@ extension SessionViewModel {
         transcriptStreams.removeValue(forKey: tabId)
         transcriptResyncing.remove(tabId)
         transcriptOlderInFlight.remove(tabId)
+        speechAwaitingTranscript.remove(tabId)
         pendingPrompts.removeValue(forKey: tabId)
         loadingConversation.remove(tabId)
         conversationLoadFailed.remove(tabId)

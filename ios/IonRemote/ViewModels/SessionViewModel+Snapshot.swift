@@ -309,15 +309,12 @@ extension SessionViewModel {
                     "instances": instances.map(\.id).joined(separator: ","),
                     "active": tab.activeConversationInstanceId ?? "nil"
                 ])
-                // Open the transcript of every conversation the phone does
-                // not hold yet, so a conversation renders complete the moment
-                // it is opened. One already held is kept current by patches;
-                // this only checks its rows survived the merge above.
-                if transcriptStreams[tab.id] == nil {
-                    requestTranscript(tabId: tab.id, reason: "snapshot_preload")
-                } else {
-                    verifyTranscriptWindow(tabId: tab.id)
-                }
+                // A transcript is opened when its conversation is, never
+                // here: a snapshot lists every conversation, and fetching
+                // them all is far more than a person reads. One already
+                // held is kept current by patches; this only checks its rows
+                // survived the merge above.
+                verifyTranscriptWindow(tabId: tab.id)
             }
         }
         // Cache layout for the active device so reconnects restore it.
