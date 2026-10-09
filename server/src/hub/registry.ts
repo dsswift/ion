@@ -7,7 +7,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { HUB_PROTOCOL_VERSION, type HubAction, type HubActionResponse, type HubAgentFrame, type HubFrame, type HubRefusal, type HubServer } from '@ion/shared/fleet-hub'
+import { HUB_PROTOCOL_VERSION, type HubAction, type HubActionResponse, type HubAgentFrame, type HubEnrollmentToken, type HubFrame, type HubRefusal, type HubServer } from '@ion/shared/fleet-hub'
 import type { FleetReport } from '@ion/shared/types-fleet'
 import { mergeFleetDeploy, parseFleetDeployRecord, type FleetDeploy } from '@ion/shared/types-fleet-deploy'
 import type { HostInstallProgress } from '@ion/shared/host-install'
@@ -43,6 +43,13 @@ interface ServerRecord {
   install?: HostInstallProgress
 }
 
+/** A token made on the hub's page. It lets one server join, once, until it expires. */
+interface IssuedToken {
+  /** SHA-256 of the token. */
+  hash: string
+  expiresAt: number
+}
+
 interface RegistryFile {
   version: 1
   servers: ServerRecord[]
@@ -50,6 +57,8 @@ interface RegistryFile {
   deploys?: FleetDeploy[]
   /** Servers an operator removed. Their old credential is answered `removed`; the enrollment token lets one back in. */
   removed: string[]
+  /** Tokens made on the page that no server has joined with yet. Absent in a file written before the hub made them. */
+  issuedTokens?: IssuedToken[]
 }
 
 /** The part of a socket the registry uses. */
@@ -108,6 +117,7 @@ export class HubRegistry {
   private readonly servers = new Map<string, ServerRecord>()
   private readonly removed = new Set<string>()
   private deploys: FleetDeploy[] = []
+  private issued: IssuedToken[] = []
   private readonly sockets = new Map<string, AgentSocket>()
   private readonly pending = new Map<string, { serverId: string; resolve(response: HubActionResponse): void; timer: ReturnType<typeof setTimeout> }>()
   private readonly listeners = new Set<() => void>()
@@ -127,7 +137,10 @@ export class HubRegistry {
         const record = parseFleetDeployRecord(held)
         if (record && typeof held.receivedAt === 'number') this.deploys.push({ ...record, receivedAt: held.receivedAt, reportedBy: held.reportedBy })
       }
-      log('hub servers loaded', { server_count: this.servers.size, removed_count: this.removed.size, deploy_count: this.deploys.length })
+      for (const held of Array.isArray(file.issuedTokens) ? file.issuedTokens : []) {
+        if (typeof held?.hash === 'string' && typeof held.expiresAt === 'number' && held.expiresAt > Date.now()) this.issued.push({ hash: held.hash, expiresAt: held.expiresAt })
+      }
+      log('hub servers loaded', { server_count: this.servers.size, removed_count: this.removed.size, deploy_count: this.deploys.length, issued_token_count: this.issued.length })
     } catch (err) {
       warn('hub-servers.json unreadable; starting with no servers', { error: String(err) })
     }
@@ -161,7 +174,8 @@ export class HubRegistry {
       return { ok: true, id, welcome: { type: 'hub_welcome', hubLabel: this.opts.label } }
     }
     const token = typeof frame.enrollmentToken === 'string' ? frame.enrollmentToken : ''
-    if (!token || !this.opts.enrollmentTokens.some((accepted) => same(sha256(accepted), sha256(token)))) {
+    const tokenKind = token ? this.acceptToken(token) : null
+    if (!tokenKind) {
       warn('hello refused: enrollment token not accepted', { environment_id: id, has_token: !!token })
       return { ok: false, reason: 'bad_enrollment_token' }
     }
@@ -179,8 +193,33 @@ export class HubRegistry {
     })
     this.removed.delete(id)
     this.saveNow()
-    log('server enrolled', { environment_id: id, label: frame.label, re_enrolled: !!record })
+    log('server enrolled', { environment_id: id, label: frame.label, re_enrolled: !!record, token_kind: tokenKind })
     return { ok: true, id, welcome: { type: 'hub_welcome', hubLabel: this.opts.label, credential } }
+  }
+
+  /**
+   * Whether a token lets a server join: one from `hub.json`, which stays good,
+   * or one made on the page, which is spent here. Null when it is neither.
+   */
+  private acceptToken(token: string): 'configured' | 'issued' | null {
+    const hash = sha256(token)
+    if (this.opts.enrollmentTokens.some((accepted) => same(sha256(accepted), hash))) return 'configured'
+    const now = Date.now()
+    const held = this.issued.find((t) => t.expiresAt > now && same(t.hash, hash))
+    if (!held) return null
+    this.issued = this.issued.filter((t) => t !== held)
+    return 'issued'
+  }
+
+  /** Makes a token one server can join with, once, within `ttlMs`. The hub keeps only its hash. */
+  issueEnrollmentToken(ttlMs: number): HubEnrollmentToken {
+    const now = Date.now()
+    const token = randomBytes(24).toString('base64url')
+    const expiresAt = now + ttlMs
+    this.issued = [...this.issued.filter((t) => t.expiresAt > now), { hash: sha256(token), expiresAt }]
+    this.saveNow()
+    log('enrollment token issued', { expires_at: expiresAt, outstanding_count: this.issued.length })
+    return { token, expiresAt }
   }
 
   /** The server's socket is open. An older socket of the same server is closed: one server, one link. */
@@ -357,7 +396,7 @@ export class HubRegistry {
   private saveNow(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.saveTimer = null
-    const file: RegistryFile = { version: 1, servers: [...this.servers.values()], removed: [...this.removed], deploys: this.deploys }
+    const file: RegistryFile = { version: 1, servers: [...this.servers.values()], removed: [...this.removed], deploys: this.deploys, issuedTokens: this.issued }
     try {
       atomicWriteFileSync(join(this.opts.dir, FILE), JSON.stringify(file), 0o600)
     } catch (err) {

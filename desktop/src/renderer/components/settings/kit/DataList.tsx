@@ -116,7 +116,7 @@ export function DataList<T>(props: DataListProps<T>): React.JSX.Element {
             {count && <span style={{ fontSize: KIT.fontTiny, color: colors.textTertiary, whiteSpace: 'nowrap' }}>{count}</span>}
             <div style={{ flex: 1 }} />
             {showFilter && (
-              <div style={{ position: 'relative', width: 200 }}>
+              <div style={{ position: 'relative', flex: '0 1 200px', minWidth: 0 }}>
                 <MagnifyingGlass size={12} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)', color: colors.textTertiary, pointerEvents: 'none' }} />
                 <input
                   aria-label={`Filter ${label}`}

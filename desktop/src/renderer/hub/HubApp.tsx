@@ -2,7 +2,7 @@
  * HubApp — the Fleet Hub portal. Three views of the servers that report to
  * the hub: Quota (each provider's limits summed over its accounts, and
  * every account), Servers (the deploys the hub was told of, then each server
- * and what it can be asked to do), and Compatibility (which servers can
+ * and what it can be asked to do, and the way to add one), and Compatibility (which servers can
  * work with which). A hub whose `hub.json` turns Quota off opens on Servers.
  */
 import React, { useEffect, useMemo, useState } from 'react'
@@ -15,7 +15,7 @@ import { Button, Chip, EmptyState, KIT, Tabs, type Tone } from '../components/se
 import { FleetCompatibility } from '../components/settings/pages/fleet/FleetCompatibility'
 import { FleetQuotaTab } from '../components/settings/pages/fleet/FleetQuotaTab'
 import { FleetTotals } from '../components/settings/pages/fleet/FleetTotals'
-import { removeHubServer, renameHubServer, runHubAction, signOut, useHubFleet } from './hub-client'
+import { createEnrollmentToken, removeHubServer, renameHubServer, runHubAction, signOut, useHubFleet, type IssuedEnrollmentToken } from './hub-client'
 import { HubDeploys } from './HubDeploys'
 import { HubServers } from './HubServers'
 import { rError } from '../rendererLogger'
@@ -93,6 +93,12 @@ export function HubApp(): React.JSX.Element {
     await renameHubServer(server.id, label).catch((err: unknown) => rError('hub.app', 'server rename failed', { server_id: server.id, error: String(err) }))
   }
 
+  const issueToken = (): Promise<IssuedEnrollmentToken> =>
+    createEnrollmentToken().catch((err: unknown): IssuedEnrollmentToken => {
+      rError('hub.app', 'enrollment token request failed', { error: String(err) })
+      return { ok: false, error: 'The hub could not be reached.' }
+    })
+
   return (
     // The renderer's base styles lock the window so Studio scrolls inside its own panels. This page has none, so it is its own scroller.
     <div data-hub-scroller style={{ height: '100dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', userSelect: 'text', background: colors.containerBg, color: colors.textPrimary, fontFamily: 'var(--ion-font-family, system-ui, sans-serif)' }}>
@@ -126,7 +132,7 @@ export function HubApp(): React.JSX.Element {
             )}
             {tab === 'servers' && <FleetTotals totals={totals} loading={false} />}
             {tab === 'servers' && <HubDeploys deploys={fleet.deploys} servers={hubServers} now={now} />}
-            {tab === 'servers' && <HubServers servers={hubServers} canManage={canManage} showUsage={showQuota} revealEmails={revealEmails} now={now} onAction={act} onRemove={remove} onRename={rename} />}
+            {tab === 'servers' && <HubServers servers={hubServers} canManage={canManage} showUsage={showQuota} revealEmails={revealEmails} now={now} onAction={act} onRemove={remove} onRename={rename} hubUrl={window.location.origin} onIssueToken={issueToken} />}
             {tab === 'compatibility' && <FleetCompatibility servers={servers} />}
           </>
         )}

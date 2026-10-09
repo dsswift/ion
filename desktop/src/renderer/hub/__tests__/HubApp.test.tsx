@@ -45,12 +45,13 @@ const menu = async (row: number): Promise<string[]> => {
 async function mount(response: { status: number; body?: unknown }): Promise<void> {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/fleet') return { status: response.status, ok: response.status === 200, json: async () => response.body }
+    if (url === '/api/enrollment-tokens') return { status: 200, ok: true, json: async () => ({ token: 'one-time-token', expiresAt: NOW + 30 * 60_000 }) }
     if (init?.method === 'POST') return { status: 200, ok: true, json: async () => ({ ok: true, value: {} }) }
     return { status: 200, ok: true, json: async () => ({}) }
   })
   vi.stubGlobal('fetch', fetchMock)
   vi.stubGlobal('EventSource', FakeEvents)
-  Object.defineProperty(window, 'location', { configurable: true, value: { pathname: '/', search: '', assign } })
+  Object.defineProperty(window, 'location', { configurable: true, value: { pathname: '/', search: '', origin: 'https://hub.example.org', assign } })
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -98,6 +99,36 @@ describe('HubApp', () => {
     const call = fetchMock.mock.calls.find(([url]) => url === '/api/servers/env-1/actions')!
     expect(call[1]).toMatchObject({ method: 'POST', headers: { 'x-ion-hub': '1' }, body: JSON.stringify({ action: 'environment.server.restart', args: [] }) })
     expect(host.textContent).toContain('server one is restarting.')
+  })
+
+  it('shows the hub\'s address and a new enrollment token to copy, on a phone too, to someone who may manage', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }))
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    await mount({ status: 200, body: fleetOf(true, []) })
+    tab('servers')
+    const button = (name: string): HTMLElement => [...host.querySelectorAll<HTMLElement>('button')].find((b) => b.textContent?.trim() === name)!
+    await act(async () => { button('Add server').click() })
+    await flush()
+    const call = fetchMock.mock.calls.find(([url]) => url === '/api/enrollment-tokens')!
+    expect(call[1]).toMatchObject({ method: 'POST', headers: { 'x-ion-hub': '1' } })
+    const panel = host.querySelector('section[aria-label="Add a server"]')!
+    expect(panel.querySelector('[data-add-server="address"]')?.textContent).toBe('https://hub.example.org')
+    expect(panel.querySelector('[data-add-server="token"]')?.textContent).toBe('one-time-token')
+    await act(async () => { panel.querySelector<HTMLElement>('[aria-label="Copy the enrollment token"]')!.click() })
+    await flush()
+    expect(writeText).toHaveBeenCalledWith('one-time-token')
+    expect(panel.querySelector('[aria-label="Copy the enrollment token"]')?.textContent).toBe('Copied')
+    await act(async () => { panel.querySelector<HTMLElement>('[aria-label="Copy the hub address"]')!.click() })
+    expect(writeText).toHaveBeenCalledWith('https://hub.example.org')
+    await act(async () => { button('Done').click() })
+    expect(host.querySelector('section[aria-label="Add a server"]')).toBeNull()
+  })
+
+  it('offers no way to add a server to someone who may not manage', async () => {
+    await mount({ status: 200, body: fleetOf(false, [server({})]) })
+    tab('servers')
+    expect(host.textContent).not.toContain('Add server')
   })
 
   it('renames a server on the hub, and shows the name it reports under beside it', async () => {

@@ -4,7 +4,7 @@
  * that answers "sign in" sends the page to the hub's sign-in.
  */
 import { useEffect, useState } from 'react'
-import type { HubAction, HubActionResponse, HubFleet } from '@ion/shared/fleet-hub'
+import type { HubAction, HubActionResponse, HubEnrollmentToken, HubFleet } from '@ion/shared/fleet-hub'
 import { rError, rInfo, rWarn } from '../rendererLogger'
 
 /** Marks a request as made by the hub's own page; the hub refuses a change without it. */
@@ -106,6 +106,24 @@ export async function renameHubServer(serverId: string, label: string): Promise<
   const res = await fetch(`/api/servers/${encodeURIComponent(serverId)}`, { method: 'PATCH', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...INTENT }, body: JSON.stringify({ label }) })
   rInfo('hub.client', 'server rename answered', { server_id: serverId, status: res.status })
   return res.ok
+}
+
+export type IssuedEnrollmentToken = { ok: true; issued: HubEnrollmentToken } | { ok: false; error: string }
+
+/** Has the hub make a token one server can join with. */
+export async function createEnrollmentToken(): Promise<IssuedEnrollmentToken> {
+  const res = await fetch('/api/enrollment-tokens', { method: 'POST', credentials: 'same-origin', headers: INTENT })
+  if (res.status === 401) {
+    signIn()
+    return { ok: false, error: 'Sign in again.' }
+  }
+  if (!res.ok) {
+    rWarn('hub.client', 'hub refused an enrollment token', { status: res.status })
+    return { ok: false, error: res.status === 403 ? 'You may not add servers to this hub.' : `The hub answered ${res.status}.` }
+  }
+  const issued = (await res.json()) as HubEnrollmentToken
+  rInfo('hub.client', 'enrollment token issued', { expires_at: issued.expiresAt })
+  return { ok: true, issued }
 }
 
 export async function signOut(): Promise<void> {

@@ -19,6 +19,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 }
 
 export const DEFAULT_HUB_PORT = 7400
+export const DEFAULT_ENROLLMENT_TOKEN_MINUTES = 30
 
 export interface HubConfig {
   /** The hub's name, shown on its page and on each server that reports to it. */
@@ -32,6 +33,8 @@ export interface HubConfig {
   oidc: ServerOidcConfig | null
   /** Tokens that let a server enroll, resolved past any `secretstore:` reference. */
   enrollmentTokens: string[]
+  /** How long a token made on the hub's page lets a server join. */
+  enrollmentTokenMinutes: number
   /** Where the portal's files are, for an install that keeps them somewhere other than beside the bundle. */
   webDir?: string
   /** The views the page shows. Each is on unless `hub.json` turns it off. */
@@ -60,6 +63,8 @@ export function loadHubConfig(dir: string): HubConfig {
     .filter((t): t is string => typeof t === 'string' && t.length > 0)
     .map((t) => resolveSecretRef(t, dir))
     .filter((t) => t.length > 0)
+  const tokenMinutes = typeof enrollment.tokenMinutes === 'number' && Number.isFinite(enrollment.tokenMinutes) && enrollment.tokenMinutes > 0 ? enrollment.tokenMinutes : DEFAULT_ENROLLMENT_TOKEN_MINUTES
+  if (enrollment.tokenMinutes !== undefined && tokenMinutes !== enrollment.tokenMinutes) warn('hub.json enrollment.tokenMinutes ignored: expected a number above zero', { value: enrollment.tokenMinutes })
   const oidc = parseOidc(raw.oidc, dir)
   const views = raw.views && typeof raw.views === 'object' ? (raw.views as Record<string, unknown>) : {}
   if (views.quota !== undefined && typeof views.quota !== 'boolean') warn('hub.json views.quota ignored: expected true or false', { value: views.quota })
@@ -68,9 +73,10 @@ export function loadHubConfig(dir: string): HubConfig {
     listen: { port, host: typeof listen.host === 'string' && listen.host ? listen.host : undefined },
     oidc,
     enrollmentTokens: [...new Set(tokens)],
+    enrollmentTokenMinutes: tokenMinutes,
     webDir: typeof raw.webDir === 'string' && raw.webDir ? raw.webDir : undefined,
     views: { quota: views.quota !== false },
   }
-  log('hub config loaded', { label: config.label, port, has_oidc: oidc !== null, enrollment_token_count: config.enrollmentTokens.length, quota_view: config.views.quota })
+  log('hub config loaded', { label: config.label, port, has_oidc: oidc !== null, enrollment_token_count: config.enrollmentTokens.length, enrollment_token_minutes: tokenMinutes, quota_view: config.views.quota })
   return config
 }
