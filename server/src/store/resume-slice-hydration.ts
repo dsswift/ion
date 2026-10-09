@@ -227,7 +227,11 @@ async function hydrate(
   }
 
   const tab = get().tabs.find((t) => t.id === tabId);
-  if (!tab || !tab.conversationId) {
+  // A blank conversationId beside a lastKnownSessionId is the same
+  // conversation: the id is what the tab was running, and refusing it here
+  // leaves a whole transcript on disk unread.
+  const conversationId = tab?.conversationId || tab?.lastKnownSessionId || null;
+  if (!tab || !conversationId) {
     // Both halves of this are silent failures a user sees as an empty
     // transcript, so say which one happened: a tab the store does not hold
     // yet is a race with restoration, a tab with no conversationId has no
@@ -237,6 +241,15 @@ async function hydrate(
       reason: tab ? "tab has no conversationId" : "tab not in the store",
     });
     return;
+  }
+  if (!tab.conversationId) {
+    rInfo("session.restore", "adopted the last known conversation; the tab id was blank", {
+      tab_id: tabId.slice(0, 8),
+      conversation_id: conversationId,
+    });
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, conversationId } : t)),
+    }));
   }
   // Precise hydration gate (needsHistoryHydration): the historyHydrated
   // marker, not message emptiness — live events append to skeleton panes
@@ -268,7 +281,7 @@ async function hydrate(
     // No retries — the engine is already running and the files
     // are on disk. The old code used 3 retries with exponential
     // backoff (2s, 4s) causing 6+ second waits on tab switch.
-    const allSessionIds = [...tab.historicalSessionIds, tab.conversationId];
+    const allSessionIds = [...tab.historicalSessionIds, conversationId];
     const history = await loadChainHistory(allSessionIds);
 
     // Shared mapper: internal rows filtered, marker rows converted to

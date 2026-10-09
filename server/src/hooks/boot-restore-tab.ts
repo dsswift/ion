@@ -33,6 +33,7 @@ import {
 import type { RestoredTabId } from './boot-restore-types'
 import { restoredInboxTabFields } from './tab-inbox-restore'
 import { debug as _debug, warn as _warn } from '../logger'
+import { conversationExists } from '../session-meta'
 import { existsSync } from 'fs'
 
 const TAG = 'boot-restore'
@@ -95,6 +96,20 @@ export async function restoreOneTab(
       has_worktree: !!st.worktree,
       is_terminal_only: !!st.isTerminalOnly,
     })
+  }
+
+  // A saved tab can carry a blank conversationId beside a lastKnownSessionId
+  // that names the conversation it was running. Dispatching on the blank
+  // files it as sessionless, and a sessionless tab never loads history, so
+  // the operator sees an empty transcript for a conversation that is whole
+  // on disk. The last known conversation is the identity when its file exists.
+  if (!st.conversationId && st.lastKnownSessionId && conversationExists(st.lastKnownSessionId)) {
+    debug('restoring under the last known conversation; the saved id was blank', {
+      tab_id: (st.id ?? '').slice(0, 8),
+      conversation_id: st.lastKnownSessionId,
+    })
+    st = { ...st, conversationId: st.lastKnownSessionId }
+    savedTabs[index] = st
   }
 
   if (st.conversationId && !persistedTabHasExtensions(st)) {
