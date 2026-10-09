@@ -174,6 +174,17 @@ final class StudioEventMapperTests: XCTestCase {
         XCTAssertEqual(page.startIndex, 0)
     }
 
+    func testAnUnchangedReplyIsAPageThatCarriesNoRows() throws {
+        var reply = body(rows: [], anchor: .newest)
+        reply.startIndex = nil
+        reply.unchanged = true
+        let page = try page(reply)
+        XCTAssertTrue(page.unchanged)
+        XCTAssertTrue(page.isNewest)
+        XCTAssertEqual(page.epoch, "e1")
+        XCTAssertEqual(page.rev, 7)
+    }
+
     func testAnOlderPageIsNotTheNewest() throws {
         let page = try page(body(rows: rows, anchor: .before("m-9"), startIndex: 4, total: 9))
         XCTAssertFalse(page.isNewest)

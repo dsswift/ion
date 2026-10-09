@@ -24,10 +24,10 @@ final class DispatchTranscriptViewModelTests: XCTestCase {
         return try JSONDecoder().decode(AgentStateUpdate.self, from: JSONSerialization.data(withJSONObject: raw))
     }
 
-    private func queued(_ vm: SessionViewModel) -> [(conversationId: String, dispatchId: String, before: String?)] {
+    private func queued(_ vm: SessionViewModel) -> [(conversationId: String, dispatchId: String, before: String?, held: TranscriptRevision?)] {
         vm.pendingEssentialQueue.compactMap { entry in
-            if case .loadDispatchTranscript(_, let conversationId, let dispatchId, let before, _) = entry.command {
-                return (conversationId, dispatchId, before)
+            if case .loadDispatchTranscript(_, let conversationId, let dispatchId, let before, _, let held) = entry.command {
+                return (conversationId, dispatchId, before, held)
             }
             return nil
         }
@@ -112,7 +112,14 @@ final class DispatchTranscriptViewModelTests: XCTestCase {
         vm.connectionState = .reconnecting
         vm.handleSnapshot(snapshotTabs: [], recentDirs: [])
         XCTAssertEqual(queued(vm).map(\.conversationId), ["c1"])
+        XCTAssertEqual(queued(vm).first?.held, TranscriptRevision(epoch: T.epoch, rev: 0), "a reconnect names the revision held")
         XCTAssertTrue(vm.dispatchResyncing.contains(key("c1", "d1")))
+
+        var unchanged = page("c1", "d1", rows: [], total: 1)
+        unchanged.unchanged = true
+        vm.handleEvent(.transcriptPage(unchanged))
+        XCTAssertFalse(vm.dispatchResyncing.contains(key("c1", "d1")))
+        XCTAssertEqual(vm.agentConversationMessages[key("c1", "d1")]?.map(\.id), ["u"])
     }
 
     func testPreloadingOpensTheAgentsOtherDispatches() throws {

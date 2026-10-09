@@ -69,8 +69,11 @@ extension SessionViewModel {
     }
 
     /// Ask for a dispatch's newest page (which subscribes to its patches).
+    /// `resume` names the revision held, as for a tab's own transcript.
     @MainActor
-    func requestDispatchTranscript(tabId: String, conversationId: String, dispatchId: String, reason: String, force: Bool = false) {
+    func requestDispatchTranscript(
+        tabId: String, conversationId: String, dispatchId: String, reason: String, force: Bool = false, resume: Bool = false
+    ) {
         let key = Self.dispatchKey(conversationId: conversationId, dispatchId: dispatchId)
         if !force, dispatchResyncing.contains(key) { return }
         DiagnosticLog.log("dispatch transcript resync", tag: "transcript.dispatch", fields: [
@@ -84,7 +87,13 @@ extension SessionViewModel {
         dispatchResyncing.insert(key)
         agentConversationLoading.insert(key)
         removeEssential(key: "loadDispatchTranscript:\(key)")
-        send(.loadDispatchTranscript(tabId: tabId, conversationId: conversationId, dispatchId: dispatchId, before: nil, pageSize: Self.transcriptPageRows), intent: .automaticEssential)
+        send(
+            .loadDispatchTranscript(
+                tabId: tabId, conversationId: conversationId, dispatchId: dispatchId, before: nil,
+                pageSize: Self.transcriptPageRows, held: resume ? dispatchStreams[key]?.revision : nil
+            ),
+            intent: .automaticEssential
+        )
     }
 
     /// Every dispatch stream was subscribed on a connection that is gone.
@@ -92,7 +101,7 @@ extension SessionViewModel {
     func resyncAllDispatchTranscripts(reason: String) {
         for key in Set(dispatchStreams.keys).union(dispatchResyncing).sorted() {
             guard let tabId = dispatchTabs[key], let (conversationId, dispatchId) = Self.splitDispatchKey(key) else { continue }
-            requestDispatchTranscript(tabId: tabId, conversationId: conversationId, dispatchId: dispatchId, reason: reason, force: true)
+            requestDispatchTranscript(tabId: tabId, conversationId: conversationId, dispatchId: dispatchId, reason: reason, force: true, resume: true)
         }
     }
 
@@ -118,9 +127,13 @@ extension SessionViewModel {
             "total": String(page.total),
             "newest": String(page.isNewest),
             "outcome": String(describing: outcome),
+            "unchanged": String(page.unchanged),
         ])
         settleDispatch(outcome, key: key)
-        if case .applied = outcome, let held = stream, held.hasOlder, let firstId = agentConversationMessages[key]?.first?.id {
+        // A confirmed revision may still be missing its older pages: the
+        // request for one can have gone to the connection that dropped.
+        let stands = outcome == .applied || outcome == .ignored("unchanged")
+        if stands, let held = stream, held.hasOlder, let firstId = agentConversationMessages[key]?.first?.id {
             // A dispatch is held whole: fetch the page before this one now.
             DiagnosticLog.log("dispatch transcript older page requested", tag: "transcript.dispatch", fields: [
                 "conversation_id": conversationId, "start_index": String(held.startIndex)

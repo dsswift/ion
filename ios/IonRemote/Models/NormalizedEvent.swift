@@ -643,7 +643,7 @@ enum RemoteEvent: Sendable {
         case switchTo
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         // desktop_transcript_patch and the local transcript_page event.
-        case streamId, epoch, baseRev, rev, total, change, startIndex, rows, isNewest, unavailableReason
+        case streamId, epoch, baseRev, rev, total, change, startIndex, rows, isNewest, unavailableReason, unchanged
         // desktop_terminal_activity payload. `applications` uses the same
         // TerminalWebApplication shape as the snapshot projection.
         case active, processLabel, applications

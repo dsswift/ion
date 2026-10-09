@@ -177,12 +177,12 @@ extension DiagnosticLog {
         case .reviewSettledTab(let tabId):
             log("CMD: reviewSettledTab tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 
-        case .loadConversation(let tabId, let before, let pageSize):
+        case .loadConversation(let tabId, let before, let pageSize, let held):
             // page_size distinguishes a first-paint page from a bulk backfill
             // request, which is the difference between two round trips and
             // two hundred.
             log(
-                "CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil") pageSize=\(pageSize.map(String.init) ?? "default")",
+                "CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil") pageSize=\(pageSize.map(String.init) ?? "default") heldRev=\(held.map { String($0.rev) } ?? "nil")",
                 tag: "ipc",
                 level: .info
             )
@@ -245,8 +245,8 @@ extension DiagnosticLog {
 
         // loadEngineConversation removed (WI-004 / #259) — no log case needed.
 
-        case .loadDispatchTranscript(let tabId, let conversationId, let dispatchId, let before, _):
-            log("CMD: loadDispatchTranscript tabId=\(tabId.prefix(8)) conv=\(conversationId.prefix(8)) dispatch=\(dispatchId.prefix(8)) before=\(before?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
+        case .loadDispatchTranscript(let tabId, let conversationId, let dispatchId, let before, _, let held):
+            log("CMD: loadDispatchTranscript tabId=\(tabId.prefix(8)) conv=\(conversationId.prefix(8)) dispatch=\(dispatchId.prefix(8)) before=\(before?.prefix(8) ?? "nil") heldRev=\(held.map { String($0.rev) } ?? "nil")", tag: "ipc", level: .info)
 
         case .engineSetModel(let tabId, let model, let instId):
             log("CMD: engineSetModel tabId=\(tabId.prefix(8)) model=\(model) inst=\(instId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)

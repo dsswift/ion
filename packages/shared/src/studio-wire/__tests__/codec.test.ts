@@ -86,6 +86,10 @@ describe('studio-wire codec: decodeFrame errors', () => {
     expect(() => decodeFrame(JSON.stringify({ type: 'studio_body_request', tabId: 't', before: 7 }))).toThrow(WireError)
     expect(() => decodeFrame(JSON.stringify({ type: 'studio_body_request', tabId: 't', limit: '200' }))).toThrow(WireError)
     expect(decodeFrame(JSON.stringify({ type: 'studio_body_request', tabId: 't' }))).toEqual({ type: 'studio_body_request', tabId: 't' })
+    expect(() => decodeFrame(JSON.stringify({ type: 'studio_body_request', tabId: 't', held: { epoch: 'e', rev: '3' } }))).toThrow(WireError)
+    expect(() => decodeFrame(JSON.stringify({ type: 'studio_body_request', tabId: 't', held: 'e:3' }))).toThrow(WireError)
+    const resuming = { type: 'studio_body_request', tabId: 't', held: { epoch: 'e', rev: 3 } }
+    expect(decodeFrame(JSON.stringify(resuming))).toEqual(resuming)
   })
 
   it('decodes a studio_hello with a session credential (the browser Studio client -- no token, server resolves it from the ion_session cookie)', () => {

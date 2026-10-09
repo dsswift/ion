@@ -38,13 +38,13 @@ struct StudioTransportCommandMapping: StudioCommandMapping {
             return .drop(reason: "the paired credential carries this client's identity")
         case .unpair:
             return .action(.positional("auth.forgetSelf"))
-        case .loadConversation(let tabId, let before, let pageSize):
+        case .loadConversation(let tabId, let before, let pageSize, let held):
             return .bodyRequest(StudioBodyRequest(
-                tabId: tabId, instanceId: nil, before: before, limit: pageSize ?? Self.defaultHistoryPageSize))
-        case .loadDispatchTranscript(let tabId, let conversationId, let dispatchId, let before, let pageSize):
+                tabId: tabId, instanceId: nil, before: before, limit: pageSize ?? Self.defaultHistoryPageSize, held: held))
+        case .loadDispatchTranscript(let tabId, let conversationId, let dispatchId, let before, let pageSize, let held):
             return .bodyRequest(StudioBodyRequest(
                 tabId: tabId, instanceId: nil, before: before, limit: pageSize,
-                conversationId: conversationId, dispatchId: dispatchId))
+                conversationId: conversationId, dispatchId: dispatchId, held: held))
         case .reportFocus(let tabId, let interceptEnabled):
             let focus = StudioActionCall.positional(
                 "presence.focus", .maybe(tabId), .null, .object(["interceptEnabled": .bool(interceptEnabled)]))

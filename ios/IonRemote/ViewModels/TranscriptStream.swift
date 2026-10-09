@@ -26,6 +26,9 @@ struct TranscriptStream: Equatable, Sendable {
     /// Whether rows older than the window exist on the server.
     var hasOlder: Bool { startIndex > 0 }
 
+    /// The revision held, as a newest-page request names it.
+    var revision: TranscriptRevision { TranscriptRevision(epoch: epoch, rev: rev) }
+
     /// What a snapshot, patch, or page did to the stream.
     enum Outcome: Equatable {
         case applied
@@ -44,7 +47,17 @@ struct TranscriptStream: Equatable, Sendable {
     /// An older page is prepended only when it provably continues the window:
     /// same stream, same epoch, same revision, and it ends exactly where the
     /// window begins.
+    ///
+    /// An `unchanged` page confirms the revision held and changes nothing. If
+    /// the phone no longer holds that revision, it holds something the server
+    /// did not confirm.
     static func apply(page: TranscriptPage, stream: inout TranscriptStream?, rows: inout [Message]) -> Outcome {
+        if page.unchanged {
+            guard let held = stream, held.streamId == page.streamId, held.epoch == page.epoch, held.rev == page.rev else {
+                return .resync("unchanged_not_held")
+            }
+            return .ignored("unchanged")
+        }
         if page.isNewest {
             stream = TranscriptStream(
                 tabId: page.tabId, instanceId: page.instanceId, streamId: page.streamId,

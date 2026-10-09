@@ -143,6 +143,10 @@ struct StudioBodyRequest: Codable, Equatable, Sendable {
     /// dispatched conversation, and the dispatch whose activity is laid on it.
     var conversationId: String? = nil
     var dispatchId: String? = nil
+    /// Newest page only: the revision of this stream still held from an
+    /// earlier connection. When it is the server's current one, the reply is
+    /// `unchanged` and carries no rows.
+    var held: TranscriptRevision? = nil
 }
 
 /// Which request a paged body answers: the newest page, or the page before a row.
@@ -173,10 +177,14 @@ struct StudioBody: Equatable, Sendable {
     var rev: Int? = nil
     var total: Int? = nil
     var startIndex: Int? = nil
+    /// Thin replies only: the request's `held` revision is the stream's
+    /// current one. `rows` is empty and `startIndex` absent; the rows held
+    /// stand.
+    var unchanged: Bool? = nil
 }
 
 extension StudioBody: Codable {
-    private enum CodingKeys: String, CodingKey { case tabId, instanceId, conversationId, dispatchId, rows, hasMore, cursor, before, streamId, epoch, rev, total, startIndex }
+    private enum CodingKeys: String, CodingKey { case tabId, instanceId, conversationId, dispatchId, rows, hasMore, cursor, before, streamId, epoch, rev, total, startIndex, unchanged }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -199,6 +207,7 @@ extension StudioBody: Codable {
         rev = try container.decodeIfPresent(Int.self, forKey: .rev)
         total = try container.decodeIfPresent(Int.self, forKey: .total)
         startIndex = try container.decodeIfPresent(Int.self, forKey: .startIndex)
+        unchanged = try container.decodeIfPresent(Bool.self, forKey: .unchanged)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -220,6 +229,7 @@ extension StudioBody: Codable {
         try container.encodeIfPresent(rev, forKey: .rev)
         try container.encodeIfPresent(total, forKey: .total)
         try container.encodeIfPresent(startIndex, forKey: .startIndex)
+        try container.encodeIfPresent(unchanged, forKey: .unchanged)
     }
 }
 

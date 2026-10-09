@@ -113,7 +113,11 @@ const VALIDATORS: Record<StudioFrameType, (obj: Record<string, unknown>) => bool
     (o.developerSurfaces === undefined || isDeveloperSurfaceState(o.developerSurfaces)) &&
     isString(o.policyHash),
   studio_snapshot_request: () => true,
-  studio_body_request: (o) => isString(o.tabId) && (o.before === undefined || isString(o.before)) && (o.limit === undefined || (typeof o.limit === 'number' && Number.isFinite(o.limit))),
+  studio_body_request: (o) =>
+    isString(o.tabId) &&
+    (o.before === undefined || isString(o.before)) &&
+    (o.limit === undefined || (typeof o.limit === 'number' && Number.isFinite(o.limit))) &&
+    (o.held === undefined || (isPlainObject(o.held) && isString(o.held.epoch) && isNumber(o.held.rev))),
   studio_body: (o) => isString(o.tabId) && Array.isArray(o.rows),
   studio_ping: (o) => isString(o.nonce) && isNumber(o.t),
   studio_pong: (o) => isString(o.nonce) && isNumber(o.t),

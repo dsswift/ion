@@ -10,12 +10,15 @@
  * what it is sent, and a revision it did not expect makes it take a fresh
  * snapshot. See `@ion/shared/transcript/transcript-patch`.
  *
- * One CHANNEL per conversation instance with at least one subscriber. A
- * channel holds the rows it last published, their revision, and a random
- * epoch minted when it opened. It closes when its last subscriber leaves or
- * its conversation instance is gone, and a channel opened again gets a new
- * epoch, so a client can never apply a revision from a channel that no longer
- * exists.
+ * One CHANNEL per conversation instance a client reads. A channel holds the
+ * rows it last published, their revision, and a random epoch minted when it
+ * opened. When its last subscriber leaves it is KEPT for a while, publishing
+ * nothing, so it stays at the revision that subscriber saw: a client that
+ * reconnects naming that revision resumes the stream and is sent only what
+ * changed since (`openTabTranscript`, `held`). It closes when nobody resumes
+ * it in time or its conversation instance is gone, and a channel opened again
+ * gets a new epoch, so a client can never apply a revision from a channel
+ * that no longer exists.
  *
  * ORDERING. Patches are sent with `Connection.send` and snapshot replies with
  * `Connection.sendAnswer`; both write to the socket synchronously and the
@@ -30,7 +33,10 @@ import { projectTranscript, type TranscriptRow } from '@ion/shared/transcript/tr
 import { transcriptStreamId } from '@ion/shared/transcript/transcript-patch'
 import { useSessionStore } from '../store/sessionStore'
 import { activeInstanceOfPane } from '../store/conversation-instance'
-import { publishTranscriptRows, rowsForThinClients, type TranscriptChannelCore } from './transcript-channel'
+import {
+  endLinger, holdsCurrent, publishTranscriptRows, rowsForThinClients, startLinger,
+  type HeldRevision, type TranscriptChannelCore,
+} from './transcript-channel'
 import { onStreamThinkingToRemoteChange } from '../persistence/settings-store'
 import type { Connection } from '../protocol/connection'
 import { log as _log, warn as _warn } from '../logger'
@@ -71,6 +77,8 @@ export interface TranscriptSnapshot {
   epoch: string
   rev: number
   rows: TranscriptRow[]
+  /** The caller's `held` revision is this one: it keeps its rows, and `rows` is not for sending. */
+  resumed: boolean
 }
 
 const channels = new Map<string, TabChannel>()
@@ -87,6 +95,7 @@ function instanceMessages(tabId: string, instanceId: string): readonly Message[]
 function closeChannel(channel: TabChannel, reason: string): void {
   channels.delete(channel.streamId)
   dirty.delete(channel.streamId)
+  endLinger(channel)
   log('transcript channel closed', {
     stream_id: channel.streamId, tab_id: channel.tabId, reason, rev: channel.rev, subscribers: channel.subscribers.size,
   })
@@ -100,6 +109,12 @@ function closeChannel(channel: TabChannel, reason: string): void {
   }
 }
 
+/** The channel's last subscriber left: keep it at its revision for a client that comes back. */
+function keepForResume(channel: TabChannel): void {
+  dirty.delete(channel.streamId)
+  startLinger(channel, () => closeChannel(channel, 'not_resumed_in_time'))
+}
+
 /** Publish whatever changed in one channel since its last revision. */
 function flushChannel(channel: TabChannel): void {
   dirty.delete(channel.streamId)
@@ -108,12 +123,14 @@ function flushChannel(channel: TabChannel): void {
     closeChannel(channel, 'instance_gone')
     return
   }
+  // Kept for resume: it stays at the revision its last subscriber saw.
+  if (channel.subscribers.size === 0) return
   if (messages === channel.source) return
   // Rows are compared by value, never by identity (publishTranscriptRows).
   const rows = rowsForThinClients(projectTranscript(messages))
   channel.source = messages
   if (!publishTranscriptRows(channel, rows, { tabId: channel.tabId, instanceId: channel.instanceId })) {
-    closeChannel(channel, 'no_subscribers')
+    keepForResume(channel)
   }
 }
 
@@ -133,8 +150,13 @@ function flushDirty(): void {
  * projection per conversation per token while anything streams.
  */
 function onStoreChange(): void {
-  for (const channel of channels.values()) {
-    if (instanceMessages(channel.tabId, channel.instanceId) !== channel.source) dirty.add(channel.streamId)
+  for (const channel of [...channels.values()]) {
+    const messages = instanceMessages(channel.tabId, channel.instanceId)
+    if (channel.subscribers.size === 0) {
+      if (!messages) closeChannel(channel, 'instance_gone')
+      continue
+    }
+    if (messages !== channel.source) dirty.add(channel.streamId)
   }
   if (dirty.size > 0 && !flushTimer) flushTimer = setTimeout(flushDirty, TRANSCRIPT_FLUSH_MS)
 }
@@ -158,8 +180,18 @@ export function flushTranscript(tabId: string): void {
  *
  * `subscriber` is added when given: a newest-page snapshot subscribes, an
  * older page only reads. Synchronous by design; see the module's ORDERING.
+ *
+ * `held` is the revision the subscriber says it still holds. When that is
+ * the channel's revision the snapshot is `resumed`: the subscriber keeps its
+ * rows, and whatever changed since is published as a patch after this
+ * returns, so it follows the caller's reply.
  */
-export function openTabTranscript(tabId: string, instanceId: string | undefined, subscriber: Connection | null): TranscriptSnapshot | null {
+export function openTabTranscript(
+  tabId: string,
+  instanceId: string | undefined,
+  subscriber: Connection | null,
+  held?: HeldRevision,
+): TranscriptSnapshot | null {
   const pane = useSessionStore.getState().conversationPanes.get(tabId)
   const instance = instanceId ? pane?.instances.find((i) => i.id === instanceId) : activeInstanceOfPane(pane)
   if (!instance) {
@@ -168,9 +200,16 @@ export function openTabTranscript(tabId: string, instanceId: string | undefined,
   }
   const streamId = transcriptStreamId({ kind: 'tab', tabId, instanceId: instance.id })
   let channel = channels.get(streamId)
-  if (channel) {
-    flushChannel(channel)
-    channel = channels.get(streamId)
+  const resumed = channel !== undefined && subscriber !== null && holdsCurrent(channel, held)
+  if (channel && !resumed) {
+    if (channel.subscribers.size === 0) {
+      // Kept for a client that did not come back holding its revision.
+      closeChannel(channel, 'not_resumed')
+      channel = undefined
+    } else {
+      flushChannel(channel)
+      channel = channels.get(streamId)
+    }
   }
   if (!channel) {
     channel = {
@@ -182,8 +221,9 @@ export function openTabTranscript(tabId: string, instanceId: string | undefined,
       source: instance.messages,
       rows: rowsForThinClients(projectTranscript(instance.messages)),
       subscribers: new Set(),
+      linger: null,
     }
-    const snapshot: TranscriptSnapshot = { tabId, instanceId: instance.id, streamId, epoch: channel.epoch, rev: 0, rows: channel.rows }
+    const snapshot: TranscriptSnapshot = { tabId, instanceId: instance.id, streamId, epoch: channel.epoch, rev: 0, rows: channel.rows, resumed: false }
     if (!subscriber) {
       // A read with nobody listening: answer from a projection and keep no
       // channel. Its epoch is fresh, so a client holding another one resyncs.
@@ -195,9 +235,14 @@ export function openTabTranscript(tabId: string, instanceId: string | undefined,
   }
   if (subscriber && !channel.subscribers.has(subscriber)) {
     channel.subscribers.add(subscriber)
-    log('transcript subscriber added', { stream_id: streamId, connection_id: subscriber.id, rev: channel.rev, subscribers: channel.subscribers.size })
+    endLinger(channel)
+    log('transcript subscriber added', { stream_id: streamId, connection_id: subscriber.id, rev: channel.rev, subscribers: channel.subscribers.size, resumed })
   }
-  return { tabId, instanceId: channel.instanceId, streamId, epoch: channel.epoch, rev: channel.rev, rows: channel.rows }
+  if (resumed) {
+    dirty.add(streamId)
+    if (!flushTimer) flushTimer = setTimeout(flushDirty, TRANSCRIPT_FLUSH_MS)
+  }
+  return { tabId, instanceId: channel.instanceId, streamId, epoch: channel.epoch, rev: channel.rev, rows: channel.rows, resumed }
 }
 
 /**
@@ -207,6 +252,11 @@ export function openTabTranscript(tabId: string, instanceId: string | undefined,
 function republishAll(reason: string): void {
   log('transcript streams re-published', { reason, streams: channels.size })
   for (const channel of [...channels.values()]) {
+    if (channel.subscribers.size === 0) {
+      // Its rows have the old shape, so nobody may resume them.
+      closeChannel(channel, reason)
+      continue
+    }
     channel.source = []
     flushChannel(channel)
   }
@@ -218,7 +268,7 @@ export function forgetTranscriptSubscriber(conn: Connection): void {
   for (const channel of [...channels.values()]) {
     if (!channel.subscribers.delete(conn)) continue
     log('transcript subscriber removed: connection closed', { stream_id: channel.streamId, connection_id: conn.id })
-    if (channel.subscribers.size === 0) closeChannel(channel, 'no_subscribers')
+    if (channel.subscribers.size === 0) keepForResume(channel)
   }
 }
 

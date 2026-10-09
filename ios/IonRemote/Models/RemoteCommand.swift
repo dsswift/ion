@@ -123,7 +123,7 @@ enum RemoteCommand: Sendable {
   /// One page of a conversation's transcript (`studio_body_request`). `before`
   /// nil asks for the newest page, which subscribes this connection to the
   /// transcript's patches. See SessionViewModel+Transcript.swift.
-  case loadConversation(tabId: String, before: String?, pageSize: Int? = nil)
+  case loadConversation(tabId: String, before: String?, pageSize: Int? = nil, held: TranscriptRevision? = nil)
   /// Ask the desktop to replay wire frames [fromSeq, toSeq] after iOS detected
   /// a forward seq gap (frames lost in transit, e.g. a LAN↔relay transport
   /// switch). The desktop replays the byte-identical originals from its
@@ -196,7 +196,7 @@ enum RemoteCommand: Sendable {
   /// One page of a dispatched agent's transcript (`studio_body_request`
   /// naming the dispatch). `before` nil asks for the newest page, which
   /// subscribes this connection to the dispatch's transcript patches.
-  case loadDispatchTranscript(tabId: String, conversationId: String, dispatchId: String, before: String?, pageSize: Int)
+  case loadDispatchTranscript(tabId: String, conversationId: String, dispatchId: String, before: String?, pageSize: Int, held: TranscriptRevision? = nil)
   case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
   // providerId, when known, is the provider group the operator explicitly
   // picked -- carried so the server can qualify the wire model id and this

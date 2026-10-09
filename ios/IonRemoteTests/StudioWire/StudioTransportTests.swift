@@ -240,10 +240,22 @@ final class StudioTransportTests: XCTestCase {
         let (transport, connection, _) = await makeTransport()
         try await transport.send(.loadConversation(tabId: "tab-1", before: nil, pageSize: 40))
         try await transport.send(.loadConversation(tabId: "tab-1", before: "m-9", pageSize: nil))
+        try await transport.send(.loadConversation(tabId: "tab-1", before: nil, pageSize: 40, held: TranscriptRevision(epoch: "e1", rev: 7)))
         XCTAssertEqual(connection.bodyRequests, [
             StudioBodyRequest(tabId: "tab-1", instanceId: nil, before: nil, limit: 40),
-            StudioBodyRequest(tabId: "tab-1", instanceId: nil, before: "m-9", limit: StudioTransportCommandMapping.defaultHistoryPageSize)
+            StudioBodyRequest(tabId: "tab-1", instanceId: nil, before: "m-9", limit: StudioTransportCommandMapping.defaultHistoryPageSize),
+            StudioBodyRequest(tabId: "tab-1", instanceId: nil, before: nil, limit: 40, held: TranscriptRevision(epoch: "e1", rev: 7))
         ])
+    }
+
+    func testAHeldRevisionIsWrittenToTheWireAndAnAbsentOneIsLeftOut() throws {
+        let named = StudioBodyRequest(tabId: "t", instanceId: nil, before: nil, limit: 40, held: TranscriptRevision(epoch: "e1", rev: 7))
+        let namedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(named)) as? [String: Any])
+        XCTAssertEqual(namedJSON["held"] as? [String: AnyHashable], ["epoch": "e1", "rev": 7])
+
+        let plain = StudioBodyRequest(tabId: "t", instanceId: nil, before: nil, limit: 40)
+        let plainJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(plain)) as? [String: Any])
+        XCTAssertNil(plainJSON["held"])
     }
 
     func testACommandWithNoMappingSendsNothingAndYieldsNothing() async throws {

@@ -11,10 +11,10 @@ final class TranscriptViewModelTests: XCTestCase {
 
     /// The page request the view model queued for `tabId` (the tests run with
     /// no transport, so every send waits in the essential queue).
-    private func queuedRequest(_ vm: SessionViewModel, _ tabId: String) -> (before: String?, pageSize: Int?)? {
+    private func queuedRequest(_ vm: SessionViewModel, _ tabId: String) -> (before: String?, pageSize: Int?, held: TranscriptRevision?)? {
         for entry in vm.pendingEssentialQueue {
-            if case .loadConversation(let id, let before, let pageSize) = entry.command, id == tabId {
-                return (before, pageSize)
+            if case .loadConversation(let id, let before, let pageSize, let held) = entry.command, id == tabId {
+                return (before, pageSize, held)
             }
         }
         return nil
@@ -125,9 +125,11 @@ final class TranscriptViewModelTests: XCTestCase {
 
     /// The server subscribed the stream on the connection that ended. After a
     /// reconnect nothing would ever arrive for it, so every stream held is
-    /// fetched anew.
-    func testAReconnectReFetchesEveryTranscriptHeld() {
+    /// asked for again, naming the revision held so an unchanged one is not
+    /// sent a second time.
+    func testAReconnectAsksAgainForEveryTranscriptHeldNamingItsRevision() throws {
         let vm = opened("t", rows: [T.row("u1", .user)])
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 0, total: 2, change: .splice(at: 1, deleteCount: 0, rows: [T.row("a1")])))
         vm.pendingEssentialQueue.removeAll()
         vm.connectionState = .reconnecting
 
@@ -136,6 +138,44 @@ final class TranscriptViewModelTests: XCTestCase {
         XCTAssertTrue(vm.transcriptResyncing.contains("t"))
         XCTAssertEqual(vm.pendingEssentialQueue.filter { $0.key == "loadConversation:t" }.count, 1,
             "one page request per conversation, not one per path that noticed the reconnect")
+        XCTAssertEqual(try XCTUnwrap(queuedRequest(vm, "t")).held, TranscriptRevision(epoch: T.epoch, rev: 1))
+    }
+
+    func testAnUnchangedAnswerKeepsTheRowsAndLetsPatchesContinue() {
+        let vm = opened("t", rows: [T.row("u1", .user)])
+        vm.resyncAllTranscripts(reason: "reconnect")
+
+        var unchanged = T.page(tabId: "t", rows: [], total: 1)
+        unchanged.unchanged = true
+        vm.handleTranscriptPage(unchanged)
+
+        XCTAssertEqual(vm.conversationMessages("t").map(\.id), ["u1"])
+        XCTAssertFalse(vm.transcriptResyncing.contains("t"))
+        XCTAssertFalse(vm.loadingConversation.contains("t"))
+
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 0, total: 2, change: .splice(at: 1, deleteCount: 0, rows: [T.row("a1")])))
+        XCTAssertEqual(vm.conversationMessages("t").map(\.id), ["u1", "a1"])
+    }
+
+    func testAnUnchangedAnswerForRowsThePhoneLostFetchesThemInFull() throws {
+        let vm = opened("t", rows: [T.row("u1", .user)])
+        vm.resyncAllTranscripts(reason: "reconnect")
+        vm.conversationInstances["t"]?[0].messages = []
+        vm.pendingEssentialQueue.removeAll()
+
+        var unchanged = T.page(tabId: "t", rows: [], total: 1)
+        unchanged.unchanged = true
+        vm.handleTranscriptPage(unchanged)
+
+        let request = try XCTUnwrap(queuedRequest(vm, "t"))
+        XCTAssertNil(request.held, "rows that are gone cannot be resumed")
+    }
+
+    func testAGapNeverNamesARevision() throws {
+        let vm = opened("t", rows: [T.row("u1", .user)])
+        vm.pendingEssentialQueue.removeAll()
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 5, total: 2, change: .splice(at: 1, deleteCount: 0, rows: [T.row("a1")])))
+        XCTAssertNil(try XCTUnwrap(queuedRequest(vm, "t")).held)
     }
 
     func testAReplacedInstanceReFetches() {

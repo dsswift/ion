@@ -17,6 +17,10 @@
  * `DISPATCH_FILE_BACKSTOP_MS` while it runs -- the same backstop interval
  * Studio's own dispatch views poll at.
  *
+ * A channel whose last subscriber left is KEPT for a while, publishing and
+ * reading nothing, so a client that reconnects holding its revision resumes
+ * it (`openDispatchTranscript`, `held`); see transcript-publisher.ts.
+ *
  * ORDERING. `openDispatchTranscript` hands the snapshot to its `answer`
  * callback synchronously, after publishing any change pending for existing
  * subscribers and adding the new one, so the first patch the new subscriber
@@ -30,7 +34,10 @@ import { mapConversationMessages, type RawSessionMessage } from '@ion/shared/tra
 import { mergeDispatchTranscript } from '../components/agent-dispatch-activity'
 import { useSessionStore } from '../store/sessionStore'
 import { engineBridge } from '../state'
-import { publishTranscriptRows, rowsForThinClients, type TranscriptChannelCore } from './transcript-channel'
+import {
+  endLinger, holdsCurrent, publishTranscriptRows, rowsForThinClients, startLinger,
+  type HeldRevision, type TranscriptChannelCore,
+} from './transcript-channel'
 import { onStreamThinkingToRemoteChange } from '../persistence/settings-store'
 import { TRANSCRIPT_FLUSH_MS } from './transcript-publisher'
 import type { Connection } from '../protocol/connection'
@@ -82,6 +89,8 @@ export interface DispatchTranscriptSnapshot {
   epoch: string
   rev: number
   rows: TranscriptRow[]
+  /** The caller's `held` revision is this one: it keeps its rows, and `rows` is not for sending. */
+  resumed: boolean
 }
 
 type AgentMeta = {
@@ -130,6 +139,7 @@ function closeChannel(channel: DispatchChannel, reason: string): void {
   channel.closed = true
   channels.delete(channel.streamId)
   dirty.delete(channel.streamId)
+  endLinger(channel)
   if (channel.backstop) clearInterval(channel.backstop)
   channel.backstop = null
   log('dispatch transcript channel closed', {
@@ -143,6 +153,22 @@ function closeChannel(channel: DispatchChannel, reason: string): void {
       flushTimer = null
     }
   }
+}
+
+/** The channel's last subscriber left: keep it at its revision, reading nothing, for a client that comes back. */
+function keepForResume(channel: DispatchChannel): void {
+  dirty.delete(channel.streamId)
+  if (channel.backstop) clearInterval(channel.backstop)
+  channel.backstop = null
+  startLinger(channel, () => closeChannel(channel, 'not_resumed_in_time'))
+}
+
+/** Bring a kept channel's inputs up to the store's, now that it has a subscriber again. */
+function wake(channel: DispatchChannel): void {
+  channel.push = channel.dispatchId ? useSessionStore.getState().dispatchActivity[channel.dispatchId] : undefined
+  channel.running = dispatchStanding(channel.tabId, channel.conversationId, channel.dispatchId)?.running ?? false
+  channel.roster = rosterOf(channel.tabId)
+  syncBackstop(channel)
 }
 
 function currentRows(channel: DispatchChannel): TranscriptRow[] {
@@ -190,7 +216,7 @@ async function readFile(channel: DispatchChannel, reason: string): Promise<void>
     channel.loaded = true
   }
   if (channel.closed) return
-  if (channel.subscribers.size > 0 && !publish(channel)) closeChannel(channel, 'no_subscribers')
+  if (channel.subscribers.size > 0 && !publish(channel)) keepForResume(channel)
   if (channel.readAgain) {
     channel.readAgain = false
     await readFile(channel, 'coalesced')
@@ -207,13 +233,15 @@ function flushDirty(): void {
     dirty.delete(streamId)
     const channel = channels.get(streamId)
     // Before the first read lands, the opener publishes; nothing to do yet.
-    if (channel && channel.loaded && !publish(channel)) closeChannel(channel, 'no_subscribers')
+    if (channel && channel.loaded && channel.subscribers.size > 0 && !publish(channel)) keepForResume(channel)
   }
 }
 
 function onStoreChange(): void {
   const activity = useSessionStore.getState().dispatchActivity
   for (const channel of [...channels.values()]) {
+    // Kept for resume: it stays as its last subscriber saw it until `wake`.
+    if (channel.linger) continue
     const push = channel.dispatchId ? activity[channel.dispatchId] : undefined
     if (push !== channel.push) {
       const toolFinished = finishedToolCount(push) > finishedToolCount(channel.push)
@@ -252,6 +280,10 @@ function rosterMatches(channel: DispatchChannel, roster: unknown[] | undefined):
  * `subscriber` is added when given (a newest-page request); an older-page
  * read only reads. `answer` runs synchronously after the subscriber is added;
  * see the module's ORDERING.
+ *
+ * `held` is the revision the subscriber says it still holds. When that is
+ * the channel's revision the snapshot is `resumed`: the subscriber keeps its
+ * rows, and whatever changed since is published as a patch after `answer`.
  */
 export async function openDispatchTranscript(
   tabId: string,
@@ -259,6 +291,7 @@ export async function openDispatchTranscript(
   dispatchId: string,
   subscriber: Connection | null,
   answer: (snapshot: DispatchTranscriptSnapshot) => void,
+  held?: HeldRevision,
 ): Promise<boolean> {
   const standing = dispatchStanding(tabId, conversationId, dispatchId)
   if (!standing) {
@@ -267,10 +300,15 @@ export async function openDispatchTranscript(
   }
   const streamId = transcriptStreamId({ kind: 'dispatch', tabId, conversationId, dispatchId })
   let channel = channels.get(streamId)
+  if (channel?.linger && !(subscriber && holdsCurrent(channel, held))) {
+    // Kept for a client that did not come back holding its revision.
+    closeChannel(channel, 'not_resumed')
+    channel = undefined
+  }
   if (!channel) {
     const created: DispatchChannel = {
       streamId, tabId, conversationId, dispatchId,
-      epoch: randomUUID(), rev: 0, rows: [], subscribers: new Set(),
+      epoch: randomUUID(), rev: 0, rows: [], subscribers: new Set(), linger: null,
       snapshot: undefined,
       push: dispatchId ? useSessionStore.getState().dispatchActivity[dispatchId] : undefined,
       running: standing.running,
@@ -291,23 +329,39 @@ export async function openDispatchTranscript(
   await channel.ready
   if (channel.closed) {
     // Every subscriber left while the file was read. Answer from what was read.
-    answer({ streamId, epoch: channel.epoch, rev: channel.rev, rows: currentRows(channel) })
+    answer({ streamId, epoch: channel.epoch, rev: channel.rev, rows: currentRows(channel), resumed: false })
     return true
   }
-  publish(channel)
+  const resumed = subscriber !== null && holdsCurrent(channel, held)
+  const kept = channel.linger !== null
+  if (!resumed) publish(channel)
   if (subscriber && !channel.subscribers.has(subscriber)) {
     channel.subscribers.add(subscriber)
-    log('dispatch transcript subscriber added', { stream_id: streamId, connection_id: subscriber.id, rev: channel.rev, subscribers: channel.subscribers.size })
+    endLinger(channel)
+    log('dispatch transcript subscriber added', { stream_id: streamId, connection_id: subscriber.id, rev: channel.rev, subscribers: channel.subscribers.size, resumed })
   }
-  answer({ streamId, epoch: channel.epoch, rev: channel.rev, rows: channel.rows })
-  if (channel.subscribers.size === 0) closeChannel(channel, 'read_only')
+  answer({ streamId, epoch: channel.epoch, rev: channel.rev, rows: channel.rows, resumed })
+  if (resumed) {
+    if (kept) {
+      wake(channel)
+      void readFile(channel, 'resumed')
+    } else if (!publish(channel)) {
+      keepForResume(channel)
+    }
+  }
+  if (channel.subscribers.size === 0 && !channel.linger) closeChannel(channel, 'read_only')
   return true
 }
 
 onStreamThinkingToRemoteChange(() => {
   log('dispatch transcript streams re-published', { reason: 'stream_thinking_setting_changed', streams: channels.size })
   for (const channel of [...channels.values()]) {
-    if (channel.loaded && !publish(channel)) closeChannel(channel, 'no_subscribers')
+    if (channel.subscribers.size === 0) {
+      // Its rows have the old shape, so nobody may resume them.
+      closeChannel(channel, 'stream_thinking_setting_changed')
+    } else if (channel.loaded && !publish(channel)) {
+      keepForResume(channel)
+    }
   }
 })
 
@@ -316,7 +370,7 @@ export function forgetDispatchSubscriber(conn: Connection): void {
   for (const channel of [...channels.values()]) {
     if (!channel.subscribers.delete(conn)) continue
     log('dispatch transcript subscriber removed: connection closed', { stream_id: channel.streamId, connection_id: conn.id })
-    if (channel.subscribers.size === 0) closeChannel(channel, 'no_subscribers')
+    if (channel.subscribers.size === 0) keepForResume(channel)
   }
 }
 

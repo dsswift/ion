@@ -107,6 +107,7 @@
 		TOOLDESC000000000000001 /* ToolDescriptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOOLDESC000000000000002 /* ToolDescriptionTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		7BD4AAE092377EBAD7558A0F /* TranscriptPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD4AAE092377EBAD7558A0F /* TranscriptPage.swift */; };
+		A1B2C3D4E5F6000100040DAA /* TranscriptRevision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100040CAA /* TranscriptRevision.swift */; };
 		7B2ADF04F0613B5C9543AF1C /* TranscriptPatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2ADF04F0613B5C9543AF1C /* TranscriptPatch.swift */; };
 		7BF1A5BB048396DFCE703AD5 /* TranscriptChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AF1A5BB048396DFCE703AD5 /* TranscriptChange.swift */; };
 		7B43F2EC5287E2AA88F85788 /* TranscriptRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A43F2EC5287E2AA88F85788 /* TranscriptRow.swift */; };
@@ -1119,6 +1120,7 @@
 		A1B2C3D4E5F60001000033AA /* IonRemoteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IonRemoteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001000091AA /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		7AD4AAE092377EBAD7558A0F /* TranscriptPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPage.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100040CAA /* TranscriptRevision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRevision.swift; sourceTree = "<group>"; };
 		7A2ADF04F0613B5C9543AF1C /* TranscriptPatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPatch.swift; sourceTree = "<group>"; };
 		7AF1A5BB048396DFCE703AD5 /* TranscriptChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptChange.swift; sourceTree = "<group>"; };
 		7A43F2EC5287E2AA88F85788 /* TranscriptRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRow.swift; sourceTree = "<group>"; };
@@ -2148,6 +2150,7 @@
 						THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				7AD4AAE092377EBAD7558A0F /* TranscriptPage.swift */,
+				A1B2C3D4E5F6000100040CAA /* TranscriptRevision.swift */,
 				7A2ADF04F0613B5C9543AF1C /* TranscriptPatch.swift */,
 				7AF1A5BB048396DFCE703AD5 /* TranscriptChange.swift */,
 				7A43F2EC5287E2AA88F85788 /* TranscriptRow.swift */,
@@ -3585,6 +3588,7 @@
 				THEMESYNCTHEME00000002 /* SyncedTheme.swift in Sources */,
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
 				7BD4AAE092377EBAD7558A0F /* TranscriptPage.swift in Sources */,
+				A1B2C3D4E5F6000100040DAA /* TranscriptRevision.swift in Sources */,
 				7B2ADF04F0613B5C9543AF1C /* TranscriptPatch.swift in Sources */,
 				7BF1A5BB048396DFCE703AD5 /* TranscriptChange.swift in Sources */,
 				7B43F2EC5287E2AA88F85788 /* TranscriptRow.swift in Sources */,

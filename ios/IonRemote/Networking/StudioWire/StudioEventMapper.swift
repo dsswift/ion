@@ -123,6 +123,26 @@ struct StudioEventMapper: Sendable {
         case .before: isNewest = false
         case .newest, .none: isNewest = true
         }
+        if body.unchanged == true, let streamId = body.streamId, let epoch = body.epoch, let rev = body.rev, let total = body.total {
+            DiagnosticLog.log("studio mapper: transcript unchanged", tag: "studio.map", level: .debug, fields: [
+                "tab_id": body.tabId, "stream_id": streamId, "rev": String(rev), "total": String(total)
+            ])
+            return .transcriptPage(TranscriptPage(
+                tabId: body.tabId,
+                instanceId: body.instanceId ?? ConversationInstanceInfo.mainInstanceId,
+                conversationId: body.conversationId,
+                dispatchId: body.dispatchId,
+                streamId: streamId,
+                epoch: epoch,
+                rev: rev,
+                total: total,
+                startIndex: 0,
+                rows: [],
+                hasOlder: false,
+                isNewest: true,
+                unchanged: true
+            ))
+        }
         guard let streamId = body.streamId, let epoch = body.epoch, let rev = body.rev,
               let total = body.total, let startIndex = body.startIndex else {
             DiagnosticLog.log("studio mapper: transcript reply carries no stream", tag: "studio.map", level: .warn, fields: [

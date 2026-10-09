@@ -33,8 +33,8 @@
     "desktop_load_conversation": {
       "action": null,
       "transport": "studio_body_request frame",
-      "args": "{tabId, before, pageSize} -> studio_body_request{tabId, before?, limit: pageSize}",
-      "result": "a transcript page: studio_body{rows, hasMore, cursor, before, streamId, epoch, rev, total, startIndex}; a newest page subscribes the connection to the stream's desktop_transcript_patch events"
+      "args": "{tabId, before, pageSize, held} -> studio_body_request{tabId, before?, limit: pageSize, held?: {epoch, rev}}",
+      "result": "a transcript page: studio_body{rows, hasMore, cursor, before, streamId, epoch, rev, total, startIndex}; a newest page subscribes the connection to the stream's desktop_transcript_patch events; when held is the stream's current revision the reply is studio_body{rows: [], unchanged: true, streamId, epoch, rev, total} and the client keeps its rows"
     },
     "desktop_engine_add_instance": {
       "action": null,
@@ -183,8 +183,8 @@
     "desktop_load_dispatch_transcript": {
       "action": null,
       "transport": "studio_body_request frame",
-      "args": "{tabId, conversationId, dispatchId, before, pageSize} -> studio_body_request{tabId, conversationId, dispatchId, before?, limit: pageSize}",
-      "result": "a dispatched agent's transcript page: studio_body{conversationId, dispatchId, rows, streamId, epoch, rev, total, startIndex, ...}; a newest page subscribes the connection to that dispatch stream's desktop_transcript_patch events"
+      "args": "{tabId, conversationId, dispatchId, before, pageSize, held} -> studio_body_request{tabId, conversationId, dispatchId, before?, limit: pageSize, held?: {epoch, rev}}",
+      "result": "a dispatched agent's transcript page: studio_body{conversationId, dispatchId, rows, streamId, epoch, rev, total, startIndex, ...}; a newest page subscribes the connection to that dispatch stream's desktop_transcript_patch events; when held is the stream's current revision the reply is studio_body{rows: [], unchanged: true, ...} and the client keeps its rows"
     },
     "desktop_request_agent_state": {
       "action": "engine.agentState",

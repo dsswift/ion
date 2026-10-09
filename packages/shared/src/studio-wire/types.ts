@@ -374,6 +374,13 @@ export type StudioFrame =
        */
       conversationId?: string
       dispatchId?: string
+      /**
+       * Thin connections only, newest page only: the revision of this stream
+       * the client still holds from an earlier connection. When it is the
+       * revision the server last published, the reply carries no rows
+       * (`unchanged`) and the client keeps its own.
+       */
+      held?: { epoch: string; rev: number }
     }
   | {
       type: 'studio_body'
@@ -407,6 +414,13 @@ export type StudioFrame =
       rev?: number
       total?: number
       startIndex?: number
+      /**
+       * Thin replies only: the request's `held` revision is the stream's
+       * current one. `rows` is empty and `startIndex` absent; the client's
+       * rows stand, the connection is subscribed, and patches follow from
+       * `rev`.
+       */
+      unchanged?: boolean
     }
   | {
       /**
