@@ -1,4 +1,8 @@
 {
+  "2.16.0": [
+    "Fixed a problem where the app could fail to connect to a server after certain updates.",
+    "Fixed a problem where a connection issue could leave the app stuck on \"Connecting\" instead of showing that the versions do not match."
+  ],
   "2.15.0": [
     "Fixed a problem where conversations you opened could go missing the next time Ion Studio started.",
     "You can now run your Quick Tools and Composer Actions from the + menu on your phone."

@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.15.0](https://github.com/dsswift/ion/compare/ios-v2.14.1...ios-v2.15.0) (2026-10-09)
+
+### Features
+
+* **engine:** stamp trace context on events and propagate it outward ([4a5188b](https://github.com/dsswift/ion/commit/4a5188bd089a158a19e17694d0f14a8bd37595c8))
+* **ios:** time launch, connect, apply, and render, and trace every command ([c91f4e3](https://github.com/dsswift/ion/commit/c91f4e3b2e9e64f4e3691e993bffbbe3395bbb62))
+* **server:** span every operation, carry the trace to every client ([69ddd15](https://github.com/dsswift/ion/commit/69ddd15c24948f528e9603600a9d9c10ed79d4f2))
+
+### Bug Fixes
+
+* **relay:** log APNs failures with a constant message ([3885a9d](https://github.com/dsswift/ion/commit/3885a9db73e0ada22e27ec8b1796319af3502a59))
+* **ios:** restore the unchanged transcript page coding key ([c40227b](https://github.com/dsswift/ion/commit/c40227b012d1fdf30202c134942cd3c2cbd829f4))
+
 ## [2.14.1](https://github.com/dsswift/ion/compare/ios-v2.14.0...ios-v2.14.1) (2026-10-09)
 
 ### Bug Fixes

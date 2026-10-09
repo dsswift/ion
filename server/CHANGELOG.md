@@ -8,6 +8,17 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.16.0](https://github.com/dsswift/ion/compare/server-v1.15.4...server-v1.16.0) (2026-10-09)
+
+### Features
+
+* **server:** span every operation, carry the trace to every client ([69ddd15](https://github.com/dsswift/ion/commit/69ddd15c24948f528e9603600a9d9c10ed79d4f2))
+
+### Bug Fixes
+
+* **repo:** bring ts telemetry to schema 5 and runtime metrics ([fa6095a](https://github.com/dsswift/ion/commit/fa6095ac44a7d79a4b68ee1239e4ee37680b5788))
+* **server:** carry the run trace onto translated studio events ([0c032b0](https://github.com/dsswift/ion/commit/0c032b0b95e1a98ffbf69b8cc7ada81608bd66a6))
+
 ## [1.15.4](https://github.com/dsswift/ion/compare/server-v1.15.3...server-v1.15.4) (2026-10-09)
 
 ### Bug Fixes

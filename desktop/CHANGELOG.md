@@ -10,6 +10,20 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.16.0](https://github.com/dsswift/ion/compare/desktop-v2.15.1...desktop-v2.16.0) (2026-10-09)
+
+### Features
+
+* **desktop:** time startup, connect, and render, and trace every action ([aaabef6](https://github.com/dsswift/ion/commit/aaabef690f055f4438a85dc287c9ddabfbfff14f))
+
+### Bug Fixes
+
+* **relay:** log APNs failures with a constant message ([3885a9d](https://github.com/dsswift/ion/commit/3885a9db73e0ada22e27ec8b1796319af3502a59))
+* **repo:** bring ts telemetry to schema 5 and runtime metrics ([fa6095a](https://github.com/dsswift/ion/commit/fa6095ac44a7d79a4b68ee1239e4ee37680b5788))
+* **desktop:** keep one-off render spans on the health page ([40546a4](https://github.com/dsswift/ion/commit/40546a43e3fe32849d67bf8783a20cd93537e85c))
+* **repo:** read a developer surface a server omits as on ([10a093a](https://github.com/dsswift/ion/commit/10a093a529ee656712807e8185cf3d47bb0ff796))
+* **desktop:** fail a connection whose welcome cannot be read ([0addd81](https://github.com/dsswift/ion/commit/0addd81084f2c2e469cd4ef59325914b02346dc0))
+
 ## [2.15.1](https://github.com/dsswift/ion/compare/desktop-v2.15.0...desktop-v2.15.1) (2026-10-09)
 
 ## [2.15.0](https://github.com/dsswift/ion/compare/desktop-v2.14.1...desktop-v2.15.0) (2026-10-07)

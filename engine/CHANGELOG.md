@@ -18,6 +18,19 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.101.0](https://github.com/dsswift/ion/compare/engine-v1.100.4...engine-v1.101.0) (2026-10-09)
+
+### Features
+
+* **engine:** stamp trace context on events and propagate it outward ([4a5188b](https://github.com/dsswift/ion/commit/4a5188bd089a158a19e17694d0f14a8bd37595c8))
+* **engine:** span every operation and add a profiler ([80bce2f](https://github.com/dsswift/ion/commit/80bce2f84854c09d5efef656d65c12cd74bc7cdc))
+* **engine:** scripted mock provider for the perf harness ([5da6dd3](https://github.com/dsswift/ion/commit/5da6dd3a8c8d35c7d8c398956c86337eaf9339c4))
+
+### Bug Fixes
+
+* **relay:** log APNs failures with a constant message ([3885a9d](https://github.com/dsswift/ion/commit/3885a9db73e0ada22e27ec8b1796319af3502a59))
+* **engine:** accept debug_profile at the command parser ([861d500](https://github.com/dsswift/ion/commit/861d500bbeab2131642e4a98a6649f225312f3d3))
+
 ## [1.100.4](https://github.com/dsswift/ion/compare/engine-v1.100.3...engine-v1.100.4) (2026-10-07)
 
 ### Bug Fixes

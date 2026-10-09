@@ -10,6 +10,16 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.11.0](https://github.com/dsswift/ion/compare/relay-v1.10.0...relay-v1.11.0) (2026-10-09)
+
+### Features
+
+* **relay:** trace every frame, expose metrics, and profile ([f54dca5](https://github.com/dsswift/ion/commit/f54dca58a6970bdbfe397f79aabd1e8b046c4404))
+
+### Bug Fixes
+
+* **relay:** log APNs failures with a constant message ([3885a9d](https://github.com/dsswift/ion/commit/3885a9db73e0ada22e27ec8b1796319af3502a59))
+
 ## [1.10.0](https://github.com/dsswift/ion/compare/relay-v1.9.1...relay-v1.10.0) (2026-10-05)
 
 ### Features
