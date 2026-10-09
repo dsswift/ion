@@ -34,7 +34,7 @@ vi.mock('../host-api', () => ({
 }))
 
 import { createResumeSlice } from '../slices/resume-slice'
-import { makeMainPane, activeInstance, needsHistoryHydration } from '../conversation-instance'
+import { makeMainPane, activeInstance } from '../conversation-instance'
 import type { State } from '../session-store-types'
 
 /** Minimal store harness: real slice, fake set/get over a mutable state. */
