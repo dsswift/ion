@@ -10,6 +10,8 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.15.1](https://github.com/dsswift/ion/compare/desktop-v2.15.0...desktop-v2.15.1) (2026-10-09)
+
 ## [2.15.0](https://github.com/dsswift/ion/compare/desktop-v2.14.1...desktop-v2.15.0) (2026-10-07)
 
 ### Features
