@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.14.0](https://github.com/dsswift/ion/compare/ios-v2.13.0...ios-v2.14.0) (2026-10-09)
+
+### Features
+
+* **ios:** group and label quick tools and actions in + menu ([d26b448](https://github.com/dsswift/ion/commit/d26b4481c58d9ceb171eb7d57731fdf87652eaa1))
+
+### Bug Fixes
+
+* **ios:** open the attach menu from the composer plus button ([9aecd8d](https://github.com/dsswift/ion/commit/9aecd8d319324e77438a4c5c7fcc1d2cd2b8fa79))
+
 ## [2.13.0](https://github.com/dsswift/ion/compare/ios-v2.12.1...ios-v2.13.0) (2026-10-07)
 
 ### Features
