@@ -216,6 +216,18 @@ export function initTabsSyncFromWire(): () => void {
     const tabsFrame = frame.type === 'studio_welcome' || frame.type === 'studio_snapshot'
       || (frame.type === 'studio_event' && frame.channel === 'studio:tabs-sync')
     if (!tabsFrame) return
+    // One line per inbound frame, so a window that keeps landing on the wrong
+    // tab can be read back from the log: which frame moved it, carrying which
+    // revision and active index. Without this the inbound side is invisible.
+    const carried = (frame.type === 'studio_event' ? frame.payload : frame.snapshot) as
+      { revision?: unknown; tabs?: unknown; activeTabIndex?: unknown } | null | undefined
+    rDebug('studio.mirror', 'tabs frame received', {
+      environment_id: environmentId,
+      frame_type: frame.type,
+      revision: typeof carried?.revision === 'number' ? carried.revision : -1,
+      tab_count: Array.isArray(carried?.tabs) ? carried.tabs.length : -1,
+      active_tab_index: typeof carried?.activeTabIndex === 'number' ? carried.activeTabIndex : -1,
+    })
     // A welcome starts a fresh session with that server, whose revision
     // counters may have restarted below the ones we applied last time.
     if (frame.type === 'studio_welcome') clearEnvironmentSyncCursors(environmentId)
