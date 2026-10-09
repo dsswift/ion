@@ -17,12 +17,17 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { TS_NORMALIZED_EVENTS, TS_SHARED_TYPES } from "./contract-sync-fields";
+import {
+  TS_NORMALIZED_EVENTS,
+  TS_NORMALIZED_EVENT_ENVELOPE,
+  TS_SHARED_TYPES,
+} from "./contract-sync-fields";
 
 // ─── Load Go manifest ───
 
 interface ContractManifest {
   normalizedEvents: Record<string, string[] | null>;
+  normalizedEventEnvelope: string[];
   engineEvent: string[];
   sharedTypes: Record<string, string[]>;
 }
@@ -88,6 +93,21 @@ describe("Contract sync: NormalizedEvent variants", () => {
       mismatches,
       `NormalizedEvent field mismatches:\n${mismatches.join("\n")}`,
     ).toEqual([]);
+  });
+});
+
+describe("Contract sync: NormalizedEvent envelope and EngineEvent trace fields", () => {
+  it("the envelope keys written around every variant match the TS EventTraceContext", () => {
+    expect(manifest.normalizedEventEnvelope.slice().sort()).toEqual(
+      TS_NORMALIZED_EVENT_ENVELOPE.slice().sort(),
+    );
+  });
+
+  it("the run trace position is present on the Go EngineEvent manifest", () => {
+    const goFields = new Set(manifest.engineEvent);
+    for (const field of ["trace_id", "span_id"]) {
+      expect(goFields.has(field), `Go EngineEvent is missing ${field}`).toBe(true);
+    }
   });
 });
 

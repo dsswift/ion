@@ -519,3 +519,112 @@ func TestPushWithoutTokenReportsNoToken(t *testing.T) {
 	}
 	t.Fatal("no relay:push-failed frame reached the ion peer")
 }
+
+// TestSendAsyncPayloadCarriesTraceparent pins that the doorbell's trace
+// context rides the APNs payload as `traceparent`, and is absent when the
+// doorbell carried none, so the phone's push.open span joins the trace.
+func TestSendAsyncPayloadCarriesTraceparent(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newTestPusher(t, srv.URL, 8)
+	if err := p.sendAsync(pushRequest{deviceToken: "tok", title: "t", body: "b", traceparent: testTraceparent}); err != nil {
+		t.Fatalf("sendAsync: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("unmarshal APNs payload: %v", err)
+	}
+	if got := payload["traceparent"]; got != testTraceparent {
+		t.Fatalf("traceparent = %v, want %s", got, testTraceparent)
+	}
+
+	if err := p.sendAsync(pushRequest{deviceToken: "tok", title: "t", body: "b"}); err != nil {
+		t.Fatalf("sendAsync: %v", err)
+	}
+	if strings.Contains(string(capturedBody), "traceparent") {
+		t.Fatalf("payload carries an empty traceparent: %s", capturedBody)
+	}
+}
+
+// TestDoorbellCarriesTraceparentToAPNs pins the end-to-end path: a server
+// envelope with push=true and a traceparent, no phone connected, reaches
+// APNs with that traceparent in the payload, and the delivered line logs
+// duration_ms and queue_wait_ms.
+func TestDoorbellCarriesTraceparentToAPNs(t *testing.T) {
+	testLogger, buf := captureLogger()
+	origLogger := logger
+	logger = testLogger
+	t.Cleanup(func() { logger = origLogger })
+
+	apnsBodies := make(chan []byte, 1)
+	apnsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		apnsBodies <- body
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(apnsSrv.Close)
+
+	pusher := newTestPusher(t, apnsSrv.URL, 16)
+	pusher.Start()
+	apiKey := "test-doorbell-trace"
+	server, hub := startTestRelayWithPusher(t, apiKey, pusher)
+	pusher.metrics = hub.metrics
+	ionConn := dialWS(t, server, "chan-doorbell", "ion", apiKey)
+
+	envelope, _ := json.Marshal(map[string]any{
+		"v": 1, "nonce": "bm9uY2U=", "ciphertext": "c2VhbGVk",
+		"push": true, "pushToken": "cafef00d", "pushEnv": "sandbox",
+		"notifyKind": "permission", "notifyResourceId": "res-9",
+		"traceparent": testTraceparent,
+	})
+	writeFrame(t, ionConn, envelope)
+
+	select {
+	case body := <-apnsBodies:
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("unmarshal APNs payload: %v", err)
+		}
+		if payload["traceparent"] != testTraceparent {
+			t.Fatalf("APNs payload traceparent = %v: %s", payload["traceparent"], body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no APNs request")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !hasLogTag(buf, "relay.apns.delivered") && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	var delivered map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(buf.Bytes())), "\n") {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["tag"] == "relay.apns.delivered" {
+			delivered = m
+		}
+	}
+	if delivered == nil {
+		t.Fatalf("no relay.apns.delivered line:\n%s", buf.Bytes())
+	}
+	fields, _ := delivered["fields"].(map[string]any)
+	if fields == nil {
+		fields = delivered
+	}
+	for _, key := range []string{"duration_ms", "queue_wait_ms"} {
+		if _, ok := fields[key].(float64); !ok {
+			t.Fatalf("delivered line lacks numeric %s: %v", key, delivered)
+		}
+	}
+	if fields["traced"] != true {
+		t.Fatalf("delivered line traced = %v", fields["traced"])
+	}
+	fams := gatherFamilies(t, hub.metrics)
+	if got := histogramCount(fams["relay_apns_seconds"], "outcome", apnsOutcomeDelivered); got != 1 {
+		t.Fatalf("relay_apns_seconds{delivered} count = %d", got)
+	}
+}

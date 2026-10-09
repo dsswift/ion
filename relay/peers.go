@@ -72,15 +72,6 @@ func (ch *Channel) removeMobileLocked(conn *websocket.Conn) bool {
 	return false
 }
 
-// mobileConnsLocked is every mobile connection, oldest first.
-func (ch *Channel) mobileConnsLocked() []*websocket.Conn {
-	out := make([]*websocket.Conn, 0, len(ch.mobiles))
-	for _, p := range ch.mobiles {
-		out = append(out, p.conn)
-	}
-	return out
-}
-
 // closeMobilesLocked closes and removes every mobile peer but keep (nil
 // closes them all): the one-client rule a server that is not multi-client
 // relies on.

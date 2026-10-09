@@ -51,6 +51,7 @@ import { composeOidcScope } from '@ion/shared/relay-auth-config'
 import { broker } from './broker-instance'
 import { DESKTOP_CLIENT_CAPABILITIES } from './client-capabilities'
 import type { ConnectionAttempt } from './broker'
+import type { ConnectionTransportKind } from './phases'
 import { log as _log, warn as _warn } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -415,8 +416,11 @@ async function openNonLocal(environmentId: string, label: string, target: Enviro
   if (route.kind === 'relay' && target.kind === 'paired') armLanReprobe(environmentId, label, target)
   else disarmLanReprobe(environmentId)
   const socket = connectFnFor(environmentId, target, localPort, route)()
-  log('attempt: socket opened', { environment_id: environmentId, transport: route.kind })
-  return { transport: route.kind, credential, socket }
+  // The forward is its own hop: a tcp route through it is reported as `ssh`,
+  // never as the LAN's `tcp`.
+  const transport: ConnectionTransportKind = route.kind === 'tcp' && target.kind === 'paired' && target.via === 'ssh' && localPort !== null ? 'ssh' : route.kind
+  log('attempt: socket opened', { environment_id: environmentId, transport, route: route.kind })
+  return { transport, credential, socket, route: route.kind }
 }
 
 /**
@@ -456,7 +460,7 @@ export async function connectEnvironment(environmentId: string, label: string, t
     label,
     // What the catalog says this target is reached over; the attempt replaces
     // it with the route it actually took.
-    transport: target.kind === 'paired' && target.via === 'relay' ? 'relay' : 'tcp',
+    transport: target.kind === 'paired' && target.via === 'relay' ? 'relay' : target.kind === 'paired' && target.via === 'ssh' ? 'ssh' : 'tcp',
     clientId: CLIENT_ID,
     capabilities: DESKTOP_CLIENT_CAPABILITIES,
     open: () => openNonLocal(environmentId, label, target),

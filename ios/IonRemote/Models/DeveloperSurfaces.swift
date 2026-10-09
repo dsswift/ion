@@ -15,14 +15,31 @@ struct DeveloperSurfaces: Codable, Equatable, Sendable {
     var repositoryStatus: Bool
     /// Worktrees and integration benches.
     var worktrees: Bool
+    /// A CPU profile or heap snapshot of the server process (`profile.capture`).
+    /// This client offers no capture control; it keeps the value so the frame
+    /// round-trips whole.
+    var profiling: Bool = true
 
     /// Every surface on: the state before a welcome arrives, and the state a
     /// server that predates developer surfaces is read as.
-    static let allEnabled = DeveloperSurfaces(sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true)
+    static let allEnabled = DeveloperSurfaces(sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true)
 
     /// The Git pane holds the changes list and the commit graph, so either keeps it.
     var gitPaneOffered: Bool { sourceControl || commitGraph }
 
     /// Whether any surface reads live repository state. With none, nothing asks for it.
     var repositoryFeedOffered: Bool { sourceControl || commitGraph || repositoryStatus }
+}
+
+extension DeveloperSurfaces {
+    /// `profiling` is read as on when absent: a server that predates it
+    /// sends the first four surfaces only.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceControl = try container.decode(Bool.self, forKey: .sourceControl)
+        commitGraph = try container.decode(Bool.self, forKey: .commitGraph)
+        repositoryStatus = try container.decode(Bool.self, forKey: .repositoryStatus)
+        worktrees = try container.decode(Bool.self, forKey: .worktrees)
+        profiling = try container.decodeIfPresent(Bool.self, forKey: .profiling) ?? true
+    }
 }

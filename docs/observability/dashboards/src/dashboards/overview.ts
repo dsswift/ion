@@ -238,9 +238,8 @@ export function overviewDashboard(): Dashboard {
       id: 16,
       title: 'Autonomy ratio (Trust)',
       description:
-        'Fraction of permission checks that resolved to allow. Binds to Phase-B telemetry ' +
-        '(permission.decision) — reads "no data" until the engine ships that instrumentation; ' +
-        'query is valid and activates automatically once it does.',
+        'Fraction of permission checks that resolved to allow over the range, from the permission.decision event. ' +
+        'Red below 0.5, green from 0.8: a low ratio is a rule set that keeps asking. See Ion Trust for the decisions behind it.',
       gridPos: { h: 4, w: 4, x: 20, y: 4 },
       fieldConfig: {
         defaults: {

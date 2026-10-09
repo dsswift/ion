@@ -286,6 +286,10 @@ type activeRun struct {
 	// Atomic because OnRetryWait fires on the WithRetry goroutine while
 	// processStream reads on the run goroutine.
 	currentAttempt atomic.Int64
+	// currentLlmSpan holds the span-id (string) of the llm.call in flight,
+	// so each llm.attempt span parents under it (runloop_attempt_span.go).
+	// Empty between provider calls.
+	currentLlmSpan atomic.Value
 
 	// skillGrants are the allowed-tools of skills invoked during this run.
 	// They settle a permission "ask" as "allow" and die with the run.

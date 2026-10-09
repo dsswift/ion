@@ -21,7 +21,14 @@ import (
 //	user identity carrier (user, R20 wired to auth context seam).
 //
 // v4 = self-contained compact frames with interned identity and correlation tables.
-const TelemetrySchemaVersion = 4
+// v5 = the span events (llm.attempt, mcp.call, permission.decide, hook.fanout,
+//
+//	context.assemble, conversation.load/persist, command.dispatch, session.start,
+//	daemon.startup, config.load, provider.probe, extension.spawn, mcp.start;
+//	compaction became a span event) and the runtime figures on system.metrics
+//	(gc_pause_p99_ms, alloc_rate_bytes_per_s, sched_latency_p99_ms). The frame
+//	layout is v4's; telemetryformat.FrameVersion moves with this constant.
+const TelemetrySchemaVersion = 5
 
 // sidecarPath returns the path for the telemetry schema sidecar file.
 // Lives alongside the telemetry file in the same directory.

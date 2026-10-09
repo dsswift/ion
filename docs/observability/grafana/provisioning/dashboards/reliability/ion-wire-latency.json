@@ -46,7 +46,7 @@
         "x": 0,
         "y": 0
       },
-      "description": "Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. Source: server.jsonl tag=wire-latency msg=\"wire window\" fields.rtt_p50_ms / rtt_p95_ms.",
+      "description": "Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. The server logs one line per connection per minute with that minute's p50 and p95, not the raw probes: the p50 line is the median of the per-minute p50s over 5 m, the p95 line the p95 of the per-minute p95s. The full per-probe distribution is in the server's OTLP metrics export (ion.server.* wire histograms). Source: server.jsonl tag=wire-latency msg=\"wire window\" fields.rtt_p50_ms / rtt_p95_ms.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -79,7 +79,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p50_ms != \"\" | unwrap fields_rtt_p50_ms [5m]) by (fields_client_kind)",
+          "expr": "quantile_over_time(0.5, {service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p50_ms != \"\" | unwrap fields_rtt_p50_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -90,7 +90,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p95_ms != \"\" | unwrap fields_rtt_p95_ms [5m]) by (fields_client_kind)",
+          "expr": "quantile_over_time(0.95, {service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p95_ms != \"\" | unwrap fields_rtt_p95_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "windowed-stat",
@@ -159,7 +159,7 @@
         "x": 0,
         "y": 8
       },
-      "description": "How long a frame sat between entering the send queue and leaving the socket. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.",
+      "description": "How long a frame sat between entering the send queue and leaving the socket: the p95 of each minute's p95 over 5 m. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -192,7 +192,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_dwell_p95_ms != \"\" | unwrap fields_dwell_p95_ms [5m]) by (fields_client_kind)",
+          "expr": "quantile_over_time(0.95, {service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_dwell_p95_ms != \"\" | unwrap fields_dwell_p95_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -210,7 +210,7 @@
         "x": 12,
         "y": 8
       },
-      "description": "The deepest the bounded send queue got in the window. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.",
+      "description": "The deepest the bounded send queue got: the maximum of each minute's peak over 5 m. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -243,7 +243,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_queue_max != \"\" | unwrap fields_queue_max [5m]) by (fields_client_kind)",
+          "expr": "max_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_queue_max != \"\" | unwrap fields_queue_max [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -312,7 +312,7 @@
         "x": 12,
         "y": 16
       },
-      "description": "The server's own work on one studio_action, receipt to result sent — the wire is not in this number. Compare against the client-felt panel below: the gap between them is the wire. Source: server.jsonl fields.action_p95_ms.",
+      "description": "The server's own work on one studio_action, receipt to result sent — the wire is not in this number: the p95 of each minute's p95 over 5 m. Compare against the client-felt panel below: the gap between them is the wire. Ion Performance has the same figure per action name from the action.handle span. Source: server.jsonl fields.action_p95_ms.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -345,7 +345,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (fields_client_kind)",
+          "expr": "quantile_over_time(0.95, {service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -363,7 +363,7 @@
         "x": 0,
         "y": 24
       },
-      "description": "What a person waits through: an action leaving the client and its result arriving back, from each client's own window. desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client's log, tag=wire-latency msg=\"client window\".",
+      "description": "What a person waits through: an action leaving the client and its result arriving back, from each client's own per-minute window (the median of per-minute p50s, and the p95 of per-minute p95s, over 5 m). desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client's log, tag=wire-latency msg=\"client window\".",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -396,7 +396,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p50_ms != \"\" | unwrap fields_action_p50_ms [5m]) by (service_name)",
+          "expr": "quantile_over_time(0.5, {service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p50_ms != \"\" | unwrap fields_action_p50_ms [5m]) by (service_name)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -407,7 +407,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg_over_time({service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (service_name)",
+          "expr": "quantile_over_time(0.95, {service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (service_name)",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "windowed-stat",
@@ -425,7 +425,7 @@
         "x": 12,
         "y": 24
       },
-      "description": "Two ways the wire fails rather than slows. Timeouts are actions a client gave up on, counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server. Sources: client windows fields.action_timeouts; server windows fields.decode_errors.",
+      "description": "Two ways the wire fails rather than slows. Timeouts are actions a client gave up on (per-minute counts averaged over 5 m), counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server (summed over 5 m). Sources: client windows fields.action_timeouts; server windows fields.decode_errors.",
       "datasource": {
         "type": "loki",
         "uid": "loki"

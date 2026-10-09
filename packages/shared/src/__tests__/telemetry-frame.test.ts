@@ -49,14 +49,14 @@ function frame(): TelemetryFrame {
 }
 
 describe('telemetry frame', () => {
-  it('expands v4 interned identity and context tables into egress records', () => {
+  it('expands interned identity and context tables into egress records', () => {
     const records = expandTelemetryFrame(frame())
 
     expect(records).toEqual([
       {
         name: 'run.complete',
         ts: '2026-08-25T12:00:00.000Z',
-        schema: 4,
+        schema: TELEMETRY_FRAME_VERSION,
         component: 'engine',
         install_id: 'install-1',
         host: 'host-1',
@@ -71,7 +71,7 @@ describe('telemetry frame', () => {
       {
         name: 'tool.execute',
         ts: '2026-08-25T12:00:01.000Z',
-        schema: 4,
+        schema: TELEMETRY_FRAME_VERSION,
         component: 'engine',
         install_id: 'install-1',
         host: 'host-1',
@@ -82,6 +82,13 @@ describe('telemetry frame', () => {
         payload: { tool: 'Read' },
       },
     ])
+  })
+
+  it('still expands a schema 4 frame and keeps the producer\'s schema', () => {
+    // Schema 5 added span events and runtime figures without changing the
+    // frame layout, so a 4 producer's frames decode unchanged.
+    const records = expandTelemetryFrame({ ...frame(), schema: 4 })
+    expect(records.map((r) => r.schema)).toEqual([4, 4])
   })
 
   it('preserves a legacy telemetry event by reference', () => {

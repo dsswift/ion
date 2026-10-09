@@ -29,6 +29,7 @@ import { sendThinHeartbeat, startThinHeartbeat } from './thin-heartbeat'
 import { splitSettledTabs, hashSettled, sendSettledIfChanged, forgetSettledHash, sweepSettledHashes, _resetSettledHashesForTest } from './thin-settled'
 import { forgetTranscriptSubscriber } from '../transcript/transcript-publisher'
 import { forgetDispatchSubscriber } from '../transcript/dispatch-transcript-publisher'
+import { annotateSpan, failSpan, withSpan } from '../tracing/op-span'
 import { log as _log, debug as _debug, warn as _warn } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -57,6 +58,10 @@ export async function sendThinFirstPaint(conn: Connection): Promise<void> {
     return
   }
   const subject = conn.principal.subject
+  await withSpan('thin.first_paint', { attrs: { connection_id: conn.id, user: subject } }, () => sendFirstPaintNow(conn, subject))
+}
+
+async function sendFirstPaintNow(conn: Connection, subject: string): Promise<void> {
   let events = 0
   try {
     await sendSync((event: Record<string, unknown>) => {
@@ -89,8 +94,10 @@ export async function sendThinFirstPaint(conn: Connection): Promise<void> {
     // interval comes round.
     sendThinHeartbeat(conn)
     startThinHeartbeat()
+    annotateSpan({ event_count: events })
     log('thin first paint sent', { connection_id: conn.id, subject, event_count: events })
   } catch (err) {
+    failSpan(String(err))
     warn('thin first paint failed', { connection_id: conn.id, subject, error: String(err) })
   }
 }

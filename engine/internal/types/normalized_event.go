@@ -12,8 +12,17 @@ type NormalizedEventData interface {
 
 // NormalizedEvent wraps a canonical event with its type discriminator.
 // Custom JSON marshaling produces a flat JSON object with a "type" field.
+//
+// TraceID and SpanID are the envelope's trace position: the W3C trace of
+// the run that emitted the event and the span-id of that run's span
+// (run.execute). Both are stamped by the run and omitted when empty, so an
+// event emitted outside a run carries neither. Wire keys: see
+// normalizedEventEnvelopeKeys.
 type NormalizedEvent struct {
 	Data NormalizedEventData
+
+	TraceID string
+	SpanID  string
 }
 
 // Type is the event's wire type discriminator ("text_chunk", "tool_call", ...),
@@ -42,17 +51,17 @@ func (e NormalizedEvent) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	m["type"] = e.Data.eventType()
+	e.stampEnvelope(m)
 	return json.Marshal(m)
 }
 
 // UnmarshalJSON reads the "type" field first, then decodes into the correct variant.
 func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
-	var peek struct {
-		Type string `json:"type"`
-	}
+	var peek normalizedEventEnvelope
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return err
 	}
+	e.TraceID, e.SpanID = peek.TraceID, peek.SpanID
 
 	var target NormalizedEventData
 	switch peek.Type {

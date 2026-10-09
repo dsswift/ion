@@ -24,6 +24,7 @@ import { computeSettingsHiddenGroups } from './settings-visibility'
 import { computeDeveloperSurfaces, projectSnapshotForSurfaces } from './developer-surfaces'
 import { enterprisePolicyHash } from '../enterprise-policy-publish'
 import { log as _log, warn as _warn } from '../logger'
+import { withSpan } from '../tracing/op-span'
 import type { Connection, ConnectionRegistry, ConnectionTransport } from './connection'
 import type { CredentialsStore } from '../auth/credentials-store'
 import type { EnvironmentRelay } from '@ion/shared/studio-wire/relay-envelope'
@@ -161,7 +162,18 @@ export interface HelloDeps {
  * `true` so the caller wires event subscription. Never throws — an
  * unexpected `authenticate()` rejection is treated as `unauthorized`.
  */
-export async function handleHello(conn: Connection, hello: Extract<StudioFrame, { type: 'studio_hello' }>, deps: HelloDeps): Promise<boolean> {
+export function handleHello(conn: Connection, hello: Extract<StudioFrame, { type: 'studio_hello' }>, deps: HelloDeps): Promise<boolean> {
+  // One `hello.auth` span from the hello's receipt to its welcome or refusal.
+  return withSpan('hello.auth', {
+    kind: 'server',
+    attrs: { connection_id: conn.id, client_kind: hello.clientKind, credential_kind: hello.credential.kind, transport: conn.transport },
+  }, (_span, ctx) => helloNow(conn, hello, deps).then((welcomed) => {
+    ctx.annotate({ accepted: welcomed, ...(conn.principal ? { user: conn.principal.subject } : {}) })
+    return welcomed
+  }))
+}
+
+async function helloNow(conn: Connection, hello: Extract<StudioFrame, { type: 'studio_hello' }>, deps: HelloDeps): Promise<boolean> {
   log('hello received', {
     connection_id: conn.id,
     client_id: hello.clientId,

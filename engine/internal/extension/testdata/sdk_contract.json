@@ -898,6 +898,9 @@
       "sessionKey": {
         "kind": "string"
       },
+      "spanId": {
+        "kind": "string"
+      },
       "traceId": {
         "kind": "string"
       }

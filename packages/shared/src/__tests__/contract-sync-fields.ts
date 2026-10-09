@@ -203,6 +203,13 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   ],
 };
 
+// ─── TS NormalizedEvent envelope ───
+// The keys the Go marshaler writes around every variant: the type
+// discriminator and the emitting run's trace position (EventTraceContext in
+// types-events.ts). Keep sorted to match the Go manifest.
+
+export const TS_NORMALIZED_EVENT_ENVELOPE: string[] = ["span_id", "trace_id", "type"];
+
 // ─── TS SharedTypes field map ───
 
 export const TS_SHARED_TYPES: Record<string, string[]> = {
@@ -587,6 +594,6 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "memoryLimitBytes",
     "memoryTotalBytes",
   ],
-  SystemMetricsProcess: ["cpuPercent", "cpuTimeMs", "name", "pid", "role", "rssBytes", "startTimeMs"],
-  SystemMetricsRuntime: ["goroutines", "heapBytes", "memLimitBytes", "numGC", "sessions", "sysBytes"],
+  SystemMetricsProcess: ["cpuPercent", "cpuTimeMs", "name", "pid", "role", "rssBytes", "sessionId", "startTimeMs"],
+  SystemMetricsRuntime: ["allocRateBytesPerS", "gcPauseP99Ms", "goroutines", "heapBytes", "memLimitBytes", "numGC", "schedLatencyP99Ms", "sessions", "sysBytes"],
 };

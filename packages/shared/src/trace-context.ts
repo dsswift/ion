@@ -57,6 +57,12 @@ export interface StartSpanOptions {
   attributes?: Record<string, unknown>
   /** Clock override (test use). Wall-clock milliseconds. */
   now?: () => number
+  /**
+   * The span's start, when the operation began before this call: a process's
+   * start-up span starts at the process start, not where the code that
+   * records it first runs. Defaults to `now()` at the call.
+   */
+  startMs?: number
 }
 
 export interface Span {
@@ -144,7 +150,7 @@ export function startSpan(name: string, opts: StartSpanOptions): Span {
   const parent = resolveParent(opts.parent)
   const traceId = parent?.traceId ?? newTraceId()
   const spanId = newSpanId()
-  const startMs = now()
+  const startMs = opts.startMs ?? now()
   const kind = opts.kind ?? 'internal'
   let ended = false
   return {

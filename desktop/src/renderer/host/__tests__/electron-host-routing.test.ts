@@ -42,7 +42,7 @@ afterEach(() => { delete (window as unknown as { ion?: unknown }).ion; policySto
 
 describe('ElectronStudioHost routing', () => {
   it('holds a source-control call for a server that does not offer it, and still sends one to a server that does', async () => {
-    policyStore.setDeveloperSurfaces('devbox', { sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true })
+    policyStore.setDeveloperSurfaces('devbox', { sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true })
     const { sent } = preloadStub()
     const host = new ElectronStudioHost()
     useSessionStore.setState({ activeTabId: 'g1' } as never)

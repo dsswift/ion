@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -121,7 +122,16 @@ func (s *Server) RefreshProviderProbes() {
 	}
 
 	go func() {
+		// provider.probe: one span per CLI probe pass, under the daemon's
+		// start-up trace when this is the boot refresh (nil ctx otherwise).
+		var span *telemetry.SpanHandle
+		if telem := s.Telemetry(); telem != nil {
+			span = telem.StartSpanCtx(telemetry.ProviderProbe, map[string]any{"probe": "cli", "kinds": kindList}, s.startupSpanCtx())
+		}
 		s.probes.Refresh(kindList)
+		if span != nil {
+			span.End(nil)
+		}
 		// Recompute the effective selection with FRESH probes: a CLI that just
 		// probed as authed flips its provider to CLI-backed, and vice versa.
 		// The pre-refresh `selected` above seeded the skip set from the prior

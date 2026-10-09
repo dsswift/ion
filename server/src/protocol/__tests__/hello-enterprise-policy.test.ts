@@ -51,7 +51,7 @@ describe('the welcome and the enterprise policy', () => {
     const welcome = nextFrame(ws)
     publishEnterprisePolicy({ customFields: { 'ion-server': { developerSurfaces: { sourceControl: 'disabled' } } } } as unknown as EnterprisePolicy)
     const first = await welcome
-    expect(first.type === 'studio_welcome' && first.developerSurfaces).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true })
+    expect(first.type === 'studio_welcome' && first.developerSurfaces).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true })
 
     sendFrame(ws, { type: 'studio_action', id: 'a1', action: 'git.commit', args: [{ directory: '/repo', message: 'x' }] })
     expect(await nextFrame(ws)).toMatchObject({ type: 'studio_action_result', ok: false, refusal: { code: 'surface_disabled' } })
@@ -68,7 +68,7 @@ describe('the welcome and the enterprise policy', () => {
     publishEnterprisePolicy(null)
     await both
     const pushed = frames[0]
-    expect(pushed.type === 'studio_environment_policy' && pushed.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true })
+    expect(pushed.type === 'studio_environment_policy' && pushed.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true })
     expect(frames[1].type).toBe('studio_snapshot')
 
     sendFrame(ws, { type: 'studio_action', id: 'a2', action: 'git.commit', args: [{ directory: '/repo', message: 'x' }] })

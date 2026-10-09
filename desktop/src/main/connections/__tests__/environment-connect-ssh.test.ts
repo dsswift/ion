@@ -1,7 +1,7 @@
 /**
  * environment-connect over ssh -- a `via: 'ssh'` target opens the forward
  * first and dials the tunnel's local end for both `/auth/config` and the
- * socket, reports transport `tcp`, and closes the forward on disconnect.
+ * socket, reports transport `ssh` (route `tcp`), and closes the forward on disconnect.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mkdtempSync } from 'fs'
@@ -54,8 +54,11 @@ describe('connectEnvironment via ssh', () => {
     const attempt = await vi.mocked(broker.connect).mock.calls[0][0].open()
     expect(sshTunnels.ensure).toHaveBeenCalledWith('env-ssh', target.ssh)
     expect(fetchAuthConfig).toHaveBeenCalledWith('http://127.0.0.1:51234')
-    expect(attempt.transport).toBe('tcp')
+    // The forward is its own hop: never reported as the LAN's `tcp`.
+    expect(attempt.transport).toBe('ssh')
+    expect(attempt.route).toBe('tcp')
     expect(attempt.credential.kind).toBe('paired')
+    expect(vi.mocked(broker.connect).mock.calls[0][0].transport).toBe('ssh')
     expect(connectTcp).toHaveBeenCalledWith('http://127.0.0.1:51234')
   })
 

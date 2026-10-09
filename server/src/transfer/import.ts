@@ -25,6 +25,7 @@ import { projectPathByRepoRemote, projectsIoFor } from './repo-remote'
 import { transferInboxDir, type TransferPaths } from './paths'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { log as _log, warn as _warn } from '../logger'
+import { annotateSpan, withSpan } from '../tracing/op-span'
 
 const TAG = 'transfer.import'
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -212,7 +213,15 @@ async function resolveWorktree(
   return { ok: true, result: checkedOut }
 }
 
-export async function runTransferImport(args: RunTransferImportArgs): Promise<RunTransferImportResult> {
+export function runTransferImport(args: RunTransferImportArgs): Promise<RunTransferImportResult> {
+  return withSpan('transfer.import', { attrs: { archive_path: args.archivePath } }, () =>
+    importNow(args).then((result) => {
+      annotateSpan({ ok: result.ok, ...(result.ok ? {} : { refusal: result.refusal.code }) })
+      return result
+    }))
+}
+
+async function importNow(args: RunTransferImportArgs): Promise<RunTransferImportResult> {
   const stagingDir = join(transferInboxDir(args.paths), `stage-${randomUUID()}`)
   const logFields = { staging_dir: stagingDir }
 

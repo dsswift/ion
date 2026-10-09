@@ -112,9 +112,10 @@ services:
     depends_on:
       - loki
 
-  # Tempo stores traces. Optional: comment it out if you do not need traces.
-  # Keep in step with dev.yaml, which builds the same image and config from
-  # Dockerfile.tempo.
+  # Tempo stores traces, and its metrics-generator writes span metrics and
+  # the service graph to Prometheus. Optional: comment it out if you do not
+  # need traces. Keep in step with dev.yaml, which builds the same image and
+  # config from Dockerfile.tempo.
   tempo:
     image: grafana/tempo:3.0.3
     command:
@@ -126,6 +127,8 @@ services:
       - tempo-data:/var/tempo
     networks:
       - ion-obs
+    depends_on:
+      - prometheus
     deploy:
       resources:
         limits:
@@ -135,7 +138,11 @@ services:
   # workspace behind Application Insights. It receives the engine's OTLP
   # metrics (telemetry.otel.metrics) directly on its native OTLP receiver:
   #   endpoint: http://localhost:9090/api/v1/otlp/v1/metrics
-  # Grafana reads it as the "Prometheus" data source.
+  # and the span metrics and service graph Tempo's metrics-generator
+  # remote-writes (tempo-config.yaml) on its remote-write receiver. Exemplar
+  # storage keeps the trace id Tempo attaches to each histogram sample.
+  # Grafana reads it as the "Prometheus" data source. Keep the flags in step
+  # with Dockerfile.prometheus, which dev.yaml builds.
   prometheus:
     image: prom/prometheus:v3.14.0
     command:
@@ -143,6 +150,8 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
       - --web.enable-otlp-receiver
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
     ports:
       - "9090:9090"
     volumes:
@@ -154,6 +163,35 @@ services:
       resources:
         limits:
           memory: 256m
+
+  # The Ion relay, built from relay/Dockerfile. Optional: `docker compose
+  # --profile relay up` starts it. It ships its own logs and relay.forward
+  # spans to Alloy over OTLP (section 4 of alloy-config.alloy keeps ion-relay
+  # logs instead of dropping them, since no file tails them) and serves
+  # Prometheus metrics on /metrics of its listen port, which prometheus.yml
+  # scrapes as `relay:8443`. RELAY_API_KEY is the PSK a server and a phone
+  # present; the default is for a stack nobody else can reach.
+  relay:
+    build:
+      context: ../../relay
+    profiles:
+      - relay
+    ports:
+      - "${RELAY_PORT:-8443}:8443" # WebSocket channels, /healthz, /metrics
+    environment:
+      - RELAY_API_KEY=${RELAY_API_KEY:-local-dev-relay-key}
+      - RELAY_LOG_OUTPUT=stdout
+      - RELAY_OTLP_ENDPOINT=http://alloy:4318
+      - RELAY_METRICS_ENABLED=true
+      - RELAY_HOST=${RELAY_HOST:-relay-local}
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    depends_on:
+      - alloy
 
   # Local Event Hub emulator — optional, only needed to exercise
   # conversationEvents.targets: ["eventhub"] without a real Azure subscription.

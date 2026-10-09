@@ -104,7 +104,7 @@ afterEach(() => {
 
 describe("surface-store", () => {
   it("opens no Git or Diff tab where the active conversation has those surfaces off", () => {
-    policyStore.setDeveloperSurfaces(LOCAL_ENVIRONMENT_ID, { sourceControl: false, commitGraph: false, repositoryStatus: true, worktrees: true });
+    policyStore.setDeveloperSurfaces(LOCAL_ENVIRONMENT_ID, { sourceControl: false, commitGraph: false, repositoryStatus: true, worktrees: true, profiling: true });
     const store = useSurfaceStore.getState();
     store.openSingleton("gitpanel");
     store.openSingleton("diff");

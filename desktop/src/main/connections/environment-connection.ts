@@ -6,12 +6,14 @@
  */
 import type { StudioSocketLike } from './transport-relay'
 import { sendFrame } from './send-frame'
-import { decodeFrame, encodeFrame, decodeBinary, encodeBinary } from '@ion/shared/studio-wire/codec'
+import { decodeFrame, encodeFrame, decodeBinary, encodeBinary, WireError } from '@ion/shared/studio-wire/codec'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import type { StudioCredential, StudioFrame } from '@ion/shared/studio-wire/types'
 import type { BinaryChannel } from '@ion/shared/studio-wire/channels'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 import type { ConnectionPhase, ConnectionTransportKind } from './phases'
+import { startMainSpan } from '../spans'
+import type { Span } from '@ion/shared/trace-context'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('connections-broker', msg, fields)
@@ -65,6 +67,8 @@ export interface ConnectionAttempt {
   transport: ConnectionTransportKind
   credential: StudioCredential
   socket: StudioSocketLike
+  /** The route the attempt resolved (`tcp` | `relay` | `local`), an attribute of its `connection.connect` span. Defaults to the transport. */
+  route?: string
 }
 
 /** Attempt ladder for a failed connection: five attempts within five minutes, then a slower retry forever (see OFFLINE_RETRY_MS below). */
@@ -120,6 +124,12 @@ export class EnvironmentConnection {
    * attaches after it (see `Broker.replayWelcome`).
    */
   private lastWelcome: StudioFrame | null = null
+  /**
+   * `connection.connect`: one span per attempt, from the attempt starting to
+   * the welcome (or the failure that ends the attempt). Attributes name the
+   * environment, the transport the attempt resolved, and its route.
+   */
+  private connectSpan: Span | null = null
 
   constructor(
     private readonly target: ConnectionTarget,
@@ -137,6 +147,16 @@ export class EnvironmentConnection {
    * the current one.
    */
   private generation = 0
+  /** The route the current attempt resolved, for its span. */
+  private attemptRoute: string | null = null
+
+  /** Ends the current attempt's `connection.connect` with the transport it resolved. Idempotent. */
+  private endConnectSpan(extra?: Record<string, unknown>, error?: string): void {
+    const span = this.connectSpan
+    if (!span) return
+    this.connectSpan = null
+    span.end({ transport: this.target.transport, route: this.attemptRoute ?? this.target.transport, ...(extra ?? {}) }, error)
+  }
 
   connect(): void {
     this.welcomed = false
@@ -145,6 +165,11 @@ export class EnvironmentConnection {
   }
 
   private async attempt(generation: number): Promise<void> {
+    this.connectSpan?.end({ attempt: this.attempts }, 'superseded by a later attempt')
+    this.connectSpan = startMainSpan('connection.connect', {
+      kind: 'client',
+      attributes: { 'peer.service': 'ion-server', environment_id: this.target.environmentId, transport: this.target.transport, attempt: this.attempts + 1 },
+    })
     let opened: ConnectionAttempt
     try {
       opened = await this.target.open()
@@ -152,6 +177,7 @@ export class EnvironmentConnection {
       const reason = err instanceof Error ? err.message : String(err)
       if (generation !== this.generation) {
         debug('a superseded attempt failed to open; ignoring it', { environment_id: this.target.environmentId, reason })
+        this.endConnectSpan(undefined, 'superseded while opening')
         return
       }
       warn('connection attempt could not be opened; it will be retried', { environment_id: this.target.environmentId, reason })
@@ -161,9 +187,11 @@ export class EnvironmentConnection {
     if (generation !== this.generation || this.closedByUser) {
       log('closing a socket opened by a superseded attempt', { environment_id: this.target.environmentId, transport: opened.transport })
       opened.socket.close()
+      this.endConnectSpan({ transport: opened.transport }, 'superseded after opening')
       return
     }
     this.target.transport = opened.transport
+    this.attemptRoute = opened.route ?? opened.transport
     const ws = opened.socket
     this.ws = ws
     // Every listener below checks `this.ws === ws` before acting. A socket
@@ -225,9 +253,27 @@ export class EnvironmentConnection {
     try {
       frame = decodeFrame(typeof data === 'string' ? data : String(data))
     } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      const wire = err instanceof WireError ? err : null
+      if (wire?.frameType === 'studio_welcome' && !this.welcomed) {
+        // Nothing else will ever open this wire: the server has said its
+        // piece and waits for frames. Fail the attempt so the phase says
+        // why, instead of sitting in `connecting` with a socket open.
+        warn('welcome from server could not be read; failing the attempt', {
+          environment_id: this.target.environmentId,
+          field: wire.field,
+          error,
+        })
+        const ws = this.ws
+        this.handleFailure(`welcome could not be read: field ${wire.field ?? 'unknown'}`, undefined, true)
+        ws?.close()
+        return
+      }
       warn('malformed frame from server; ignoring', {
         environment_id: this.target.environmentId,
-        error: err instanceof Error ? err.message : String(err),
+        frame_type: wire?.frameType,
+        field: wire?.field,
+        error,
       })
       return
     }
@@ -244,6 +290,7 @@ export class EnvironmentConnection {
       this.welcomed = true
       this.lastWelcome = frame
       this.flushPending()
+      this.endConnectSpan({ server_capabilities: frame.capabilities.length })
       this.setPhase({ phase: 'connected', transport: this.target.transport })
     } else if (frame.type === 'studio_refused') {
       this.handleFailure(`refused: ${frame.reason}${frame.detail ? ` (${frame.detail})` : ''}`, frame.reason)
@@ -344,9 +391,11 @@ export class EnvironmentConnection {
     return true
   }
 
-  private handleFailure(reason: string, refusalReason?: import('@ion/shared/studio-wire/types').StudioRefusalReason): void {
+  private handleFailure(reason: string, refusalReason?: import('@ion/shared/studio-wire/types').StudioRefusalReason, incompatible = false): void {
     this.ws = null
     this.welcomed = false
+    // A failure after the welcome has no attempt span open; this is a no-op then.
+    this.endConnectSpan(refusalReason ? { refusal_reason: refusalReason } : undefined, reason)
     if (this.closedByUser) return
     const now = Date.now()
     if (now - this.windowStartMs > BACKOFF_WINDOW_MS) {
@@ -362,7 +411,7 @@ export class EnvironmentConnection {
       // ladder exhausted and replaying it minutes later on an eventual
       // reconnect would be a stale action, not a real one.
       this.discardPending(reason)
-      this.setPhase({ phase: 'offline', transport: this.target.transport, reason, refusalReason })
+      this.setPhase({ phase: 'offline', transport: this.target.transport, reason, refusalReason, incompatible })
       this.retryTimer = setTimeout(() => this.connect(), OFFLINE_RETRY_MS)
       return
     }
@@ -372,6 +421,7 @@ export class EnvironmentConnection {
       transport: this.target.transport,
       reason,
       refusalReason,
+      incompatible,
       attempt: this.attempts,
       nextAttemptAtMs: now + delay,
     })
@@ -396,6 +446,7 @@ export class EnvironmentConnection {
 
   disconnect(): void {
     this.closedByUser = true
+    this.endConnectSpan(undefined, 'disconnected by user')
     // Invalidates an attempt still resolving, so its socket is closed on
     // arrival instead of installed over a connection the user just ended.
     this.generation += 1

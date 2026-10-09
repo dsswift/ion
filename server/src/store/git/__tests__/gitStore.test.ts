@@ -20,7 +20,7 @@ function baseSnap(over: Partial<RepoSnapshot> = {}): RepoSnapshot {
 
 describe('gitStore reducer', () => {
   beforeEach(() => {
-    useGitStore.setState({ repos: {}, inflightOps: {} })
+    useGitStore.setState({ repos: {} })
   })
 
   it('hydrates from snapshot', () => {
@@ -59,13 +59,6 @@ describe('gitStore reducer', () => {
     expect(r.files.map((f) => f.path).sort()).toEqual(['b.ts'])
     expect(r.groups.untracked.map((f) => f.path)).toEqual(['b.ts'])
     expect(r.revision).toBe(2)
-  })
-
-  it('tracks inflight ops via op:started / op:completed', () => {
-    useGitStore.getState().applyEvent({ kind: 'op:started', repoPath: REPO, opId: '1', opKind: 'commit' })
-    expect(useGitStore.getState().inflightOps[`${REPO}:1`]).toBe('commit')
-    useGitStore.getState().applyEvent({ kind: 'op:completed', repoPath: REPO, opId: '1', ok: true, durationMs: 10 })
-    expect(useGitStore.getState().inflightOps[`${REPO}:1`]).toBeUndefined()
   })
 
   it('updates head + upstream from delta events', () => {

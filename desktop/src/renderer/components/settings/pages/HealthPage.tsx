@@ -19,6 +19,7 @@ import { useColors } from '../../../theme'
 import { Button, CellText, Chip, DataList, ErrorText, FormGroup, FormRow, KIT, Muted, SidePanel, Stack, StatusDot, type DataColumn } from '../kit'
 import { rInfo, rWarn } from '../../../rendererLogger'
 import { MetricsStrip, formatBytes, pct, processRows, type ProcessRow } from './health-metrics'
+import { RenderTimingList } from './health-spans'
 
 export function HealthPage(): React.JSX.Element {
   const env = useSettingsEnvironment()
@@ -38,6 +39,7 @@ export function HealthPage(): React.JSX.Element {
       </FormGroup>
       <ProcessList label="Processes" rows={rows} showGpu={env.isLocal && deviceRows != null} loading={!metrics.latest && !metrics.error} />
       {!env.isLocal && device && <ProcessList label="This device" rows={processRows([], device.processes)} showGpu loading={false} />}
+      {env.isLocal && <RenderTimingList />}
       <HostTools />
       <TelemetryGroup targets={telemetry} />
       <LogsGroup />

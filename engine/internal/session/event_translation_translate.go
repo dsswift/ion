@@ -13,8 +13,20 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// translateToEngineEvent converts a NormalizedEvent to an EngineEvent.
+// translateToEngineEvent converts a NormalizedEvent to an EngineEvent. The
+// envelope's trace position (the emitting run's trace-id and span-id) is
+// carried onto the wire event; a translation that drops the event (empty
+// Type) carries nothing.
 func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) types.EngineEvent {
+	ee := translateEventData(event, contextWindow)
+	if ee.Type != "" {
+		ee.TraceID, ee.SpanID = event.TraceID, event.SpanID
+	}
+	return ee
+}
+
+// translateEventData is the per-variant translation switch.
+func translateEventData(event types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	if event.Data == nil {
 		return types.EngineEvent{Type: "engine_error", EventMessage: "nil event data"}
 	}

@@ -8,6 +8,8 @@ import { createFlushScheduler, type FlushScheduler } from './engine-event-flush-
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
 import { host } from '../host/host-instance'
 import { startTerminalActivitySync } from './terminal-activity-sync'
+import { noteTranscriptDelta } from '../lib/render-spans'
+import { notePromptFirstToken } from '../lib/action-trace'
 
 /**
  * Subscribes to the single normalized-event stream (ion:normalized-event),
@@ -101,6 +103,11 @@ export function useEngineEvents() {
         case 'ion:normalized-event': {
           const [tabId, event] = frame.payload as [string, NormalizedEvent]
           received += 1
+          // Render timing: the delta is in; `TranscriptRows` marks the commit
+          // that shows it. The first token of an answer also closes the
+          // prompt's `prompt.visible`, joined by the trace the engine stamped.
+          noteTranscriptDelta(tabId)
+          if (event.type === 'text_chunk') notePromptFirstToken(tabId, event.trace_id)
           if (event.type === 'stream_reset') {
             queueRef.current = dropQueuedTextFor(queueRef.current, tabId)
           }

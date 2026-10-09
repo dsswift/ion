@@ -101,7 +101,7 @@ func (b *ApiBackend) drainSuspend(run *activeRun, conv *conversation.Conversatio
 func (b *ApiBackend) parkForBackgroundTasks(run *activeRun, conv *conversation.Conversation, taskIDs, pollIDs []string) {
 	// Persist first: the woken run reloads the conversation from disk, so an
 	// unsaved final turn would be lost across the park.
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "failed to save conversation before background-task park", map[string]any{
 			"run_id": run.requestID,
 			"error":  utils.ErrStr(err),
@@ -174,7 +174,7 @@ func (b *ApiBackend) outstandingChildDispatchIDs(run *activeRun) []string {
 // The conversation is saved first so the revived run — which reloads from
 // disk — sees the final turn that decided to park.
 func (b *ApiBackend) parkForChildDispatches(run *activeRun, conv *conversation.Conversation, dispatchIDs []string) {
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "failed to save conversation before child-dispatch park", map[string]any{
 			"run_id": run.requestID,
 			"error":  utils.ErrStr(err),

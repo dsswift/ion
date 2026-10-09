@@ -36,7 +36,7 @@ describe('OTLP log record trace correlation', () => {
   it('sets traceId/spanId as LogRecord fields and repeats neither as an attribute', () => {
     const records: EgressRecord[] = [
       { ts: TS, level: 'INFO', msg: 'run started', component: 'engine', tag: 'session', trace_id: TRACE },
-      spanLine('server', 'prompt.handle', { span_id: SPAN, parent_span_id: PARENT, span_kind: 'server' }),
+      spanLine('server', 'action.handle', { span_id: SPAN, parent_span_id: PARENT, span_kind: 'server' }),
       { ts: TS, level: '', msg: '', component: 'engine', name: 'tool.execute', trace_id: TRACE, payload: { tool: 'Bash' }, context: { parent_span_id: PARENT } },
       { ts: TS, level: 'INFO', msg: 'no trace', component: 'engine', tag: 'session' },
       { ts: TS, level: 'INFO', msg: 'bad trace', component: 'engine', tag: 'session', trace_id: TRACE.toUpperCase() },
@@ -51,7 +51,7 @@ describe('OTLP log record trace correlation', () => {
     }
     const want: Record<string, [string?, string?]> = {
       'run started': [TRACE],
-      'prompt.handle': [TRACE, SPAN],
+      'action.handle': [TRACE, SPAN],
       'tool.execute': [TRACE, PARENT],
       'no trace': [],
       'bad trace': [],
@@ -65,7 +65,7 @@ describe('OTLP log record trace correlation', () => {
       expect(attrs(lr?.attributes as OtlpLogAttr[]).span_id, msg).toBeUndefined()
     }
     // Wire key order matches the engine exporter.
-    expect(Object.keys(byMsg.get('prompt.handle') ?? {})).toEqual(
+    expect(Object.keys(byMsg.get('action.handle') ?? {})).toEqual(
       ['timeUnixNano', 'severityNumber', 'severityText', 'traceId', 'spanId', 'body', 'attributes'],
     )
   })
@@ -110,7 +110,7 @@ describe('span kind per hop', () => {
     const ids = { send: 'a000000000000001', handle: 'a000000000000002', call: 'a000000000000003', run: 'a000000000000004' }
     const records: EgressRecord[] = [
       spanLine('web', 'prompt.send', { span_id: ids.send, span_kind: 'client' }),
-      spanLine('server', 'prompt.handle', { span_id: ids.handle, parent_span_id: ids.send, span_kind: 'server' }),
+      spanLine('server', 'action.handle', { span_id: ids.handle, parent_span_id: ids.send, span_kind: 'server' }),
       spanLine('server', 'engine.send_prompt', { span_id: ids.call, parent_span_id: ids.handle, span_kind: 'client' }),
       {
         ts: TS, level: '', msg: '', component: 'engine', name: 'run.execute', trace_id: TRACE,

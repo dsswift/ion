@@ -300,6 +300,11 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Timeouts = types.MergeTimeouts(dst.Timeouts, src.Timeouts)
 	}
 
+	// Debug: merge set fields (a later layer's pprof listen address wins).
+	if src.Debug != nil {
+		dst.Debug = types.MergeDebug(dst.Debug, src.Debug)
+	}
+
 	// Workspace: merge non-zero fields (reap grace window, watcher dir cap)
 	if src.Workspace != nil {
 		dst.Workspace = types.MergeWorkspace(dst.Workspace, src.Workspace)

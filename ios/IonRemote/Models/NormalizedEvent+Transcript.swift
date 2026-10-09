@@ -22,7 +22,9 @@ extension RemoteEvent {
                 baseRev: try container.decode(Int.self, forKey: .baseRev),
                 rev: try container.decode(Int.self, forKey: .rev),
                 total: try container.decode(Int.self, forKey: .total),
-                change: try container.decode(TranscriptChange.self, forKey: .change)
+                change: try container.decode(TranscriptChange.self, forKey: .change),
+                traceId: try container.decodeIfPresent(String.self, forKey: .traceId),
+                spanId: try container.decodeIfPresent(String.self, forKey: .spanId)
             ))
 
         case .transcriptPage:
@@ -71,6 +73,8 @@ extension RemoteEvent {
             try container.encode(patch.rev, forKey: .rev)
             try container.encode(patch.total, forKey: .total)
             try container.encode(patch.change, forKey: .change)
+            try container.encodeIfPresent(patch.traceId, forKey: .traceId)
+            try container.encodeIfPresent(patch.spanId, forKey: .spanId)
             return true
 
         case .transcriptPage(let page):

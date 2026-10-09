@@ -165,9 +165,13 @@ extension SessionViewModel {
         // The single, unified wire command. instanceId is the data field that
         // selects the server pipeline; nil is dropped on encode. clientMsgId
         // is the pending bubble's id, stamped by the server on the row it makes.
-        // The prompt's trace starts here; the span ends on the server's answer
-        // (handlePromptResult).
-        let span = PromptTraceBook.shared.open(clientMsgId: clientMsgId, tabId: tabId, conversationId: tab(for: tabId)?.conversationId)
+        // The prompt's trace starts here. `prompt.send` ends on the server's
+        // answer (handlePromptResult); `prompt.visible`, a second root of the
+        // same trace, ends when the answer's first update renders
+        // (SessionViewModel+RenderSpans.swift).
+        let conversationId = tab(for: tabId)?.conversationId
+        let span = ActionTraceBook.shared.openPrompt(clientMsgId: clientMsgId, tabId: tabId, conversationId: conversationId)
+        ClientSpanBook.shared.openPromptVisible(clientMsgId: clientMsgId, tabId: tabId, traceId: span.traceId, conversationId: conversationId)
         send(.prompt(
             tabId: tabId, text: text, clientMsgId: clientMsgId, attachments: attachments, instanceId: instanceId,
             traceparent: span.traceparent

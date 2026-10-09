@@ -93,6 +93,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		return pe
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	applyTraceparent(ctx, req, p.id)
 
 	resp, err := p.client.Do(req)
 	if err != nil {

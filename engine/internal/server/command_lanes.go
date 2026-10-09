@@ -84,8 +84,10 @@ func newCommandLanes(dispatchFn func(net.Conn, *protocol.ClientCommand), rejectF
 
 func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 	switch cmd.Cmd {
-	case "health", "get_system_metrics", "system_metrics_watch":
-		// Cheap reads of engine-wide state: never queue behind a busy lane.
+	case "health", "get_system_metrics", "system_metrics_watch", "debug_profile":
+		// Reads of engine-wide state: never queue behind a busy lane.
+		// debug_profile captures on its own goroutine and answers later, so
+		// it holds this lane only for the time it takes to start.
 		return classHealth
 
 	case "credential_response":

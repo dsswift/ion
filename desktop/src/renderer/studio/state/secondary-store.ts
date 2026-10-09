@@ -36,6 +36,7 @@ import type { StudioUserMessageEcho, StudioHistoryReplace } from '@ion/shared/ty
 // every existing import path keeps resolving.
 export { hydrateWorktreeFromSync } from './secondary-store-worktree-sync'
 import { rDebug, rWarn } from '../../rendererLogger'
+import { endStoreHydrate } from '../../lib/render-spans'
 import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
 import { policyStore } from '../connection/policy-store'
 import { declareMirrorWindow } from '@ion/server/lib/window-role'
@@ -192,6 +193,7 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
   })
   drainHistoryReplacements()
   drainUserMessageEchoes()
+  endStoreHydrate({ environmentId, tabCount: envTabs.length })
   rDebug('studio.mirror', 'tabs hydrated from owner sync', { environment_id: environmentId, tab_count: envTabs.length, union_tab_count: useSessionStore.getState().tabs.length })
 }
 

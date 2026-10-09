@@ -332,7 +332,10 @@ loki.write "local" {
 // http://localhost:4318) posts its logs before its spans, and sends the spans
 // only once the logs are accepted. This stack already reads every Ion log file
 // from disk (section 1), so OTLP logs are accepted and dropped here rather
-// than stored twice. Traces go to Tempo.
+// than stored twice. The one exception is the relay (service.name ion-relay,
+// the `relay` compose profile): it writes no file this stack tails, so its
+// OTLP logs are the only copy and go to Loki through the same parse pipeline
+// as the tailed files. Traces go to Tempo.
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -341,9 +344,41 @@ otelcol.receiver.otlp "default" {
     endpoint = "0.0.0.0:4318"
   }
   output {
-    logs   = [otelcol.exporter.loki.otlp_logs_already_tailed.input]
+    logs   = [otelcol.processor.filter.relay_logs_only.input, otelcol.exporter.loki.otlp_logs_already_tailed.input]
     traces = [otelcol.exporter.otlp.tempo.input]
   }
+}
+
+// Keep only the relay's records on this branch; every other service's OTLP
+// logs are already tailed from disk and continue to the drop below.
+otelcol.processor.filter "relay_logs_only" {
+  error_mode = "ignore"
+  logs {
+    log_record = [
+      `resource.attributes["service.name"] != "ion-relay"`,
+    ]
+  }
+  output {
+    logs = [otelcol.processor.attributes.relay_loki_raw.input]
+  }
+}
+
+// The relay's record body is the canonical JSONL line itself (log-schema.md
+// § "relay"), so hand it to Loki raw: loki.process.ion_parse then reads the
+// same component/level/tag/trace_id fields it reads from a tailed file.
+otelcol.processor.attributes "relay_loki_raw" {
+  action {
+    key    = "loki.format"
+    action = "insert"
+    value  = "raw"
+  }
+  output {
+    logs = [otelcol.exporter.loki.relay.input]
+  }
+}
+
+otelcol.exporter.loki "relay" {
+  forward_to = [loki.process.ion_parse.receiver]
 }
 
 otelcol.exporter.loki "otlp_logs_already_tailed" {

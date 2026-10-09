@@ -10,6 +10,7 @@
  * so both ends agree on one shape and one test pins it.
  */
 import { encrypt, decrypt } from '../e2e'
+import { parseTraceparent } from '../trace-context'
 
 /**
  * What a relay needs to ring a phone that is not connected. These ride the
@@ -46,10 +47,13 @@ export interface RelayEnvelope extends RelayPushMeta {
   /** Present and true when the relay should push if it cannot forward. */
   push?: true
   /**
-   * A W3C traceparent the sender sets beside the sealed frame, in plaintext,
-   * so the relay can record its `relay.forward` span as a child. The phone
-   * sets it on the frame carrying a prompt. It names a span, never content;
-   * the receiver opens the frame the same way with or without it.
+   * A W3C traceparent the sender sets beside the sealed frame, in plaintext.
+   * A client sets it on every frame carrying an action (its own span); the
+   * server sets it on every frame it sends (the span or engine event the
+   * frame belongs to). A relay with tracing on records its `relay.forward`
+   * span as a child and rewrites this value with that span's id, so the
+   * receiver parents under the relay. It names a span, never content; the
+   * receiver opens the sealed frame the same way with or without it.
    */
   traceparent?: string
 }
@@ -80,12 +84,15 @@ export function sealRelayFrame(payload: string | Uint8Array, sharedSecret: Buffe
   return JSON.stringify(envelope)
 }
 
-export type OpenedRelayFrame = { bytes: Buffer; isBinary: boolean }
+/** An opened envelope: the frame, and the plaintext `traceparent` beside it when the sender set a valid one. */
+export type OpenedRelayFrame = { bytes: Buffer; isBinary: boolean; traceparent?: string }
 
 /**
  * Opens an envelope. Returns null when the text is not an envelope or does
  * not decrypt: the relay is untrusted transport, so a frame that fails here
- * is dropped by the caller, never acted on.
+ * is dropped by the caller, never acted on. The envelope's `traceparent` is
+ * returned only when it parses as one: it is plaintext anyone on the path
+ * could write, and it only ever names a span.
  */
 export function openRelayFrame(raw: string, sharedSecret: Buffer): OpenedRelayFrame | null {
   let parsed: unknown
@@ -97,7 +104,9 @@ export function openRelayFrame(raw: string, sharedSecret: Buffer): OpenedRelayFr
   if (!isRelayEnvelope(parsed)) return null
   const bytes = decrypt(parsed.nonce, parsed.ciphertext, sharedSecret)
   if (bytes === null) return null
-  return { bytes, isBinary: parsed.bin === true }
+  const opened: OpenedRelayFrame = { bytes, isBinary: parsed.bin === true }
+  if (parseTraceparent(parsed.traceparent)) opened.traceparent = parsed.traceparent
+  return opened
 }
 
 /**

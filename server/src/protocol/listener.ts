@@ -11,7 +11,7 @@
  * `studio_hello` handshakes, and likewise for TCP.
  */
 import { WebSocketServer } from 'ws'
-import type { ConnectionSocket } from './connection-socket'
+import type { ConnectionSocket, InboundFrameMeta } from './connection-socket'
 import { credentialsStore } from '../auth/credentials-store'
 import { unsubscribeGitAll } from '../git/git-subscriptions'
 import { treeWatch } from '../files/tree-watch'
@@ -102,7 +102,7 @@ function withConnPrincipal(conn: Connection, fn: () => void): void {
   runAsPrincipal({ principal: conn.principal, preferences: conn.preferences }, fn)
 }
 
-function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBinary: boolean, unsubscribe: { fn: (() => void) | null }, opts: ResolvedStudioListenerOptions): void {
+function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBinary: boolean, unsubscribe: { fn: (() => void) | null }, opts: ResolvedStudioListenerOptions, meta?: InboundFrameMeta): void {
   if (isBinary) {
     conn.latency.recordInbound()
     withConnPrincipal(conn, () => handleBinaryFrame(conn, raw as Buffer))
@@ -163,8 +163,8 @@ function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBi
   switch (frame.type) {
     case 'studio_action': {
       const startedAt = Date.now()
-      withConnPrincipal(conn, () => void handleAction(conn, frame).finally(() => {
-        conn.latency.recordAction(Date.now() - startedAt)
+      withConnPrincipal(conn, () => void handleAction(conn, frame, meta?.traceparent).finally(() => {
+        conn.latency.recordAction(frame.action, Date.now() - startedAt)
       }))
       return
     }
@@ -236,7 +236,7 @@ export function attachConnection(socket: ConnectionSocket, transport: Connection
   log('connection opened', { connection_id: conn.id, transport, pre_verified: !!conn.preVerifiedClientId, sealed: !!conn.sealedClientId })
 
   socket.on('pong', () => conn.markPongReceived())
-  socket.on('message', (data, isBinary) => routeMessage(conn, socket, data, isBinary, unsubscribe, opts))
+  socket.on('message', (data, isBinary, meta) => routeMessage(conn, socket, data, isBinary, unsubscribe, opts, meta))
   socket.on('close', (code, reasonBuf) => {
     unsubscribe.fn?.()
     // Before it leaves the registry: whatever this connection measured since

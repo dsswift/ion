@@ -213,7 +213,7 @@ func (b *ApiBackend) FlushConversations() {
 		if run.conv == nil {
 			continue
 		}
-		if err := conversation.Save(run.conv, ""); err != nil {
+		if err := persistConversation(run, run.conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "FlushConversations: save failed", map[string]any{
 				"run_id": run.requestID,
 				"error":  utils.ErrStr(err),
@@ -528,6 +528,12 @@ func (b *ApiBackend) emitWithoutProgress(run *activeRun, event types.NormalizedE
 // points is whether they stamp run.lastProgressAt first; keeping the redact +
 // forward logic here guarantees the two paths cannot drift.
 func (b *ApiBackend) dispatchEvent(run *activeRun, event types.NormalizedEvent) {
+	// The run's trace position rides on its ParentCtx (prompt_dispatch.go for
+	// a root run, extcontext.childRunTrace for a dispatched child); every
+	// event this run emits names that trace and the run's span.
+	if run != nil && run.opts != nil && run.opts.ParentCtx != nil {
+		event = event.WithTrace(utils.TraceIDFromContext(run.opts.ParentCtx), utils.SpanIDFromContext(run.opts.ParentCtx))
+	}
 	if run != nil && run.cfg != nil && run.cfg.SecurityCfg != nil && run.cfg.SecurityCfg.RedactSecrets {
 		if tr, ok := event.Data.(*types.ToolResultEvent); ok {
 			// Scan before redacting so the telemetry event can report the

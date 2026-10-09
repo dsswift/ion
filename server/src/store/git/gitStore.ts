@@ -13,7 +13,6 @@ import type { RepoState } from './types'
 
 interface GitStoreState {
   repos: Record<string, RepoState>
-  inflightOps: Record<string, string>
 
   applySnapshot: (snap: RepoSnapshot) => void
   applyEvent: (event: GitEvent) => void
@@ -60,7 +59,6 @@ function applyStatusDelta(
 
 export const useGitStore = create<GitStoreState>((set) => ({
   repos: {},
-  inflightOps: {},
 
   applySnapshot: (snap) => {
     set(produce((draft: GitStoreState) => {
@@ -96,13 +94,6 @@ export const useGitStore = create<GitStoreState>((set) => ({
           break
         case 'refs:changed':
           // Branch picker re-reads on this signal.
-          break
-        case 'op:started':
-          draft.inflightOps[`${event.repoPath}:${event.opId}`] = event.opKind
-          break
-        case 'op:completed':
-        case 'op:cancelled':
-          delete draft.inflightOps[`${event.repoPath}:${event.opId}`]
           break
       }
     }))

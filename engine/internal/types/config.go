@@ -432,7 +432,10 @@ type EngineRuntimeConfig struct {
 	FeatureFlags          *FeatureFlagsConfig `json:"featureFlags,omitempty"`
 	Relay                 *RelayConfig        `json:"relay,omitempty"`
 	Timeouts              *TimeoutsConfig     `json:"timeouts,omitempty"`
-	WebSearch             *WebSearchConfig    `json:"webSearch,omitempty"`
+	// Debug holds operator diagnostics switches (the pprof listener). Nil
+	// means every one is off. See types.DebugConfig.
+	Debug     *DebugConfig     `json:"debug,omitempty"`
+	WebSearch *WebSearchConfig `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -868,6 +871,10 @@ type ProviderConfig struct {
 	//   all others→ "api"
 	// An invalid value is reset to "" (default rule) with an ERROR log.
 	Backend string `json:"backend,omitempty"`
+	// ScenarioFile is read only by the "mock" provider: the path of the
+	// scenario that scripts its streams (providers.MockScenario). Every other
+	// provider ignores it.
+	ScenarioFile string `json:"scenarioFile,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.

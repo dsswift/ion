@@ -51,7 +51,7 @@ func TestEmitRunSpanLockedRecordsRunSpan(t *testing.T) {
 	emitRunSpanLocked(s, "k", "run-1", &code, nil)
 
 	events := collector.BufferedEvents()
-	if len(events) != 1 || events[0].Name != runSpanEvent {
+	if len(events) != 1 || events[0].Name != telemetry.RunExecute {
 		t.Fatalf("events = %+v", events)
 	}
 	e := events[0]

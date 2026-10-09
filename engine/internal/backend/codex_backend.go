@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/cliprobe"
@@ -49,7 +50,12 @@ type CodexBackend struct {
 }
 
 // codexLauncher connects to a codex app-server wired with the given handlers.
-type codexLauncher func(h codexrpc.Handlers) (client *codexrpc.Client, kill func(), err error)
+// extraEnv is appended to the inherited environment: TRACEPARENT for the run
+// that first spawned the process (the app-server is long-lived, so later runs
+// on the same process inherit that first trace; see
+// docs/observability/log-schema.md § Propagation). Empty keeps the inherited
+// environment untouched.
+type codexLauncher func(h codexrpc.Handlers, extraEnv []string, sessionID string) (client *codexrpc.Client, kill func(), err error)
 
 // codexRun tracks one active engine run mapped onto a codex thread+turn.
 type codexRun struct {
@@ -98,12 +104,22 @@ func NewCodexBackend() *CodexBackend {
 }
 
 // defaultCodexLauncher spawns the real `codex app-server` subprocess.
-func defaultCodexLauncher(h codexrpc.Handlers) (*codexrpc.Client, func(), error) {
+func defaultCodexLauncher(h codexrpc.Handlers, extraEnv []string, sessionID string) (*codexrpc.Client, func(), error) {
 	binPath, err := cliprobe.Find(codexBinaryName, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	proc, err := rpcstdio.Spawn(context.Background(), binPath, []string{"app-server"}, nil, codexrpc.SpawnHandlers(h))
+	// nil env inherits the engine's environment; an explicit env replaces
+	// it, so the inherited set is copied before TRACEPARENT is appended.
+	var env []string
+	if len(extraEnv) > 0 {
+		env = append(os.Environ(), extraEnv...)
+	}
+	spawnOpts := codexrpc.SpawnHandlers(h)
+	// The process serves the session that first spawned it; System Metrics
+	// attributes it there.
+	spawnOpts.SessionID = sessionID
+	proc, err := rpcstdio.Spawn(context.Background(), binPath, []string{"app-server"}, env, spawnOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -174,7 +190,7 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 	if options.ParentCtx != nil {
 		defer installAmbientLogging(options.ParentCtx)()
 	}
-	if err := b.ensureStarted(); err != nil {
+	if err := b.ensureStarted(options.ParentCtx); err != nil {
 		b.emitError(requestID, fmt.Errorf("codex start failed: %w", err))
 		b.emitExit(requestID, intPtr(1), nil, "")
 		return
@@ -549,7 +565,9 @@ const codexClientTag = "ion-engine"
 
 // ensureStarted lazily spawns and initializes the codex app-server process. It
 // is safe to call concurrently; only the first caller spawns.
-func (b *CodexBackend) ensureStarted() error {
+// ensureStarted spawns the app-server on first use. runCtx is the spawning
+// run's context; its trace becomes the process's TRACEPARENT.
+func (b *CodexBackend) ensureStarted(runCtx context.Context) error {
 	b.mu.Lock()
 	if b.started {
 		b.mu.Unlock()
@@ -564,7 +582,7 @@ func (b *CodexBackend) ensureStarted() error {
 		OnDynamicToolCall:    b.onDynamicToolCall,
 		OnClosed:             b.onProcessClosed,
 	}
-	client, kill, err := b.launch(handlers)
+	client, kill, err := b.launch(handlers, withTraceparentEnv(nil, runCtx, "backend.codex"), spawnSessionID(runCtx))
 	if err != nil {
 		return err
 	}

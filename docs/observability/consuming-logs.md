@@ -67,16 +67,16 @@ removals and renames require an ADR. Parse defensively: ignore unknown keys, nev
 ### Telemetry event schema
 
 The telemetry stream (opt-in, see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md)) is a
-versioned event stream. Every record self-identifies its schema generation via the `schema` integer. Schema v4 stores compact frames; a frame expands to one or more telemetry events.
+versioned event stream. Every record self-identifies its schema generation via the `schema` integer. Schema v4 introduced compact frames and v5 (current) keeps them; a frame expands to one or more telemetry events.
 
 **Top-level envelope** (normative table:
 [`log-schema.md` § Telemetry event fields](log-schema.md#telemetry-event-fields-telemetryjsonl)):
 
 | Field | Type | Presence | Meaning |
 |---|---|---|---|
-| `record` | string | v4 frame | `"telemetry.frame"`; identifies a compact frame |
-| `schema` | int | always | Schema version. Current file-frame version is **4** |
-| `identities` / `contexts` / `events` | arrays | v4 frame | Interned identity and correlation tables plus event records |
+| `record` | string | frame | `"telemetry.frame"`; identifies a compact frame |
+| `schema` | int | always | Schema version. Current version is **5** |
+| `identities` / `contexts` / `events` | arrays | frame | Interned identity and correlation tables plus event records |
 | `name` / `ts` / `component` | expanded event | always after expansion | Event identity, event time, and source component |
 | `install_id` | string | always | Stable anonymous per-install UUID (minted at `~/.ion/install_id`) |
 | `host` | string | always | Machine hostname |
@@ -87,7 +87,7 @@ versioned event stream. Every record self-identifies its schema generation via t
 | `context` | object | when in scope | Correlation: `session_id`, `conversation_id`, `run_id` |
 | `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. The trace of the prompt the run serves: the run joins the trace the client started — see § "Correlation model" |
 
-Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables. The telemetry forwarder decodes file records at any schema at or below its own and sends expanded events to consumers. Added fields never bump the number; see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md) § "Schema versioning".
+Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables; v5 made every engine operation a span event and added the runtime figures to `system.metrics` ([`log-schema.md`](log-schema.md) § "Telemetry schema versioning"). The telemetry forwarder decodes file records at any schema at or below its own and sends expanded events to consumers. Added fields never bump the number; see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md) § "Schema versioning".
 
 **Core event payloads:**
 
@@ -233,7 +233,7 @@ jq -r 'select(.tag=="device-metrics" and .msg=="device metrics sample") | [.ts, 
 jq -c 'select(.msg=="idle repaint detected")' ~/.ion/desktop.jsonl
 ```
 
-Telemetry event queries require the telemetry forwarder because a v4 frame can contain multiple events. Use the local reference stack for LogQL queries, or configure the telemetry `http` or `otel` target for a collector that receives expanded events.
+Telemetry event queries require the telemetry forwarder because a frame can contain multiple events. Use the local reference stack for LogQL queries, or configure the telemetry `http` or `otel` target for a collector that receives expanded events.
 
 ### Option 2 — the reference Loki/Grafana stack
 
@@ -283,6 +283,62 @@ avg(avg_over_time({service_name="ion-engine", event_name=""} | json | tag="sysme
 avg(avg_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="device metrics sample" | fields_gpu_helper_gpu_percent != "" | unwrap fields_gpu_helper_gpu_percent [5m]))
 sum(count_over_time({service_name="ion-desktop", event_name=""} | json | msg="idle repaint detected" [1h]))
 ```
+
+#### Spans: span metrics, traces, and the log lines of one trace
+
+Every operation is a span ([`log-schema.md`](log-schema.md#spans) § "Spans"), and the reference stack
+keeps each span three ways: as a histogram in Prometheus (Tempo's metrics-generator writes
+`traces_spanmetrics_*` and `traces_service_graph_*`), as a trace in Tempo, and as the span line or span
+event in Loki. The **Ion Performance** dashboard is built from the first; the other two answer "which
+one, and why".
+
+A percentile per span name, in PromQL against the Prometheus data source (seconds; `service` is the
+OTLP `service.name`, and the dimensions `backend`, `model`, `transport`, `client_kind`, `action`,
+`command`, `surface`, `direction`, `host_name`, and `user` are labels):
+
+```promql
+# p95 of every engine span, one series per span name
+histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{service="ion-engine"}[5m])))
+
+# p95 of the server's time on a store action, per action
+histogram_quantile(0.95, sum by (le, action) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle"}[5m])))
+
+# store actions per second, per Studio surface
+sum by (surface) (rate(traces_spanmetrics_calls_total{span_name="action.handle"}[5m]))
+
+# calls between services, for the service graph
+sum by (client, server) (rate(traces_service_graph_request_total[5m]))
+```
+
+The slow ones themselves, in TraceQL against the Tempo data source (Explore → Tempo; durations are
+TraceQL durations):
+
+```traceql
+# every store action the server took longer than 500 ms on, newest first
+{ name = "action.handle" && duration > 500ms }
+
+# the same, for one action and one client kind
+{ name = "action.handle" && span.action = "submit" && span.client_kind = "ios" && duration > 500ms }
+
+# a run whose model turn waited on retries: llm.call far longer than its longest llm.attempt
+{ name = "llm.call" && duration > 60s } >> { name = "llm.attempt" }
+```
+
+Every log line of one trace, across every surface, in LogQL (the `trace_id` is on a span's row in
+Tempo, or on any log line of the prompt; `trace_id` is structured metadata, so no `| json`):
+
+```logql
+# every operational line and telemetry event of one trace: the client's spans, the relay's, the server's,
+# the engine's and extensions' lines, and the run's span events
+{service_name=~".+"} | trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+# only the span records of that trace, in order, with their durations
+{service_name=~".+"} | trace_id = "4bf92f3577b34da6a3ce929d0e0e4736" | json | tag = "span" or payload_span_id != "" | line_format "{{.msg}}{{.event_name}} {{.fields_duration_ms}}{{.duration_ms}} ms"
+```
+
+The pivot in the other direction is provisioned: a Loki line with a `trace_id` shows "View trace in
+Tempo", a Tempo span shows "Logs for this span", and a Prometheus histogram sample carries the trace id
+Tempo attached as an exemplar, which opens in Tempo too.
 
 ### Option 3 — programmable egress (no Ion-provided stack required)
 
@@ -394,7 +450,7 @@ log backend and collector already speaks, so pointing Ion at an OTLP endpoint is
 that works everywhere without a bespoke receiver.
 
 The engine, the server, the desktop, and the relay all ship OTLP, and every record states each fact
-once, where OTLP puts it (schema version 2, [`log-schema.md`](log-schema.md#otlp-correlation-model)
+once, where OTLP puts it (schema version 3, [`log-schema.md`](log-schema.md#otlp-correlation-model)
 § "OTLP correlation model"):
 
 - **Resource**: the source that wrote the record. `service.namespace` is `ion`, `service.name` is
@@ -512,11 +568,12 @@ The pivot workflow (from [`docs/enterprise/telemetry.md`](../enterprise/telemetr
 1. Find an error in the operational stream: `{level="ERROR"} | json | session_id = "..."`.
 2. Copy its `trace_id` — that is the prompt the error happened in. Pull every line of it, on every
    surface: `{service_name=~".+"} | trace_id = "..."` returns the client's `prompt.send` span
-   line, the server's lines and its `prompt.handle` span, and the engine and extension lines of the
+   line, the server's lines and its `action.handle` span, and the engine and extension lines of the
    run. The same value opens the span tree in any OTLP backend the spans were exported to (Tempo in
    the local stack): `prompt.send` → `relay.forward` (phone prompts over a relay) and
-   `prompt.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
-   `extension.hook_latency`.
+   `action.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
+   `hook.fanout` and the rest of the engine's spans, and the client's `prompt.visible`
+   ([`log-schema.md`](log-schema.md#spans) § "Spans" has the whole tree).
 3. Widen from the run to the whole conversation: take `conversation_id` off any of those lines and
    query `{service_name=~".+", event_name=""} | json | conversation_id = "..."`.
 

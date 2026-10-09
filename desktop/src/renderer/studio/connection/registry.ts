@@ -23,7 +23,7 @@
  *     `environmentId`, which is what duplicate detection compares (spec 13:
  *     "second target whose welcome environmentId equals a connected one").
  */
-import { ALL_DEVELOPER_SURFACES_ENABLED } from '@ion/shared/developer-surfaces'
+import { readDeveloperSurfaces } from '@ion/shared/developer-surfaces'
 import type { EnvironmentCatalogEntry, EnvironmentPhase, EnvironmentPhaseState, EnvironmentReasonCode, EnvironmentTarget } from '@ion/shared/types-environments'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { deriveDesktopEnvironmentPolicy } from '@ion/shared/enterprise-environment-policy'
@@ -215,12 +215,12 @@ class Registry {
         this.onWelcomeFrame(localId, frame.environmentId)
         policyStore.set(localId, frame.enterprisePolicy)
         policyStore.setHiddenGroups(localId, frame.settingsHiddenGroups)
-        policyStore.setDeveloperSurfaces(localId, frame.developerSurfaces ?? ALL_DEVELOPER_SURFACES_ENABLED)
+        policyStore.setDeveloperSurfaces(localId, readDeveloperSurfaces(frame.developerSurfaces))
         useModelStore.getState().setEnvironmentOnHost(localId, frame.onHost === true)
       } else if (frame.type === 'studio_environment_policy') {
         policyStore.set(localId, frame.enterprisePolicy)
         policyStore.setHiddenGroups(localId, frame.settingsHiddenGroups)
-        policyStore.setDeveloperSurfaces(localId, frame.developerSurfaces ?? ALL_DEVELOPER_SURFACES_ENABLED)
+        policyStore.setDeveloperSurfaces(localId, readDeveloperSurfaces(frame.developerSurfaces))
       }
     })
     // `ion fleet` edits the same catalog: a server it added connects, and

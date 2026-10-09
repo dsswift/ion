@@ -1483,8 +1483,24 @@ export interface IonContext extends DispatchControlContext {
    * represents one logical transaction. For long-lived correlation use
    * {@link IonContext.conversationId}; for the engine session use
    * {@link IonContext.sessionKey}.
+   *
+   * To nest your span under the engine's span for this hook call rather
+   * than directly under the run, use {@link IonContext.spanId} as the
+   * parent-id instead of minting one.
    */
   traceId: string;
+  /**
+   * W3C span-id (16 lowercase hex characters) of the engine's own span for
+   * this hook call — the `extension.hook_latency` span the engine records
+   * around the call. Empty (`''`) when the call is not a span: no run is in
+   * flight and no schedule or webhook fire minted a trace for the delivery.
+   *
+   * Spans you export with `traceparent: 00-${ctx.traceId}-${ctx.spanId}-01`
+   * nest under the hook span in the engine's trace. A schedule or webhook
+   * handler receives the fire's root span here; prompts it sends with
+   * `ctx.sendPrompt` join that trace.
+   */
+  spanId: string;
   /**
    * Dispatch depth of the session that fired the hook: `0` for the root
    * (orchestrator) session, `1` for a directly dispatched child agent,

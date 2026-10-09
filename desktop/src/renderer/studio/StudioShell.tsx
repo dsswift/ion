@@ -35,6 +35,7 @@ import { contentRouter } from "../lib/file-open-router";
 import { openDispatchPreview } from "./open-dispatch-preview";
 import { toggleActivePermissionMode, handleNewConversationShortcut, adjustZoom, resetZoom } from "../shortcuts/shared-command-handlers";
 import { bootMirror } from "./state/boot-mirror";
+import { markStudioFirstPaint } from "../lib/render-spans";
 import { registerStudioFileRouter } from "./surface/studio-file-router";
 import { StudioLeftSidebar } from "./StudioLeftSidebar";
 import { StudioTitleBar } from "./StudioTitleBar";
@@ -95,6 +96,9 @@ function stepConversation(delta: number): void {
 export function StudioShell(): React.JSX.Element {
   useUpdateEvents()
   bootMirror();
+  // `studio.first_paint`: the shell's first commit, a child of main's
+  // `app.launch` when this window was handed its traceparent.
+  useEffect(() => { markStudioFirstPaint(host.launchTraceparent?.() ?? null) }, []);
   const colors = useColors();
   // useEngineEvents is window-agnostic by construction: it registers the
   // full listener set, but only the channels main forwards to this window

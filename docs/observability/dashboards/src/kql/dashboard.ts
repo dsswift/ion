@@ -72,11 +72,15 @@ function flattenLabels(scope: Scope): string {
   ].join('\n');
 }
 
+const isPrometheus = (t: Json): boolean => (t.datasource as Json | undefined)?.type === 'prometheus';
+
 function convertTargets(panel: Json, ctx: Ctx): { targets: Json[]; overrides: Json[] } {
   const loki = (panel.targets as Json[]) ?? [];
   const isTable = panel.type === 'table';
   const overrides: Json[] = [];
   const targets = loki.map((t) => {
+    // PromQL runs unchanged against the workspace's Prometheus data source.
+    if (isPrometheus(t)) return { ...t, datasource: ctx.target.prometheus };
     const refId = t.refId as string;
     const expr = t.expr as string;
     const mode = t.queryType as Mode;
@@ -153,7 +157,11 @@ function convertPanel(panel: Json, ctx: Ctx): Json {
   if (panel.type === 'traces') return tracesToTable(panel, ctx);
   if (!Array.isArray(panel.targets)) return { ...panel, datasource: ctx.target.datasource };
   const { targets, overrides } = convertTargets(panel, ctx);
-  const out: Json = { ...panel, datasource: ctx.target.datasource, targets };
+  const ds = (panel.datasource as Json | undefined)?.type;
+  // A Prometheus-only panel keeps that store; a Mixed panel stays Mixed, with
+  // each target naming its own; a Loki panel becomes Log Analytics.
+  const datasource = ds === 'prometheus' ? ctx.target.prometheus : ds === 'datasource' ? panel.datasource : ctx.target.datasource;
+  const out: Json = { ...panel, datasource, targets };
   if (overrides.length) {
     const fc = (panel.fieldConfig as Json | undefined) ?? { defaults: {}, overrides: [] };
     out.fieldConfig = { ...fc, overrides: [...((fc.overrides as Json[]) ?? []), ...overrides] };
@@ -210,6 +218,11 @@ export function toAzure(loki: Json, target: AzureTarget): Json {
     ...loki,
     annotations: { list: (((loki.annotations as Json).list as Json[]) ?? []).map((a) => convertAnnotation(a, ctx)) },
     panels: (loki.panels as Json[]).map((p) => convertPanel(p, ctx)),
-    templating: { list: vars.map((v) => (multiVars.has(v.name as string) ? identityVar(v, ctx) : v)) },
+    templating: {
+      list: vars.map((v) => {
+        if ((v.datasource as Json | undefined)?.type === 'prometheus') return { ...v, datasource: target.prometheus };
+        return multiVars.has(v.name as string) ? identityVar(v, ctx) : v;
+      }),
+    },
   };
 }

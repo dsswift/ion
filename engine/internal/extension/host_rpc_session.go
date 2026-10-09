@@ -35,15 +35,19 @@ func (h *Host) rpcSendPrompt(ctx *Context, id int64, raw []byte) {
 		// Use the structured callback when either structured option is present.
 		// The legacy positional callback cannot carry either value.
 		utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_prompt: hook ctx path", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
+		// A prompt sent from a schedule or webhook handler joins the fire's
+		// trace; FireTraceparent is empty for every other context.
+		traceparent := FireTraceparent(ctx)
 		go func() {
 			var err error
-			if (req.Params.Kind != "" || req.Params.SlashModelTierApplyMidConversation != nil) && ctx.SendPromptPayload != nil {
+			if (req.Params.Kind != "" || req.Params.SlashModelTierApplyMidConversation != nil || traceparent != "") && ctx.SendPromptPayload != nil {
 				err = ctx.SendPromptPayload(SendPromptPayload{
 					Text:                               req.Params.Text,
 					Model:                              req.Params.Model,
 					BashAllowlistAdditions:             req.Params.BashAllowlistAdditions,
 					SlashModelTierApplyMidConversation: req.Params.SlashModelTierApplyMidConversation,
 					Kind:                               req.Params.Kind,
+					Traceparent:                        traceparent,
 				})
 			} else {
 				err = ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions)

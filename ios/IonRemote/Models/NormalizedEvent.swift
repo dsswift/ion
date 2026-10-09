@@ -644,6 +644,10 @@ enum RemoteEvent: Sendable {
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         // desktop_transcript_patch and the local transcript_page event.
         case streamId, epoch, baseRev, rev, total, change, startIndex, rows, isNewest, unavailableReason, unchanged
+        // The W3C trace position the engine stamps on every event of a run,
+        // carried onto the frame (log-schema § "Propagation"). A client's
+        // render span joins the run's trace through them.
+        case traceId = "trace_id", spanId = "span_id"
         // desktop_terminal_activity payload. `applications` uses the same
         // TerminalWebApplication shape as the snapshot projection.
         case active, processLabel, applications

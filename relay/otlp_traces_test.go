@@ -60,22 +60,23 @@ func writeFrame(t *testing.T, conn *websocket.Conn, frame []byte) {
 	}
 }
 
+// TestForwardSpanParentedFromTraceparent pins the span in both directions
+// and the one edit the relay makes to a traced frame: the outer
+// traceparent's span id becomes the relay.forward span's id, so the
+// receiver parents under the relay. Trace id, flags, and every other byte
+// (the sealed payload included) are forwarded unchanged.
 func TestForwardSpanParentedFromTraceparent(t *testing.T) {
 	s, col, ion, mobile := startTracedRelay(t)
 
-	// Unusual spacing and key order: the forwarded bytes must match exactly.
-	frame := []byte(`{ "seq":7,"traceparent":"` + testTraceparent + `",  "ciphertext":"AAAA" }`)
+	// Unusual spacing and key order: every byte but the span id must match.
+	frame := []byte(`{ "seq":7,"traceparent" : "` + testTraceparent + `",  "ciphertext":"AAAA" }`)
 	writeFrame(t, mobile, frame)
-	if got := readExpected(t, ion, "forwarded"); !bytes.Equal(got, frame) {
-		t.Fatalf("forwarded bytes changed:\n got %s\nwant %s", got, frame)
-	}
+	gotUp := readExpected(t, ion, "forwarded")
 	readExpected(t, mobile, "ack")
 
 	back := []byte(`{"traceparent":"` + testTraceparent + `","payload":"x"}`)
 	writeFrame(t, ion, back)
-	if got := readExpected(t, mobile, "forwarded-back"); !bytes.Equal(got, back) {
-		t.Fatalf("forwarded bytes changed:\n got %s\nwant %s", got, back)
-	}
+	gotDown := readExpected(t, mobile, "forwarded-back")
 
 	// The span is queued just after the peer write, so the reader can win.
 	deadline := time.Now().Add(2 * time.Second)
@@ -120,17 +121,37 @@ func TestForwardSpanParentedFromTraceparent(t *testing.T) {
 		if sp.Kind != otlpSpanKindServer {
 			t.Fatalf("span %d kind = %d, want server", i, sp.Kind)
 		}
-	}
-	up := attrMap(spans[0].Attributes)
-	if up["direction"] != "mobile_to_ion" || up["channel_id"] != "trace-chan" || up["seq"] != "7" || up["bytes"] != strconv.Itoa(len(frame)) {
-		t.Fatalf("mobile span attrs = %v (frame %d bytes)", up, len(frame))
-	}
-	down := attrMap(spans[1].Attributes)
-	if down["direction"] != "ion_to_mobile" || down["channel_id"] != "trace-chan" || down["seq"] != "" {
-		t.Fatalf("ion span attrs = %v", down)
+		a := attrMap(sp.Attributes)
+		for _, key := range []string{"read_ms", "write_ms", "peer_write_ms"} {
+			if a[key] == "" {
+				t.Fatalf("span %d has no %s: %v", i, key, a)
+			}
+		}
+		if a["peers"] != "1" {
+			t.Fatalf("span %d peers = %q", i, a["peers"])
+		}
 	}
 	if spans[0].SpanID == spans[1].SpanID {
 		t.Fatal("span ids must be unique")
+	}
+
+	// The wire carries the span: trace id and flags kept, span id replaced,
+	// nothing else changed.
+	up := attrMap(spans[0].Attributes)
+	if up["direction"] != "mobile_to_ion" || up["channel_id"] != "trace-chan" || up["seq"] != "7" || up["bytes"] != strconv.Itoa(len(frame)) || up["slow_peer"] != forwardPeerIon {
+		t.Fatalf("mobile span attrs = %v (frame %d bytes)", up, len(frame))
+	}
+	wantUp, _ := rewriteTraceparent(frame, testTraceparent, spans[0].SpanID)
+	if !bytes.Equal(gotUp, wantUp) {
+		t.Fatalf("mobile->ion bytes:\n got %s\nwant %s", gotUp, wantUp)
+	}
+	down := attrMap(spans[1].Attributes)
+	if down["direction"] != "ion_to_mobile" || down["channel_id"] != "trace-chan" || down["seq"] != "" || down["slow_peer"] == "" || down["slow_peer"] == forwardPeerIon {
+		t.Fatalf("ion span attrs = %v", down)
+	}
+	wantDown, _ := rewriteTraceparent(back, testTraceparent, spans[1].SpanID)
+	if !bytes.Equal(gotDown, wantDown) {
+		t.Fatalf("ion->mobile bytes:\n got %s\nwant %s", gotDown, wantDown)
 	}
 }
 

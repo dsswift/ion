@@ -1,0 +1,21 @@
+{
+  "name": "smoke",
+  "description": "Nightly default. Sized to finish well under ten minutes on a hosted runner.",
+  "provider": {
+    "seed": 1,
+    "turns": [
+      { "ttft_ms": 300, "tokens": 400, "tokens_per_s": 80, "tool_calls": [] },
+      { "ttft_ms": 500, "tokens": 150, "tokens_per_s": 120, "tool_calls": [] }
+    ],
+    "repeat": true
+  },
+  "plan": {
+    "tabs": 3,
+    "promptsPerTab": 4,
+    "bodyLoadsPerTab": 2,
+    "snapshotPolls": 6,
+    "pacingMs": 250,
+    "promptTimeoutMs": 60000,
+    "settleMs": 3000
+  }
+}

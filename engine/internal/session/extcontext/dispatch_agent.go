@@ -672,6 +672,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			dispatchParentCtx = opts.ParentCtx
 		}
 		ctx, cancelFn := context.WithCancel(dispatchParentCtx)
+		// The dispatch's trace and the child's run span (dispatch_trace.go).
+		// childTrace is assigned once the dispatch.agent span exists, before
+		// startChild; the child callbacks below run only after that.
+		dispatchTr := newDispatchTrace(dispatchParentCtx, sa, agentID)
+		var childTrace childRunTrace
 		// recalled is atomic because the OnExit callback reads it from the child
 		// backend's goroutine while runChild writes it. It is set BEFORE
 		// child.Cancel() so the callback can distinguish a recall from any other
@@ -680,6 +685,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		var recallReason recallReasonCell
 
 		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
+			ev = childTrace.stamp(ev)
 			// Report child liveness to the run that is actually blocked on
 			// this dispatch. Two cases (root cause I of the dispatch-lifecycle
 			// incident):
@@ -1019,7 +1025,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			childReqID:       childReqID,
 			extensionName:    sa.ExtensionName(),
 			extensionVersion: sa.ExtensionVersion(),
+			traceID:          dispatchTr.traceID,
+			parentSpanID:     dispatchTr.parentSpanID,
 		})
+		childTrace = dispatchTr.child(dispatchSpan)
+		runOpts.ParentCtx = childTrace.context(runOpts.ParentCtx)
 
 		// When this child routes to a delegated-CLI backend, its RunConfig is
 		// dropped at dispatch (the CLI path ignores it), so the child would be
@@ -1566,6 +1576,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				})
 			}
 
+			// The child's run.execute span ends before its parent dispatch.agent.
+			childTrace.emitRunSpan(sa, childRunSpanEnd{
+				runID: childReqID, model: model, exitCode: exitCode, depth: childDepth,
+				conversationID: childSessionID, recalled: recalled.Load(),
+			})
 			// Emit engine_dispatch_end and end the dispatch.agent span (family
 			// 4b). Folded into finishDispatch (dispatch_agent_span.go).
 			finishDispatch(sa, dispatchSpan, dispatchSpanEnd{

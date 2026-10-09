@@ -60,16 +60,27 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        // The relay copies the server's doorbell `traceparent` into the push,
+        // so the open is a child of the span that rang.
+        let traceparent = userInfo["traceparent"] as? String
         if let channelId = userInfo["ionChannelId"] as? String,
            let tabId = userInfo["ionTabId"] as? String,
            let device = sessionViewModel?.pairedDevices.first(where: { $0.channelId == channelId }) {
+            ClientSpanBook.shared.openPush(tabId: tabId, parent: traceparent)
             sessionViewModel?.navigateToExternalTab(deviceId: device.id, tabId: tabId)
         } else if let tabId = userInfo["tabId"] as? String,
                   let viewModel = sessionViewModel,
                   viewModel.mayViewActiveServerData {
             // Legacy payloads have no pairing identity. They may only navigate
             // inside the currently authorized pairing and never bypass a lock.
+            ClientSpanBook.shared.openPush(tabId: tabId, parent: traceparent)
             viewModel.navigateToTab(tabId)
+        } else {
+            let tabId = (userInfo["ionTabId"] ?? userInfo["tabId"]) as? String ?? ""
+            ClientSpanBook.shared.openPush(tabId: tabId, parent: traceparent).end(error: "push named no conversation this phone may open")
+            DiagnosticLog.log("push tap opened nothing", tag: "apns", level: .warn, fields: [
+                "has_channel": String(userInfo["ionChannelId"] != nil), "has_tab": String(!tabId.isEmpty)
+            ])
         }
         completionHandler()
     }

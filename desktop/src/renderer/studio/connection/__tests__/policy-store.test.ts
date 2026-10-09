@@ -103,7 +103,7 @@ describe('policyStore', () => {
   })
 
   describe('developerSurfacesFor', () => {
-    const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true }
+    const ALL_ON = { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true }
 
     it('has every surface on for an environment that has sent nothing', () => {
       expect(policyStore.developerSurfacesFor('env-b')).toEqual(ALL_ON)

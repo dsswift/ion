@@ -14,6 +14,13 @@ import "encoding/json"
 type EngineEvent struct {
 	Type string `json:"type"`
 
+	// TraceID and SpanID place an event emitted by a run in that run's W3C
+	// trace: the trace-id and the run span's id (run.execute). Copied from
+	// the NormalizedEvent envelope by translateToEngineEvent; absent on
+	// every event emitted outside a run.
+	TraceID string `json:"trace_id,omitempty"`
+	SpanID  string `json:"span_id,omitempty"`
+
 	// engine_agent_state
 	Agents []AgentStateUpdate `json:"agents"`
 

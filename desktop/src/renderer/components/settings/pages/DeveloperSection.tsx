@@ -6,6 +6,7 @@
 import React, { useState } from 'react'
 import { useUpdateStore } from '@ion/server/store/update-store'
 import { Button, FormGroup, FormRow, MonoLine, SidePanel, Stack } from '../kit'
+import { ProfilerSection } from './ProfilerSection'
 
 export function DeveloperSection(): React.JSX.Element {
   const version = useUpdateStore((s) => s.version)
@@ -22,6 +23,7 @@ export function DeveloperSection(): React.JSX.Element {
           <Button onClick={() => setInspecting(true)}>Inspect</Button>
         </FormRow>
       </FormGroup>
+      <ProfilerSection />
       <SidePanel open={inspecting} title="Update store state" onClose={() => setInspecting(false)}>
         <Stack gap={6}>
           <MonoLine>{`version: ${version ?? 'null'}`}</MonoLine>

@@ -120,3 +120,17 @@ describe('applyStudioBody', () => {
     expect(applyStudioBody('missing-tab', undefined, [])).toBe(false)
   })
 })
+
+describe('body.load span', () => {
+  it('spans the request to the applied page, with the row count', async () => {
+    const { rInfo } = await import('../../../rendererLogger')
+    vi.mocked(rInfo).mockClear()
+    seedSkeletonPane()
+    const stop = initBodySyncFromWire()
+    expect(vi.mocked(rInfo).mock.calls.filter((c) => c[1] === 'body.load')).toHaveLength(0)
+    frameHandler!('local', { type: 'studio_body', tabId: TAB, instanceId: 'inst-1', rows: [{ id: 'm1', role: 'user', content: 'hello' }], hasMore: false })
+    const span = vi.mocked(rInfo).mock.calls.find((c) => c[0] === 'span' && c[1] === 'body.load')
+    expect(span?.[2]).toMatchObject({ tab_id: TAB, environment_id: 'local', row_count: 1, applied: true, span_kind: 'client', older_page: false })
+    stop()
+  })
+})

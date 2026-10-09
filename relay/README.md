@@ -64,6 +64,8 @@ hostname, TLS secret, and API key to match your environment.
 | `APNS_TEAM_ID` | No | Apple Developer Team ID. |
 | `APNS_TOPIC` | With APNs | The iOS app's bundle identifier. The relay refuses to enable push without it. |
 | `APNS_PRODUCTION` | No | Set to `1` to send to production APNs when a push arrives without its token's environment. Default is sandbox. |
+| `RELAY_METRICS_ENABLED` | No | Serve Prometheus metrics at `GET /metrics` on the listen port (default `true`). Set `false` to remove the route. The series are listed in `docs/observability/log-schema.md` § "relay". |
+| `RELAY_PPROF_LISTEN` | No | Loopback address for `net/http/pprof`, such as `127.0.0.1:6060`. Unset (default) serves no profiler. Always a separate listener; the public port never serves `/debug/pprof`. |
 | `RELAY_HOST` | No | Device name stamped on every log line as `fields.host` and on shipped records. Default: the OS hostname, which in Kubernetes is the pod name and changes on every rollout. |
 | `RELAY_OTLP_ENDPOINT` | No | OTLP/HTTP base URL. When set, the relay also ships its own log lines to `<base>/v1/logs` and `relay.forward` spans to `<base>/v1/traces`. Unset turns shipping off. |
 | `RELAY_OTLP_TOKEN_URL` | No | OAuth2 token endpoint for the `client_credentials` grant. In secret mode, unset means exports carry no `Authorization` header. In workload identity mode it defaults to the Entra endpoint for `AZURE_TENANT_ID`. |

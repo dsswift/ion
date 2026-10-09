@@ -55,7 +55,8 @@ A new source or test file must also be added to `IonRemote.xcodeproj/project.pbx
 
 Logs land in `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` on the paired server's host (`component=ios`), shipped by `DiagnosticLog`.
 
-- Always `DiagnosticLog.log()`. `print()` and `os.Logger` never reach the operator; a device in normal use has no attached console. `make check-logging` (OS-LOGGER) fails a new `Logger(subsystem:)` outside `DiagnosticLog.swift`.
+- Always `DiagnosticLog.log()`. `print()` and `os.Logger` never reach the operator; a device in normal use has no attached console. `make check-logging` (OS-LOGGER) fails a new `Logger(subsystem:)` outside `DiagnosticLog.swift`. The one other `os` API is the `OSSignposter` inside `DiagnosticLog+Spans.swift`: it mirrors each span into Instruments and replaces no log line.
+- A timed operation is a span (`TraceSpan`, written by `DiagnosticLog.logSpan`), never an ad hoc `elapsed_ms`. A number a dashboard aggregates goes in `numbers:` (`DiagnosticLog.log(_:numbers:)`), not as a string field. Span names and measurement lines: `docs/observability/log-schema.md` § "ios".
 - `tag` is the subsystem (`ipc`, `session`, `transport`). Context goes in `fields`, never concatenated into `msg`.
 - SwiftLint (`ios/.swiftlint.yml`) errors on an empty `catch {}` and warns on a silent `try?`. A genuinely benign discard gets a comment saying why.
 

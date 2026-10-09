@@ -11,7 +11,7 @@ import (
 func TestBuildHookEnvelope_ConversationRecordPath(t *testing.T) {
 	h := NewHost()
 
-	idle := h.buildHookEnvelope(&Context{Cwd: "/work"}, nil)["_ctx"].(map[string]interface{})
+	idle := h.buildHookEnvelope(&Context{Cwd: "/work"}, nil, "")["_ctx"].(map[string]interface{})
 	if _, present := idle["conversationRecordPath"]; present {
 		t.Errorf("envelope with no conversation must omit conversationRecordPath, got %v", idle["conversationRecordPath"])
 	}
@@ -19,7 +19,7 @@ func TestBuildHookEnvelope_ConversationRecordPath(t *testing.T) {
 	const path = "/data/conversations/conv-1.tree.jsonl"
 	bound := h.buildHookEnvelope(&Context{
 		Cwd: "/work", ConversationID: "conv-1", ConversationRecordPath: path,
-	}, nil)["_ctx"].(map[string]interface{})
+	}, nil, "")["_ctx"].(map[string]interface{})
 	if got := bound["conversationRecordPath"]; got != path {
 		t.Errorf("conversationRecordPath = %v, want %s", got, path)
 	}

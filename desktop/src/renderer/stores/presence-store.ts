@@ -17,6 +17,7 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { host, action } from '../host/host-instance'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rWarn } from '../rendererLogger'
+import { setSpanUser } from '../lib/span-writer'
 
 interface PresenceCacheState {
   /** Union of every Environment's entries (ADR-033); `driving` is keyed by tab id, which is unique across Environments. */
@@ -56,7 +57,11 @@ export function initPresenceSync(): () => void {
   wired = true
   return host.onFrame((environmentId, frame) => {
     if (frame.type === 'studio_welcome') {
-      if (environmentId === LOCAL_ENVIRONMENT_ID) usePresenceStore.getState().setOwnSubject(frame.principal.subject)
+      if (environmentId === LOCAL_ENVIRONMENT_ID) {
+        usePresenceStore.getState().setOwnSubject(frame.principal.subject)
+        // The identity every span this window writes carries as `user`.
+        setSpanUser(frame.principal.subject)
+      }
       usePresenceStore.getState().replace(frame.snapshot.presence, environmentId)
     } else if (frame.type === 'studio_snapshot') {
       usePresenceStore.getState().replace(frame.snapshot.presence, environmentId)

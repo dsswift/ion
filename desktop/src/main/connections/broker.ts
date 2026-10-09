@@ -22,6 +22,7 @@ import { StudioActionFailure } from '@ion/shared/studio-wire/action-failure'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 import type { ConnectionPhase } from './phases'
 import { ClientWireLatency } from '@ion/shared/client-wire-latency'
+import { IpcHopMeter } from './ipc-hop'
 import { ACTION_TIMEOUT_MS, EnvironmentConnection, MAX_PENDING_FRAMES, type ConnectionTarget } from './environment-connection'
 
 export type { ConnectionAttempt, ConnectionTarget } from './environment-connection'
@@ -43,7 +44,13 @@ export class Broker extends EventEmitter {
    * leaving here to its result arriving. The server measures the network and
    * its own work; only this end can measure what a person waits through.
    */
-  readonly latency = new ClientWireLatency((tag, msg, fields) => _log(tag, msg, fields))
+  readonly latency = new ClientWireLatency((tag, msg, fields) => _log(tag, msg, this.ipcHop.decorate(fields)))
+  /**
+   * The renderer's extra wait on top of the wire (`ipc-hop.ts`): paired per
+   * frame id against `latency`'s figure and folded into the same window line
+   * as `ipc_hop_p50_ms`.
+   */
+  readonly ipcHop = new IpcHopMeter()
   /**
    * Frames sent to an Environment before `connect()` has been called for it.
    *
@@ -64,7 +71,10 @@ export class Broker extends EventEmitter {
     const conn = new EnvironmentConnection(
       target,
       (environmentId, frame) => {
-        if (frame.type === 'studio_action_result') this.latency.noteActionResult(environmentId, frame.id)
+        if (frame.type === 'studio_action_result') {
+          this.latency.noteActionResult(environmentId, frame.id)
+          this.ipcHop.noteMainResult(environmentId, frame.id)
+        }
         this.emit('frame', environmentId, frame)
       },
       (environmentId, phase) => this.emit('phase', environmentId, phase),
@@ -83,6 +93,7 @@ export class Broker extends EventEmitter {
   disconnect(environmentId: string): void {
     this.connections.get(environmentId)?.disconnect()
     this.connections.delete(environmentId)
+    this.ipcHop.forget(environmentId)
     const early = this.preConnect.get(environmentId)
     if (early && early.length > 0) {
       warn('dropping frames queued for an environment that was disconnected before it connected', { environment_id: environmentId, count: early.length })
@@ -106,6 +117,7 @@ export class Broker extends EventEmitter {
     // this is the one place that sees what a person actually waits through.
     if (frame.type === 'studio_action') {
       this.latency.noteActionSent(environmentId, frame.id, this.connections.get(environmentId)?.transportKind ?? 'unknown')
+      this.ipcHop.noteSent(environmentId, frame.id)
     }
     const conn = this.connections.get(environmentId)
     if (conn) {

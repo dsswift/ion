@@ -78,6 +78,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	if pe := applyRequestAuth(ctx, req, raw, p.ID()); pe != nil {
 		return pe
 	}
+	applyTraceparent(ctx, req, p.ID())
 
 	resp, err := p.client.Do(req)
 	if err != nil {

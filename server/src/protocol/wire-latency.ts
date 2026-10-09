@@ -15,8 +15,10 @@
  * Each connection also carries what only the server can see: how long a frame
  * waited between entering the send queue and leaving the socket, how many
  * bytes went out, how many frames came in, how many failed to decode, and how
- * long the server itself spent on each action. One INFO line per connection
- * per window, which is what the Ion Wire Latency dashboard reads.
+ * long the server itself spent on each action, in total and per action name.
+ * One INFO line per connection per window, which is what the Ion Wire Latency
+ * dashboard reads; the OTLP metrics exporter hears the same window through
+ * `onWireWindow` and turns its raw samples into histograms.
  */
 import { log as _log } from '../logger'
 
@@ -56,7 +58,43 @@ export const WIRE_WINDOW_FIELDS = [
   'decode_errors',
   'action_p50_ms',
   'action_p95_ms',
+  'actions',
 ] as const
+
+/** One action name's figures within a window. */
+export interface ActionWindow {
+  p50_ms: number
+  p95_ms: number
+  count: number
+}
+
+/** The numbers one window line carries (`WIRE_WINDOW_FIELDS`, by name). */
+export interface WireWindow {
+  rtt_p50_ms: number
+  rtt_p95_ms: number
+  rtt_max_ms: number
+  rtt_samples: number
+  pings_lost: number
+  dwell_p50_ms: number
+  dwell_p95_ms: number
+  dwell_max_ms: number
+  queue_max: number
+  frames_out: number
+  bytes_out: number
+  frames_in: number
+  decode_errors: number
+  /** Over every action of the window, whatever its name. */
+  action_p50_ms: number
+  action_p95_ms: number
+  /** The same, per action name, so one slow action is not averaged into the rest. */
+  actions: Record<string, ActionWindow>
+}
+
+/** The raw samples of a window, for a consumer that builds its own distribution (the OTLP metrics exporter). */
+export interface WireWindowSamples {
+  rtts: readonly number[]
+  dwells: readonly number[]
+}
 
 /**
  * Nearest-rank percentile over a sample set, rounded to a whole millisecond.
@@ -74,6 +112,7 @@ export class WireLatencyMeter {
   private rtts: number[] = []
   private dwells: number[] = []
   private actions: number[] = []
+  private readonly actionsByName = new Map<string, number[]>()
   private pingsLost = 0
   private framesOut = 0
   private bytesOut = 0
@@ -103,9 +142,20 @@ export class WireLatencyMeter {
     this.decodeErrors += 1
   }
 
-  /** The server's own time on one action, receipt to result. */
-  recordAction(ms: number): void {
+  /** The server's own time on one action, receipt to result, under the action's name. */
+  recordAction(action: string, ms: number): void {
     this.actions.push(ms)
+    let samples = this.actionsByName.get(action)
+    if (!samples) {
+      samples = []
+      this.actionsByName.set(action, samples)
+    }
+    samples.push(ms)
+  }
+
+  /** The window's raw round trips and queue waits so far. Read before `takeWindow` clears them. */
+  peekSamples(): WireWindowSamples {
+    return { rtts: [...this.rtts], dwells: [...this.dwells] }
   }
 
   /** A probe went out. */
@@ -152,11 +202,16 @@ export class WireLatencyMeter {
   }
 
   /** The window's numbers, and a fresh start. */
-  takeWindow(): Record<string, number> {
+  takeWindow(): WireWindow {
     const rtts = [...this.rtts].sort((a, b) => a - b)
     const dwells = [...this.dwells].sort((a, b) => a - b)
     const actions = [...this.actions].sort((a, b) => a - b)
-    const window = {
+    const byName: Record<string, ActionWindow> = {}
+    for (const [name, samples] of [...this.actionsByName].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      const sorted = [...samples].sort((a, b) => a - b)
+      byName[name] = { p50_ms: percentile(sorted, 50), p95_ms: percentile(sorted, 95), count: sorted.length }
+    }
+    const window: WireWindow = {
       rtt_p50_ms: percentile(rtts, 50),
       rtt_p95_ms: percentile(rtts, 95),
       rtt_max_ms: rtts.length > 0 ? Math.round(rtts[rtts.length - 1]) : 0,
@@ -172,10 +227,12 @@ export class WireLatencyMeter {
       decode_errors: this.decodeErrors,
       action_p50_ms: percentile(actions, 50),
       action_p95_ms: percentile(actions, 95),
+      actions: byName,
     }
     this.rtts = []
     this.dwells = []
     this.actions = []
+    this.actionsByName.clear()
     this.pingsLost = 0
     this.framesOut = 0
     this.bytesOut = 0
@@ -186,17 +243,36 @@ export class WireLatencyMeter {
   }
 }
 
+/** Who a window is about. */
+export interface WireWindowIdentity {
+  clientKind: string
+  clientId: string
+  transport: string
+  connectionId: string
+}
+
+/** Hears every window as it is written, with its raw samples (the OTLP metrics exporter). */
+export type WireWindowListener = (identity: WireWindowIdentity, window: WireWindow, samples: WireWindowSamples) => void
+
+const windowListeners = new Set<WireWindowListener>()
+
+/** Call `listener` for every window written by any connection. Returns the unsubscribe. */
+export function onWireWindow(listener: WireWindowListener): () => void {
+  windowListeners.add(listener)
+  return () => { windowListeners.delete(listener) }
+}
+
 /** Write one connection's window. Called on the timer and once more as it closes. */
-export function logWireWindow(
-  identity: { clientKind: string; clientId: string; transport: string; connectionId: string },
-  meter: WireLatencyMeter,
-): void {
+export function logWireWindow(identity: WireWindowIdentity, meter: WireLatencyMeter): void {
   if (!meter.hasSamples()) return
+  const samples = meter.peekSamples()
+  const window = meter.takeWindow()
+  for (const listener of windowListeners) listener(identity, window, samples)
   _log(TAG, 'wire window', {
     client_kind: identity.clientKind,
     client_id: identity.clientId,
     transport: identity.transport,
     connection_id: identity.connectionId,
-    ...meter.takeWindow(),
+    ...window,
   })
 }

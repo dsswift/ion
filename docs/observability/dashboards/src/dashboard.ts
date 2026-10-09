@@ -6,7 +6,7 @@
 // distinctive about each pack. The emitted key order here is fixed, which keeps
 // generated JSON byte-stable across runs (the check.ts contract).
 
-import { LOKI } from './types.ts';
+import { LOKI, PROMETHEUS } from './types.ts';
 
 export interface TemplateVar {
   readonly name: string;
@@ -15,7 +15,7 @@ export interface TemplateVar {
   readonly description?: string;
   readonly query?: string;
   readonly current?: Record<string, unknown>;
-  readonly datasource?: typeof LOKI;
+  readonly datasource?: typeof LOKI | typeof PROMETHEUS;
   readonly refresh?: number;
   readonly includeAll?: boolean;
   readonly allValue?: string;
@@ -130,13 +130,17 @@ export const IDENTITY_VARS: readonly TemplateVar[] = [
 
 const IDENTITY_MATCHERS = 'host_name=~"$host", user=~"$user"';
 
-// A LogQL stream selector: `{` then one or more `name op "value"` matchers
-// then `}`. A quoted value may contain `${var}` braces. A Go template in a
-// label_format (`{{ .x }}`) never matches, because a matcher must open with a
-// label name.
+// A LogQL stream selector or a PromQL label selector (one grammar): `{` then
+// one or more `name op "value"` matchers then `}`. A quoted value may contain
+// `${var}` braces. A Go template in a label_format (`{{ .x }}`) never matches,
+// because a matcher must open with a label name. On a Prometheus series the
+// same two labels come from the OTLP resource: Tempo's span metrics carry
+// `host.name` and `user` as dimensions (tempo-config.yaml) and Prometheus
+// promotes `host.name` on the OTLP metrics export (prometheus.yml), each
+// written `host_name`. A series with neither label still matches `.*`.
 const SELECTOR = /\{(\s*[a-zA-Z_]\w*\s*(?:=~|!~|!=|=)\s*"(?:[^"\\]|\\.)*"(?:\s*,\s*[a-zA-Z_]\w*\s*(?:=~|!~|!=|=)\s*"(?:[^"\\]|\\.)*")*\s*)\}/g;
 
-/** Add the identity matchers to every stream selector in a LogQL expression. */
+/** Add the identity matchers to every selector in a LogQL or PromQL expression. */
 export function scopeToIdentity(expr: string): string {
   return expr.replace(SELECTOR, (whole, matchers: string) =>
     /(^|[\s,])(host_name|user)\s*(=~|!~|!=|=)/.test(matchers) ? whole : `{${matchers.trimEnd()}, ${IDENTITY_MATCHERS}}`,

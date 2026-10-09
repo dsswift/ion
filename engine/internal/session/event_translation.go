@@ -44,6 +44,15 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	s, sOk := m.sessions[key]
 	m.mu.RUnlock()
 
+	// Stamp the run's trace position on the event when the backend did not.
+	// This is the one path every root run's events cross regardless of
+	// backend (API, delegated CLI, ACP), so the stamp here is what makes the
+	// wire contract hold for all of them; a dispatched child's events are
+	// stamped by its dispatch (extcontext.childRunTrace).
+	if sOk {
+		event = stampRunTrace(s, runID, event)
+	}
+
 	// Fire CLI backend turn lifecycle hooks BEFORE the translate/drop gate.
 	// TaskUpdateEvent (assistant message complete) has no client-facing
 	// EngineEvent translation and would be dropped by the ee.Type == ""

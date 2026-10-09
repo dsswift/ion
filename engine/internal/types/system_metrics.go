@@ -81,6 +81,12 @@ type SystemMetricsProcess struct {
 	CPUTimeMs int64 `json:"cpuTimeMs"`
 	// RSSBytes is the resident memory of the process.
 	RSSBytes uint64 `json:"rssBytes"`
+	// SessionID is the engine session key the process serves, when the
+	// spawn site that started it knew one (an extension host, an MCP server,
+	// or a delegated-CLI backend started for a session). Empty for the
+	// engine itself and for a process no session owns, so resource use can
+	// be attributed to a conversation without inventing an owner.
+	SessionID string `json:"sessionId,omitempty"`
 }
 
 // SystemMetricsRuntime is the engine's own Go runtime.
@@ -93,6 +99,17 @@ type SystemMetricsRuntime struct {
 	Goroutines    int    `json:"goroutines"`
 	NumGC         uint32 `json:"numGC"`
 	Sessions      int    `json:"sessions"`
+	// GCPauseP99Ms is the p99 of the Go runtime's stop-the-world pauses
+	// since the previous sample, in milliseconds (runtime/metrics
+	// /gc/pauses:seconds). 0 when no pause happened in the interval.
+	GCPauseP99Ms float64 `json:"gcPauseP99Ms"`
+	// AllocRateBytesPerS is heap bytes allocated per second since the
+	// previous sample (/gc/heap/allocs:bytes). 0 on the first sample.
+	AllocRateBytesPerS float64 `json:"allocRateBytesPerS"`
+	// SchedLatencyP99Ms is the p99 of goroutine scheduling latency since the
+	// previous sample, in milliseconds (/sched/latencies:seconds): how long
+	// runnable goroutines waited for a thread. 0 when nothing waited.
+	SchedLatencyP99Ms float64 `json:"schedLatencyP99Ms"`
 }
 
 // SystemMetricsConfig configures the System Metrics sampler.

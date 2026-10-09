@@ -11,6 +11,7 @@ import type { EnvironmentActionSpec } from '../environment/actions'
 import { benchOfFolder, checkoutForBranch } from '../integration/bench-source-checkout'
 import { listFleetDeploys, recordFleetDeploy } from './deploy-ledger'
 import { log as _log, warn as _warn } from '../logger'
+import { withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('fleet.deploy-actions', msg, fields)
@@ -29,7 +30,8 @@ export const FLEET_DEPLOY_ACTIONS: Record<string, EnvironmentActionSpec> = {
         warn('fleet deploy report refused: not a deploy record', { connection_id: conn.id })
         return { ok: false, refusal: { code: 'invalid_deploy', message: 'That is not a deploy record.' } }
       }
-      recordFleetDeploy(record)
+      // The deploy's record reaching every client and every hub this server reports to.
+      withSpan('fleet.deploy', { attrs: { deploy_id: record.id, state: record.state, target_count: record.targets.length } }, () => recordFleetDeploy(record))
       return { ok: true, value: null }
     },
   },

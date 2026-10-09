@@ -244,7 +244,6 @@
 		A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */; };
 		A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */; };
 		A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */; };
-		TYPEKEY00000000000000001A /* NormalizedEvent+TypeKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */; };
 		A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */; };
 		A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */; };
 		PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */; };
@@ -334,7 +333,18 @@
 		TRACECTX0000000000000001 /* TraceContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX0000000000000002 /* TraceContext.swift */; };
 		TRACECTX0000000000000003 /* TraceSpan.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX0000000000000004 /* TraceSpan.swift */; };
 		TRACECTX0000000000000005 /* DiagnosticLog+Spans.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX0000000000000006 /* DiagnosticLog+Spans.swift */; };
-		TRACECTX0000000000000007 /* PromptTraceBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX0000000000000008 /* PromptTraceBook.swift */; };
+		CMT5A000000000000001 /* ActionTraceBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A000000000000002 /* ActionTraceBook.swift */; };
+		CMT5A000000000000003 /* AppLaunchTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A000000000000004 /* AppLaunchTrace.swift */; };
+		CMT5A000000000000005 /* ClientSpanBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A000000000000006 /* ClientSpanBook.swift */; };
+		CMT5A000000000000007 /* MetricKitSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A000000000000008 /* MetricKitSample.swift */; };
+		CMT5A000000000000009 /* StudioConnection+Trace.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A00000000000000A /* StudioConnection+Trace.swift */; };
+		CMT5A00000000000000B /* SessionViewModel+RenderSpans.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5A00000000000000C /* SessionViewModel+RenderSpans.swift */; };
+		CMT5T000000000000001 /* ActionTraceBookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T000000000000002 /* ActionTraceBookTests.swift */; };
+		CMT5T000000000000003 /* ClientSpanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T000000000000004 /* ClientSpanTests.swift */; };
+		CMT5T000000000000005 /* StudioClientLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T000000000000006 /* StudioClientLatencyTests.swift */; };
+		CMT5T000000000000007 /* MetricKitSampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T000000000000008 /* MetricKitSampleTests.swift */; };
+		CMT5T000000000000009 /* RemoteEventTypeKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T00000000000000A /* RemoteEventTypeKey.swift */; };
+		CMT5T00000000000000B /* LayoutCacheRestoreLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CMT5T00000000000000C /* LayoutCacheRestoreLogTests.swift */; };
 		TRACECTX0000000000000009 /* TraceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRACECTX000000000000000A /* TraceContextTests.swift */; };
 		DIAGLOG0000000000006 /* DiagnosticLog+Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGLOG0000000000005 /* DiagnosticLog+Export.swift */; };
 		DIAGRET0000000000000002 /* DiagnosticLog+Retention.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGRET0000000000000001 /* DiagnosticLog+Retention.swift */; };
@@ -1256,7 +1266,6 @@
 		A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Permission.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Terminal.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Engine.swift"; sourceTree = "<group>"; };
-		TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+TypeKey.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventStreamTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventPermissionTests.swift; sourceTree = "<group>"; };
 		PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanImplementWireTests.swift; sourceTree = "<group>"; };
@@ -1332,7 +1341,18 @@
 		TRACECTX0000000000000002 /* TraceContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceContext.swift; sourceTree = "<group>"; };
 		TRACECTX0000000000000004 /* TraceSpan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceSpan.swift; sourceTree = "<group>"; };
 		TRACECTX0000000000000006 /* DiagnosticLog+Spans.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Spans.swift"; sourceTree = "<group>"; };
-		TRACECTX0000000000000008 /* PromptTraceBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTraceBook.swift; sourceTree = "<group>"; };
+		CMT5A000000000000002 /* ActionTraceBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionTraceBook.swift; sourceTree = "<group>"; };
+		CMT5A000000000000004 /* AppLaunchTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLaunchTrace.swift; sourceTree = "<group>"; };
+		CMT5A000000000000006 /* ClientSpanBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientSpanBook.swift; sourceTree = "<group>"; };
+		CMT5A000000000000008 /* MetricKitSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricKitSample.swift; sourceTree = "<group>"; };
+		CMT5A00000000000000A /* StudioConnection+Trace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StudioConnection+Trace.swift"; sourceTree = "<group>"; };
+		CMT5A00000000000000C /* SessionViewModel+RenderSpans.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+RenderSpans.swift"; sourceTree = "<group>"; };
+		CMT5T000000000000002 /* ActionTraceBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionTraceBookTests.swift; sourceTree = "<group>"; };
+		CMT5T000000000000004 /* ClientSpanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientSpanTests.swift; sourceTree = "<group>"; };
+		CMT5T000000000000006 /* StudioClientLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioClientLatencyTests.swift; sourceTree = "<group>"; };
+		CMT5T000000000000008 /* MetricKitSampleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricKitSampleTests.swift; sourceTree = "<group>"; };
+		CMT5T00000000000000A /* RemoteEventTypeKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteEventTypeKey.swift; sourceTree = "<group>"; };
+		CMT5T00000000000000C /* LayoutCacheRestoreLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCacheRestoreLogTests.swift; sourceTree = "<group>"; };
 		TRACECTX000000000000000A /* TraceContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceContextTests.swift; sourceTree = "<group>"; };
 		DIAGLOG0000000000005 /* DiagnosticLog+Export.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Export.swift"; sourceTree = "<group>"; };
 		DIAGRET0000000000000001 /* DiagnosticLog+Retention.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Retention.swift"; sourceTree = "<group>"; };
@@ -2098,7 +2118,6 @@
 				A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */,
 				A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */,
 				A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */,
-				TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */,
 				B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */,
 				A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */,
 				A1B2C3D4E5F60001FF0024AB /* NormalizedEvent+EngineDecoderTail.swift */,
@@ -2421,6 +2440,7 @@
 				B1C2D3E4F5A6048500000000 /* SessionViewModel+Branches.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
 				B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */,
+				CMT5A00000000000000C /* SessionViewModel+RenderSpans.swift */,
 				7ABA41758C1CD00EC3493B08 /* SessionViewModel+DispatchTranscripts.swift */,
 				7A0B6B5E3EDFD41D0717A47F /* SessionViewModel+DiagnosticLogRequest.swift */,
 				7A429AC935633F84B26361D1 /* SessionViewModel+PendingPrompts.swift */,
@@ -2494,6 +2514,12 @@
 				THEMELUMTST00000000001 /* ThemeLuminanceTests.swift */,
 				DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */,
 				TRACECTX000000000000000A /* TraceContextTests.swift */,
+				CMT5T000000000000002 /* ActionTraceBookTests.swift */,
+				CMT5T000000000000004 /* ClientSpanTests.swift */,
+				CMT5T000000000000006 /* StudioClientLatencyTests.swift */,
+				CMT5T000000000000008 /* MetricKitSampleTests.swift */,
+				CMT5T00000000000000A /* RemoteEventTypeKey.swift */,
+				CMT5T00000000000000C /* LayoutCacheRestoreLogTests.swift */,
 				KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */,
 				DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */,
 				6C970FC2A843E1F349643BE4 /* DiagnosticLogUploadTests.swift */,
@@ -2746,7 +2772,10 @@
 				TRACECTX0000000000000002 /* TraceContext.swift */,
 				TRACECTX0000000000000004 /* TraceSpan.swift */,
 				TRACECTX0000000000000006 /* DiagnosticLog+Spans.swift */,
-				TRACECTX0000000000000008 /* PromptTraceBook.swift */,
+				CMT5A000000000000002 /* ActionTraceBook.swift */,
+				CMT5A000000000000004 /* AppLaunchTrace.swift */,
+				CMT5A000000000000006 /* ClientSpanBook.swift */,
+				CMT5A000000000000008 /* MetricKitSample.swift */,
 				DIAGLOG0000000000005 /* DiagnosticLog+Export.swift */,
 				DIAGRET0000000000000001 /* DiagnosticLog+Retention.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
@@ -2824,6 +2853,7 @@
 				5D108FC8A35DB42FFA7C8958 /* StudioAuthProof.swift */,
 				5D103E275EBA9B606B10977E /* StudioBinaryFrame.swift */,
 				5D100B1AB12D21A5BA534F49 /* StudioConnection+Inbound.swift */,
+				CMT5A00000000000000A /* StudioConnection+Trace.swift */,
 				5D10D431FFFECE386A1D86F5 /* StudioConnection.swift */,
 				5D10A586D14B45520E5DF561 /* StudioConnectionState.swift */,
 				5D10BE5197D48BBF11ED4A9E /* StudioEnvironmentRelay.swift */,
@@ -3737,7 +3767,6 @@
 				A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */,
 				A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */,
 				A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */,
-				TYPEKEY00000000000000001A /* NormalizedEvent+TypeKey.swift in Sources */,
 				B1B2C3D4E5F60001CC000013 /* NormalizedEvent+Codable.swift in Sources */,
 				A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */,
 				A1B2C3D4E5F60001FF0025AB /* NormalizedEvent+EngineDecoderTail.swift in Sources */,
@@ -3892,7 +3921,12 @@
 				TRACECTX0000000000000001 /* TraceContext.swift in Sources */,
 				TRACECTX0000000000000003 /* TraceSpan.swift in Sources */,
 				TRACECTX0000000000000005 /* DiagnosticLog+Spans.swift in Sources */,
-				TRACECTX0000000000000007 /* PromptTraceBook.swift in Sources */,
+				CMT5A000000000000001 /* ActionTraceBook.swift in Sources */,
+				CMT5A000000000000003 /* AppLaunchTrace.swift in Sources */,
+				CMT5A000000000000005 /* ClientSpanBook.swift in Sources */,
+				CMT5A000000000000007 /* MetricKitSample.swift in Sources */,
+				CMT5A000000000000009 /* StudioConnection+Trace.swift in Sources */,
+				CMT5A00000000000000B /* SessionViewModel+RenderSpans.swift in Sources */,
 				DIAGLOG0000000000006 /* DiagnosticLog+Export.swift in Sources */,
 				DIAGRET0000000000000002 /* DiagnosticLog+Retention.swift in Sources */,
 				HRNSBDG0000000000000001 /* EngineHarnessBadge.swift in Sources */,
@@ -4304,6 +4338,12 @@
 				THEMELUMTST00000000002 /* ThemeLuminanceTests.swift in Sources */,
 				DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */,
 				TRACECTX0000000000000009 /* TraceContextTests.swift in Sources */,
+				CMT5T000000000000001 /* ActionTraceBookTests.swift in Sources */,
+				CMT5T000000000000003 /* ClientSpanTests.swift in Sources */,
+				CMT5T000000000000005 /* StudioClientLatencyTests.swift in Sources */,
+				CMT5T000000000000007 /* MetricKitSampleTests.swift in Sources */,
+				CMT5T000000000000009 /* RemoteEventTypeKey.swift in Sources */,
+				CMT5T00000000000000B /* LayoutCacheRestoreLogTests.swift in Sources */,
 				KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */,
 				DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */,
 				A587B014FF2BD7A5DE13DA4C /* DiagnosticLogUploadTests.swift in Sources */,

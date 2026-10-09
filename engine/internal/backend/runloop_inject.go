@@ -75,7 +75,7 @@ func (b *ApiBackend) injectSystemMessage(
 		// reappears as an ordinary user bubble on every history reload even
 		// though the live event path is unaffected by the operator.
 		conversation.AddUserMessageWithKind(conv, text, string(types.InjectionKindSystemSteer))
-		if err := conversation.Save(conv, ""); err != nil {
+		if err := persistConversation(run, conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after system inject", map[string]any{
 				"error": utils.ErrStr(err),
 			})

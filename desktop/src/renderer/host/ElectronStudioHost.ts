@@ -33,6 +33,7 @@ import type { FleetRunProgress, FleetRunRequest, FleetRunSnapshot, FleetRunStart
 import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { Capability, PortForwardHost, StudioHost, FileDialogFilter } from './StudioHost'
+import type { ProfileCaptureRequest, ProfileCaptureResult } from '../../shared/desktop-ipc'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { resolveShellEnvironment, activeTabEnvironmentId } from '../studio/connection/tab-environment'
 import { BRIDGED_CAPABILITIES, type ShellSubscribeScope } from './browser-shell-bridge'
@@ -107,6 +108,18 @@ export class ElectronStudioHost implements StudioHost {
 
   onFrame(cb: (environmentId: string, frame: StudioFrame) => void): () => void {
     return this.preload.onHostFrame(cb)
+  }
+
+  noteActionTiming(environmentId: string, id: string, elapsedMs: number): void {
+    this.preload.hostNoteActionTiming(environmentId, id, elapsedMs)
+  }
+
+  launchTraceparent(): string | null {
+    return this.preload.launchTraceparent
+  }
+
+  profileCapture(request: ProfileCaptureRequest): Promise<ProfileCaptureResult> {
+    return this.preload.profileCapture(request)
   }
 
   /** One bridged verb as a `studio_action` against the Environment its arguments name, correlated by id. */

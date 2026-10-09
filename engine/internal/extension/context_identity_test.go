@@ -81,12 +81,12 @@ func TestContextIdentityStampsToolsAndCommands(t *testing.T) {
 func TestBuildHookEnvelopeIdentity(t *testing.T) {
 	h := NewHost()
 	identity := &auth.ContextIdentity{Kind: "workload", Provider: "aws", Claims: map[string]any{"enabled": true}}
-	envelope := h.buildHookEnvelope(&Context{Cwd: "/work", Identity: identity}, nil)
+	envelope := h.buildHookEnvelope(&Context{Cwd: "/work", Identity: identity}, nil, "")
 	ctx := envelope["_ctx"].(map[string]interface{})
 	if got, ok := ctx["identity"].(*auth.ContextIdentity); !ok || got != identity {
 		t.Errorf("identity = %#v, want supplied identity", ctx["identity"])
 	}
-	absent := h.buildHookEnvelope(&Context{Cwd: "/work"}, nil)["_ctx"].(map[string]interface{})
+	absent := h.buildHookEnvelope(&Context{Cwd: "/work"}, nil, "")["_ctx"].(map[string]interface{})
 	if _, ok := absent["identity"]; ok {
 		t.Error("absent identity must be omitted")
 	}

@@ -65,7 +65,7 @@ describe('trace_id on server log lines', () => {
 
 describe('server span log line', () => {
   it('writes the canonical span line, and the exporter reads it back as the same span', () => {
-    const span = startSpan('prompt.handle', {
+    const span = startSpan('action.handle', {
       writer: writeServerSpan,
       kind: 'server',
       parent: `00-${TRACE}-${CLIENT_SPAN}-01`,
@@ -75,7 +75,7 @@ describe('server span log line', () => {
 
     const line = lastLine()
     expect(line).toMatchObject({
-      level: 'INFO', component: 'server', tag: 'span', msg: 'prompt.handle',
+      level: 'INFO', component: 'server', tag: 'span', msg: 'action.handle',
       trace_id: TRACE, conversation_id: '1780093348767-c1c03e998388',
     })
     const fields = line.fields as Record<string, unknown>
@@ -87,12 +87,12 @@ describe('server span log line', () => {
 
     const exported = spanFromRecord(shipped.at(-1)!)
     expect(exported?.service).toBe('ion-server')
-    expect(exported?.span).toMatchObject({ traceId: TRACE, spanId: span.spanId, parentSpanId: CLIENT_SPAN, name: 'prompt.handle' })
+    expect(exported?.span).toMatchObject({ traceId: TRACE, spanId: span.spanId, parentSpanId: CLIENT_SPAN, name: 'action.handle' })
     expect(exported?.span.attributes.filter((a) => a.key === 'conversation_id')).toHaveLength(1)
   })
 
   it('writes a failed span at WARN with its error', () => {
-    startSpan('prompt.handle', { writer: writeServerSpan, kind: 'server' }).end(undefined, 'engine down')
+    startSpan('action.handle', { writer: writeServerSpan, kind: 'server' }).end(undefined, 'engine down')
     const line = lastLine()
     expect(line).toMatchObject({ level: 'WARN', tag: 'span' })
     expect((line.fields as Record<string, unknown>).error).toBe('engine down')

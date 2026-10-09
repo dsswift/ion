@@ -37,7 +37,7 @@ func (b *ApiBackend) persistInitialDeliveryEntries(run *activeRun, conv *convers
 	// Persist the queued completions and the run-opening prompt together. No
 	// delivery event is emitted until this save succeeds, so consumers never
 	// receive a completion that history cannot reproduce after a restart.
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddUserMessage", map[string]any{
 			"error": utils.ErrStr(err),
 		})

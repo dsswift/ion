@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-// Compact converts expanded events into one deterministic v4 frame.
+// Compact converts expanded events into one deterministic compact frame (the v4 layout).
 func Compact(events []Event) (Frame, error) {
 	identities := newIdentityTable()
 	contexts := newContextTable()
@@ -50,7 +50,7 @@ func Compact(events []Event) (Frame, error) {
 	return frame, nil
 }
 
-// Expand converts a validated v4 frame into expanded events.
+// Expand converts a validated compact frame into expanded events.
 func Expand(frame Frame) ([]Event, error) {
 	if err := ValidateFrame(frame); err != nil {
 		return nil, err

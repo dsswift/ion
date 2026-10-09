@@ -9,7 +9,8 @@ protocol StudioConnecting: AnyObject, Sendable {
     func start() async
     func stop() async
     func restart() async
-    func sendAction(_ action: String, args: [JSONValue], activeTabId: String?, timeoutSeconds: Double?) async throws -> JSONValue
+    /// Runs one action and returns its value. `traceparent` rides the outer envelope of the frame that carries it.
+    func sendAction(_ action: String, args: [JSONValue], activeTabId: String?, timeoutSeconds: Double?, traceparent: String?) async throws -> JSONValue
     /// Hands the action to the wire and returns; `completion` gets the value or a `StudioActionFailure`, once.
     /// `traceparent`, when set, rides the outer envelope of the frame that carries the action.
     func submitAction(

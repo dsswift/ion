@@ -18,6 +18,7 @@ import type {
   StatusFields,
   SessionStatus,
 } from "./types-engine";
+import type { EventTraceContext } from "./types-events";
 import type { ClientToolCallState } from "./types-tool-gate";
 import type { WikiLinkPropagationReport } from "./types-wiki-links";
 import type { EngineEventAsync } from "./types-engine-event-async";
@@ -37,7 +38,14 @@ export type {
   SubscriptionOption,
   SubscriptionState,
 } from "./types-engine-event-model";
-export type EngineEvent =
+/**
+ * Every engine event carries the emitting run's trace position when it was
+ * emitted by a run (`trace_id`, `span_id`; see EventTraceContext). Events
+ * the engine emits outside a run carry neither.
+ */
+export type EngineEvent = EngineEventVariant & EventTraceContext;
+
+export type EngineEventVariant =
   | { type: "engine_agent_state"; agents: AgentStateUpdate[] }
   | {
       type: "engine_status";

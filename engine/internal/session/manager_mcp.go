@@ -20,6 +20,7 @@ import (
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -115,7 +116,9 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 		})
 
 		for name, mcpCfg := range mcpServers {
+			startSpan := m.startMcpStartSpan(s, key, name)
 			conn, err := mcp.ConnectWithOptions(name, mcpCfg, mcp.ConnectionOptions{
+				SessionID: key,
 				Elicit: func(_ context.Context, request mcp.ElicitationRequest) (mcp.ElicitationReply, error) {
 					response, cancelled, err := m.elicit(s, key, extension.ElicitationRequestInfo{
 						Schema: request.Schema, URL: request.URL, Mode: request.Mode,
@@ -127,6 +130,7 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 					return mcp.ElicitationReply{Action: "accept", Response: response}, nil
 				},
 			})
+			startSpan(conn, err)
 			if err != nil {
 				// A whole server's tools going away is an error, not info, and
 				// missed by ERROR-level log sweeps at Info. Key by serverName;
@@ -362,7 +366,9 @@ func (m *Manager) ReconnectMcpServer(ctx context.Context, name string) int {
 		// Connect BEFORE dropping the old connection: if the new attempt fails,
 		// the session keeps the connection it had rather than being left with
 		// none, which would silently strip the server's tools mid-conversation.
-		conn, err := mcp.ConnectContext(ctx, name, cfg, mcp.ConnectionOptions{})
+		startSpan := m.startMcpStartSpan(s, key, name)
+		conn, err := mcp.ConnectContext(ctx, name, cfg, mcp.ConnectionOptions{SessionID: key})
+		startSpan(conn, err)
 		if err != nil {
 			m.recordMcpConnectError(name, err)
 			utils.LogWithFields(utils.LevelError, "session", "mcp reconnect failed; keeping existing connection", map[string]any{
@@ -419,4 +425,29 @@ func (m *Manager) ReconnectMcpServer(ctx context.Context, name string) int {
 		"serverName": name, "sessionsReconnected": reconnected,
 	})
 	return reconnected
+}
+
+// startMcpStartSpan opens the mcp.start span for one server connection and
+// returns the function that ends it with the outcome: the tool count on
+// success, the error otherwise. A client span (the engine waits on the
+// server's handshake) under the trace in flight. Nil-safe on the collector.
+func (m *Manager) startMcpStartSpan(s *engineSession, key, name string) func(conn *mcp.Connection, err error) {
+	if s == nil || s.telemetry == nil {
+		return func(*mcp.Connection, error) {}
+	}
+	span := s.telemetry.StartSpanCtx(telemetry.McpStart, map[string]any{
+		"server": name, "span_kind": telemetry.SpanKindClient,
+	}, m.sessionSpanCtx(s, key))
+	return func(conn *mcp.Connection, err error) {
+		attrs := map[string]any{}
+		errMsg := ""
+		if err != nil {
+			errMsg = err.Error()
+		} else if conn != nil {
+			attrs["tools"] = len(conn.Tools())
+			attrs["protocol_version"] = conn.ProtocolVersion()
+		}
+		span.End(attrs, errMsg)
+		utils.LogWithFields(utils.LevelDebug, "session", "mcp.start span recorded", map[string]any{"serverName": name, "key": key, "span_id": span.SpanID(), "error": errMsg})
+	}
 }

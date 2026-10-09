@@ -20,7 +20,7 @@
  */
 import { THIN_EVENT_CHANNEL } from '@ion/shared/studio-wire/channels'
 import { connectionRegistry, type Connection } from '../protocol/connection'
-import { publishStudioEvent } from '../protocol/events'
+import { publishStudioEvent, studioEventFrame } from '../protocol/events'
 import { focusState } from '../git/focus-state'
 import { ringOfflineThinClients } from './push-doorbell'
 import { debug as _debug } from '../logger'
@@ -77,5 +77,5 @@ export function sendThinEventTo(conn: Connection, event: RemoteEvent | Record<st
     debug('targeted thin event skipped', { connection_id: conn.id, closed: conn.isClosed, view: conn.view })
     return false
   }
-  return conn.send({ type: 'studio_event', channel: THIN_EVENT_CHANNEL, payload: event })
+  return conn.send(studioEventFrame(THIN_EVENT_CHANNEL, event))
 }

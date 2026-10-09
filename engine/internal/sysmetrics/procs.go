@@ -28,8 +28,10 @@ type procKey struct {
 // procState is what the reader remembers about a process between samples.
 type procState struct {
 	role, name string
-	cpuMs      int64
-	atMs       int64
+	// sessionID is the owning session key a spawn site registered, or "".
+	sessionID string
+	cpuMs     int64
+	atMs      int64
 }
 
 // procReader walks the engine's process tree and remembers each process's
@@ -104,9 +106,9 @@ func (r *procReader) read(ctx context.Context, nowMs int64) []types.SystemMetric
 		key := procKey{pid: pid, startMs: start}
 		st, known := r.prev[key]
 		if !known {
-			st.role, st.name = r.identify(ctx, p, start)
+			st.role, st.name, st.sessionID = r.identify(ctx, p, start)
 		}
-		row := types.SystemMetricsProcess{Pid: pid, StartTimeMs: start, Role: st.role, Name: st.name}
+		row := types.SystemMetricsProcess{Pid: pid, StartTimeMs: start, Role: st.role, Name: st.name, SessionID: st.sessionID}
 		if t, err := p.TimesWithContext(ctx); err == nil {
 			row.CPUTimeMs = int64((t.User + t.System) * 1000)
 			if known {
@@ -131,22 +133,24 @@ func (r *procReader) read(ctx context.Context, nowMs int64) []types.SystemMetric
 	return out
 }
 
-// identify decides a process's role and name the first time it is seen.
-func (r *procReader) identify(ctx context.Context, p *process.Process, startMs int64) (string, string) {
+// identify decides a process's role, name, and owning session the first time
+// it is seen. Only a registered spawn site can name a session; a process
+// recognised any other way has none.
+func (r *procReader) identify(ctx context.Context, p *process.Process, startMs int64) (role, name, sessionID string) {
 	if p.Pid == r.rootPid {
-		return types.SystemMetricsRoleEngine, "ion"
+		return types.SystemMetricsRoleEngine, "ion", ""
 	}
 	if reg, ok := lookupRegistration(p.Pid, startMs); ok && isKnownRole(reg.role) {
-		return reg.role, reg.name
+		return reg.role, reg.name, reg.sessionID
 	}
 	if r.isMcpBridge(ctx, p) {
-		return types.SystemMetricsRoleMcp, mcpBridgeArg
+		return types.SystemMetricsRoleMcp, mcpBridgeArg, ""
 	}
-	name, err := p.NameWithContext(ctx)
-	if err != nil || name == "" {
-		name = "unknown"
+	procName, err := p.NameWithContext(ctx)
+	if err != nil || procName == "" {
+		procName = "unknown"
 	}
-	return types.SystemMetricsRoleTool, filepath.Base(name)
+	return types.SystemMetricsRoleTool, filepath.Base(procName), ""
 }
 
 // isMcpBridge reports whether p is the engine's own binary running the

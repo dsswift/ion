@@ -551,7 +551,7 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
        * and uses displayText for its specialized transcript card.
        */
       injectionKind?: string;
-      /** W3C traceparent of the client span that sent this prompt; the server's prompt.handle span joins its trace. */
+      /** W3C traceparent of the client span that sent this prompt; the server's action.handle span joins its trace. */
       traceparent?: string;
     },
   ) => PromptSubmitResult;

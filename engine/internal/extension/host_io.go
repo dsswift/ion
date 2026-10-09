@@ -203,7 +203,16 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 		}
 		return nil, errExtensionDeadSilent
 	}
-	wrapped := h.buildHookEnvelope(ctx, payload)
+	// The hook call is a span under the run's span (or under a schedule or
+	// webhook fire's root span, which also arrives as RunSpanID). Its id is
+	// minted before the call so the envelope can carry it: the extension
+	// parents its own spans under the hook span, and the hook_latency event
+	// below records the same id.
+	hookSpanID := ""
+	if ctx != nil && ctx.TraceID != "" && ctx.RunSpanID != "" {
+		hookSpanID = utils.NewSpanID()
+	}
+	wrapped := h.buildHookEnvelope(ctx, payload, hookSpanID)
 
 	tok := h.ctxStack.Push(ctx)
 	defer h.ctxStack.Pop(tok)
@@ -285,11 +294,19 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 		"turn":       turn,
 		"blocked":    blocked,
 	}
-	if ctx != nil && ctx.TraceID != "" && ctx.RunSpanID != "" {
+	if hookSpanID != "" {
 		corr["trace_id"] = ctx.TraceID
-		corr["parent_span_id"] = ctx.RunSpanID
-		hookPayload["span_id"] = utils.NewSpanID()
+		// Under a group fire the hook.fanout span is the parent; a hook
+		// fired on one host directly sits under the run's span.
+		parent := ctx.HookFanoutSpanID
+		if parent == "" {
+			parent = ctx.RunSpanID
+		}
+		corr["parent_span_id"] = parent
+		hookPayload["span_id"] = hookSpanID
 		hookPayload["duration_ms"] = latencyMs
+		// An outbound call into the extension subprocess: a client span.
+		hookPayload["span_kind"] = "client"
 	}
 
 	telemFn("extension.hook_latency", hookPayload, corr)
@@ -310,8 +327,9 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 // block sent to the subprocess, then merges the hook-specific payload into
 // the same map. Pure with respect to IPC — extracted from callHook so the
 // wire shape of `_ctx` (which keys appear, and when) can be pinned by tests
-// without a live subprocess.
-func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]interface{} {
+// without a live subprocess. spanID is the hook span's id (empty when the
+// call is not a span: no trace in flight), published as _ctx.spanId.
+func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}, spanID string) map[string]interface{} {
 	// Lifecycle observers can fire outside a run. In that case, publish an empty
 	// context block rather than dereferencing a context that does not exist.
 	if ctx == nil {
@@ -343,6 +361,13 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 	}
 	if ctx.TraceID != "" {
 		ctxMeta["traceId"] = ctx.TraceID
+	}
+	// spanId is the engine's span for THIS hook call (extension.hook_latency),
+	// so an extension that exports spans parents them under it with
+	// traceparent 00-<traceId>-<spanId>-01. Present exactly when the call is
+	// a span: a trace is in flight and the hook runs under a span.
+	if spanID != "" {
+		ctxMeta["spanId"] = spanID
 	}
 	// Dispatch identity: emitted only for child sessions (depth > 0) so the
 	// wire stays additive — SDK runtimes default depth to 0 / dispatchId to

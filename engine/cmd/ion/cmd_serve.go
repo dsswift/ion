@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -34,6 +35,9 @@ import (
 )
 
 func cmdServe(flags map[string]string) {
+	// The daemon.startup span starts here and ends when the socket accepts
+	// (server.SetStartupTiming); the config read below is its first child.
+	processStart := time.Now()
 	ionDir := utils.IonDir()
 	if err := os.MkdirAll(ionDir, 0o700); err != nil {
 		utils.LogWithFields(utils.LevelError, "main", "failed to create ion data dir", map[string]any{"path": ionDir, "error": utils.ErrStr(err)})
@@ -60,8 +64,10 @@ func cmdServe(flags map[string]string) {
 	logPriorExit(exitPath())
 	writeRunning(exitPath())
 
+	configStart := time.Now()
 	cfg := config.LoadConfig("")
-	utils.LogWithFields(utils.LevelInfo, "main", "config loaded", map[string]any{"backend": cfg.Backend, "model": cfg.DefaultModel, "count": len(cfg.Providers), "max": len(cfg.McpServers)})
+	configEnd := time.Now()
+	utils.LogWithFields(utils.LevelInfo, "main", "config loaded", map[string]any{"backend": cfg.Backend, "model": cfg.DefaultModel, "count": len(cfg.Providers), "max": len(cfg.McpServers), "duration_ms": configEnd.Sub(configStart).Milliseconds()})
 
 	// FR-01: activate (or deactivate) principal partitioning once, from the
 	// fully enterprise-enforced config, before any conversation storage is
@@ -304,6 +310,7 @@ func cmdServe(flags map[string]string) {
 		srv.AllowUnauthenticatedPeers("ION_SOCKET_PATH names the listen address")
 	}
 
+	srv.SetStartupTiming(processStart, configStart, configEnd, filepath.Join(ionDir, "engine.json"))
 	srv.SetConfig(cfg)
 	// SetConfig built every telemetry collector, so a retry queue none of
 	// them owns belongs to a target that is no longer configured.
@@ -434,6 +441,13 @@ func cmdServe(flags map[string]string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Ion Engine v%s started (pid %d)\n", version, os.Getpid())
+
+	// debug.pprof.listen: a loopback-only net/http/pprof listener, off by
+	// default. A refused or failed bind is logged by StartPprofListener and
+	// the engine runs without it; Stop closes a serving one.
+	if _, err := srv.StartPprofListener(cfg.Debug.PprofListen()); err != nil {
+		utils.LogWithFields(utils.LevelError, "main", "pprof listener not started", map[string]any{"error": utils.ErrStr(err)})
+	}
 
 	// Heartbeat: update lastBeat every 5 s so an unclean death leaves a
 	// dateable breadcrumb. The goroutine is daemon-style -- no sync needed

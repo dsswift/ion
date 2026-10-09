@@ -85,16 +85,31 @@ This is what the engine emits as:
 
 ## Dashboard recipe
 
-All cost panels should use:
+All cost panels use (the event name is the `event_name` stream label, [`log-schema.md`](log-schema.md)
+§ "Names in Loki"):
 
 ```logql
-sum(sum_over_time({kind="run.complete"} | json | unwrap run_cost_usd [<window>]))
+sum(sum_over_time({event_name="run.complete"} | json | unwrap run_cost_usd [<window>]))
 ```
 
-This produces correct spend totals because:
-1. Every run emits exactly one `run.complete` event
-2. `run_cost_usd` is per-run, cache-aware, and dispatch-inclusive (no double-counting)
-3. `agg_cost_usd` would double-count sub-agent runs that also emit `run.complete`
+What the two cost keys hold, from the emitter
+(`engine/internal/session/event_translation.go`, the `TaskCompleteEvent` handler):
+
+- `run_cost_usd` is `TaskCompleteEvent.CostUsd`: the sum of this run's own turn costs
+  (`cost.TurnCost` per turn, [Run cost](#run-cost)). It **excludes** dispatched sub-agents: a child
+  agent's turns are its own conversation's cost. It is exact per run and never overlaps another
+  `run.complete`, so summing it is the right spend total for the runs that emitted the event.
+- `aggregate_cost_usd` is `cost.ConversationCost(convID, liveDispatches)` at the moment the run
+  completes: the conversation's persisted `totalCost` (every run of this conversation so far, not only
+  this one) plus every descendant dispatch conversation's, each counted once; for a delegated-CLI run
+  the engine adds the CLI's just-reported total, which is not on disk yet. It is a **cumulative
+  snapshot**, so summing it across events multiplies the same spend by the number of runs. Read the
+  latest value per `context_conversation_id` for a conversation's total.
+- `dispatch_depth` is always `0` here: `run.complete` is emitted at the session manager, which only the
+  root session reaches. A dispatched child runs its backend inline and emits no `run.complete` of its
+  own, so a root run's `run_cost_usd` total does not contain its sub-agents' spend; the difference
+  between the latest `aggregate_cost_usd` and the summed `run_cost_usd` of a conversation is that
+  spend. The sub-agent tax panel below reads it from `dispatch.agent`.
 
 ## Sub-agent tax panel
 

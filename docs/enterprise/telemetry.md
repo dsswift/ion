@@ -70,7 +70,7 @@ The `targets` array specifies where telemetry data is sent. Multiple targets can
 | Target | Description | Required fields |
 |--------|-------------|-----------------|
 | `http` | Send batched JSON payloads to an HTTP endpoint | `httpEndpoint` |
-| `file` | Write schema-v4 compact frames, one JSON line each, to a local file | `filePath` (defaults to `~/.ion/telemetry.jsonl`) |
+| `file` | Write compact frames (schema v5), one JSON line each, to a local file | `filePath` (defaults to `~/.ion/telemetry.jsonl`) |
 | `stdout` | Write the same JSON lines to the engine's standard output | none |
 | `otel` | Export via OpenTelemetry protocol | `otel.endpoint` |
 | `eventhub` | Send events to an Azure Event Hub | `eventHubConnectionString` |
@@ -106,7 +106,7 @@ Age escalates independently of size on purpose. A small batch that can never be 
 
 ### File target
 
-Writes telemetry as newline-delimited JSON to a local file. Schema v4 stores compact frames, each of which can contain more than one event.
+Writes telemetry as newline-delimited JSON to a local file. The file holds compact frames (the layout schema v4 introduced, current schema v5), each of which can contain more than one event.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -438,7 +438,7 @@ The engine produces two distinct observability streams. They are complementary, 
 
 | Dimension | Operational logs | Telemetry |
 |---|---|---|
-| Format | JSONL (one structured line per event) | JSONL schema-v4 compact frames; optionally OpenTelemetry traces through the `otel` target (one zero-length span per event) |
+| Format | JSONL (one structured line per event) | JSONL compact frames (schema v5); optionally OpenTelemetry traces through the `otel` target (one zero-length span per event) |
 | Emitter | `utils.Log` / `utils.LogCtx` (Go slog) | `internal/telemetry` package |
 | Destination | `~/.ion/*.jsonl` (local); optional downstream egress via `logging.egressTargets` (HTTP endpoint or OTLP collector); Loki (observability stack) | File, HTTP endpoint, or OTLP collector |
 | Purpose | Real-time debugging, investigation, agent guidance | Session metrics, audit trail, enterprise compliance |
@@ -479,7 +479,7 @@ transaction to trace, so it carries neither.
 
 ### Schema reference
 
-Schema v4 uses compact frames in the local file. The telemetry forwarder expands frame and expanded-event records before it sends them to Alloy, so dashboard behavior and the expanded event contract remain stable. The full file and expanded-event schema is documented at [`docs/observability/log-schema.md`](../observability/log-schema.md).
+Schema v4 introduced compact frames in the local file and schema v5 keeps them. The telemetry forwarder expands frame and expanded-event records before it sends them to Alloy, so dashboard behavior and the expanded event contract remain stable. The full file and expanded-event schema is documented at [`docs/observability/log-schema.md`](../observability/log-schema.md).
 
 ### Schema versioning
 

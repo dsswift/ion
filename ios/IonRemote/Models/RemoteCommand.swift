@@ -60,7 +60,7 @@ enum RemoteCommand: Sendable {
   /// When absent the desktop uses the CLI pipeline. This merges the former
   /// `desktop_engine_prompt` wire command into the unified prompt shape (#256).
   /// `traceparent` names the phone's `prompt.send` span: the server's
-  /// `prompt.handle` span joins that trace, and the frame carrying the prompt
+  /// `action.handle` span joins that trace, and the frame carrying the prompt
   /// sets it on its outer envelope for the relay's `relay.forward` span.
   case prompt(
     tabId: String, text: String, origin: String? = "remote", clientMsgId: String? = nil,

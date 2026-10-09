@@ -33,7 +33,7 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { useEnvironmentAvailabilityMap } from '../studio/connection/environment-availability'
 import { useTabEnvironmentId } from '../studio/connection/tab-environment'
 import { EnvironmentOfflinePanel } from '../studio/connection/EnvironmentUnavailable'
-import { submitWithTrace } from '../lib/prompt-trace'
+import { submitWithTrace } from '../lib/action-trace'
 
 /** The engine conversation a tab is bound to, for a prompt span's attributes. */
 function conversationIdOf(tabId: string): string | null | undefined {

@@ -83,6 +83,15 @@ One refusal vocabulary (`studio_refused.reason`). A refusal is logged with its r
 - `ION_LOG_OUTPUT` = `file` (default) | `stdout` | `both`. The Docker image sets `both`.
 - Every exit path (`process-logging.ts`, `shutdown.ts`) drains the logger's 500ms buffer and the egress sink.
 - `server.json` `logging` turns on egress (`config/logging-config.ts`); absent ships nothing. `logging.egressShipSources` picks what this process ships.
+- `server.json` `telemetry.otel.metrics` (`config/telemetry-config.ts`) turns on the server's own OTLP metrics (`system-metrics/otlp-export.ts`: `ion.server.*` gauges and histograms); absent exports nothing.
+
+## Spans and trace context
+
+- Every operation is one span through `tracing/op-span.ts`: `withSpan(name, {kind, attrs, parent?}, fn)` times `fn` (sync or async), writes the span line at its end, and makes it ambient for everything `fn` does (`AsyncLocalStorage`, like `identity/request-principal.ts`). A span started inside is its child. Every span carries `user`. Never write an ad hoc `elapsed_ms`. Span names and their start/end rules: [log-schema § Spans](../docs/observability/log-schema.md#spans).
+- `action.handle` wraps every `studio_action` in `protocol/actions.ts`, parented on the sealed envelope's `traceparent`, then the frame's, then one in the arguments (`actionParent`). The prompt path annotates that span (`tracing/prompt-span.ts`); it opens one of its own only for a server-authored turn.
+- `engine.request` wraps every engine round trip (`engine-bridge-core.ts`) and puts its `traceparent` on the command; `engine.send_prompt` is the prompt's own call span, and a command already carrying a `traceparent` gets no second span.
+- An engine event's `trace_id` / `span_id` are ambient while it is handled (`runWithTrace` around `bridge.emit('event')`): `studio_event` frames (`studioEventFrame`), transcript patches, and every sealed envelope sent meanwhile name that trace. `Connection.send` runs the socket write under the frame's trace; `SealedSocket` reads `currentTraceparent()` for the envelope.
+- `profile.capture` (`protocol/profile-actions.ts`, `admin` scope, developer surface `profiling`) writes a CPU profile or heap snapshot under `<data dir>/profiles/` through `@ion/shared/node-profile`.
 
 ## Tests
 

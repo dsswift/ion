@@ -165,6 +165,7 @@ func (a *sessionAccessor) sendPromptWithPayload(payload extension.SendPromptPayl
 		payload.Kind,
 		payload.SlashModelTierApplyMidConversation,
 	)
+	overrides = withPayloadTraceparent(overrides, payload, a.key, "hook_ctx")
 	if a.commandOverrides != nil {
 		if overrides == nil {
 			overrides = &PromptOverrides{}

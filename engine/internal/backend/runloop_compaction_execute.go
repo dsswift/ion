@@ -16,6 +16,18 @@ import (
 // truncatable message estimate; auto targets retain window-relative semantics.
 func (b *ApiBackend) performCompact(p performCompactParams) error {
 	b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: true}})
+	// The compaction span: this pass through the persisted result. Ended with
+	// the token and message figures, or the error that stopped it.
+	var span Span
+	if telem := runTelemetry(p.run); telem != nil {
+		span = telem.StartSpanCtx(telemetry.Compaction, map[string]any{"trigger": p.trigger}, buildTelemCtx(p.run))
+	}
+	endSpanOnError := func(err error) error {
+		if span != nil && err != nil {
+			span.End(nil, err.Error())
+		}
+		return err
+	}
 	msgBefore := len(p.conv.Messages)
 	tokensBefore := conversation.GetContextUsage(p.conv, p.contextWindow).Tokens
 
@@ -123,7 +135,7 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			}
 			if _, err := conversation.CommitCompaction(p.conv, cut, data, conversation.BuildCompactBoundaryMessage(meta)); err != nil {
 				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger}})
-				return err
+				return endSpanOnError(err)
 			}
 		}
 	}
@@ -144,19 +156,17 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 	}})
 	tokensAfter := conversation.GetContextUsage(p.conv, p.contextWindow).Tokens
 
-	if p.run.cfg != nil && p.run.cfg.Telemetry != nil {
-		p.run.cfg.Telemetry.Event(telemetry.Compaction, map[string]any{
-			"trigger": p.trigger, "tokens_before": tokensBefore, "tokens_after": tokensAfter,
-			"tokens_reclaimed": tokensBefore - tokensAfter, "messages_before": msgBefore,
-			"messages_after": sourceMsgAfter, "stored_messages_after": storedMsgAfter, "dropped_messages": cut.Dropped,
-			"cleared_blocks": cleared, "fact_count": len(facts), "summary_len": len(summary),
-			"target_tokens": targetTokens, "target_basis": targetBasis, "micro_only": microOnly,
-		}, buildTelemCtx(p.run))
+	compactionAttrs := map[string]any{
+		"tokens_before": tokensBefore, "tokens_after": tokensAfter,
+		"tokens_reclaimed": tokensBefore - tokensAfter, "messages_before": msgBefore,
+		"messages_after": sourceMsgAfter, "stored_messages_after": storedMsgAfter, "dropped_messages": cut.Dropped,
+		"cleared_blocks": cleared, "fact_count": len(facts), "summary_len": len(summary),
+		"target_tokens": targetTokens, "target_basis": targetBasis, "micro_only": microOnly, "no_op": noOp,
 	}
 
 	if !noOp {
-		if err := conversation.Save(p.conv, ""); err != nil {
-			return fmt.Errorf("save compacted conversation: %w", err)
+		if err := persistConversation(p.run, p.conv); err != nil {
+			return endSpanOnError(fmt.Errorf("save compacted conversation: %w", err))
 		}
 		if p.cp.resetMemoryTracking != nil {
 			p.cp.resetMemoryTracking(conversation.EstimateTokens(p.conv.Messages))
@@ -168,6 +178,11 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 		if p.run.cfg != nil && p.run.cfg.OnConversationCompacted != nil {
 			p.run.cfg.OnConversationCompacted()
 		}
+	}
+	// The compaction span ends once the compacted tree is persisted (the
+	// Save above), the same payload the duration-less event used to carry.
+	if span != nil {
+		span.End(compactionAttrs)
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "compact COMPLETE", map[string]any{
 		"trigger": p.trigger, "tokens_before": tokensBefore, "tokens_after": tokensAfter,

@@ -17,6 +17,7 @@ import {
   WIRE_WINDOW_FIELDS,
   PING_TIMEOUT_MS,
   logWireWindow,
+  onWireWindow,
 } from '../wire-latency'
 
 beforeEach(() => {
@@ -80,8 +81,8 @@ describe('WireLatencyMeter', () => {
     meter.recordInbound()
     meter.recordInbound()
     meter.recordDecodeError()
-    meter.recordAction(10)
-    meter.recordAction(30)
+    meter.recordAction('submit', 10)
+    meter.recordAction('git.status', 30)
 
     const window = meter.takeWindow()
     expect(window.frames_out).toBe(2)
@@ -93,6 +94,38 @@ describe('WireLatencyMeter', () => {
     expect(window.decode_errors).toBe(1)
     expect(window.action_p50_ms).toBe(10)
     expect(window.action_p95_ms).toBe(30)
+  })
+
+  it('keeps each action name apart, so one slow action is not averaged into the rest', () => {
+    const meter = new WireLatencyMeter()
+    meter.recordAction('submit', 10)
+    meter.recordAction('submit', 20)
+    meter.recordAction('git.status', 300)
+
+    const window = meter.takeWindow()
+    expect(window.actions).toEqual({
+      'git.status': { p50_ms: 300, p95_ms: 300, count: 1 },
+      submit: { p50_ms: 10, p95_ms: 20, count: 2 },
+    })
+    // The totals still cover every action of the window.
+    expect(window.action_p95_ms).toBe(300)
+    // And the next window starts without them.
+    expect(meter.takeWindow().actions).toEqual({})
+  })
+
+  it('hands every window to a listener with its raw samples, before the window is logged', () => {
+    const meter = new WireLatencyMeter()
+    meter.recordPingSent('n1', 1_000)
+    meter.recordPong('n1', 1_040)
+    meter.recordSend(10, 10)
+    meter.recordSendComplete(7)
+    const heard: Array<{ transport: string; rtts: readonly number[]; dwells: readonly number[]; actions: Record<string, unknown> }> = []
+    const off = onWireWindow((identity, window, samples) => {
+      heard.push({ transport: identity.transport, rtts: samples.rtts, dwells: samples.dwells, actions: window.actions })
+    })
+    logWireWindow({ clientKind: 'mobile', clientId: 'c1', transport: 'relay', connectionId: 'conn-1' }, meter)
+    off()
+    expect(heard).toEqual([{ transport: 'relay', rtts: [40], dwells: [7], actions: {} }])
   })
 
   it('starts a fresh window after each one is taken', () => {

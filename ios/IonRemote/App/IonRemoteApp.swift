@@ -53,6 +53,8 @@ struct IonRemoteApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
                     case .active:
+                        // The first screen is on: `app.launch` ends (later activations are no-ops).
+                        AppLaunchTrace.shared.sceneActive()
                         guard !viewModel.pairedDevices.isEmpty else { break }
                         // Resume transport without wiping state.
                         viewModel.resumeTransport()

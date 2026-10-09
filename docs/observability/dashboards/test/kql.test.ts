@@ -214,9 +214,12 @@ test('every recipe converts, keeping every panel, and nothing Loki- or Tempo-sha
       assert.deepEqual(at.map((t) => t.refId), lt.map((t) => t.refId), `${loki.uid} / ${p.title as string}: targets`);
     });
     walk(az, (o) => {
-      assert.ok(!('expr' in o), `${loki.uid}: a LogQL expr survived`);
       const ds = o.datasource as Record<string, unknown> | undefined;
-      if (ds && typeof ds === 'object') assert.deepEqual(ds, TARGET.datasource, `${loki.uid}: data source`);
+      // A PromQL target keeps its expr and points at the workspace's
+      // Prometheus data source; a Mixed panel keeps Grafana's Mixed marker.
+      const prom = ds !== undefined && JSON.stringify(ds) === JSON.stringify(TARGET.prometheus);
+      if (!prom) assert.ok(!('expr' in o), `${loki.uid}: a LogQL expr survived`);
+      if (ds && typeof ds === 'object' && !prom && ds.type !== 'datasource') assert.deepEqual(ds, TARGET.datasource, `${loki.uid}: data source`);
     });
   }
 });

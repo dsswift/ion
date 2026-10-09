@@ -2,7 +2,8 @@ import Foundation
 import MetricKit
 
 /// MetricKit subscriber that forwards crash and hang diagnostics into
-/// DiagnosticLog at ERROR level.
+/// DiagnosticLog at ERROR level, and writes the daily metric payload as one
+/// `metrickit sample` line (`MetricKitSample`).
 ///
 /// MetricKit is the system-blessed crash channel: it captures crashes the
 /// in-process signal-handler breadcrumb cannot (jetsam memory kills, watchdog
@@ -49,6 +50,33 @@ final class MetricKitCrashObserver: NSObject, MXMetricManagerSubscriber {
     }
 
     // MARK: - MXMetricManagerSubscriber
+
+    /// Metric payloads arrive about once a day (device-only). Each becomes one
+    /// line with the numbers a dashboard trends: launch time, hangs, foreground
+    /// time, and bytes by radio. The payload's JSON is what is read
+    /// (`MetricKitSample.parse`), so the mapping is the tested one.
+    func didReceive(_ payloads: [MXMetricPayload]) {
+        for payload in payloads {
+            logSample(json: payload.jsonRepresentation())
+        }
+    }
+
+    /// Writes one `metrickit sample` line from a payload's JSON.
+    @discardableResult
+    static func logSample(json: Data) -> MetricKitSample? {
+        guard let sample = MetricKitSample.parse(json) else {
+            DiagnosticLog.log("metrickit payload unreadable, no sample written", tag: "metrics.metrickit", level: .warn, fields: [
+                "bytes": String(json.count)
+            ])
+            return nil
+        }
+        DiagnosticLog.log("metrickit sample", tag: "metrics.metrickit", fields: sample.fields, numbers: sample.numbers)
+        return sample
+    }
+
+    private func logSample(json: Data) {
+        Self.logSample(json: json)
+    }
 
     /// Diagnostic payloads arrive on the next launch after a crash/hang
     /// (device-only; the simulator never delivers them).

@@ -4259,7 +4259,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function submitWithTrace",
-          "path": "desktop/src/renderer/lib/prompt-trace.ts"
+          "path": "desktop/src/renderer/lib/action-trace.ts"
         },
         {
           "platform": "server",
@@ -4272,8 +4272,8 @@
           "platform": "ios",
           "presentation": "code",
           "language": "swift",
-          "symbol": "final class PromptTraceBook",
-          "path": "ios/IonRemote/Utilities/PromptTraceBook.swift"
+          "symbol": "final class ActionTraceBook",
+          "path": "ios/IonRemote/Utilities/ActionTraceBook.swift"
         },
         {
           "platform": "engine",

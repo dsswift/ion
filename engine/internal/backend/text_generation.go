@@ -71,6 +71,7 @@ var (
 func execTextGenCommand(ctx context.Context, bin string, args []string, dir, stdin string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	procctl.Configure(cmd)
+	cmd.Env = withTraceparentEnv(os.Environ(), ctx, "backend.textgen")
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer

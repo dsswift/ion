@@ -79,7 +79,11 @@ type acpRun struct {
 }
 
 // acpLauncher connects to an ACP agent wired with the given handlers.
-type acpLauncher func(spec acpSpec, h acp.Handlers) (client *acp.Client, kill func(), err error)
+// extraEnv is appended to the agent's environment: TRACEPARENT for the run
+// that first spawned the process (the agent is long-lived, so later runs on
+// the same process inherit that first trace in their environment; see
+// docs/observability/log-schema.md § Propagation).
+type acpLauncher func(spec acpSpec, h acp.Handlers, extraEnv []string, sessionID string) (client *acp.Client, kill func(), err error)
 
 // NewGrokBackend constructs an ACP backend for the grok CLI.
 func NewGrokBackend() *AcpBackend {
@@ -125,13 +129,18 @@ func newAcpBackend(spec acpSpec) *AcpBackend {
 }
 
 // defaultAcpLauncher spawns the real ACP agent subprocess.
-func defaultAcpLauncher(spec acpSpec, h acp.Handlers) (*acp.Client, func(), error) {
+func defaultAcpLauncher(spec acpSpec, h acp.Handlers, extraEnv []string, sessionID string) (*acp.Client, func(), error) {
 	binPath, err := cliprobe.Find(spec.binary, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	env := append(os.Environ(), spec.envExtra...)
-	proc, err := rpcstdio.Spawn(context.Background(), binPath, spec.args, env, acp.SpawnOptions(spec.kind, h))
+	env = append(env, extraEnv...)
+	spawnOpts := acp.SpawnOptions(spec.kind, h)
+	// The process serves the session that first spawned it; System Metrics
+	// attributes it there.
+	spawnOpts.SessionID = sessionID
+	proc, err := rpcstdio.Spawn(context.Background(), binPath, spec.args, env, spawnOpts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -230,7 +239,7 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	if options.ParentCtx != nil {
 		defer installAmbientLogging(options.ParentCtx)()
 	}
-	client, loadCapable, err := b.ensureStarted()
+	client, loadCapable, err := b.ensureStarted(options.ParentCtx)
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("%s start failed: %w", b.spec.kind, err))
 		b.emitExit(requestID, intPtr(1), nil, "")
@@ -490,7 +499,9 @@ func (b *AcpBackend) emitError(runID string, err error) {
 
 // ensureStarted lazily spawns and initializes the ACP agent. Returns whether
 // the agent advertises session/load support.
-func (b *AcpBackend) ensureStarted() (*acp.Client, bool, error) {
+// ensureStarted spawns the agent on first use. runCtx is the spawning run's
+// context; its trace becomes the process's TRACEPARENT.
+func (b *AcpBackend) ensureStarted(runCtx context.Context) (*acp.Client, bool, error) {
 	b.mu.Lock()
 	if b.started {
 		client := b.client
@@ -509,7 +520,7 @@ func (b *AcpBackend) ensureStarted() (*acp.Client, bool, error) {
 		OnExtRequest:    b.onExtRequest,
 		OnClosed:        b.onProcessClosed,
 	}
-	client, kill, err := b.launch(b.spec, handlers)
+	client, kill, err := b.launch(b.spec, handlers, withTraceparentEnv(nil, runCtx, "backend.acp"), spawnSessionID(runCtx))
 	if err != nil {
 		return nil, false, err
 	}

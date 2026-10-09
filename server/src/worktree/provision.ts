@@ -34,6 +34,7 @@ import { seedEntry, reconcileStale, type SeedResult } from './provision-seed'
 import { runProvisionCommand } from './provision-run'
 import { isProjectTrusted } from '../environment/project-trust'
 import { log as _log, warn as _warn } from '../logger'
+import { annotateSpan, failSpan, withSpan } from '../tracing/op-span'
 import type { WorktreeProvisionState } from '@ion/shared/types'
 
 const TAG = 'worktree.provision'
@@ -102,7 +103,12 @@ export function provisionWorktree(
     // own log lines). Rethrowing here would make one worktree's failure block
     // the next worktree's provisioning entirely.
     .catch(() => undefined) // silent-ok: prior run already logged its own failure
-    .then(() => provisionNow(repoPath, worktreePath, controller.signal, onProgress))
+    .then(() => withSpan('worktree.provision', { attrs: { repo_path: repoPath, worktree_path: worktreePath } }, () =>
+      provisionNow(repoPath, worktreePath, controller.signal, onProgress).then((outcome) => {
+        annotateSpan({ state: outcome.state, seeded: outcome.results.length })
+        if (outcome.state === 'failed') failSpan(outcome.error ?? 'provisioning failed')
+        return outcome
+      })))
     .finally(() => {
       if (inflight.get(worktreePath)?.controller === controller) inflight.delete(worktreePath)
     })

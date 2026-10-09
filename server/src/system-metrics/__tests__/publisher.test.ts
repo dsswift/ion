@@ -23,7 +23,7 @@ function sample(at: number, cpu: number | null = 0.5): SystemMetricsSample {
       memoryLimitBytes: 0, containerLimited: false, load1: 1, diskPath: '/x', diskTotalBytes: 1_000, diskFreeBytes: 250,
     },
     processes: [{ pid: 10, startTimeMs: 1, role: 'engine', name: 'ion', cpuPercent: 20, cpuTimeMs: 5, rssBytes: 100 }],
-    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6 },
+    runtime: { heapBytes: 1, sysBytes: 2, memLimitBytes: 3, goroutines: 4, numGC: 5, sessions: 6, gcPauseP99Ms: 0, allocRateBytesPerS: 0, schedLatencyP99Ms: 0 },
   }
 }
 
@@ -142,14 +142,14 @@ describe('thinSummary', () => {
   it('reports fractions of the container limit when one applies', () => {
     const m = mergeEnvironmentMetrics(
       { ...sample(1), host: { ...sample(1).host, memoryLimitBytes: 8_000, memoryAvailableBytes: 2_000 } },
-      { process: { pid: 1, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: null, cpuTimeMs: 0, rssBytes: 0 }, eventLoopUtilization: null },
+      { process: { pid: 1, startTimeMs: 1, role: 'server', name: 'ion-server', cpuPercent: null, cpuTimeMs: 0, rssBytes: 0 }, eventLoopUtilization: null, eventLoopDelay: null },
     )
     expect(thinSummary(m)).toEqual({ type: 'desktop_system_metrics', cpuUtilization: 0.5, memoryUsedFraction: 0.75, diskFreeFraction: 0.25, sampledAt: 1 })
   })
 })
 
 describe('SystemMetricsStore history', () => {
-  const server = { process: { pid: 1, startTimeMs: 1, role: 'server' as const, name: 'ion-server', cpuPercent: 10, cpuTimeMs: 0, rssBytes: 50 }, eventLoopUtilization: 0.1 }
+  const server = { process: { pid: 1, startTimeMs: 1, role: 'server' as const, name: 'ion-server', cpuPercent: 10, cpuTimeMs: 0, rssBytes: 50 }, eventLoopUtilization: 0.1, eventLoopDelay: { p50Ms: 1, p99Ms: 4, maxMs: 9 } }
 
   it('buckets samples by ten seconds with average and maximum', () => {
     const store = new SystemMetricsStore()

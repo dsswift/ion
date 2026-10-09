@@ -41,6 +41,11 @@ func SystemMetricsPayload(sample types.SystemMetricsSample) map[string]any {
 		if p.CPUPercent != nil {
 			row["cpu_percent"] = *p.CPUPercent
 		}
+		// The owning session, when the spawn site registered one, so a
+		// row's CPU and memory attribute to a conversation.
+		if p.SessionID != "" {
+			row["session_id"] = p.SessionID
+		}
 		procs = append(procs, row)
 	}
 	return map[string]any{
@@ -55,6 +60,11 @@ func SystemMetricsPayload(sample types.SystemMetricsSample) map[string]any {
 			"goroutines":      r.Goroutines,
 			"num_gc":          r.NumGC,
 			"sessions":        r.Sessions,
+			// Interval figures from runtime/metrics; see
+			// types.SystemMetricsRuntime for each one's meaning.
+			"gc_pause_p99_ms":        r.GCPauseP99Ms,
+			"alloc_rate_bytes_per_s": r.AllocRateBytesPerS,
+			"sched_latency_p99_ms":   r.SchedLatencyP99Ms,
 		},
 	}
 }

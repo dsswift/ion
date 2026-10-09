@@ -19,6 +19,8 @@ import type { BinaryChannel } from '@ion/shared/studio-wire/channels'
 import { BoundedQueue, DEFAULT_BUFFER_CAP_BYTES } from './buffer'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 import { WireLatencyMeter } from './wire-latency'
+import { currentTraceparent, runWithTrace } from '../tracing/op-span'
+import { formatTraceparent, isValidSpanId, isValidTraceId } from '@ion/shared/trace-context'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('studio-protocol', msg, fields)
@@ -34,6 +36,19 @@ function debug(msg: string, fields?: Record<string, unknown>): void {
 export type ConnectionTransport = 'local' | 'tcp' | 'relay'
 
 let nextConnectionSeq = 1
+
+/**
+ * The trace a frame belongs to, as the socket under this connection should
+ * carry it: a `studio_event` stamped with the engine event's ids names that
+ * event's span; any other frame names the span of the operation sending it
+ * (an action's answer, a first paint), when one is ambient.
+ */
+export function frameTraceparent(frame: StudioFrame): string | undefined {
+  if (frame.type === 'studio_event' && isValidTraceId(frame.trace_id) && isValidSpanId(frame.span_id)) {
+    return formatTraceparent(frame.trace_id, frame.span_id)
+  }
+  return currentTraceparent()
+}
 
 export class Connection {
   readonly id: string
@@ -174,14 +189,16 @@ export class Connection {
     }
     this.latency.recordSend(bytes, this.buffer.size)
     const queuedAt = Date.now()
-    this.ws.send(text, (err) => {
+    // Under the frame's trace, so a sealed socket puts it on the envelope
+    // (`frameTraceparent`); a plain socket reads nothing from the context.
+    runWithTrace(frameTraceparent(frame), () => this.ws.send(text, (err) => {
       this.buffer.drain(bytes)
       // The callback fires once the socket has taken the frame, so this is
       // the real time it spent queued behind everything ahead of it.
       this.latency.recordSendComplete(Date.now() - queuedAt)
       if (err) warn('frame send failed', { connection_id: this.id, error: String(err) })
       onSent?.()
-    })
+    }))
     return true
   }
 
@@ -309,7 +326,7 @@ export class Connection {
       }
       this.pendingAnswers.add(settle)
       try {
-        this.ws.send(text, (err) => {
+        runWithTrace(frameTraceparent(frame), () => this.ws.send(text, (err) => {
           if (err) {
             warn('answer frame send failed', { connection_id: this.id, frame_type: frame.type, bytes, error: String(err) })
             settle(false)
@@ -317,7 +334,7 @@ export class Connection {
           }
           debug('answer frame left the socket', { connection_id: this.id, frame_type: frame.type, bytes, elapsed_ms: Date.now() - startedAt })
           settle(true)
-        })
+        }))
       } catch (err) {
         warn('answer frame send threw', { connection_id: this.id, frame_type: frame.type, bytes, error: String(err) })
         settle(false)

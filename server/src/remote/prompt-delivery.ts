@@ -30,7 +30,7 @@ export type PromptDelivery = {
   tabId: string
   resolve: (outcome: PromptOutcome) => void
   /**
-   * The traceparent of the submitter's open `prompt.handle` span. The store's
+   * The traceparent of the submitter's open `action.handle` span. The store's
    * submit, which claims this entry, sends it to the engine as the run's
    * parent instead of starting a span of its own.
    */

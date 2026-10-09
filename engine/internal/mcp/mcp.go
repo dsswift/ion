@@ -82,6 +82,11 @@ type ElicitationReply struct {
 // ConnectionOptions attach Ion-owned behavior around generic protocol mechanics.
 type ConnectionOptions struct {
 	Elicit func(context.Context, ElicitationRequest) (ElicitationReply, error)
+	// SessionID is the engine session the server is connected for, when
+	// one is: a stdio server's process is registered with System Metrics
+	// under it so its CPU and memory attribute to that conversation. Empty
+	// for a probe or a connection no session owns.
+	SessionID string
 }
 
 // Connection is a negotiated MCP client session. Protocol mechanics belong to
@@ -113,7 +118,7 @@ func ConnectWithOptions(name string, config types.McpServerConfig, opts Connecti
 // ConnectContext is ConnectWithOptions bounded by ctx as well as
 // DefaultMetadataTimeout: cancelling ctx abandons the handshake.
 func ConnectContext(ctx context.Context, name string, config types.McpServerConfig, opts ConnectionOptions) (*Connection, error) {
-	transport, cleanup, err := newSDKTransport(name, config)
+	transport, cleanup, err := newSDKTransport(ctx, name, config)
 	if err != nil {
 		return nil, fmt.Errorf("mcp connect %s: %w", name, err)
 	}
@@ -185,7 +190,7 @@ func ConnectContext(ctx context.Context, name string, config types.McpServerConf
 	// A stdio server's process exists once Connect returns; label it for
 	// System Metrics. The transport cleanup unregisters it.
 	if ct, ok := transport.(*mcpgo.CommandTransport); ok && ct.Command != nil && ct.Command.Process != nil {
-		sysmetrics.RegisterProcess(ct.Command.Process.Pid, types.SystemMetricsRoleMcp, name)
+		sysmetrics.RegisterSessionProcess(ct.Command.Process.Pid, types.SystemMetricsRoleMcp, name, opts.SessionID)
 	}
 	conn := &Connection{name: name, session: session, close: cleanup}
 	if config.TimeoutSeconds > 0 {
@@ -491,16 +496,35 @@ func joinErrors(errs []error) error {
 	return nil
 }
 
-func commandTransport(config types.McpServerConfig) (*mcpgo.CommandTransport, error) {
+// commandTransport builds the stdio transport. The server inherits the
+// engine's environment plus the configured Env; when ctx carries a trace
+// (the server is connected under a run) it also receives that trace as
+// TRACEPARENT. A nil cmd.Env keeps the plain inherited environment.
+func commandTransport(ctx context.Context, config types.McpServerConfig) (*mcpgo.CommandTransport, error) {
 	if config.Command == "" {
 		return nil, fmt.Errorf("stdio transport requires command")
 	}
 	cmd := exec.Command(config.Command, config.Args...)
-	if len(config.Env) > 0 {
-		cmd.Env = append([]string(nil), os.Environ()...)
-		for key, value := range config.Env {
-			cmd.Env = append(cmd.Env, key+"="+value)
-		}
-	}
+	cmd.Env = commandEnv(ctx, config)
 	return &mcpgo.CommandTransport{Command: cmd}, nil
+}
+
+// commandEnv is the environment a stdio MCP server starts with: nil (inherit)
+// when there is nothing to add, else the inherited set plus the configured
+// Env and, under a run, TRACEPARENT.
+func commandEnv(ctx context.Context, config types.McpServerConfig) []string {
+	traceparent := utils.TraceparentFromContext(ctx)
+	if len(config.Env) == 0 && traceparent == "" {
+		utils.LogWithFields(utils.LevelDebug, "mcp", "stdio server inherits environment; no trace in flight", map[string]any{"command": config.Command})
+		return nil
+	}
+	env := append([]string(nil), os.Environ()...)
+	for key, value := range config.Env {
+		env = append(env, key+"="+value)
+	}
+	if traceparent != "" {
+		env = append(env, "TRACEPARENT="+traceparent)
+		utils.LogWithFields(utils.LevelDebug, "mcp", "TRACEPARENT set for stdio server", map[string]any{"command": config.Command, "traceparent": traceparent})
+	}
+	return env
 }

@@ -1,12 +1,8 @@
 import XCTest
 @testable import IonRemote
 
-/// Tests for the NormalizedEvent.typeKey computed property (commit 9).
-///
-/// Pinning test: verifies that typeKey returns the correct wire type string
-/// for representative RemoteEvent cases. Without this property, the per-frame
-/// receive latency logging on the transport's receive path would fail to
-/// compile.
+/// Decoding of representative `RemoteEvent` wire shapes, read back through
+/// the test-support `typeKey` (`RemoteEventTypeKey.swift`).
 ///
 /// Also pins the lenient-decode contract: unknown type strings throw
 /// RemoteEventDecodeError.unknownType (not DecodingError), so

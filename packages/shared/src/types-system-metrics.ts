@@ -43,6 +43,8 @@ export interface SystemMetricsProcess {
   cpuPercent: number | null
   cpuTimeMs: number
   rssBytes: number
+  /** The engine session the process serves, when its spawn site knew one. Absent for the engine itself and unowned processes. */
+  sessionId?: string
 }
 
 export interface SystemMetricsRuntime {
@@ -52,6 +54,12 @@ export interface SystemMetricsRuntime {
   goroutines: number
   numGC: number
   sessions: number
+  /** p99 of the Go runtime's stop-the-world pauses since the previous sample, ms. 0 when none happened. */
+  gcPauseP99Ms: number
+  /** Heap bytes allocated per second since the previous sample. 0 on the first sample. */
+  allocRateBytesPerS: number
+  /** p99 of goroutine scheduling latency since the previous sample, ms. 0 when nothing waited. */
+  schedLatencyP99Ms: number
 }
 
 export interface SystemMetricsSample {
@@ -89,6 +97,9 @@ export interface EnvironmentSystemMetrics {
   runtime: SystemMetricsRuntime
   /** Share of the server's event loop spent busy since its previous sample, 0..1. */
   serverEventLoopUtilization: number | null
+  /** How late the server's event loop ran its timers since its previous sample: the median and the 99th percentile, milliseconds. Null before the first full interval. */
+  serverEventLoopDelayP50Ms?: number | null
+  serverEventLoopDelayP99Ms?: number | null
 }
 
 /** One 10-second bucket of Environment System Metrics history. */

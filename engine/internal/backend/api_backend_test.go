@@ -809,6 +809,8 @@ type mockSpan struct {
 	telem *mockTelemetry
 }
 
+func (s *mockSpan) SpanID() string { return "0123456789abcdef" }
+
 func (s *mockSpan) End(attrs map[string]interface{}, errMsg ...string) {
 	if s.telem == nil {
 		return

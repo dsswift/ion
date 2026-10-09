@@ -48,7 +48,27 @@ type AsyncFirePayload struct {
 	ID         string                `json:"id"`
 	SessionKey string                `json:"sessionKey"`
 	Identity   *auth.ContextIdentity `json:"identity,omitempty"`
-	Payload    interface{}           `json:"payload,omitempty"`
+	// TraceID and SpanID are the fire's trace root (Context.WithTraceRoot):
+	// the handler's IonContext.traceId / spanId. Omitted when the delivery
+	// context carries no trace.
+	TraceID string      `json:"traceId,omitempty"`
+	SpanID  string      `json:"spanId,omitempty"`
+	Payload interface{} `json:"payload,omitempty"`
+}
+
+// buildAsyncFireEnvelope assembles the engine/fire_async params for one
+// delivery. Split from FireAsync so the envelope's wire shape is pinned
+// without a subprocess.
+func (h *Host) buildAsyncFireEnvelope(kind asyncreg.Kind, id string, ctx *Context, payload interface{}) AsyncFirePayload {
+	return AsyncFirePayload{
+		Kind:       string(kind),
+		ID:         id,
+		SessionKey: h.SessionKey(),
+		Identity:   ctx.Identity,
+		TraceID:    ctx.TraceID,
+		SpanID:     ctx.RunSpanID,
+		Payload:    payload,
+	}
 }
 
 // FireAsync sends engine/fire_async into the subprocess. See file
@@ -65,13 +85,7 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 		timeout = h.rpcTimeout
 	}
 
-	envelope := AsyncFirePayload{
-		Kind:       string(kind),
-		ID:         id,
-		SessionKey: h.SessionKey(),
-		Identity:   ctx.Identity,
-		Payload:    payload,
-	}
+	envelope := h.buildAsyncFireEnvelope(kind, id, ctx, payload)
 
 	// Pin ctx onto the context stack so ext/* RPCs from inside the handler
 	// (dispatchAgent / sendPrompt / emit / …) resolve normally. This
@@ -81,7 +95,7 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 	tok := h.ctxStack.Push(ctx)
 	defer h.ctxStack.Pop(tok)
 
-	utils.LogWithFields(utils.LevelDebug, "extension", "fireasync", map[string]any{"model": h.name_(), "kind": kind, "run_id": id, "timeout": timeout})
+	utils.LogWithFields(utils.LevelDebug, "extension", "fireasync", map[string]any{"model": h.name_(), "kind": kind, "run_id": id, "timeout": timeout, "trace_id": envelope.TraceID, "span_id": envelope.SpanID})
 	resp, err := h.callWithTimeout("engine/fire_async", envelope, timeout)
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "extension", "fireasync: failed", map[string]any{"model": h.name_(), "kind": kind, "run_id": id, "error": err})

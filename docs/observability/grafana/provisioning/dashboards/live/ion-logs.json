@@ -236,7 +236,7 @@
         "x": 0,
         "y": 5
       },
-      "description": "Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Data empty until Phase-B.",
+      "description": "Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Source: context.pressure (payload.percent).",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -312,7 +312,7 @@
         "x": 8,
         "y": 5
       },
-      "description": "Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack. Data empty until Phase-B.",
+      "description": "Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -368,7 +368,7 @@
         "x": 8,
         "y": 9
       },
-      "description": "Maximum dropped event count across all client queues in the last 10 minutes. Zero is the only good number. Data empty until Phase-B.",
+      "description": "Maximum dropped-event count across all client queues in the last 10 minutes, from client.backpressure (payload.dropped_total). Zero is the only good number.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -432,7 +432,7 @@
         "x": 16,
         "y": 5
       },
-      "description": "Streaming time-to-first-token, p50 over the selected interval. A rising trend mid-session means providers are responding slower. Data empty until Phase-B.",
+      "description": "Streaming time to first token, p50 per step, from provider.ttft (payload.ttft_ms). A rising trend mid-session means providers are responding slower.",
       "datasource": {
         "type": "loki",
         "uid": "loki"

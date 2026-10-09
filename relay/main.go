@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -22,6 +23,12 @@ type Config struct {
 	APNsTopic   string
 	OIDC        *OIDCConfig   // primary issuer; nil in PSK-only mode
 	OIDCMore    []*OIDCConfig // further accepted issuers (RELAY_OIDC_ISSUERS)
+	// MetricsEnabled serves Prometheus metrics on /metrics
+	// (RELAY_METRICS_ENABLED, default true).
+	MetricsEnabled bool
+	// PprofListen is the loopback address for net/http/pprof
+	// (RELAY_PPROF_LISTEN); empty leaves profiling off.
+	PprofListen string
 }
 
 func loadConfig() (Config, error) {
@@ -79,16 +86,27 @@ func loadConfig() (Config, error) {
 		primary, more = issuers[0], issuers[1:]
 	}
 
+	metricsEnabled := true
+	if v := strings.TrimSpace(os.Getenv("RELAY_METRICS_ENABLED")); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("RELAY_METRICS_ENABLED=%q: %w", v, err)
+		}
+		metricsEnabled = b
+	}
+
 	return Config{
-		Port:        port,
-		APIKey:      apiKey,
-		APNsKeyPath: os.Getenv("APNS_KEY_PATH"),
-		APNsKeyPEM:  os.Getenv("APNS_KEY"),
-		APNsKeyID:   os.Getenv("APNS_KEY_ID"),
-		APNsTeamID:  os.Getenv("APNS_TEAM_ID"),
-		APNsTopic:   os.Getenv("APNS_TOPIC"),
-		OIDC:        primary,
-		OIDCMore:    more,
+		Port:           port,
+		APIKey:         apiKey,
+		MetricsEnabled: metricsEnabled,
+		PprofListen:    strings.TrimSpace(os.Getenv("RELAY_PPROF_LISTEN")),
+		APNsKeyPath:    os.Getenv("APNS_KEY_PATH"),
+		APNsKeyPEM:     os.Getenv("APNS_KEY"),
+		APNsKeyID:      os.Getenv("APNS_KEY_ID"),
+		APNsTeamID:     os.Getenv("APNS_TEAM_ID"),
+		APNsTopic:      os.Getenv("APNS_TOPIC"),
+		OIDC:           primary,
+		OIDCMore:       more,
 	}, nil
 }
 
@@ -103,6 +121,18 @@ func main() {
 
 	hub := NewHub()
 	hub.otlp = relayOTLP
+	if cfg.MetricsEnabled {
+		logger.Info("metrics enabled", "tag", "relay.startup", "path", metricsPath)
+	} else {
+		hub.metrics = nil
+		logger.Info("metrics disabled (RELAY_METRICS_ENABLED=false)", "tag", "relay.startup")
+	}
+
+	pprofServer, err := startPprofListener(cfg.PprofListen)
+	if err != nil {
+		logger.Error("pprof listener failed", "tag", "relay.pprof", "addr", cfg.PprofListen, "err", err)
+		os.Exit(1)
+	}
 
 	// Apply optional env var overrides for relay timeouts.
 	if v := os.Getenv("RELAY_WRITE_TIMEOUT_MS"); v != "" {
@@ -144,6 +174,9 @@ func main() {
 	owners := newChannelOwnerStore(os.Getenv("RELAY_STATE_DIR"))
 
 	pusher := startAPNs(cfg)
+	if pusher != nil {
+		pusher.metrics = hub.metrics
+	}
 
 	mux := newRelayMux(hub, auth, owners, pusher)
 
@@ -182,6 +215,11 @@ func main() {
 	defer cancel()
 
 	hub.CloseAll()
+	if pprofServer != nil {
+		if err := pprofServer.Shutdown(ctx); err != nil {
+			logger.Warn("pprof shutdown error", "tag", "relay.pprof", "err", err)
+		}
+	}
 	shutdownErr := server.Shutdown(ctx)
 	if shutdownErr != nil {
 		logger.Error("shutdown error", "tag", "relay.shutdown", "err", shutdownErr)

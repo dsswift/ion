@@ -21,8 +21,12 @@ type Manager struct {
 	mu               sync.RWMutex
 	sessions         map[string]*engineSession
 	forkReservations map[string]*forkReservation
-	backend          backend.RunBackend
-	config           *types.EngineRuntimeConfig
+	// startTraces holds the session.start spans in progress, so a child
+	// span recorded while a session starts finds its parent
+	// (session_start_span.go).
+	startTraces sessionStartTraces
+	backend     backend.RunBackend
+	config      *types.EngineRuntimeConfig
 	// commandPatterns is the compiled enterprise dangerous-command pattern
 	// set, rebuilt by SetConfig.
 	commandPatterns []sandbox.CompiledPattern

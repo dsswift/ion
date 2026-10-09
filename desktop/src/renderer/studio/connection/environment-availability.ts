@@ -24,7 +24,7 @@
  */
 import { useEffect, useState } from 'react'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
-import type { EnvironmentCatalogEntry, EnvironmentPhaseState } from '@ion/shared/types-environments'
+import type { EnvironmentCatalogEntry, EnvironmentPhaseState, EnvironmentReasonCode } from '@ion/shared/types-environments'
 import { registry } from './registry'
 import { readCatalog } from './catalog'
 import { dropEnvironmentState } from '../state/secondary-store-purge'
@@ -41,6 +41,8 @@ export interface EnvironmentAvailabilityEntry {
   availability: EnvironmentAvailability
   /** When the wire left `connected`, for "offline for 4m". Null while connected. */
   since: number | null
+  /** Why the wire is down, once an attempt has said. Absent while connected. */
+  reason?: EnvironmentReasonCode
 }
 
 type Listener = (entries: Map<string, EnvironmentAvailabilityEntry>) => void
@@ -75,13 +77,16 @@ class EnvironmentAvailabilityStore {
   private apply(states: Map<string, EnvironmentPhaseState>): void {
     let changed = false
     for (const [environmentId, state] of states) {
-      changed = this.applyOne(environmentId, state.phase === 'connected') || changed
+      changed = this.applyOne(environmentId, state.phase === 'connected', state.reason) || changed
     }
     if (changed) this.notify()
   }
 
-  /** Returns whether this Environment's entry changed. */
-  private applyOne(environmentId: string, connected: boolean): boolean {
+  /**
+   * Returns whether this Environment's entry changed. `reason` is the latest
+   * attempt's; a phase that carries none (a retry starting) keeps the last one.
+   */
+  private applyOne(environmentId: string, connected: boolean, reason: EnvironmentReasonCode | undefined): boolean {
     const previous = this.entries.get(environmentId)
     if (connected) {
       this.disarm(environmentId)
@@ -93,11 +98,16 @@ class EnvironmentAvailabilityStore {
     // Never connected in this session: there is nothing on screen from it
     // and nothing to take away, so it is offline from the start.
     if (previous === undefined) {
-      this.entries.set(environmentId, { environmentId, label: this.labelOf(environmentId), availability: 'offline', since: Date.now() })
+      this.entries.set(environmentId, { environmentId, label: this.labelOf(environmentId), availability: 'offline', since: Date.now(), reason })
       return true
     }
-    if (previous.availability !== 'connected') return false
-    this.entries.set(environmentId, { environmentId, label: this.labelOf(environmentId), availability: 'reconnecting', since: Date.now() })
+    if (previous.availability !== 'connected') {
+      if (reason === undefined || reason === previous.reason) return false
+      this.entries.set(environmentId, { ...previous, reason })
+      rInfo('studio.availability', 'environment is down for a new reason', { environment_id: environmentId, reason, was: previous.reason })
+      return true
+    }
+    this.entries.set(environmentId, { environmentId, label: this.labelOf(environmentId), availability: 'reconnecting', since: Date.now(), reason })
     rInfo('studio.availability', 'environment wire dropped; rows are inert for the grace window', { environment_id: environmentId, grace_ms: RECONNECT_GRACE_MS })
     const timer = setTimeout(() => this.expire(environmentId), RECONNECT_GRACE_MS)
     timer.unref?.()

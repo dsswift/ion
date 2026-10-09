@@ -48,6 +48,8 @@ import {
   STUDIO_TITLE_BAR_HEIGHT,
   STUDIO_TRAFFIC_LIGHT_POSITION,
 } from "@ion/shared/studio-chrome";
+import { launchTrace, startMainSpan } from "./spans";
+import { LAUNCH_TRACEPARENT_ARG } from "../shared/desktop-ipc";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
@@ -255,6 +257,11 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
 
   log("studio_window: creating", { source });
   const saved = savedStudioBounds();
+  // `window.ready`: creation → ready-to-show, a child of `app.launch`. The
+  // renderer gets the launch traceparent as an argument so its own boot
+  // spans join the same trace.
+  const launch = launchTrace();
+  const readySpan = startMainSpan("window.ready", { parent: launch.traceparent, attributes: { window: "studio", source } });
   const win = new BrowserWindow({
     width: saved.bounds.width ?? STUDIO_DEFAULT_WIDTH,
     height: saved.bounds.height ?? STUDIO_DEFAULT_HEIGHT,
@@ -281,6 +288,7 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      additionalArguments: [`${LAUNCH_TRACEPARENT_ARG}${launch.traceparent}`],
     },
   });
   state.studioWindow = win;
@@ -330,6 +338,7 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
   });
 
   win.once("ready-to-show", () => {
+    readySpan.end({ revealed: reveal, current: state.studioWindow === win });
     if (state.studioWindow === win && !win.isDestroyed()) {
       if (!reveal) {
         maximizeOnReveal.set(win, saved.maximized);

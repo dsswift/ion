@@ -16,8 +16,12 @@ var update = flag.Bool("update", false, "update golden contracts.json")
 // contractManifest is the on-disk JSON shape written to testdata/contracts.json.
 type contractManifest struct {
 	NormalizedEvents map[string][]string `json:"normalizedEvents"`
-	EngineEvent      []string            `json:"engineEvent"`
-	SharedTypes      map[string][]string `json:"sharedTypes"`
+	// NormalizedEventEnvelope is the key set NormalizedEvent's marshaler
+	// writes around every variant: the type discriminator and the trace
+	// position (trace_id, span_id) of the run that emitted the event.
+	NormalizedEventEnvelope []string            `json:"normalizedEventEnvelope"`
+	EngineEvent             []string            `json:"engineEvent"`
+	SharedTypes             map[string][]string `json:"sharedTypes"`
 }
 
 // jsonFieldNames returns the sorted JSON field names for a struct type,
@@ -118,6 +122,8 @@ func buildManifest() contractManifest {
 	for eventType, exemplar := range normalizedEventVariants() {
 		m.NormalizedEvents[eventType] = jsonFieldNames(reflect.TypeOf(exemplar))
 	}
+
+	m.NormalizedEventEnvelope = jsonFieldNames(reflect.TypeOf(normalizedEventEnvelope{}))
 
 	// EngineEvent (flat struct)
 	m.EngineEvent = jsonFieldNames(reflect.TypeOf(EngineEvent{}))

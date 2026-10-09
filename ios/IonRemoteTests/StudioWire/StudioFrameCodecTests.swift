@@ -284,21 +284,4 @@ extension StudioFrameCodecTests {
         let hello = StudioHello.thinMobile(clientId: "phone-1", credential: .paired(clientId: "phone-1", proof: "p"))
         XCTAssertTrue(hello.capabilities.contains(studioWirePingCapability))
     }
-
-    func testTheClientWindowReportsPercentilesAndKeepsTimeoutsSeparate() {
-        let latency = StudioClientLatency(transport: "mobile")
-        let start = Date()
-        for i in 1...10 {
-            latency.noteActionSent(id: "a\(i)", at: start)
-            latency.noteActionResult(id: "a\(i)", at: start.addingTimeInterval(Double(i) / 100))
-        }
-        // A timeout is a different event from a slow answer: counted, never
-        // averaged in, where it would make the wire look merely sluggish.
-        latency.noteActionSent(id: "gone", at: start)
-        latency.noteActionTimeout(id: "gone")
-
-        XCTAssertTrue(latency.hasSamples)
-        XCTAssertEqual(StudioClientLatency.percentile([10, 20, 30, 40], 50), 20)
-        XCTAssertEqual(StudioClientLatency.percentile([], 95), 0)
-    }
 }

@@ -41,6 +41,8 @@ import { developerSurfaceBlock } from '@ion/shared/developer-surfaces'
 import { activeNewConversationLock, refusedUnderNewConversationLock } from '../new-conversation-lock'
 import { enterprisePolicyCache } from '../state'
 import type { SessionActionSpec } from './session-actions'
+import { parseTraceparent } from '@ion/shared/trace-context'
+import { annotateSpan, withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('studio-actions', msg, fields)
@@ -117,11 +119,64 @@ function sessionActionOwnsTargets(conn: Connection, spec: SessionActionSpec, arg
   return conversationIds.every((id) => connOwnsConversation(conn, id))
 }
 
-/** Reply to a `studio_action` on `conn` and run it, if scope, ownership, and shape all check out. */
-export async function handleAction(conn: Connection, frame: StudioActionFrame): Promise<void> {
+/**
+ * The `traceparent` an action's arguments carry, when one of them is an
+ * object with a valid one (a prompt submit's options, `session.prompt`'s
+ * argument). The frame-level field supersedes it; this is the older carrier.
+ */
+function argumentTraceparent(args: unknown[]): string | undefined {
+  for (const arg of args) {
+    if (!arg || typeof arg !== 'object') continue
+    const value = (arg as { traceparent?: unknown }).traceparent
+    if (parseTraceparent(value)) return value as string
+  }
+  return undefined
+}
+
+/**
+ * The span the action's trace joins under, by preference: the frame's
+ * envelope `traceparent` (the relay's span when a relay with tracing on
+ * delivered it, the client's own span otherwise), then the frame's own
+ * `traceparent`, then one carried in the arguments. None starts a new root.
+ */
+export function actionParent(frame: StudioActionFrame, envelopeTraceparent: string | undefined): string | undefined {
+  if (parseTraceparent(envelopeTraceparent)) return envelopeTraceparent
+  if (parseTraceparent(frame.traceparent)) return frame.traceparent
+  return argumentTraceparent(frame.args)
+}
+
+/**
+ * Reply to a `studio_action` on `conn` and run it, if scope, ownership, and
+ * shape all check out. One `action.handle` span covers it, receipt to result
+ * sent, parented as `actionParent` says; `envelopeTraceparent` is what the
+ * sealed socket read beside the frame.
+ */
+export function handleAction(conn: Connection, frame: StudioActionFrame, envelopeTraceparent?: string): Promise<void> {
+  return withSpan('action.handle', {
+    kind: 'server',
+    parent: actionParent(frame, envelopeTraceparent),
+    root: actionParent(frame, envelopeTraceparent) === undefined,
+    attrs: {
+      action: frame.action,
+      surface: conn.view,
+      client_kind: conn.clientKind ?? 'unknown',
+      transport: conn.transport,
+      connection_id: conn.id,
+      ...(conn.principal ? { user: conn.principal.subject } : {}),
+    },
+  }, () => runAction(conn, frame))
+}
+
+/** Records how the action was answered on its `action.handle` span. */
+function answered(conn: Connection, result: Extract<StudioFrame, { type: 'studio_action_result' }>): void {
+  annotateSpan({ outcome: result.ok ? 'ok' : result.refusal ? `refused:${result.refusal.code}` : `error:${result.error?.code ?? 'unknown'}` })
+  conn.send(result)
+}
+
+async function runAction(conn: Connection, frame: StudioActionFrame): Promise<void> {
   if (!actionOwnsTargetTab(conn, frame.action, frame.args)) {
     warn('action refused: tab not owned by connection', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -132,7 +187,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   const blockedSurfaces = developerSurfaceBlock(frame.action, conn.developerSurfaces)
   if (blockedSurfaces) {
     warn('action refused: developer surface disabled', { connection_id: conn.id, action: frame.action, surfaces: blockedSurfaces, transport: conn.transport })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -155,7 +210,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
     const hiddenGroups = computeSettingsHiddenGroups(conn, enterprisePolicyCache.policy)
     if (hiddenGroups.includes(lockedGroup)) {
       warn('action refused: settings group locked for this connection', { connection_id: conn.id, action: frame.action, group: lockedGroup })
-      conn.send({
+      answered(conn, {
         type: 'studio_action_result',
         id: frame.id,
         ok: false,
@@ -169,7 +224,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (authSpec) {
     if (!scopeSatisfies(conn.scopes, authSpec.requiredScope)) {
       log('auth action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: authSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${authSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${authSpec.requiredScope}` } })
       return
     }
     try {
@@ -178,14 +233,14 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
       // `await` on a non-Promise value is a no-op, so this covers both.
       const outcome = await authSpec.handler(conn, frame.args)
       if (!outcome.ok) {
-        conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
+        answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
         return
       }
       log('auth action ran', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
     } catch (err) {
       warn('auth action threw', { connection_id: conn.id, action: frame.action, error: String(err) })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
     }
     return
   }
@@ -194,15 +249,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (terminalSpec) {
     if (!scopeSatisfies(conn.scopes, terminalSpec.requiredScope)) {
       log('terminal action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: terminalSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${terminalSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${terminalSpec.requiredScope}` } })
       return
     }
     const outcome = await terminalSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -210,15 +265,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (gitIdentitySpec) {
     if (!scopeSatisfies(conn.scopes, gitIdentitySpec.requiredScope)) {
       log('git identity action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: gitIdentitySpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${gitIdentitySpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${gitIdentitySpec.requiredScope}` } })
       return
     }
     const outcome = await gitIdentitySpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -226,15 +281,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (settingsSpec) {
     if (!scopeSatisfies(conn.scopes, settingsSpec.requiredScope)) {
       log('settings action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: settingsSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${settingsSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${settingsSpec.requiredScope}` } })
       return
     }
     const outcome = await settingsSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -242,15 +297,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (gitSpec) {
     if (!scopeSatisfies(conn.scopes, gitSpec.requiredScope)) {
       log('git action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: gitSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${gitSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${gitSpec.requiredScope}` } })
       return
     }
     const outcome = await gitSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -258,15 +313,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (fileSpec) {
     if (!scopeSatisfies(conn.scopes, fileSpec.requiredScope)) {
       log('file action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: fileSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${fileSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${fileSpec.requiredScope}` } })
       return
     }
     const outcome = await fileSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -274,16 +329,16 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (providerSpec) {
     if (!scopeSatisfies(conn.scopes, providerSpec.requiredScope)) {
       log('provider action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: providerSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${providerSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${providerSpec.requiredScope}` } })
       return
     }
     const outcome = await providerSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
     log('provider action ran', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -291,15 +346,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (studioSettingsSpec) {
     if (!scopeSatisfies(conn.scopes, studioSettingsSpec.requiredScope)) {
       log('studio settings action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: studioSettingsSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${studioSettingsSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${studioSettingsSpec.requiredScope}` } })
       return
     }
     const outcome = await studioSettingsSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -307,15 +362,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (authFlowSpec) {
     if (!scopeSatisfies(conn.scopes, authFlowSpec.requiredScope)) {
       log('auth flow action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: authFlowSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${authFlowSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${authFlowSpec.requiredScope}` } })
       return
     }
     const outcome = await authFlowSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -323,15 +378,15 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (miscSpec) {
     if (!scopeSatisfies(conn.scopes, miscSpec.requiredScope)) {
       log('action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: miscSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${miscSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${miscSpec.requiredScope}` } })
       return
     }
     const outcome = await miscSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -339,20 +394,20 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (sessionSpec) {
     if (!scopeSatisfies(conn.scopes, sessionSpec.requiredScope)) {
       log('session action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: sessionSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${sessionSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${sessionSpec.requiredScope}` } })
       return
     }
     if (!sessionActionOwnsTargets(conn, sessionSpec, frame.args)) {
       warn('session action refused: target not owned by connection', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'ownership', message: `${frame.action} targets a conversation this connection does not own` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'ownership', message: `${frame.action} targets a conversation this connection does not own` } })
       return
     }
     const outcome = await sessionSpec.handler(conn, frame.args)
     if (!outcome.ok) {
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: outcome.error })
       return
     }
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value })
     return
   }
 
@@ -360,7 +415,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (transferSpec) {
     if (!scopeSatisfies(conn.scopes, transferSpec.requiredScope)) {
       log('transfer action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: transferSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${transferSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${transferSpec.requiredScope}` } })
       return
     }
     try {
@@ -368,14 +423,14 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
       // genuinely async (archive I/O, git plumbing) — awaited here.
       const outcome = await transferSpec.handler(conn, frame.args)
       if (!outcome.ok) {
-        conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
+        answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
         return
       }
       log('transfer action ran', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
     } catch (err) {
       warn('transfer action threw', { connection_id: conn.id, action: frame.action, error: String(err) })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
     }
     return
   }
@@ -384,20 +439,20 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   if (environmentSpec) {
     if (!scopeSatisfies(conn.scopes, environmentSpec.requiredScope)) {
       log('environment action refused: insufficient scope', { connection_id: conn.id, action: frame.action, required_scope: environmentSpec.requiredScope, granted_scopes: conn.scopes })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${environmentSpec.requiredScope}` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: { code: 'scope', message: `${frame.action} requires scope ${environmentSpec.requiredScope}` } })
       return
     }
     try {
       const outcome = await environmentSpec.handler(conn, frame.args)
       if (!outcome.ok) {
-        conn.send({ type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
+        answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, refusal: 'refusal' in outcome ? outcome.refusal : undefined, error: 'error' in outcome ? outcome.error : undefined })
         return
       }
       log('environment action ran', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: outcome.value === undefined ? null : outcome.value })
     } catch (err) {
       warn('environment action threw', { connection_id: conn.id, action: frame.action, error: String(err) })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'action_failed', message: String(err) } })
     }
     return
   }
@@ -405,7 +460,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   const spec = ACTIONS[frame.action]
   if (!spec) {
     warn('action refused: not a registered studio_action', { connection_id: conn.id, action: frame.action })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -421,7 +476,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
       required_scope: spec.requiredScope,
       granted_scopes: conn.scopes,
     })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -432,7 +487,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
 
   if (!validForwardedAction(frame.action, frame.args)) {
     warn('action refused: argument shape rejected', { connection_id: conn.id, action: frame.action, arg_count: frame.args.length })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -445,7 +500,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   const fn = store[frame.action]
   if (typeof fn !== 'function') {
     warn('action refused: no matching store action', { connection_id: conn.id, action: frame.action })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,
@@ -473,7 +528,7 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
     const state = useSessionStore.getState()
     if (!state.tabs.some((t) => t.id === wanted) || !connOwnsTab(conn, wanted)) {
       warn('action refused: its active tab is not on this server', { connection_id: conn.id, action: frame.action, active_tab_id: wanted })
-      conn.send({ type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'unknown_tab', message: `this environment has no tab ${wanted} for ${frame.action} to act on` } })
+      answered(conn, { type: 'studio_action_result', id: frame.id, ok: false, error: { code: 'unknown_tab', message: `this environment has no tab ${wanted} for ${frame.action} to act on` } })
       return
     }
     if (state.activeTabId !== wanted) {
@@ -487,10 +542,10 @@ export async function handleAction(conn: Connection, frame: StudioActionFrame): 
   try {
     const value = await fn(...frame.args)
     log('action ran', { connection_id: conn.id, action: frame.action, subject: conn.principal?.subject })
-    conn.send({ type: 'studio_action_result', id: frame.id, ok: true, value: value === undefined ? null : value })
+    answered(conn, { type: 'studio_action_result', id: frame.id, ok: true, value: value === undefined ? null : value })
   } catch (err) {
     warn('action threw', { connection_id: conn.id, action: frame.action, error: String(err) })
-    conn.send({
+    answered(conn, {
       type: 'studio_action_result',
       id: frame.id,
       ok: false,

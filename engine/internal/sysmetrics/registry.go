@@ -20,6 +20,8 @@ import (
 type registration struct {
 	role string
 	name string
+	// sessionID is the engine session key the spawn site served, or "".
+	sessionID string
 	// startMs is the process start time read at registration (0 when it
 	// could not be read). A pid seen later with a different start time is
 	// a different process that reused the pid, and the registration does
@@ -41,15 +43,23 @@ var (
 // lookupRegistration). The spawn site's UnregisterProcess, or the pid leaving
 // the engine's tree, clears the entry.
 func RegisterProcess(pid int, role, name string) {
+	RegisterSessionProcess(pid, role, name, "")
+}
+
+// RegisterSessionProcess is RegisterProcess for a child started on behalf of
+// one engine session: sessionID is the session key, carried on every sample
+// row for the process so its CPU and memory attribute to that conversation.
+// An empty sessionID is RegisterProcess.
+func RegisterSessionProcess(pid int, role, name, sessionID string) {
 	if pid <= 0 {
 		return
 	}
 	start := processStartMs(int32(pid))
 	registryMu.Lock()
-	registry[int32(pid)] = registration{role: role, name: name, startMs: start}
+	registry[int32(pid)] = registration{role: role, name: name, sessionID: sessionID, startMs: start}
 	registryMu.Unlock()
 	utils.LogWithFields(utils.LevelDebug, "sysmetrics", "process registered", map[string]any{
-		"pid": pid, "role": role, "name": name,
+		"pid": pid, "role": role, "name": name, "session_id": sessionID,
 	})
 }
 

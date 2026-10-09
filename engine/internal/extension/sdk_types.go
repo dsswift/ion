@@ -43,8 +43,9 @@ type Context struct {
 	RunID string
 
 	// TraceID is the W3C trace-context trace-id of the run in flight: 32
-	// lowercase hex characters, scoped to ONE prompt-to-completion run. Empty
-	// when no run is active.
+	// lowercase hex characters, scoped to ONE prompt-to-completion run. On a
+	// schedule or webhook delivery it is the fire's own trace
+	// (Context.WithTraceRoot). Empty when neither applies.
 	//
 	// Every engine log line and telemetry event emitted during the run carries
 	// this same value, so an extension that exports its own spans can parent
@@ -54,7 +55,9 @@ type Context struct {
 	//	traceparent: 00-<ctx.TraceID>-<span id you mint>-01
 	//
 	// The extension mints its own span id — its span IS a new span, so it is
-	// the parent-id for the callee, not a value the engine supplies.
+	// the parent-id for the callee, not a value the engine supplies. To nest
+	// that span under the engine's span for the hook call, parent it to the
+	// envelope's spanId (the extension.hook_latency span) instead.
 	//
 	// Scope is the run rather than the session or conversation because a trace
 	// represents one logical transaction. For long-lived correlation use
@@ -62,11 +65,21 @@ type Context struct {
 	// docs/observability/log-schema.md § Correlation-ID vocabulary.
 	TraceID string
 
-	// RunSpanID is the span-id of the run in flight: 16 lowercase hex
-	// characters, empty when no run is active. Engine-internal: the engine
-	// parents the spans it records around hook calls to it. Not sent on the
-	// hook envelope.
+	// RunSpanID is the span-id the hook runs under: the run's span
+	// (run.execute) while a run is in flight, or the root span a schedule or
+	// webhook fire minted for its delivery (Context.WithTraceRoot). 16
+	// lowercase hex characters, empty when neither applies. The engine
+	// parents the extension.hook_latency span it records around each hook
+	// call to it; that hook span's own id is what the envelope sends, as
+	// `_ctx.spanId`. RunSpanID itself is not sent.
 	RunSpanID string
+
+	// HookFanoutSpanID is the span-id of the hook.fanout span the engine
+	// records around one hook point's fan-out to every extension host
+	// (ExtensionGroup). Set by the group on the copy of the context it hands
+	// each host, so each host's extension.hook_latency span is the fan-out's
+	// child rather than the run's. Empty outside a group fire. Never sent.
+	HookFanoutSpanID string
 
 	// Depth is the dispatch depth of the session that fired the hook: 0 for
 	// the root (orchestrator) session, 1 for a directly dispatched child,

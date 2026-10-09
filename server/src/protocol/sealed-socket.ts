@@ -27,6 +27,8 @@ import type { ConnectionSocket } from './connection-socket'
 import type { RelayClient } from '../remote/relay-client'
 import type { WireMessage } from '../remote/protocol-envelope'
 import { warn as _warn } from '../logger'
+import { currentTraceparent, startServerSpan, withSpan } from '../tracing/op-span'
+import { parseTraceparent, type Span } from '@ion/shared/trace-context'
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('sealed-socket', msg, fields)
@@ -127,6 +129,20 @@ export function wsCarrier(ws: WebSocket): EnvelopeCarrier {
   }
 }
 
+/** The plaintext `traceparent` on an envelope, before it is opened; undefined when absent or not a traceparent. */
+function envelopeTraceparent(text: string): string | undefined {
+  try {
+    const parsed = JSON.parse(text) as { traceparent?: unknown }
+    return parseTraceparent(parsed?.traceparent) ? (parsed.traceparent as string) : undefined
+  } catch {
+    return undefined // silent-ok: a frame that is not JSON is reported by openRelayFrame's caller
+  }
+}
+
+function startSealSpan(clientId: string, bytes: number): Span {
+  return startServerSpan('relay.frame', { kind: 'client', attrs: { direction: 'out', client_id: clientId, bytes } })
+}
+
 export class SealedSocket extends EventEmitter implements ConnectionSocket {
   private closed = false
 
@@ -140,21 +156,58 @@ export class SealedSocket extends EventEmitter implements ConnectionSocket {
   private onEnvelope(text: string): void {
     // A closed socket delivers nothing, whatever its carrier still hears.
     if (this.closed) return
+    if (this.carrier.kind !== 'relay') {
+      this.openAndDeliver(text)
+      return
+    }
+    // The server's receiving hop for a relayed frame: a child of the relay's
+    // `relay.forward` span when the envelope names it, which is how the
+    // trace crosses from the relay into this process.
+    const traceparent = envelopeTraceparent(text)
+    withSpan('relay.frame', { kind: 'server', parent: traceparent, attrs: { direction: 'in', client_id: this.clientId } }, () => {
+      this.openAndDeliver(text)
+    })
+  }
+
+  private openAndDeliver(text: string): void {
     const opened = openRelayFrame(text, this.sharedSecret)
     if (!opened) {
       warn('frame dropped: not an envelope for this client, or failed to open', { client_id: this.clientId, carrier: this.carrier.kind })
       return
     }
-    this.emit('message', opened.bytes, opened.isBinary)
+    this.emit('message', opened.bytes, opened.isBinary, { traceparent: opened.traceparent })
   }
 
+  /**
+   * Seals and sends one frame. The envelope carries the ambient trace as its
+   * plaintext `traceparent` (the action's span for an answer, the engine
+   * event's span for an event; `Connection.send` sets it from the frame), so
+   * a relay and the receiving client can parent their spans under it.
+   */
   send(data: string | Buffer, cb?: (err?: Error) => void): void {
     if (this.closed) {
       cb?.(new Error('sealed socket is closed'))
       return
     }
+    const payload = typeof data === 'string' ? data : new Uint8Array(data)
+    const traceparent = currentTraceparent()
+    if (this.carrier.kind !== 'relay') {
+      this.sealAndSend(payload, traceparent, cb)
+      return
+    }
+    // The server's sending hop for a relayed frame, ended when the carrier has
+    // taken the envelope. The envelope names the ambient span (the action, the
+    // engine event), not this hop: the relay parents its own span under it.
+    const span = startSealSpan(this.clientId, payload.length)
+    this.sealAndSend(payload, traceparent, (err) => {
+      span.end({ bytes: payload.length }, err ? err.message : undefined)
+      cb?.(err)
+    })
+  }
+
+  private sealAndSend(payload: string | Uint8Array, traceparent: string | undefined, cb?: (err?: Error) => void): void {
     try {
-      this.carrier.sendEnvelope(sealRelayFrame(typeof data === 'string' ? data : new Uint8Array(data), this.sharedSecret), cb)
+      this.carrier.sendEnvelope(sealRelayFrame(payload, this.sharedSecret, undefined, traceparent), cb)
     } catch (err) {
       cb?.(err instanceof Error ? err : new Error(String(err)))
     }

@@ -16,6 +16,7 @@
 import type { ExportFileOptions, TransferLanding } from '@ion/shared/types-transfer'
 import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { IPC } from '@ion/shared/types'
+import { DESKTOP_IPC, type StudioActionTiming } from '../../shared/desktop-ipc'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import { broker as _broker } from '../connections/broker-instance'
@@ -144,6 +145,14 @@ export function registerStudioBridgeIpc(): void {
     // logs at WARN.
     debug('studio:send: relaying frame', { environment_id: payload.environmentId, frame_type: payload.frame.type })
     broker.send(payload.environmentId, payload.frame)
+  })
+
+  ipcMain.on(DESKTOP_IPC.STUDIO_ACTION_TIMING, (_event, payload: unknown) => {
+    if (!isActionTiming(payload)) {
+      warn('studio:action-timing: malformed payload; dropping', { payload_type: typeof payload })
+      return
+    }
+    broker.ipcHop.noteRendererResult(payload.environmentId, payload.id, payload.rendererMs)
   })
 
   ipcMain.handle(IPC.STUDIO_CONNECTIONS, () => {
@@ -326,6 +335,12 @@ export function registerStudioBridgeIpc(): void {
   })
 
   log('studio-bridge: wired broker to IPC')
+}
+
+function isActionTiming(v: unknown): v is StudioActionTiming {
+  if (!v || typeof v !== 'object') return false
+  const p = v as Partial<StudioActionTiming>
+  return typeof p.environmentId === 'string' && typeof p.id === 'string' && typeof p.rendererMs === 'number' && Number.isFinite(p.rendererMs)
 }
 
 function isSendPayload(v: unknown): v is { environmentId: string; frame: StudioFrame } {

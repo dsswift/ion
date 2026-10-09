@@ -101,7 +101,7 @@ func (b *ApiBackend) dispatchStopReason(
 			// Persist before looping so the injected user message
 			// survives a mid-loop crash. Same write semantics as the
 			// existing post-assistant-message Save above.
-			if err := conversation.Save(conv, ""); err != nil {
+			if err := persistConversation(run, conv); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after early-stop continuation", map[string]any{
 					"error": utils.ErrStr(err),
 				})
@@ -122,7 +122,7 @@ func (b *ApiBackend) dispatchStopReason(
 		// runloop_plan_mode_auto_exit.go for the precondition list
 		// and the resolved-defaults precedence chain.
 		if b.maybeSynthesizeExitPlanMode(run, conv, hooks, assistantBlocks, stopReason, turn) {
-			if err := conversation.Save(conv, ""); err != nil {
+			if err := persistConversation(run, conv); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after plan-mode auto-exit", map[string]any{
 					"error": utils.ErrStr(err),
 				})
@@ -169,7 +169,7 @@ func (b *ApiBackend) dispatchStopReason(
 		// session layer. This is the critical fix for "steer during
 		// end_turn is orphaned."
 		if b.drainSteer(run, conv) {
-			if err := conversation.Save(conv, ""); err != nil {
+			if err := persistConversation(run, conv); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after end_turn steer", map[string]any{
 					"error": utils.ErrStr(err),
 				})
@@ -218,7 +218,7 @@ func (b *ApiBackend) dispatchStopReason(
 		})
 
 		// Save conversation
-		if err := conversation.Save(conv, ""); err != nil {
+		if err := persistConversation(run, conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
 				"error": utils.ErrStr(err),
 			})
@@ -311,7 +311,7 @@ func (b *ApiBackend) dispatchStopReason(
 		denials := run.permissionDenials
 		run.mu.Unlock()
 		if exiting || parked {
-			if err := conversation.Save(conv, ""); err != nil {
+			if err := persistConversation(run, conv); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
 					"error": utils.ErrStr(err),
 				})
@@ -362,7 +362,7 @@ func (b *ApiBackend) dispatchStopReason(
 			conversation.AddToolResults(conv, results)
 		}
 		// Persist immediately so tool history survives mid-multi-turn crashes.
-		if err := conversation.Save(conv, ""); err != nil {
+		if err := persistConversation(run, conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddToolResults", map[string]any{
 				"error": utils.ErrStr(err),
 			})

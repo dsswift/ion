@@ -1,6 +1,6 @@
 # Ion Observability Stack
 
-A local, batteries-included observability stack for Ion: Grafana Alloy + Loki + Grafana OSS, with optional Tempo for trace correlation and Prometheus for metrics.
+A local, batteries-included observability stack for Ion: Grafana Alloy + Loki + Grafana OSS, Tempo for traces and the span metrics it derives from them, and Prometheus for metrics. `dev run` starts all of it.
 
 Start with [Signals and where they go](#signals-and-where-they-go): the one map of everything Ion emits, what turns each output on, where each kind of data is stored, and how the local stack lines up with Application Insights.
 
@@ -32,9 +32,12 @@ This is the one map of what Ion emits. Every other observability and telemetry p
 |---|---|---|---|---|
 | Log files: `engine.jsonl`, `server.jsonl`, `desktop.jsonl`, `ios-diagnostic-logs.jsonl` | Logs | Always | On | JSONL, one line per event ([log-schema.md](log-schema.md)) |
 | Log shipping | Logs | `logging.egressTargets` (`"http"`, `"otel"`) | Off | The same JSONL over HTTP, or OTLP log records to `logging.egressOtel.endpoint` + `/v1/logs` |
-| Telemetry events | Events (runs, tools, providers, enforcement, `system.metrics`, …) | `telemetry.enabled` + `telemetry.targets` | Off | Schema-v4 JSONL frames (`file`, `stdout`, `http`, `eventhub`); optionally OTLP **traces** through the `otel` target, one zero-length span per event |
+| Telemetry events | Events (runs, tools, providers, enforcement, `system.metrics`, …) and the engine's span events | `telemetry.enabled` + `telemetry.targets` | Off | Schema-v5 JSONL frames (`file`, `stdout`, `http`, `eventhub`); optionally OTLP **traces** through the `otel` target, a timed span per span event and a zero-length span per other event |
+| Spans | Every timed operation on every surface ([log-schema.md § Spans](log-schema.md#spans)) | Always, as span log lines and span events in the files above; off the machine with log shipping (`otel`) and the telemetry `otel` target | On | A `tag=span` log line or a telemetry span event; shipped as OTLP spans to `/v1/traces`. In the local stack Tempo stores them and its metrics-generator writes **span metrics** (`traces_spanmetrics_*`) and a **service graph** (`traces_service_graph_*`) to Prometheus |
+| Relay metrics | The relay's own connections, frames, forward and ping-RTT histograms, auth and push timings (`relay_*`, `relay/metrics.go`) | Always, on the relay's `/metrics` page | On | Prometheus exposition; the local Prometheus scrapes it (`prometheus.yml`) |
 | Conversation events | Audit events (`conversation.*`) | `conversationEvents.targets` | Off | Metadata-only JSON; separate collector, separate seal |
 | System Metrics | Metrics: host CPU, memory, load, disk; CPU and memory of every engine process by role; the Go runtime; the server's own process | Sampling: always (`systemMetrics.enabled`). Leaving the machine: `telemetry.enabled` (the `system.metrics` event) and `telemetry.otel.metrics.enabled` (OTLP **metrics**) | Sampled on; sent off the machine only when configured | `engine_system_metrics` on the engine wire to watchers; INFO sample lines in `engine.jsonl` / `server.jsonl`; `system.metrics` events; OTLP metrics |
+| Server process metrics | The server's CPU, RSS, event-loop utilization and delay, the wire's round trips and queue waits per transport, the broadcast queue depth (`ion.server.*`, `server/src/system-metrics/otlp-export.ts`) | `server.json` `telemetry.otel.metrics` (`enabled`, `endpoint`, `intervalMs`) | Off | OTLP metrics to `<endpoint>/v1/metrics`; the same figures are INFO sample lines in `server.jsonl` regardless |
 | Device Metrics | Studio's own Electron processes: CPU, memory, GPU time; the idle-repaint warning | Always, in the desktop | On | INFO sample lines and WARN idle-repaint lines in `desktop.jsonl`. **Never leaves the device**: not sent to a server, a client, or any export |
 
 System Metrics and Device Metrics are split on purpose. System Metrics describe an Environment (a server and its engine), so any client connected to it may watch them. Device Metrics describe the machine Studio runs on: when Studio on a laptop is connected to a remote server, the laptop's GPU load is still the laptop's, so it stays there.
@@ -44,8 +47,8 @@ System Metrics and Device Metrics are split on purpose. System Metrics describe 
 OpenTelemetry (OTLP) carries three kinds of data, and each needs its own store:
 
 - **Logs**: records you search. Ion sends them through log shipping (`logging.egressTargets: ["otel"]`).
-- **Traces**: timed spans you follow across services. Ion sends its telemetry events as spans through the telemetry `otel` target.
-- **Metrics**: numbers over time you chart and alert on. Ion sends System Metrics through `telemetry.otel.metrics`.
+- **Traces**: timed spans you follow across services. Every surface ships its span records through the `otel` log-shipping target, and the engine its telemetry events (span events as timed spans) through the telemetry `otel` target.
+- **Metrics**: numbers over time you chart and alert on. Ion sends System Metrics through `telemetry.otel.metrics`; the relay serves `relay_*` for scraping. Span metrics are not an Ion output: Tempo derives them from the spans (principle: durations become distributions in the store, not in app code).
 
 ### The local stack and its Azure equivalent
 
@@ -54,7 +57,7 @@ OpenTelemetry (OTLP) carries three kinds of data, and each needs its own store:
 | Receive, check, forward | Alloy (and each store's own OTLP receiver) | An OpenTelemetry Collector |
 | Store logs | Loki | Log Analytics workspace |
 | Store traces | Tempo | Log Analytics workspace, shown through Application Insights |
-| Store metrics | Prometheus | Azure Monitor workspace: a hosted Prometheus, queried with PromQL |
+| Store metrics | Prometheus: System Metrics over OTLP, the relay by scrape, span metrics and the service graph remote-written by Tempo's metrics-generator | Azure Monitor workspace: a hosted Prometheus, queried with PromQL; Application Insights computes request and dependency durations from the same spans |
 | Screens | Grafana | Application Insights, or Grafana |
 
 Creating an Application Insights resource with **OTLP support** turned on creates and links both workspaces for you, and its Overview page lists one ingestion address per signal. The metrics address is on a different host from the logs and traces addresses, which is why `telemetry.otel.metrics.endpoint` exists. Application Insights requires delta temporality for metrics, and accepts only an app or workload identity, so Ion sends to a Collector that converts and signs in for it. The step-by-step guide is [Telemetry § Sending System Metrics to Application Insights](../enterprise/telemetry.md#sending-system-metrics-to-application-insights). Sources: [Ingest OTLP data into Azure Monitor with the OpenTelemetry Collector](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion), [Direct OpenTelemetry ingestion into Azure Monitor](https://techcommunity.microsoft.com/blog/azureobservabilityblog/direct-opentelemetry-ingestion-into-azure-monitor-is-now-generally-available/4524044).
@@ -94,8 +97,8 @@ The **System Metrics** dashboard (`dashboards/src/dashboards/system-metrics.ts`)
 | Alloy | `grafana/alloy:v1.17.1` | 12345, 4317/4318 | Log collection agent (HTTP UI); OTLP in, traces to Tempo |
 | mount-refresher | `busybox:1.37.0` (built) | — | macOS bind-mount cache refresher (see § Tailer wedge) |
 | telemetry-forwarder | Built from `engine/Dockerfile.telemetry-forwarder` | — | Expands telemetry records and sends events to Alloy |
-| Tempo | `grafana/tempo:3.0.3` | none (3200 inside the network) | Trace storage and TraceQL metrics (optional, see [Tempo](#tempo-optional)) |
-| Prometheus | `prom/prometheus:v3.14.0` | 9090 | Metrics storage: the engine's OTLP System Metrics, on its native OTLP receiver (see [Prometheus](#prometheus)) |
+| Tempo | `grafana/tempo:3.0.3` | none (3200 inside the network) | Trace storage, TraceQL metrics, and the metrics-generator that writes span metrics and the service graph to Prometheus (see [Tempo](#tempo)) |
+| Prometheus | `prom/prometheus:v3.14.0` | 9090 | Metrics storage: the engine's OTLP System Metrics on its OTLP receiver, Tempo's span metrics on its remote-write receiver, the relay by scrape (see [Prometheus](#prometheus)) |
 | Event Hub emulator | `mcr.microsoft.com/azure-messaging/eventhubs-emulator:latest` | 5672 (AMQP), 9092, 5300 (health) | Local Azure Event Hubs broker, for `conversationEvents.targets: ["eventhub"]` |
 | azurite | `mcr.microsoft.com/azure-storage/azurite:latest` | 10000-10002 | Metadata/blob storage the Event Hub emulator requires |
 
@@ -122,7 +125,8 @@ Dashboards are organized into packs, each answering one question. The Ion Overvi
 | Mobile | Ion Mobile | Which iOS devices are running Ion, on what app version, paired to which server? Per-device volume/errors, app-version drift, device→server pairing matrix, device last-seen | ios-diagnostic-logs.jsonl (`device_id`/`device_name`/`device_model`/`app_version`/`os_version`/`desktop_host` in `fields`). iOS emits no telemetry, so this reads the iOS log stream, not the telemetry stream |
 | Explore Cookbook | Ion Explore Cookbook | Ad-hoc investigation recipes with dashboard variables for conversation_id / session_id / extension | telemetry.jsonl + engine.jsonl |
 | Reliability | Ion Errors & Health | Is Ion healthy? Error rate, error sources, live error stream | engine.jsonl logs |
-| Wire Latency | Ion Wire Latency | Is the Studio wire healthy? Round-trip and queue-wait quantiles per client | server.jsonl + each client's own log |
+| Wire Latency | Ion Wire Latency | Is the Studio wire healthy? Round-trip and queue-wait statistics per client, from each side's per-minute window | server.jsonl + each client's own log |
+| Performance | Ion Performance | How long does each operation take, end to end? Percentiles per span name and service, run duration beside cost, cold starts, store actions, snapshot and patch builds, client render, the relay, event loop and GC | Span metrics in Prometheus (from Tempo), relay metrics, and the System Metrics sample lines |
 | Live | Ion Live Logs | What is Ion doing right now? Volume by component, live tail | engine.jsonl logs |
 | Control Room | Ion Control Room | Is activity happening right now? Per-surface liveness lamps | engine.jsonl + telemetry.jsonl |
 | Quality | Ion Quality | Is the agent doing good work? Tool failures, thrash, hook latency | telemetry.jsonl |
@@ -130,7 +134,7 @@ Dashboards are organized into packs, each answering one question. The Ion Overvi
 | Forensics | Ion Conversation Forensics | What happened in this specific conversation? | telemetry.jsonl + engine.jsonl |
 | Intelligence | Ion Product Intelligence | What does 30 days of usage say about the product? | telemetry.jsonl |
 
-Dashboards carry no text panels: the first row is data. Each panel's description (the info icon on its title) says what it shows and how to read it. The row structure is always verdict (stats) then evidence (timeseries/charts) then drill-down (logs/tables). Panels that bind to Phase-B telemetry events are provisioned with valid queries and stay data-empty until the instrumented engine ships.
+Dashboards carry no text panels: the first row is data. Each panel's description (the info icon on its title) says what it shows and how to read it. The row structure is always verdict (stats) then evidence (timeseries/charts) then drill-down (logs/tables). A panel reading the telemetry stream shows "No data" until telemetry is enabled; a panel reading span metrics shows it until spans reach Tempo (log shipping or the telemetry `otel` target pointed at this stack).
 
 ### Dashboards as code
 
@@ -150,6 +154,8 @@ Then commit both the source change and the regenerated JSON. Zero dependencies �
 **The gate.** `make check-dashboards` regenerates in memory and byte-diffs against the committed files, and re-runs the overcount audit structurally on the emitted JSON. A hand-edit to a committed dashboard, or a query-module change that was not regenerated, fails the check. It runs in CI (the `dashboards` job in `quality.yml`) and in the pre-push hook (scoped to changes under `docs/observability/`).
 
 **`queries.md` is generated** from the same query registry, so the reference doc cannot drift from what the dashboards actually run. Do not edit it by hand — edit the query module and regenerate.
+
+**Two stores, one scoping rule.** A target is LogQL against Loki unless its expression declares `datasource: 'prometheus'` (PromQL: span metrics, relay metrics, the OTLP metrics export). The builders emit each in the shape Grafana's datasource reads, give a panel that mixes both the Mixed datasource, and apply the Device and User matchers to a PromQL selector exactly as to a LogQL one (`host_name` and `user` are Tempo span-metrics dimensions and OTLP resource promotions). The Azure flavor leaves PromQL unchanged, pointed at the target config's `prometheus` data source.
 
 **Time windows honor the dashboard picker.** Headline stats aggregate over `$__range` and series accumulate per `$__interval`, so every pack follows the Grafana time-range selector. Fixed windows survive only on the detector classes — liveness lamps, freshness/last-seen detectors, latest-value panels, and "now" detectors whose window is pinned in the panel title. The policy and the decision rule for new panels live in [ADR-022](../architecture/adr/022-dashboard-time-window-policy.md).
 
@@ -251,7 +257,7 @@ All cost and token accounting happens at `run.complete`. The other two event typ
 
 A CLI tool span starts when the CLI reports the call and ends at its result; at `standard` privacy it carries no tool input, because the CLI streams the input in pieces. Codex reports each model call's token usage but not when the call starts, so it has no call timing. Grok and Cursor report tool calls only.
 
-**Expanded event fields (all events; schema v4 frames expand to this shape — see `docs/observability/log-schema.md` for the normative table):**
+**Expanded event fields (all events; a compact frame expands to this shape — see `docs/observability/log-schema.md` for the normative table):**
 - `ts` — RFC3339Nano UTC timestamp string (e.g. `"2025-07-06T15:04:05.123456789Z"`).
 - `schema` — schema version integer. Self-describing for sinks.
 - `component` — always `"engine"`.
@@ -266,9 +272,9 @@ A CLI tool span starts when the CLI reports the call and ends at its result; at 
 - `aggregate_cost_usd` — cost of this run plus all descendant sub-agent dispatches (the full conversation scope).
 - `dispatch_depth` — nesting depth of the emitting run (`0` = root/orchestrator). Filter to `dispatch_depth=0` to sum `aggregate_cost_usd` without double-counting ancestor aggregates.
 
-### Schema v4 compact frames
+### Compact frames
 
-The telemetry file stores one schema-v4 compact frame per JSONL line. Frames intern
+The telemetry file stores one compact frame per JSONL line (the layout schema v4 introduced; the current writer is schema v5, [`log-schema.md`](log-schema.md) § "Telemetry schema versioning"). Frames intern
 repeated identity and correlation values and contain one or more events. The
 `telemetry-forwarder` decodes records at any schema at or below its own and posts the expanded events to
 Alloy's `loki.source.api` listener. The label and structured-metadata names stay
@@ -328,9 +334,9 @@ It resumes from the stored offset (no data loss) and drains the backlog; because
 
 **Prevention.** The overview's per-component **Ingest freshness** tile (green < 5m / orange < 30m / red beyond) surfaces a wedged tailer as a red tile within minutes, so the wedge is caught by a glance at the landing dashboard rather than by noticing a component has gone quiet.
 
-## Tempo (optional)
+## Tempo
 
-Tempo stores Ion's traces. One trace can cross processes: client, server, engine, and relay spans join on the W3C `traceparent` header, so a single trace shows a request from the app through the server and engine, and through the relay when a phone is involved. Phone spans do not ship on their own: they ride the server's pull of the phone's diagnostic logs.
+Tempo stores Ion's traces and derives span metrics from them. One trace can cross processes: client, server, engine, and relay spans join on the W3C `traceparent` header, so a single trace shows a request from the app through the server and engine, and through the relay when a phone is involved. Phone spans do not ship on their own: they ride the server's pull of the phone's diagnostic logs.
 
 Spans arrive over OTLP at Alloy on 4317 (gRPC) or 4318 (HTTP). Alloy forwards traces to Tempo (`otelcol.exporter.otlp "tempo"` in `alloy-config.alloy`). To send an engine's spans here, set `logging.egressOtel.endpoint` to `http://localhost:4318`. The engine posts a batch's logs before its spans, so Alloy accepts OTLP logs too and drops them: this stack already reads the log files from disk.
 
@@ -338,13 +344,21 @@ Spans arrive over OTLP at Alloy on 4317 (gRPC) or 4318 (HTTP). Alloy forwards tr
 
 **TraceQL metrics.** Queries like `{ } | rate() by (resource.service.name)` and Grafana's Traces Drilldown app work with no extra setup and no Prometheus. Tempo 3 answers them from its live-store (recent data) and its stored blocks. Tempo 2 needed the metrics-generator `local-blocks` processor for this; Tempo 3 removed it and will not start if a config still names it. Spans from the last 30 seconds are not in metrics results yet.
 
+**Span metrics and the service graph.** The metrics-generator (`metrics_generator` in `tempo-config.yaml`, processors `span-metrics` and `service-graphs`) turns every span into a latency histogram and a call counter, `traces_spanmetrics_latency_bucket` and `traces_spanmetrics_calls_total`, labeled `service`, `span_name`, `span_kind`, `status_code`, and the dimensions the config names: `host_name` and `user` (so the Device and User dropdowns apply), and `backend`, `model`, `transport`, `client_kind`, `action`, `command`, `surface`, `direction`. Each client→server span pair becomes a `traces_service_graph_*` edge. Both are remote-written to Prometheus with exemplars, so a histogram point links to the trace behind it. The **Ion Performance** dashboard (`dashboards/src/dashboards/performance.ts`) and the `ion-performance` alert group are built on them, and Tempo's Service Graph tab in Explore reads them (`serviceMap` on the Tempo data source). Changing a dimension is a config edit here, a regeneration of the dashboards, and nothing in app code.
+
 **Traces and logs link both ways.** In Grafana, a span's "Logs for this span" opens every log line whose JSON body has the same `trace_id`. A Loki line with a `trace_id` shows a "View trace in Tempo" link. Both are provisioned in `grafana/provisioning/datasources/datasources.yaml`.
 
 If you don't need traces, comment out the `tempo` service in `docker-compose.yml` and `dev.yaml`, and the `otelcol.*` blocks in `alloy-config.alloy`.
 
 ## Prometheus
 
-Prometheus stores the engine's OTLP System Metrics. It runs with `--web.enable-otlp-receiver`, so the engine writes to it directly; nothing is scraped. Point the engine at it:
+Prometheus is started by `dev run` with the rest of the `observability` profile (`dev.yaml` builds it from `Dockerfile.prometheus`, which bakes in the flags because the `dev.yaml` executor drops `command:`; `docker-compose.yml` names the same flags). It holds three kinds of series:
+
+- the engine's OTLP System Metrics, on `--web.enable-otlp-receiver` (below);
+- the span metrics and service graph Tempo's metrics-generator remote-writes, on `--web.enable-remote-write-receiver`, with `--enable-feature=exemplar-storage` keeping the trace id on each histogram sample;
+- the relay's own `relay_*` metrics, the one scrape job in `prometheus.yml`.
+
+The engine writes to it directly. Point the engine at it:
 
 ```json
 {
@@ -373,7 +387,7 @@ Set `ION_LOGS_DIR` before `docker compose up` to point the mount at a data
 directory other than `~/.ion` — a server started with its own `ION_DATA_DIR`
 writes there, and this stack sees none of it otherwise.
 
-It parses JSON and labels each line with the names its OTLP form carries (schema version 2, [`log-schema.md`](log-schema.md) § "Names in Loki"): `service_name` (`ion-` + the line's `component`), `level`, and `tag`. The `level` label carries the full five-level enum — `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` (TRACE and DEBUG appear only when a surface has them enabled; the default minimum is INFO). `trace_id` and `span_id` become structured metadata, filtered without a parser (`| trace_id = "..."`). `session_id`, `conversation_id`, and `msg` stay in the log body and are queried with `| json`. An operational line has no `event_name`, so a log query says `event_name=""` to leave telemetry out.
+It parses JSON and labels each line with the names its OTLP form carries (schema version 3, [`log-schema.md`](log-schema.md) § "Names in Loki"): `service_name` (`ion-` + the line's `component`), `level`, and `tag`. The `level` label carries the full five-level enum — `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` (TRACE and DEBUG appear only when a surface has them enabled; the default minimum is INFO). `trace_id` and `span_id` become structured metadata, filtered without a parser (`| trace_id = "..."`). `session_id`, `conversation_id`, and `msg` stay in the log body and are queried with `| json`. An operational line has no `event_name`, so a log query says `event_name=""` to leave telemetry out.
 
 **Telemetry pipeline** (`ion_telemetry`) receives expanded events from `telemetry-forwarder`, which reads `~/.ion/telemetry.jsonl` and decodes records at any schema at or below its own. It promotes two labels:
 - `service_name` — the service that recorded the event (`ion-engine`), set per stream by the telemetry forwarder
@@ -463,7 +477,7 @@ sum by (tool) (count_over_time({event_name="tool.execute"}[24h]))
 docker compose -p ion-obs down
 ```
 
-Data persists in named Docker volumes (`loki-data`, `grafana-data`, `tempo-data`).
+Data persists in named Docker volumes (`loki-data`, `grafana-data`, `tempo-data`, `prometheus-data`).
 
 ## Wiping Loki state and re-ingesting
 

@@ -79,7 +79,7 @@ describe('computeDeveloperSurfaces', () => {
   it('binds every connection to what the server offers', () => {
     const policy = serverPolicy({ sourceControl: 'disabled', worktrees: 'disabled' })
     for (const transport of ['local', 'tcp'] as const) {
-      expect(computeDeveloperSurfaces({ transport }, policy)).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: false })
+      expect(computeDeveloperSurfaces({ transport }, policy)).toEqual({ sourceControl: false, commitGraph: true, repositoryStatus: true, worktrees: false, profiling: true })
     }
   })
 
@@ -93,7 +93,7 @@ describe('computeDeveloperSurfaces', () => {
 describe('studio_welcome', () => {
   it('reports every surface on, and a policy hash, with no policy', async () => {
     const { ws, welcome } = await connectAndWelcome()
-    expect(welcome.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true })
+    expect(welcome.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true })
     expect(welcome.policyHash).toMatch(/^sha256:/)
     await closeSocket(ws)
   })
@@ -154,7 +154,7 @@ describe('studio_action under a disabled surface', () => {
     expect(result.ok).toBe(true)
     const value = result.value as { developerSurfaces: unknown; policyHash: string }
     expect(Object.keys(value).sort()).toEqual(['developerSurfaces', 'policyHash'])
-    expect(value.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: false })
+    expect(value.developerSurfaces).toEqual({ sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: false, profiling: true })
     expect(value.policyHash).toMatch(/^sha256:/)
     await closeSocket(ws)
   })

@@ -32,6 +32,7 @@ deployment's repository, not here:
 ```json
 {
   "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "<data source uid>" },
+  "prometheus": { "type": "prometheus", "uid": "<Prometheus data source uid over the Azure Monitor workspace>" },
   "resources": ["/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<ws>"],
   "folder": "ion",
   "views": {
@@ -46,9 +47,16 @@ Every query starts with `let` bindings for the views it reads, taken from
 `views`. When the pipeline's landing tables or columns change, edit `views` and
 re-render. No query changes.
 
+A PromQL target (the Ion Performance pack's span metrics and relay metrics, and
+the System Metrics PromQL) is not compiled: the same expression runs against the
+Azure Monitor workspace, so it is pointed at `prometheus` unchanged. Span metrics
+reach the workspace from a Tempo or an OpenTelemetry Collector `spanmetrics`
+connector that remote-writes to it; Application Insights computes request and
+dependency durations from the same spans on its own.
+
 ## The view contract
 
-Each view is a KQL tabular expression that returns these columns (schema version 2,
+Each view is a KQL tabular expression that returns these columns (schema version 3,
 [`log-schema.md`](log-schema.md)). The OTLP envelope's fields keep their Azure Monitor column names,
 so a view over `OTelLogs` or `OTelSpans` passes them through; Ion's own fields are snake_case. Empty
 values read as `""`, the same as an absent Loki label.

@@ -760,3 +760,42 @@ deploy-studio-desktop:
 .PHONY: test-studio-installer
 test-studio-installer:
 	@bash scripts/install-studio-server.test.sh
+
+# ---------------------------------------------------------------------------
+# Performance harness (docs/contributing/performance.md). Runs nightly in
+# .github/workflows/perf.yml, outside quality.yml and every release gate.
+# Report only: nothing here is wired into test-linux or test-all.
+# ---------------------------------------------------------------------------
+.PHONY: perf-build perf perf-test perf-compare bench bench-compare
+
+# The engine binary and the headless server bundle the runner starts as children.
+perf-build:
+	@cd engine && go build -ldflags "-s -w -X main.version=perf-$$(git rev-parse --short HEAD)" -o bin/ion ./cmd/ion
+	@npm -w server run build
+
+# One scenario against an isolated Environment under /tmp. SCENARIO=smoke|soak;
+# ALLOY=http://localhost:4318 ships spans to the local observability stack.
+#   make perf SCENARIO=smoke ALLOY=http://localhost:4318
+perf:
+	@scripts/perf/run.sh --scenario $(or $(SCENARIO),smoke) $(if $(ALLOY),--alloy $(ALLOY)) $(if $(OUT),--out $(OUT)) $(if $(MAX_MINUTES),--max-minutes $(MAX_MINUTES)) $(PERF_ARGS)
+
+# Unit tests of the statistics and the compare rule (node:test, no build step).
+perf-test:
+	@node --experimental-strip-types --no-warnings --test scripts/perf/__tests__/stats.test.mts scripts/perf/__tests__/compare.test.mts
+
+# Two result files -> a markdown table; FAIL=1 exits 1 on a regression.
+#   make perf-compare A=perf/results/smoke/<old>.json B=perf/results/smoke/<new>.json
+perf-compare:
+	@test -n "$(A)" -a -n "$(B)" || { echo "usage: make perf-compare A=<result.json> B=<result.json> [THRESHOLD=0.10] [FAIL=1]"; exit 2; }
+	@node --experimental-strip-types --no-warnings scripts/perf/compare.mts $(A) $(B) $(if $(THRESHOLD),--threshold $(THRESHOLD)) $(if $(FAIL),--fail) $(if $(SUMMARY),--summary $(SUMMARY))
+
+# Go micro-benchmarks across the engine, six runs each for benchstat.
+bench:
+	@cd engine && go test -run '^$$' -bench . -benchmem -count=6 ./internal/... | tee bench.txt
+
+# benchstat OLD NEW; installs benchstat into GOBIN when missing.
+#   make bench-compare OLD=bench-main.txt NEW=engine/bench.txt
+bench-compare:
+	@test -n "$(OLD)" -a -n "$(NEW)" || { echo "usage: make bench-compare OLD=<bench.txt> NEW=<bench.txt>"; exit 2; }
+	@command -v benchstat >/dev/null 2>&1 || { echo "installing benchstat into $$(go env GOBIN 2>/dev/null || echo "$$(go env GOPATH)/bin")"; go install golang.org/x/perf/cmd/benchstat@latest; }
+	@PATH="$$(go env GOPATH)/bin:$$(go env GOBIN):$$PATH" benchstat $(OLD) $(NEW)

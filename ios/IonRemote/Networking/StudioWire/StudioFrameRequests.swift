@@ -56,21 +56,29 @@ extension StudioActionResult: Codable {
 struct StudioEvent: Equatable, Sendable {
     var channel: String
     var payload: JSONValue
+    /// The trace of the engine event the frame carries or was derived from
+    /// (`trace_id` / `span_id`), when the server stamped one.
+    var traceId: String? = nil
+    var spanId: String? = nil
 }
 
 extension StudioEvent: Codable {
-    private enum CodingKeys: String, CodingKey { case channel, payload }
+    private enum CodingKeys: String, CodingKey { case channel, payload, traceId = "trace_id", spanId = "span_id" }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         channel = try container.decode(String.self, forKey: .channel)
         payload = try container.decodeJSON(forKey: .payload)
+        traceId = try container.decodeIfPresent(String.self, forKey: .traceId)
+        spanId = try container.decodeIfPresent(String.self, forKey: .spanId)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(channel, forKey: .channel)
         try container.encode(payload, forKey: .payload)
+        try container.encodeIfPresent(traceId, forKey: .traceId)
+        try container.encodeIfPresent(spanId, forKey: .spanId)
     }
 }
 

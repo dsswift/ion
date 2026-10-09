@@ -130,7 +130,7 @@ func (b *ApiBackend) injectSteer(run *activeRun, conv *conversation.Conversation
 			MachineAuthored: types.InjectionKind(steerMsg.kind).IsMachineToMachine(),
 		})
 	}
-	if err := conversation.Save(conv, ""); err != nil {
+	if err := persistConversation(run, conv); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after steer injection", map[string]any{
 			"run_id": run.requestID,
 			"error":  utils.ErrStr(err),

@@ -270,7 +270,7 @@ export function startRelayStudioListeners(options: RelayStudioListenerOptions): 
    * channel and pushes when it is not, so a phone that is attached anywhere
    * (LAN included) is skipped here and gets the event itself instead.
    */
-  const ring: PushRinger = (push) => {
+  const ring: PushRinger = (push, traceparent) => {
     const attached = new Set(connectionRegistry.all().filter((conn) => !conn.isClosed && conn.pairedClientId !== null).map((conn) => conn.pairedClientId))
     const doorbell = encodeFrame({ type: 'studio_event', channel: PUSH_DOORBELL_CHANNEL, payload: { tabId: push.pushTabId ?? null } })
     const tabId = push.pushTabId ?? ''
@@ -291,7 +291,7 @@ export function startRelayStudioListeners(options: RelayStudioListenerOptions): 
         warn('push not rung: the phone has not registered a push address', fields)
         continue
       }
-      entry.client.send(JSON.parse(sealRelayFrame(doorbell, entry.secret, { ...push, pushToken: record.push.token, pushEnv: record.push.env })) as WireMessage)
+      entry.client.send(JSON.parse(sealRelayFrame(doorbell, entry.secret, { ...push, pushToken: record.push.token, pushEnv: record.push.env }, traceparent)) as WireMessage)
       rung++
       log('push doorbell sent', { ...fields, apns_env: record.push.env })
     }

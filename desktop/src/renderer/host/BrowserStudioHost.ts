@@ -40,7 +40,7 @@
  * caller believing it had succeeded.
  */
 import type { StudioFrame, StudioRefusalReason } from '@ion/shared/studio-wire/types'
-import { decodeFrame, encodeFrame } from '@ion/shared/studio-wire/codec'
+import { decodeFrame, encodeFrame, WireError } from '@ion/shared/studio-wire/codec'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 import type { IonAPI } from '../../preload/ionapi'
 import type { ShellApi } from './shell-api'
@@ -454,7 +454,18 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
     try {
       frame = decodeFrame(ev.data)
     } catch (err) {
-      rWarn('BrowserStudioHost', 'malformed frame from server; ignoring', { error: err instanceof Error ? err.message : String(err) })
+      const error = err instanceof Error ? err.message : String(err)
+      const wire = err instanceof WireError ? err : null
+      if (wire?.frameType === 'studio_welcome' && this.phase.phase !== 'connected') {
+        // Nothing else will ever open this wire, so fail the attempt and let
+        // the phase say why.
+        rWarn('BrowserStudioHost', 'welcome from server could not be read; failing the attempt', { field: wire.field, error })
+        const ws = this.ws
+        this.handleFailure(`welcome could not be read: field ${wire.field ?? 'unknown'}`, undefined, true)
+        ws?.close()
+        return
+      }
+      rWarn('BrowserStudioHost', 'malformed frame from server; ignoring', { frame_type: wire?.frameType, field: wire?.field, error })
       return
     }
     if (frame.type === 'studio_ping') {
@@ -506,7 +517,7 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
     for (const cb of this.frameListeners) cb(this.environmentId, frame)
   }
 
-  private handleFailure(reason: string, refusalReason?: StudioRefusalReason): void {
+  private handleFailure(reason: string, refusalReason?: StudioRefusalReason, incompatible = false): void {
     this.ws = null
     if (this.closedByUser) return
     const now = Date.now()
@@ -520,12 +531,12 @@ export class BrowserStudioHost extends BrowserUnsupported implements StudioHost 
       // 'offline' (its type carries no attempt/nextAttemptAtMs, matching
       // the desktop broker's identical phase shape) even though a timer is
       // running underneath it.
-      this.setPhase({ phase: 'offline', transport: 'tcp', reason, refusalReason })
+      this.setPhase({ phase: 'offline', transport: 'tcp', reason, refusalReason, incompatible })
       this.retryTimer = setTimeout(() => this.beginConnect(), OFFLINE_RETRY_MS)
       return
     }
     const delay = BACKOFF_LADDER_MS[Math.min(this.attempts - 1, BACKOFF_LADDER_MS.length - 1)]
-    this.setPhase({ phase: 'backoff', transport: 'tcp', reason, refusalReason, attempt: this.attempts, nextAttemptAtMs: now + delay })
+    this.setPhase({ phase: 'backoff', transport: 'tcp', reason, refusalReason, incompatible, attempt: this.attempts, nextAttemptAtMs: now + delay })
     this.retryTimer = setTimeout(() => this.beginConnect(), delay)
   }
 

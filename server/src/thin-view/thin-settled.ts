@@ -22,6 +22,7 @@ import { createHash } from 'crypto'
 import type { Connection } from '../protocol/connection'
 import { sendThinEventTo } from './remote-out'
 import { log as _log, debug as _debug } from '../logger'
+import { withSpan } from '../tracing/op-span'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('thin-view', msg, fields)
@@ -63,7 +64,8 @@ export function sendSettledIfChanged(conn: Connection, settled: unknown[], hash:
     debug('settled conversations unchanged for connection', { connection_id: conn.id, settled_count: settled.length })
     return false
   }
-  const sent = sendThinEventTo(conn, { type: 'desktop_settled_tabs', settledTabs: settled })
+  const sent = withSpan('settled.publish', { attrs: { connection_id: conn.id, settled_count: settled.length } }, () =>
+    sendThinEventTo(conn, { type: 'desktop_settled_tabs', settledTabs: settled }))
   if (!sent) return false
   lastSettledHashByConnection.set(conn.id, hash)
   log('settled conversations sent', { connection_id: conn.id, settled_count: settled.length, hash: hash.slice(0, 12) })

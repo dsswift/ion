@@ -2,7 +2,13 @@
 package telemetryformat
 
 const (
-	FrameVersion = 4
+	// FrameVersion is the schema number every compact frame this package
+	// writes carries. It is the telemetry schema version
+	// (telemetry.TelemetrySchemaVersion): 5 added the span events and the
+	// runtime figures on system.metrics; the frame layout is unchanged from
+	// 4, and a 4 frame still decodes (ValidateFrame rejects only a schema
+	// above this reader's).
+	FrameVersion = 5
 	// FrameRecord is the "record" discriminator every compact frame line
 	// carries. Exported so a consumer outside this package can tell a frame
 	// line from an expanded-event line before deciding how to decode it.
@@ -36,7 +42,7 @@ type Event struct {
 	ParentSpanID string `json:"parent_span_id"`
 }
 
-// Frame is a v4 telemetry frame. Identities and Contexts are interned tables.
+// Frame is a compact telemetry frame (the layout schema v4 introduced). Identities and Contexts are interned tables.
 type Frame struct {
 	Record     string       `json:"record"`
 	Schema     int          `json:"schema"`

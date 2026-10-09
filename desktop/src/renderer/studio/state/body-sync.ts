@@ -1,16 +1,15 @@
 /**
- * body-sync — the browser Studio client's conversation-body channel
+ * body-sync — every Studio client's conversation-body channel
  * (`studio_body_request` -> `studio_body`, manifest contract C3).
  *
  * Conversation bodies deliberately never ride the snapshot: `snapshot.ts`
  * strips `conversationPane`, so a client learns which tabs exist from
- * `studio:tabs-sync` but gets no message rows with them. The Electron Studio
- * window fills that gap over main-process IPC (`initTabsSync` and friends,
- * gated on the `windowMirrorSync` capability). A browser client has no such
- * bridge, and until this module existed it had no replacement either: the
- * server implemented and documented the body channel, but nothing on the
- * client ever sent the request, so every conversation rendered empty while
- * the inbox looked fully populated.
+ * `studio:tabs-sync` but gets no message rows with them. This module is the
+ * only return path, and `bootMirror` starts it unconditionally for the
+ * Electron window and the browser alike; there is no Electron-only IPC pull.
+ * Before this module existed the server implemented and documented the body
+ * channel, but nothing on the client ever sent the request, so every
+ * conversation rendered empty while the inbox looked fully populated.
  *
  * Forwarding `loadSkeletonMessages` is not a substitute. That action is in
  * FORWARDED_ACTIONS, so it runs in the SERVER's store and hydrates the
@@ -24,6 +23,11 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import type { Message } from '@ion/shared/types'
 import { host } from '../../host/host-instance'
 import { rDebug, rWarn } from '../../rendererLogger'
+import { startSpan, type Span } from '@ion/shared/trace-context'
+import { writeRendererSpan } from '../../lib/span-writer'
+
+/** `body.load`: the request in flight per tab, from `studio_body_request` sent to the page applied. */
+const loadSpans = new Map<string, Span>()
 
 /** Tabs with a body request in flight, so a re-render cannot re-ask. */
 const inFlight = new Set<string>()
@@ -138,7 +142,13 @@ function requestBody(tabId: string, before?: string): void {
     tab_id: tabId, instance_id: instanceId ?? '', limit: PAGE_ROWS, before: before ?? '',
   })
   // The body lives on the server that owns the tab (ADR-033 union store).
-  host.send(environmentOfTab(tabId) ?? LOCAL_ENVIRONMENT_ID, {
+  const environmentId = environmentOfTab(tabId) ?? LOCAL_ENVIRONMENT_ID
+  loadSpans.get(tabId)?.end(undefined, 'superseded by a later request for the same tab')
+  loadSpans.set(tabId, startSpan('body.load', {
+    writer: writeRendererSpan, kind: 'client',
+    attributes: { 'peer.service': 'ion-server', tab_id: tabId, environment_id: environmentId, limit: PAGE_ROWS, older_page: before !== undefined },
+  }))
+  host.send(environmentId, {
     type: 'studio_body_request',
     tabId,
     limit: PAGE_ROWS,
@@ -184,6 +194,11 @@ function forgetGonePanes(): void {
 function forget(tabId: string): void {
   answered.delete(tabId)
   inFlight.delete(tabId)
+  const span = loadSpans.get(tabId)
+  if (span) {
+    loadSpans.delete(tabId)
+    span.end(undefined, 'pane gone before the body arrived')
+  }
 }
 
 /**
@@ -203,6 +218,11 @@ export function initBodySyncFromWire(): () => void {
     // that page replaces and every older one goes in front of it.
     const older = frame.before != null
     const applied = applyStudioBody(frame.tabId, frame.instanceId, frame.rows, older)
+    const span = loadSpans.get(frame.tabId)
+    if (span) {
+      loadSpans.delete(frame.tabId)
+      span.end({ row_count: frame.rows.length, applied, has_more: frame.hasMore === true }, applied ? undefined : 'body arrived for a pane that is gone')
+    }
     rDebug('studio.body-sync', 'conversation body applied', {
       tab_id: frame.tabId, row_count: frame.rows.length, applied,
       older, has_more: frame.hasMore === true,
@@ -237,6 +257,8 @@ export function initBodySyncFromWire(): () => void {
     unsubscribe()
     inFlight.clear()
     answered.clear()
+    for (const span of loadSpans.values()) span.end(undefined, 'body sync stopped')
+    loadSpans.clear()
   }
 }
 

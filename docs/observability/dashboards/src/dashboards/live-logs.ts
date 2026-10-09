@@ -80,7 +80,7 @@ export function liveLogsDashboard(): Dashboard {
       id: 11,
       title: 'Context pressure (latest, per session)',
       description:
-        'Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Data empty until Phase-B.',
+        'Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Source: context.pressure (payload.percent).',
       gridPos: { h: 8, w: 8, x: 0, y: 5 },
       fieldConfig: {
         defaults: {
@@ -105,7 +105,7 @@ export function liveLogsDashboard(): Dashboard {
       id: 12,
       title: 'Dispatches in flight (5m)',
       description:
-        'Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack. Data empty until Phase-B.',
+        'Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack.',
       gridPos: { h: 4, w: 8, x: 8, y: 5 },
       fieldConfig: { defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [] }, overrides: [] },
       options: statOptions('value', 'area'),
@@ -115,7 +115,7 @@ export function liveLogsDashboard(): Dashboard {
       id: 13,
       title: 'Client backpressure now',
       description:
-        'Maximum dropped event count across all client queues in the last 10 minutes. Zero is the only good number. Data empty until Phase-B.',
+        'Maximum dropped-event count across all client queues in the last 10 minutes, from client.backpressure (payload.dropped_total). Zero is the only good number.',
       gridPos: { h: 4, w: 8, x: 8, y: 9 },
       fieldConfig: {
         defaults: {
@@ -136,7 +136,7 @@ export function liveLogsDashboard(): Dashboard {
       id: 14,
       title: 'TTFT last hour (p50 sparkline)',
       description:
-        'Streaming time-to-first-token, p50 over the selected interval. A rising trend mid-session means providers are responding slower. Data empty until Phase-B.',
+        'Streaming time to first token, p50 per step, from provider.ttft (payload.ttft_ms). A rising trend mid-session means providers are responding slower.',
       gridPos: { h: 8, w: 8, x: 16, y: 5 },
       fieldConfig: { defaults: { unit: 'ms', custom: { drawStyle: 'line', fillOpacity: 20, lineWidth: 2, stacking: { mode: 'none' } } }, overrides: [] },
       options: legendBottom(false, false),

@@ -69,6 +69,7 @@ import { runGit } from '../git/git-runner'
 import { HOOKS_OFF } from './bench-hooks'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
+import { withSpan } from '../tracing/op-span'
 import { benchMergeInProgress } from './bench-guard'
 import { unmergedPaths } from '../git/operation-state'
 import { resolveContribution, isLandedIntoSource } from './bench-contribution'
@@ -102,7 +103,12 @@ export async function assembleBench(ws: IntegrationWorkspace): Promise<BenchAsse
  * The assembly body without the queue wrapper. Exported for tests and for
  * callers already holding the repo mutation slot.
  */
-export async function assembleBenchUnqueued(enrolled: IntegrationWorkspace): Promise<BenchAssembleResult> {
+export function assembleBenchUnqueued(enrolled: IntegrationWorkspace): Promise<BenchAssembleResult> {
+  return withSpan('bench.rebuild', { attrs: { repo_path: enrolled.repoPath, source_branch: enrolled.sourceBranch, bench_path: enrolled.benchPath, members_total: enrolled.members.length } }, () =>
+    assembleNow(enrolled))
+}
+
+async function assembleNow(enrolled: IntegrationWorkspace): Promise<BenchAssembleResult> {
   // A member whose worktree directory is gone has nothing to integrate and no
   // row to act on. Dropped before anything reads the member list, so every
   // outcome below (success or atomic failure) records the set without it.

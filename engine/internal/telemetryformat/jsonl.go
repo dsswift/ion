@@ -21,7 +21,7 @@ func DecodeLine(line []byte) ([]Event, error) {
 	if _, ok := envelope["record"]; ok {
 		var frame Frame
 		if err := json.Unmarshal(line, &frame); err != nil {
-			return nil, fmt.Errorf("telemetry format: decode v4 frame: %w", err)
+			return nil, fmt.Errorf("telemetry format: decode compact frame: %w", err)
 		}
 		return Expand(frame)
 	}
@@ -49,7 +49,7 @@ func EncodeEventLine(event Event) ([]byte, error) {
 	return encodeLine(event)
 }
 
-// EncodeFrameLine encodes a validated v4 frame as a JSON line.
+// EncodeFrameLine encodes a validated compact frame as a JSON line.
 func EncodeFrameLine(frame Frame) ([]byte, error) {
 	if err := ValidateFrame(frame); err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func EncodeFrameLine(frame Frame) ([]byte, error) {
 	return encodeLine(frame)
 }
 
-// EncodeCompactLine compacts events then encodes the resulting v4 frame line.
+// EncodeCompactLine compacts events then encodes the resulting compact frame line.
 func EncodeCompactLine(events []Event) ([]byte, error) {
 	frame, err := Compact(events)
 	if err != nil {

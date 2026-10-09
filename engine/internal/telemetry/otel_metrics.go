@@ -114,7 +114,13 @@ func registerSystemMetricsInstruments(meter metric.Meter, source SystemMetricsSo
 	sessions, err9 := meter.Int64ObservableGauge("ion.engine.sessions", metric.WithUnit("{session}"))
 	samples, err10 := meter.Int64ObservableCounter("ion.system_metrics.samples", metric.WithUnit("{sample}"),
 		metric.WithDescription("System Metrics samples observed by the export"))
-	for _, err := range []error{err1, err2, err3, err4, err5, err6, err7, err8, err9, err10} {
+	gcPause, err11 := meter.Float64ObservableGauge("ion.engine.gc_pause.p99", metric.WithUnit("ms"),
+		metric.WithDescription("p99 of the Go runtime's stop-the-world pauses in the last sample interval"))
+	allocRate, err12 := meter.Float64ObservableGauge("ion.engine.alloc_rate", metric.WithUnit("By/s"),
+		metric.WithDescription("Heap bytes the engine allocated per second in the last sample interval"))
+	schedLatency, err13 := meter.Float64ObservableGauge("ion.engine.sched_latency.p99", metric.WithUnit("ms"),
+		metric.WithDescription("p99 of goroutine scheduling latency in the last sample interval"))
+	for _, err := range []error{err1, err2, err3, err4, err5, err6, err7, err8, err9, err10, err11, err12, err13} {
 		if err != nil {
 			return fmt.Errorf("register system metrics instrument: %w", err)
 		}
@@ -141,24 +147,34 @@ func registerSystemMetricsInstruments(meter metric.Meter, source SystemMetricsSo
 		}
 		o.ObserveInt64(memLimit, clampInt64(limit))
 		o.ObserveInt64(diskFree, clampInt64(h.DiskFreeBytes))
-		cpu := map[string]float64{}
-		rss := map[string]uint64{}
+		// The process gauges are summed per (role, session_id). session_id is
+		// the only per-session label any gauge carries: sessions are few,
+		// so the series count stays bounded, and it is what lets a
+		// conversation's extension, MCP, and backend processes be charged
+		// to it. Processes no session owns sum under an empty session_id.
+		type roleSession struct{ role, session string }
+		cpu := map[roleSession]float64{}
+		rss := map[roleSession]uint64{}
 		for _, p := range s.Processes {
+			key := roleSession{role: p.Role, session: p.SessionID}
 			if p.CPUPercent != nil {
-				cpu[p.Role] += *p.CPUPercent / 100
+				cpu[key] += *p.CPUPercent / 100
 			}
-			rss[p.Role] += p.RSSBytes
+			rss[key] += p.RSSBytes
 		}
-		for role, v := range rss {
-			attrs := metric.WithAttributes(attribute.String("role", role))
-			o.ObserveFloat64(procCPU, cpu[role], attrs)
+		for key, v := range rss {
+			attrs := metric.WithAttributes(attribute.String("role", key.role), attribute.String("session_id", key.session))
+			o.ObserveFloat64(procCPU, cpu[key], attrs)
 			o.ObserveInt64(procRSS, clampInt64(v), attrs)
 		}
 		o.ObserveInt64(heap, clampInt64(s.Runtime.HeapBytes))
 		o.ObserveInt64(goroutines, int64(s.Runtime.Goroutines))
 		o.ObserveInt64(sessions, int64(s.Runtime.Sessions))
+		o.ObserveFloat64(gcPause, s.Runtime.GCPauseP99Ms)
+		o.ObserveFloat64(allocRate, s.Runtime.AllocRateBytesPerS)
+		o.ObserveFloat64(schedLatency, s.Runtime.SchedLatencyP99Ms)
 		return nil
-	}, hostCPU, memAvail, memLimit, diskFree, procCPU, procRSS, heap, goroutines, sessions, samples)
+	}, hostCPU, memAvail, memLimit, diskFree, procCPU, procRSS, heap, goroutines, sessions, samples, gcPause, allocRate, schedLatency)
 	if err != nil {
 		return fmt.Errorf("register system metrics callback: %w", err)
 	}

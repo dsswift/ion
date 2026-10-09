@@ -61,6 +61,7 @@ A registry entry names a concept in prose. It never renames a published wire fie
 | [Branch lifecycle](branch-lifecycle.md) | Feature work → align → squash → push to main, and the hooks that run automatically |
 | [Graph queries](graph-queries.md) | Querying the graphify knowledge graph: subcommands, budgets, edge confidence |
 | [Delivery pipeline](delivery-pipeline.md) | Push to main → version → build → publish; where tests and scans fit |
+| [Performance](performance.md) | The nightly perf harness, profiles per surface, the Performance dashboard, comparing commits |
 
 ## Quick reference
 

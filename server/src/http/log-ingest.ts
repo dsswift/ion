@@ -23,6 +23,7 @@ import type { BrowserSessionStore } from '../auth/browser-session-store'
 import { parseCookie, SESSION_COOKIE_NAME } from '../auth/session-cookie'
 import { logWeb, type LogLevel } from '../logger'
 import { log as _log, warn as _warn } from '../logger'
+import { withSpan } from '../tracing/op-span'
 import { admitWebLine } from './log-ingest-budget'
 import { isRepeatWebLine, rememberWebLine } from './log-ingest-seen'
 import { SPAN_LOG_TAG } from '@ion/shared/trace-context'
@@ -119,7 +120,8 @@ export function logIngestRoute(deps: LogIngestDeps): (req: IncomingMessage, res:
       return
     }
 
-    void (async () => {
+    // One `log.ingest` span per batch, a child of the request's `http.request`.
+    void withSpan('log.ingest', {}, async (_span, ctx) => {
       let subject: string | null = null
       const token = bearerTokenFrom(req)
       if (token) {
@@ -137,9 +139,13 @@ export function logIngestRoute(deps: LogIngestDeps): (req: IncomingMessage, res:
       }
 
       if (!subject) {
+        ctx.fail('unauthorized')
         writeJson(res, 401, { error: 'unauthorized' })
         return
       }
+      // The caller this batch is for: the request carried no principal the
+      // span could inherit, so it names the one it authenticated.
+      ctx.annotate({ user: subject })
 
       let raw: string
       try {
@@ -214,7 +220,8 @@ export function logIngestRoute(deps: LogIngestDeps): (req: IncomingMessage, res:
           level, tag: forwardedTag, subject,
         })
       }
+      ctx.annotate({ written })
       writeJson(res, 200, { ok: true, written })
-    })()
+    })
   }
 }

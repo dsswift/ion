@@ -65,7 +65,7 @@ function welcome(environmentId: string): StudioFrame {
     principal: { subject: 's', displayName: 'S' },
     scopes: [],
     enterprisePolicy: null, settingsHiddenGroups: [],
-    developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true },
+    developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true },
     policyHash: 'sha256:test',
     snapshot: { tabs: [], settings: {}, worktrees: { revision: 0, ready: true, inventory: {}, workspaces: {}, benchSourceTips: [], benchRetired: [], gitConflictAlerts: [], worktreePipeline: null, workspaceOperationLedger: [] } as never, terminals: { revision: 0, panes: [], openTabIds: [] } as never, automations: [], engine: { connected: true }, presence: { entries: [], driving: {} } },
   }

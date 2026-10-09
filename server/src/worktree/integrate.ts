@@ -46,6 +46,7 @@ import { normalize as normalizePath } from 'path'
 import { runGit } from '../git/git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
+import { annotateSpan, failSpan, withSpan } from '../tracing/op-span'
 import { markWorktreeLanded, lookupWorktreeLandedAt } from './inventory'
 import { triggerWorktreeLifecycleAutomation } from './lifecycle-automation-trigger'
 import { disenrollWorktree } from '../integration/bench-ops'
@@ -268,12 +269,26 @@ export async function landWorktree(opts: LandOptions): Promise<LandResult> {
   return repo.queue.enqueueMutation(() => landWorktreeUnqueued(opts))
 }
 
+/** `landWorktreeUnqueued` as one `worktree.land` span, queue wait excluded. */
+function landSpan<T extends { ok: boolean; error?: string }>(opts: LandOptions, run: () => Promise<T>): Promise<T> {
+  return withSpan('worktree.land', { attrs: { repo_path: opts.repoPath, worktree_path: opts.worktreePath, worktree_branch: opts.worktreeBranch, source_branch: opts.sourceBranch } }, () =>
+    run().then((result) => {
+      annotateSpan({ ok: result.ok })
+      if (!result.ok) failSpan(result.error ?? 'land failed')
+      return result
+    }))
+}
+
 /**
  * The land body, without the queue wrapper. Exported for tests and for
  * callers that already hold the repo mutation slot (never call this from a
  * path that is not already serialized).
  */
-export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResult> {
+export function landWorktreeUnqueued(opts: LandOptions): Promise<LandResult> {
+  return landSpan(opts, () => landNow(opts))
+}
+
+async function landNow(opts: LandOptions): Promise<LandResult> {
   const { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward } = opts
   log('land: starting', {
     repo_path: repoPath,

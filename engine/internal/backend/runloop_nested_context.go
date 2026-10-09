@@ -170,7 +170,7 @@ func (b *ApiBackend) injectNestedContext(
 
 	conversation.AddContextInjectionMessage(conv, paths, text, opts.SuppressSystemMessages)
 	if !opts.SuppressSystemMessages {
-		if err := conversation.Save(conv, ""); err != nil {
+		if err := persistConversation(run, conv); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after nested context inject", map[string]any{
 				"error": utils.ErrStr(err),
 			})

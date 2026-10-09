@@ -16,6 +16,7 @@ import type { FleetRunProgress, FleetRunRequest, FleetRunSnapshot, FleetRunStart
 import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
 import type { PortForward, PortForwardStartResult } from '@ion/shared/port-forward'
 import type { ShellApi } from './shell-api'
+import type { ProfileCaptureRequest, ProfileCaptureResult } from '../../shared/desktop-ipc'
 
 /**
  * A shell-side ability the renderer may use without going through `action()`.
@@ -198,6 +199,26 @@ export interface StudioHost {
   deviceSettings(): Promise<Record<string, unknown>>
   /** Writes one device-local setting. */
   setDeviceSetting(key: string, value: unknown): Promise<void>
+  /**
+   * How long one `studio_action` took as this renderer saw it. An Electron
+   * host hands it to main, which subtracts its own wire time for the same
+   * frame id and reports the IPC hop in its client window line
+   * (`main/connections/ipc-hop.ts`). A browser host has no hop to measure.
+   */
+  noteActionTiming?(environmentId: string, id: string, elapsedMs: number): void
+  /**
+   * The `traceparent` of the shell's `app.launch` span, so this window's
+   * `studio.first_paint` and `store.hydrate` join the launch trace. Only an
+   * Electron window is launched by a process that times its own start.
+   */
+  launchTraceparent?(): string | null
+  /**
+   * Captures a CPU profile or heap snapshot of this desktop's main process
+   * or this renderer, into `<data dir>/profiles/` (`main/profiling/`).
+   * Electron only; the shell refuses it where the `profiling` developer
+   * surface is off.
+   */
+  profileCapture?(request: ProfileCaptureRequest): Promise<ProfileCaptureResult>
   /** Which shell capabilities this host implements. */
   capabilities(): Capability[]
   /** Opens a URL in the OS default browser. */

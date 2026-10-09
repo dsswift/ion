@@ -39,6 +39,13 @@ export const CLIENT_WINDOW_FIELDS = [
   'action_timeouts',
 ] as const
 
+/**
+ * Fields Electron main appends to its client window line, beside the ones
+ * `ClientWireLatency` writes: the renderer-to-main IPC hop an action crosses
+ * before it reaches the wire. Absent in a window with no paired sample.
+ */
+export const ELECTRON_CLIENT_WINDOW_FIELDS = ['ipc_hop_p50_ms'] as const
+
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0
   const rank = Math.ceil((p / 100) * sorted.length)

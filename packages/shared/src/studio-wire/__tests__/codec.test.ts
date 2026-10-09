@@ -53,6 +53,35 @@ describe('studio-wire codec: fixtures', () => {
   }
 })
 
+describe('studio-wire codec: frames from another build', () => {
+  const welcome = loadFixtures().find((f) => f.frame.type === 'studio_welcome')?.frame as unknown as Record<string, unknown>
+
+  // A server that predates a developer surface sends no key for it. Its
+  // welcome must still open the wire.
+  it('decodes a welcome whose server names fewer developer surfaces than this build knows', () => {
+    const older = { ...welcome, developerSurfaces: { sourceControl: true, commitGraph: false, repositoryStatus: true, worktrees: true } }
+    expect(decodeFrame(JSON.stringify(older))).toEqual(older)
+  })
+
+  it('decodes a welcome carrying a developer surface and a field this build does not know', () => {
+    const newer = { ...welcome, developerSurfaces: { ...(welcome.developerSurfaces as object), notYetInvented: false }, somethingNew: 1 }
+    expect(decodeFrame(JSON.stringify(newer))).toEqual(newer)
+  })
+
+  it('names the frame type and the field that failed', () => {
+    let thrown: unknown
+    try {
+      decodeFrame(JSON.stringify({ ...welcome, developerSurfaces: { sourceControl: 'yes' } }))
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(WireError)
+    expect((thrown as WireError).frameType).toBe('studio_welcome')
+    expect((thrown as WireError).field).toBe('developerSurfaces')
+    expect((thrown as WireError).message).toContain('developerSurfaces')
+  })
+})
+
 describe('studio-wire codec: decodeFrame errors', () => {
   it('throws WireError on invalid JSON', () => {
     expect(() => decodeFrame('{not json')).toThrow(WireError)

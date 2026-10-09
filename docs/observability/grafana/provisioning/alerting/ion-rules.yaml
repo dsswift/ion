@@ -20,11 +20,17 @@
 # and idle instances). Both were rebuilt against the same real data plus a
 # synthetic push to Loki proving the positive case (see the journal): the
 # unattended-session rule now keys on run.execute density per hourly bucket
-# joined against the prompt.handle span (the server-side span logged only
-# when a client actually submits — see docs/observability/log-schema.md
-# "Spans"), and the ingest-wedge rule now requires a host's engine stream to
+# joined against the action.handle span of a prompt a client submitted
+# (`prompt_surface` set, `surface` not `server` — see
+# docs/observability/log-schema.md "Spans"), and the ingest-wedge rule now requires a host's engine stream to
 # be fresh WHILE its paired server/desktop stream on the SAME host has gone
 # stale, rather than firing on any one component's absolute silence.
+#
+# The ion-performance group reads the span metrics Tempo's metrics-generator
+# writes to Prometheus (tempo-config.yaml; the Ion Performance dashboard's
+# panels are the same queries) and the System Metrics sample lines in Loki.
+# A Prometheus query model states its evaluation as instant/range booleans,
+# as Grafana's Prometheus datasource does; a Loki query states queryType.
 #
 # No notification contact point is configured. az-lz-platform has no Grafana
 # contact point today (investigated 2026-09-28: no grafana_contact_point /
@@ -130,7 +136,8 @@ groups:
                 and sum by (session_id) (count_over_time({event_name="run.execute"} | json |
                 label_format session_id=context_session_id [1h] offset 3h)))
                 unless on(session_id)
-                sum by (session_id) (count_over_time({tag="span"} | json | msg="prompt.handle" [4h]))
+                sum by (session_id) (count_over_time({tag="span"} | json | msg="action.handle"
+                | fields_prompt_surface != "" | fields_surface != "server" [4h]))
           - refId: C
             datasourceUid: __expr__
             model:
@@ -144,8 +151,8 @@ groups:
         for: 5m
         labels: { severity: warning, ion: 'true' }
         annotations:
-          summary: 'A session has had engine runs executing in every one of the last four consecutive 1h windows, with zero server-side prompt.handle spans (no user-originated submit) anywhere in that 4h stretch — an agent working unattended, e.g. left running overnight.'
-          description: 'Not a log-span check (normal sessions legitimately span most of a day) — this keys on run.execute density per hourly bucket, joined against session_id, then excludes any session that has at least one prompt.handle span (the server-side span logged when a client actually submits) in the same 4h window. A session mid one long user-initiated dispatch chain still has its opening prompt.handle inside the window and will not fire; a session with continuous run activity and zero fresh user input for 4+ hours will. See Ion Live Logs / Ion Forensics (filter by the firing session_id) to confirm before killing it.'
+          summary: 'A session has had engine runs executing in every one of the last four consecutive 1h windows, with zero client-submitted prompts (no action.handle span with a prompt_surface from a client) anywhere in that 4h stretch — an agent working unattended, e.g. left running overnight.'
+          description: 'Not a log-span check (normal sessions legitimately span most of a day) — this keys on run.execute density per hourly bucket, joined against session_id, then excludes any session that has at least one action.handle span for a client-submitted prompt (prompt_surface set, surface not server) in the same 4h window. A session mid one long user-initiated dispatch chain still has its opening prompt's action.handle inside the window and will not fire; a session with continuous run activity and zero fresh user input for 4+ hours will. See Ion Live Logs / Ion Forensics (filter by the firing session_id) to confirm before killing it.'
 
       - uid: ion-ingest-wedge
         title: Ion ingest tailer wedge (paired stream stalled)
@@ -177,3 +184,134 @@ groups:
         annotations:
           summary: 'A host''s engine shipped an op-log line in the last 10 minutes, that host has shipped a server or desktop op-log line at some point in the last 24h (so a pairing exists), but neither has shipped one in the last 30 minutes — the tailer-wedge case, not an idle/unpaired component going quiet.'
           description: 'Three fixed-window counts per host_name, combined in one LogQL expression (no vector()/now-macro, which Grafana''s alerting engine does not expand the way a dashboard panel does): (engine active in 10m) AND (server/desktop active at some point in 24h, i.e. a pairing exists on this host) UNLESS (server/desktop active in the last 30m). A host with no desktop/server pairing at all (headless engine, or a component that legitimately reports rarely, e.g. iOS, the relay, an idle instance) never satisfies the 24h clause and never matches. See the overview dashboard''s "Ingest freshness by component" tile for the raw per-component numbers, and README "Tailer wedge" for the known virtiofs bind-mount cause.'
+
+  - orgId: 1
+    name: ion-performance
+    folder: Ion Alerts
+    interval: 1m
+    rules:
+      - uid: ion-store-action-p95
+        title: Ion store action p95 over 500 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle",
+                service="ion-server"}[10m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'The server''s p95 time on a Studio store action (the action.handle span) has been above 500 ms for 10 minutes.'
+          description: 'The server''s own work on one action, receipt to result sent; the wire is not in this number. Ion Performance "action.handle p95 by action" names the slow action; Ion Wire Latency shows what clients felt. Seconds in the query: 0.5 is 500 ms.'
+
+      - uid: ion-run-p95
+        title: Ion run p95 over 120 s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="run.execute",
+                service="ion-engine"}[10m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [120] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'The engine''s p95 run duration (the run.execute span) has been above 120 seconds for 10 minutes.'
+          description: 'Long runs are not wrong by themselves; a sustained shift is. Ion Performance "run.execute p50 / p95 by model" splits it by model and Backend; the LLM call, attempt, and tool panel says where inside the run the time goes.'
+
+      - uid: ion-server-event-loop-p99
+        title: Ion server event loop p99 over 200 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                max by (host_name) (max_over_time({service_name="ion-server", event_name=""} | json | tag="system-metrics"
+                | msg="system metrics sample" | fields_server_event_loop_p99_ms != "" | unwrap fields_server_event_loop_p99_ms [5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [200] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'An Ion Studio Server''s event-loop delay p99 has been above 200 ms in every 30 s sample for 5 minutes.'
+          description: 'The server ran its timers late, so every connection on that host waited: snapshots, patches, action results. Read per host_name from the server''s System Metrics sample line (fields.server_event_loop_p99_ms). Ion Performance "Server event-loop delay" charts it; the store action and build panels beside it say what was busy.'
+
+      - uid: ion-host-memory-low
+        title: Ion host memory available under 10%
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                max by (host_name) (last_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics"
+                | msg=~"system metrics sample|HIGH MEMORY" | fields_host_memory_available_bytes != ""
+                | unwrap fields_host_memory_available_bytes [10m]))
+                / max by (host_name) (last_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics"
+                | msg=~"system metrics sample|HIGH MEMORY" | fields_host_memory_total_bytes != ""
+                | unwrap fields_host_memory_total_bytes [10m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels: { severity: critical, ion: 'true' }
+        annotations:
+          summary: 'A host has had less than 10% of its physical memory available to new work for 10 minutes.'
+          description: 'Available over total, per host_name, from the engine''s System Metrics sample line (fields.host_memory_available_bytes / host_memory_total_bytes); the last sample in each 10 m window. Inside a container the available figure is the limit less its use, so the ratio reads against physical memory the container may not be allowed to use. Ion System Metrics "Memory by engine process role" says which role holds it.'

@@ -42,6 +42,15 @@ final class DeveloperSurfacesTests: XCTestCase {
         XCTAssertEqual(policy.policyHash, "sha256:y")
     }
 
+    func testProfilingIsReadAndDefaultsOnFromAnOlderServer() throws {
+        let current = try decode(DeveloperSurfaces.self, #"{"sourceControl":true,"commitGraph":true,"repositoryStatus":true,"worktrees":true,"profiling":false}"#)
+        XCTAssertFalse(current.profiling)
+        let older = try decode(DeveloperSurfaces.self, #"{"sourceControl":true,"commitGraph":true,"repositoryStatus":true,"worktrees":true}"#)
+        XCTAssertTrue(older.profiling)
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Bool]
+        XCTAssertEqual(encoded?["profiling"], false)
+    }
+
     func testTheGitPaneStaysWhileEitherOfItsPartsIsOffered() {
         var surfaces = DeveloperSurfaces.allEnabled
         surfaces.sourceControl = false

@@ -9,7 +9,7 @@
  * part of this union, which describes only the JSON side.
  */
 import type { EnterprisePolicy } from '../types-enterprise'
-import type { DeveloperSurfaceState } from '../developer-surfaces'
+import type { DeveloperSurfaceWire } from '../developer-surfaces'
 import type { PersistedTab } from '../types-persistence'
 import type { AutomationDefinition } from '../types-automation'
 import type { StudioWorktreeSnapshot } from '../types-studio'
@@ -251,10 +251,12 @@ export type StudioFrame =
        * The developer surfaces this connection may reach on this server.
        * What the server offers binds every connection; the local connection
        * is narrowed further by its own device policy. A client shows no
-       * control for a surface that is off here. A server that predates
-       * developer surfaces sends none, and offers them all.
+       * control for a surface that is off here. A surface the server does
+       * not name is on: a server that predates developer surfaces sends
+       * none, and one that predates a single surface omits that key. Read
+       * it with `readDeveloperSurfaces`.
        */
-      developerSurfaces?: DeveloperSurfaceState
+      developerSurfaces?: DeveloperSurfaceWire
       /** Hash of `enterprisePolicy`, so a client can tell a changed policy without comparing values. */
       policyHash?: string
       /**
@@ -308,6 +310,13 @@ export type StudioFrame =
       type: 'studio_event'
       channel: string
       payload: unknown
+      /**
+       * The trace of the engine event this frame carries or was derived from
+       * (`NormalizedEvent.trace_id` / `span_id`), so a client's render span
+       * joins the same trace. Absent on a frame no engine event produced.
+       */
+      trace_id?: string
+      span_id?: string
     }
   | {
       type: 'studio_command'
@@ -335,7 +344,7 @@ export type StudioFrame =
       type: 'studio_environment_policy'
       enterprisePolicy: EnterprisePolicySnapshot | null
       settingsHiddenGroups: string[]
-      developerSurfaces?: DeveloperSurfaceState
+      developerSurfaces?: DeveloperSurfaceWire
       policyHash: string
     }
   | {

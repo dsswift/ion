@@ -71,7 +71,7 @@ describe('startSpan', () => {
 
   it('joins a valid parent and hands one record to the writer', () => {
     const written: SpanRecord[] = []
-    const span = startSpan('prompt.handle', {
+    const span = startSpan('action.handle', {
       writer: (r) => written.push(r),
       parent: `00-${TRACE}-${SPAN}-01`,
       kind: 'server',
@@ -87,7 +87,7 @@ describe('startSpan', () => {
     span.end({ accepted: false }, 'late')
     expect(written).toHaveLength(1)
     expect(written[0]).toMatchObject({
-      name: 'prompt.handle', traceId: TRACE, parentSpanId: SPAN, kind: 'server',
+      name: 'action.handle', traceId: TRACE, parentSpanId: SPAN, kind: 'server',
       startMs: 1000, endMs: 1012, durationMs: 12, attributes: { tab_id: 't1', accepted: true },
     })
     expect(written[0].error).toBeUndefined()

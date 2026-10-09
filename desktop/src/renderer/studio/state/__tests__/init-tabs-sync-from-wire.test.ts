@@ -79,7 +79,7 @@ describe('initTabsSyncFromWire', () => {
       type: 'studio_welcome', protocolVersion: 1, environmentId: 'browser', label: 'x',
       platform: 'linux', serverVersion: '1', engineVersion: '1', capabilities: [],
       principal: { subject: 'p', displayName: 'p' }, scopes: [], enterprisePolicy: null, settingsHiddenGroups: [],
-    developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true },
+    developerSurfaces: { sourceControl: true, commitGraph: true, repositoryStatus: true, worktrees: true, profiling: true },
     policyHash: 'sha256:test',
       snapshot: { tabs: [tab('a')], settings: {} as never, worktrees: {} as never, terminals: { revision: 0, panes: [], openTabIds: [] } as never, automations: [], engine: {} as never, presence: { entries: [], driving: {} } },
     })

@@ -25,9 +25,11 @@
 //                   evaluation; never plotted as a per-step series.
 export type QueryClass = 'accumulation' | 'windowed-stat' | 'instant';
 
-// A window token as it appears inside a LogQL range selector `[...]`.
-// Either a Grafana macro or a fixed Prometheus-style duration.
-export type Window = '$__interval' | '$__range' | FixedWindow;
+// A window token as it appears inside a LogQL or PromQL range selector
+// `[...]`. Either a Grafana macro or a fixed Prometheus-style duration.
+// `$__rate_interval` is PromQL-only: Grafana sizes it to at least four scrape
+// intervals so a `rate()` always spans two samples.
+export type Window = '$__interval' | '$__range' | '$__rate_interval' | FixedWindow;
 
 // Fixed durations used across the packs. Kept as a closed union so a typo in a
 // recipe is a compile error rather than a silently-wrong window.
@@ -50,16 +52,27 @@ export interface Expr {
   // titles conventionally omit the window ("p50 / p95", "Log volume by
   // component"), and forcing it in would be noise, not safety.
   readonly pinWindow?: boolean;
+  // Which store answers the expression. Absent means Loki (LogQL). A
+  // `prometheus` expression is PromQL against the Prometheus datasource: the
+  // span metrics Tempo's metrics-generator writes, the relay's own metrics, and
+  // the OTLP metrics export. The panel builders emit the matching target shape
+  // and a panel mixing both stores gets the Grafana "Mixed" datasource.
+  readonly datasource?: 'prometheus';
 }
 
 // True for a concrete duration like `24h` / `5m` / `1d`; false for the Grafana
 // macros `$__interval` and `$__range`, which are step- or range-relative and
 // therefore never overcount.
 export function isFixedWindow(w: Window | null): w is FixedWindow {
-  return w !== null && w !== '$__interval' && w !== '$__range';
+  return w !== null && w !== '$__interval' && w !== '$__range' && w !== '$__rate_interval';
 }
 
 // Loki datasource reference shared by every target and template variable.
 export const LOKI = { type: 'loki', uid: 'loki' } as const;
 // Tempo datasource reference for the forensics dispatch-tree trace panel.
 export const TEMPO = { type: 'tempo', uid: 'tempo' } as const;
+// Prometheus datasource reference: span metrics, relay metrics, OTLP metrics.
+export const PROMETHEUS = { type: 'prometheus', uid: 'prometheus' } as const;
+// Grafana's built-in Mixed datasource, for a panel whose targets read more
+// than one store. Each target then names its own datasource.
+export const MIXED = { type: 'datasource', uid: '-- Mixed --' } as const;

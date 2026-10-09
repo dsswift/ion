@@ -126,6 +126,31 @@ describe('POST /log', () => {
     expect((line?.fields as Record<string, unknown>)?.subject).toBe('web-user-1')
   })
 
+  it('names the authenticated caller as `user` on its log.ingest span, a refused batch too, under http.request', async () => {
+    const token = await signToken(fixture!, { sub: 'web-user-3', aud: 'api://studio-server', scp: 'Studio.Access' })
+    health = startHealth({ port: 0, routes: { '/log': logIngestRoute({ getOidc: () => oidcConfig(), sessions }) } })
+    const bad = await fetch(`${baseUrl(health)}/log`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: 'not json' })
+    expect(bad.status).toBe(400)
+    const good = await fetch(`${baseUrl(health)}/log`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ level: 'INFO', msg: 'span user probe' }),
+    })
+    expect(good.status).toBe(200)
+
+    flushLogs()
+    const lines = readFileSync(join(dataDir!, 'server.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+    const spans = (name: string) => lines.filter((l) => l.tag === 'span' && l.msg === name).map((l): Record<string, unknown> => ({ trace_id: l.trace_id, ...(l.fields as Record<string, unknown>) }))
+    const ingests = spans('log.ingest')
+    expect(ingests).toHaveLength(2)
+    expect(ingests.every((s) => s.user === 'web-user-3')).toBe(true)
+    expect(ingests[1]).toMatchObject({ written: true })
+    const requests = spans('http.request')
+    for (const ingest of ingests) {
+      expect(requests.some((r) => r.span_id === ingest.parent_span_id && r.trace_id === ingest.trace_id)).toBe(true)
+    }
+  })
+
   it('accepts a valid ion_session cookie and appends component:web to server.jsonl', async () => {
     const sessionId = newSessionId()
     sessions.create({

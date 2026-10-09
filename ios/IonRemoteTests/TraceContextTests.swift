@@ -70,14 +70,15 @@ final class TraceContextTests: XCTestCase {
         XCTAssertTrue(TraceContext.isValidTraceId(s.traceId))
     }
 
-    func testThePromptBookClosesTheSpanWithTheServersAnswer() {
+    func testTheActionBookClosesThePromptSpanWithTheServersAnswer() {
         let written = Collected<TraceSpan.Record>()
-        let book = PromptTraceBook { attributes, conversationId in
-            TraceSpan(name: "prompt.send", kind: .client, attributes: attributes, conversationId: conversationId) { written.append($0) }
+        let book = ActionTraceBook { name, attributes, conversationId in
+            TraceSpan(name: name, kind: .client, attributes: attributes, conversationId: conversationId) { written.append($0) }
         }
-        _ = book.open(clientMsgId: "m-1", tabId: "t1", conversationId: "c1")
-        XCTAssertNotNil(book.close(clientMsgId: "m-1", accepted: false, error: "locked"))
-        XCTAssertNil(book.close(clientMsgId: "m-1", accepted: true, error: nil), "a span closes once")
+        _ = book.openPrompt(clientMsgId: "m-1", tabId: "t1", conversationId: "c1")
+        XCTAssertNotNil(book.close(key: "m-1", accepted: false, error: "locked"))
+        XCTAssertNil(book.close(key: "m-1", accepted: true, error: nil), "a span closes once")
+        XCTAssertEqual(written.values.first?.name, "prompt.send")
         XCTAssertEqual(written.values.first?.error, "locked")
         XCTAssertEqual(written.values.first?.attributes["accepted"], "false")
         XCTAssertEqual(written.values.first?.conversationId, "c1")

@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { connect } from 'net'
 import { existsSync, unlinkSync } from 'fs'
 import { log as _log, warn as _warn, error as _error } from '../logger'
+import { withSpan } from '../tracing/op-span'
+import { parseTraceparent } from '@ion/shared/trace-context'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('health', msg, fields)
@@ -103,16 +105,33 @@ function makeRequestHandler(
     // `/auth/login?returnTo=/foo` must still hit the exact `/auth/login`
     // entry `routes` registers.
     const pathname = url.split('?')[0]
+    // One `http.request` span per request, static assets included, from
+    // receipt to the response's end. Ambient while the route runs, so a
+    // route's own span (`log.ingest`) is its child.
+    void withSpan('http.request', { kind: 'server', parent: requestTraceparent(req), attrs: { method: req.method ?? '', path: pathname } }, (_span, ctx) =>
+      new Promise<void>((resolve) => {
+        const end = (outcome: string): void => {
+          ctx.annotate({ status: res.statusCode, outcome })
+          if (outcome === 'aborted') ctx.fail('connection closed before the response ended')
+          resolve()
+        }
+        res.once('finish', () => end('finished'))
+        res.once('close', () => end(res.writableFinished ? 'finished' : 'aborted'))
+        dispatch(req, res, pathname)
+      }))
+  }
+
+  function dispatch(req: IncomingMessage, res: ServerResponse, pathname: string): void {
     const route = routes[pathname]
     if (route) {
       route(req, res)
       return
     }
-    if (url === '/healthz') {
+    if (pathname === '/healthz') {
       writeJson(res, 200, { ok: true })
       return
     }
-    if (url === '/readyz') {
+    if (pathname === '/readyz') {
       const readiness = getReadiness()
       if (readiness.ready) {
         writeJson(res, 200, { ready: true })
@@ -127,6 +146,13 @@ function makeRequestHandler(
     }
     writeJson(res, 404, { error: 'not_found' })
   }
+}
+
+/** The caller's `traceparent` header when it is one, so a browser's fetch span parents this request. */
+function requestTraceparent(req: IncomingMessage): string | undefined {
+  const header = req.headers.traceparent
+  const value = Array.isArray(header) ? header[0] : header
+  return parseTraceparent(value) ? value : undefined
 }
 
 /**

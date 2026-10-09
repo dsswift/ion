@@ -15,6 +15,7 @@ import { projectStudioWorktreeSnapshot } from '../store/session-store-worktree-s
 import { projectStudioConversationTerminals } from '@ion/shared/studio-conversation-terminal-sync'
 import { nextWorktreeRevision, nextTerminalRevision } from '../store/studio-revisions'
 import { useSessionStore } from '../store/sessionStore'
+import { withSpan } from '../tracing/op-span'
 import { projectResolvedModels } from '../store/resolved-model-projection'
 import { engineBridge } from '../state'
 import { log as _log, warn as _warn } from '../logger'
@@ -99,6 +100,10 @@ function buildThinStudioSnapshot(principal: StudioPrincipalSummary): StudioSnaps
 
 /** Build the full first-paint payload for one connecting principal. */
 export function buildStudioSnapshot(principal: StudioPrincipalSummary, view: StudioView = 'mirror'): StudioSnapshot {
+  return withSpan('snapshot.build', { attrs: { view, user: principal.subject } }, () => buildSnapshotNow(principal, view))
+}
+
+function buildSnapshotNow(principal: StudioPrincipalSummary, view: StudioView): StudioSnapshot {
   if (view === 'thin') return buildThinStudioSnapshot(principal)
   const tabs = loadSnapshotTabs().filter((tab) => tabVisibleTo(tab, principal))
   const visible = new Set(tabs.map((tab) => tab.id))
