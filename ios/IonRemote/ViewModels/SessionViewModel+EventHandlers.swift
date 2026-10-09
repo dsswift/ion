@@ -439,8 +439,8 @@ extension SessionViewModel {
         case .fsFileContent(let filePath, let response):
             handleFsFileContent(filePath: filePath, response: response)
 
-        case .fsImageContent(let filePath, let dataUrl, _):
-            handleFsImageContent(filePath: filePath, dataUrl: dataUrl)
+        case .fsImageContent(let filePath, let dataUrl, let error):
+            handleFsImageContent(filePath: filePath, dataUrl: dataUrl, error: error)
 
         case .fsWriteResult(_, let response):
             handleFsWriteResult(response)

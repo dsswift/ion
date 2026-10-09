@@ -15,6 +15,7 @@ final class RemoteImageFetcher {
 
     private var pending: [String: [(UIImage?) -> Void]] = [:]
     private var failed: Set<String> = []
+    private var failureReasons: [String: String] = [:]
 
     private init() {}
 
@@ -47,8 +48,9 @@ final class RemoteImageFetcher {
         viewModel.send(.fsReadImage(filePath: path), intent: .automaticFireAndForget) // re-fires on next render if disconnected
     }
 
-    /// Called by the event handler when `fs_image_content` arrives.
-    func deliver(path: String, dataUrl: String?) {
+    /// Called by the event handler when `fs_image_content` arrives. `error`
+    /// is the reason the desktop gave for sending no image.
+    func deliver(path: String, dataUrl: String?, error: String? = nil) {
         let observers = pending.removeValue(forKey: path) ?? []
         guard let dataUrl, let bytes = decodeDataUrl(dataUrl) else {
             // RC-20: do NOT permanently blacklist. A nil deliver is frequently
@@ -57,13 +59,20 @@ final class RemoteImageFetcher {
             // nil (they render the placeholder for now) but leave `failed` clear
             // so the next render's request retries. A genuinely missing path
             // simply retries cheaply on re-render rather than sticking forever.
+            failureReasons[path] = error
             for cb in observers { cb(nil) }
             return
         }
         failed.remove(path)
         AttachmentImageCache.shared.store(data: bytes, forKey: path)
         let image = UIImage(data: bytes)
+        failureReasons[path] = image == nil ? "Unsupported image format" : nil
         for cb in observers { cb(image) }
+    }
+
+    /// Why the last fetch of `path` produced no image, when a reason is known.
+    func failureReason(for path: String) -> String? {
+        failureReasons[path]
     }
 
     /// Clear transient fetch state on a transport reconnect or unpair. A
@@ -73,6 +82,7 @@ final class RemoteImageFetcher {
     func resetTransientState() {
         failed.removeAll()
         pending.removeAll()
+        failureReasons.removeAll()
     }
 
     private func decodeDataUrl(_ s: String) -> Data? {

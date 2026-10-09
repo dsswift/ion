@@ -55,4 +55,20 @@ final class RemoteImageFetcherRetryTests: XCTestCase {
         resolvedSync = resolved
         XCTAssertFalse(resolvedSync, "resetTransientState must clear failed so a fresh request re-fetches")
     }
+
+    func testFailureReasonIsKeptUntilTheFetchSucceeds() {
+        let fetcher = RemoteImageFetcher.shared
+        fetcher.resetTransientState()
+        let vm = SessionViewModel()
+        let path = "/tmp/img-\(UUID().uuidString).png"
+
+        fetcher.request(path: path, viewModel: vm) { _ in }
+        fetcher.deliver(path: path, dataUrl: nil, error: "Image too large (>10485760 bytes)")
+        XCTAssertEqual(fetcher.failureReason(for: path), "Image too large (>10485760 bytes)")
+
+        let onePx = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        fetcher.request(path: path, viewModel: vm) { _ in }
+        fetcher.deliver(path: path, dataUrl: onePx)
+        XCTAssertNil(fetcher.failureReason(for: path), "a successful fetch clears the old reason")
+    }
 }

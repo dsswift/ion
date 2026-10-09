@@ -32,6 +32,17 @@ struct FsEntry: Codable, Identifiable, Sendable {
         return ext
     }
 
+    /// Extensions the Explorer opens in the image viewer. SVG is absent: it
+    /// is text, and `UIImage` cannot decode it, so the editor shows its source.
+    static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "tiff"
+    ]
+
+    /// True when this entry is a file the image viewer can show.
+    var isImage: Bool {
+        !isDirectory && Self.imageExtensions.contains(fileExtension)
+    }
+
     /// SF Symbol name based on file extension. Delegates to the shared
     /// `FileIcon` map (also used by markdown file-path chips) so the file
     /// explorer and inline chips stay visually consistent.

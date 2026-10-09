@@ -284,6 +284,7 @@
 		A1B2C3D4E5F60001000405AA /* FileExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */; };
 		A1B2C3D4E5F60001000407AA /* FileExplorerRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */; };
 		A1B2C3D4E5F60001000409AA /* FileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000408AA /* FileEditorView.swift */; };
+		A1B2C3D4E5F6000100040BAA /* FileImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100040AAA /* FileImageView.swift */; };
 		A1B2C3D4E5F60001000501AA /* ConnectionQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */; };
 		A1B2C3D4E5F60001000503AA /* ConnectionQualityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */; };
 		CONNHLTH00000000000002 /* ConnectionHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONNHLTH00000000000001 /* ConnectionHealth.swift */; };
@@ -523,6 +524,7 @@
 		A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */; };
 		A1B2C3D4E5F60003000401AB /* TerminalHistoryReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */; };
 		A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */; };
+		A1B2C3D4E5F60003000303AA /* FileExplorerDestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */; };
 		B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */; };
@@ -1292,6 +1294,7 @@
 		A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000408AA /* FileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100040AAA /* FileImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImageView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000500AA /* ConnectionQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionQuality.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionQualityView.swift; sourceTree = "<group>"; };
 		CONNHLTH00000000000001 /* ConnectionHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionHealth.swift; sourceTree = "<group>"; };
@@ -1537,6 +1540,7 @@
 		A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotTerminalInstanceGateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalHistoryReplayTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorReopenTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExplorerDestinationTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineRunStalled.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineCommands.swift"; sourceTree = "<group>"; };
@@ -2328,6 +2332,7 @@
 				A1B2C3D4E5F60001000404AA /* FileExplorerView.swift */,
 				A1B2C3D4E5F60001000406AA /* FileExplorerRowView.swift */,
 				A1B2C3D4E5F60001000408AA /* FileEditorView.swift */,
+				A1B2C3D4E5F6000100040AAA /* FileImageView.swift */,
 				A1B2C3D4E5F60001000502AA /* ConnectionQualityView.swift */,
 				CONNBNRV00000000000001 /* ConnectionBannerView.swift */,
 				A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */,
@@ -2511,6 +2516,7 @@
 				A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */,
 				A1B2C3D4E5F60003000402AB /* TerminalHistoryReplayTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
+				A1B2C3D4E5F60003000304AA /* FileExplorerDestinationTests.swift */,
 				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
 				TGSTEER000000000000008 /* ToolGroupingSteerTests.swift */,
 				AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */,
@@ -3766,6 +3772,7 @@
 				A1B2C3D4E5F60001000405AA /* FileExplorerView.swift in Sources */,
 				A1B2C3D4E5F60001000407AA /* FileExplorerRowView.swift in Sources */,
 				A1B2C3D4E5F60001000409AA /* FileEditorView.swift in Sources */,
+				A1B2C3D4E5F6000100040BAA /* FileImageView.swift in Sources */,
 				A1B2C3D4E5F600010000A0AA /* TerminalOutputRouter.swift in Sources */,
 				A1B2C3D4E5F600010000A2AA /* SwiftTermWrapper.swift in Sources */,
 				A1B2C3D4E5F600010000A2AB /* TerminalReplyGate.swift in Sources */,
@@ -4314,6 +4321,7 @@
 				A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */,
 				A1B2C3D4E5F60003000401AB /* TerminalHistoryReplayTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
+				A1B2C3D4E5F60003000303AA /* FileExplorerDestinationTests.swift in Sources */,
 				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
 				TGSTEER000000000000007 /* ToolGroupingSteerTests.swift in Sources */,
 				AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */,
