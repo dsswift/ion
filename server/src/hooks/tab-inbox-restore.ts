@@ -26,6 +26,9 @@ export function restoreSettledHistoryRecord(record: PersistedTab): TabState {
   return {
     ...makeLocalTab(),
     id: record.id ?? crypto.randomUUID(),
+    // The owner must survive the restart: the next save writes this record
+    // back, and a record saved without one is hidden from its owner.
+    ...(record.principalSubject ? { principalSubject: record.principalSubject } : {}),
     conversationId: record.conversationId,
     historicalSessionIds: record.historicalSessionIds ?? [],
     lastKnownSessionId: record.lastKnownSessionId ?? record.conversationId,
