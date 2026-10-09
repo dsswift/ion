@@ -115,6 +115,17 @@ describe('principalSubjectForTab — corrupt tabs.json degrades to no isolation,
   })
 })
 
+describe('principalSubjectForTab — settled records', () => {
+  it('resolves the owner of a settled conversation by its tab id', () => {
+    writeTabsFile({
+      tabs: [{ id: 't1', conversationId: 'conv-1', principalSubject: 'local:alice' }],
+      settledHistory: [{ id: 't-settled', conversationId: 'conv-old', principalSubject: 'local:bob' }],
+    })
+    expect(principalSubjectForTab('t-settled')).toBe('local:bob')
+    expect(principalSubjectForTab('t1')).toBe('local:alice')
+  })
+})
+
 describe('principalSubjectForConversation — A2b conversation ownership index', () => {
   it('resolves a live tab\'s current conversationId', () => {
     writeTabsFile({ tabs: [{ id: 't1', conversationId: 'conv-1', principalSubject: 'local:alice' }] })

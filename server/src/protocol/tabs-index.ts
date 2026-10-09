@@ -151,7 +151,9 @@ function rebuildPrincipalIndexesIfStale(): void {
   const live = loadSnapshotTabs()
   const settled = loadSnapshotSettledHistory()
 
-  principalIndex = new Map(live.filter(owned).map((t) => [t.id, t.principalSubject]))
+  // A settled conversation keeps its tab id, and it is still its owner's:
+  // the settled list, and restoring from it, resolve ownership by that id.
+  principalIndex = new Map([...settled, ...live].filter(owned).map((t) => [t.id, t.principalSubject]))
 
   for (const [tabId, subject] of liveTabOwners) {
     if (principalIndex.get(tabId) === subject) liveTabOwners.delete(tabId)
@@ -167,8 +169,8 @@ function rebuildPrincipalIndexesIfStale(): void {
 }
 
 /**
- * `tabId -> principalSubject`, rebuilt only when `tabs.json`'s mtime
- * changes. The live `TabState` carries no `principalSubject` field (it is
+ * `tabId -> principalSubject`, for live tabs and settled records alike,
+ * rebuilt only when `tabs.json`'s mtime changes. The live `TabState` carries no `principalSubject` field (it is
  * persisted-only — see the module doc), and re-parsing the file on every
  * `studio_event` (the hot path during token streaming) would not scale, so
  * `events.ts`'s per-event visibility check goes through this cache rather
