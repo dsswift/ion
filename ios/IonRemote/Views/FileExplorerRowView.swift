@@ -108,10 +108,26 @@ struct FileExplorerRowView: View {
 
     // MARK: - File Row
 
+    /// The viewer a tapped file opens in.
+    enum Destination: Equatable {
+        case image
+        case editor
+    }
+
+    static func destination(for entry: FsEntry) -> Destination {
+        entry.isImage ? .image : .editor
+    }
+
     private var fileRow: some View {
         NavigationLink {
-            FileEditorView(filePath: entry.path, fileName: entry.name)
-                .environment(viewModel)
+            switch Self.destination(for: entry) {
+            case .image:
+                FileImageView(filePath: entry.path, fileName: entry.name)
+                    .environment(viewModel)
+            case .editor:
+                FileEditorView(filePath: entry.path, fileName: entry.name)
+                    .environment(viewModel)
+            }
         } label: {
             HStack(spacing: 8) {
                 Spacer()

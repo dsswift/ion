@@ -23,9 +23,9 @@ extension RemoteCommand {
     /// the reconnect flush (see `send(_:intent:)`).
     var essentialKey: String? {
         switch self {
-        case .loadConversation(let tabId, _, _):
+        case .loadConversation(let tabId, _, _, _):
             return "loadConversation:\(tabId)"
-        case .loadDispatchTranscript(_, let conversationId, let dispatchId, _, _):
+        case .loadDispatchTranscript(_, let conversationId, let dispatchId, _, _, _):
             return "loadDispatchTranscript:\(conversationId):\(dispatchId)"
         case .loadAttachments(let tabId):
             return "loadAttachments:\(tabId)"

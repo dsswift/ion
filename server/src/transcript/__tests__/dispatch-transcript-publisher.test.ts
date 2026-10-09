@@ -53,6 +53,7 @@ import {
   type DispatchTranscriptSnapshot,
 } from '../dispatch-transcript-publisher'
 import { TRANSCRIPT_FLUSH_MS } from '../transcript-publisher'
+import { TRANSCRIPT_LINGER_MS, type HeldRevision } from '../transcript-channel'
 import { recordingConnection } from '../../protocol/__tests__/recording-connection'
 
 function roster(status: string): void {
@@ -77,9 +78,11 @@ const file: RawSessionMessage[] = [
   { role: 'tool', content: 'a.ts\nb.ts', toolName: 'Bash', toolId: 't1', toolInput: '{"command":"ls"}', timestamp: 3000 },
 ]
 
-async function open(conn: ReturnType<typeof recordingConnection>['conn'] | null, dispatchId = 'd1', tabId = 'tab-1'): Promise<DispatchTranscriptSnapshot | null> {
+async function open(
+  conn: ReturnType<typeof recordingConnection>['conn'] | null, dispatchId = 'd1', tabId = 'tab-1', held?: HeldRevision,
+): Promise<DispatchTranscriptSnapshot | null> {
   let answer: DispatchTranscriptSnapshot | null = null
-  const owned = await openDispatchTranscript(tabId, 'c1', dispatchId, conn, (s) => { answer = s })
+  const owned = await openDispatchTranscript(tabId, 'c1', dispatchId, conn, (s) => { answer = s }, held)
   return owned ? answer : null
 }
 
@@ -195,13 +198,46 @@ describe('dispatch transcript publisher', () => {
     expect(openDispatchStreams()).toEqual([])
   })
 
-  it('closes the stream when its last subscriber leaves', async () => {
+  it('keeps a stream its last subscriber left, reading nothing, then closes it when nobody resumes it in time', async () => {
     roster('running')
     const { conn } = recordingConnection({ view: 'thin' })
     await open(conn)
-    expect(openDispatchStreams()).toEqual(['dispatch:c1:d1'])
     forgetDispatchSubscriber(conn)
+    expect(openDispatchStreams()).toEqual(['dispatch:c1:d1'])
+    const reads = engine.reads.length
+    await vi.advanceTimersByTimeAsync(TRANSCRIPT_LINGER_MS)
+    expect(engine.reads.length).toBe(reads)
     expect(openDispatchStreams()).toEqual([])
+  })
+
+  it('resumes a client that comes back holding the revision it left with, and patches it from there', async () => {
+    roster('running')
+    const before = recordingConnection({ view: 'thin' })
+    const first = (await open(before.conn))!
+    forgetDispatchSubscriber(before.conn)
+    // The dispatch moves on while the client is away.
+    const push = [running('t2', 4000)]
+    activity(push)
+    await vi.advanceTimersByTimeAsync(TRANSCRIPT_FLUSH_MS)
+
+    const after = recordingConnection({ view: 'thin' })
+    const resumed = (await open(after.conn, 'd1', 'tab-1', { epoch: first.epoch, rev: first.rev }))!
+    expect(resumed).toMatchObject({ resumed: true, epoch: first.epoch, rev: first.rev })
+    await vi.advanceTimersByTimeAsync(0)
+    const got = patches(after.sent)
+    expect(got).toEqual([expect.objectContaining({ baseRev: first.rev, rev: first.rev + 1 })])
+    expect(applyTranscriptChange(first.rows, got[0].change)).toEqual(studioRows(file, push))
+  })
+
+  it('a client that comes back without its revision gets a new epoch and every row', async () => {
+    roster('running')
+    const { conn } = recordingConnection({ view: 'thin' })
+    const first = (await open(conn))!
+    forgetDispatchSubscriber(conn)
+    const again = (await open(recordingConnection({ view: 'thin' }).conn))!
+    expect(again.resumed).toBe(false)
+    expect(again.epoch).not.toBe(first.epoch)
+    expect(again.rows).toEqual(studioRows(file, undefined))
   })
 
   it('keeps two dispatches of one conversation apart', async () => {

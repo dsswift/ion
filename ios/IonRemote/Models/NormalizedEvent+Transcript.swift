@@ -38,7 +38,8 @@ extension RemoteEvent {
                 startIndex: try container.decode(Int.self, forKey: .startIndex),
                 rows: try container.decode([TranscriptRow].self, forKey: .rows).map(\.message),
                 hasOlder: try container.decode(Bool.self, forKey: .hasMore),
-                isNewest: try container.decode(Bool.self, forKey: .isNewest)
+                isNewest: try container.decode(Bool.self, forKey: .isNewest),
+                unchanged: try container.decodeIfPresent(Bool.self, forKey: .unchanged) ?? false
             ))
 
         case .transcriptUnavailable:
@@ -86,6 +87,7 @@ extension RemoteEvent {
             try container.encode(page.rows.map(TranscriptRow.init(message:)), forKey: .rows)
             try container.encode(page.hasOlder, forKey: .hasMore)
             try container.encode(page.isNewest, forKey: .isNewest)
+            if page.unchanged { try container.encode(true, forKey: .unchanged) }
             return true
 
         case .transcriptUnavailable(let tabId, let conversationId, let dispatchId, let isNewest, let reason):

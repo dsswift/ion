@@ -15,6 +15,27 @@ final class TranscriptStreamTests: XCTestCase {
         return (stream, held)
     }
 
+    func testAnUnchangedPageConfirmsTheRevisionHeldAndChangesNothing() {
+        var (stream, rows) = opened([T.row("a", .user), T.row("b")], rev: 3)
+        let before = stream
+        var page = T.page(tabId: "t", rows: [], rev: 3, total: 2)
+        page.unchanged = true
+        XCTAssertEqual(TranscriptStream.apply(page: page, stream: &stream, rows: &rows), .ignored("unchanged"))
+        XCTAssertEqual(rows.map(\.id), ["a", "b"])
+        XCTAssertEqual(stream, before)
+    }
+
+    func testAnUnchangedPageForARevisionNotHeldAsksForASnapshot() {
+        var (stream, rows) = opened([T.row("a", .user)], rev: 3)
+        var page = T.page(tabId: "t", rows: [], rev: 4, total: 1)
+        page.unchanged = true
+        XCTAssertEqual(TranscriptStream.apply(page: page, stream: &stream, rows: &rows), .resync("unchanged_not_held"))
+
+        var none: TranscriptStream?
+        var empty: [Message] = []
+        XCTAssertEqual(TranscriptStream.apply(page: page, stream: &none, rows: &empty), .resync("unchanged_not_held"))
+    }
+
     func testANewestPageReplacesWhateverWasHeld() {
         var (stream, rows) = opened([T.row("a", .user), T.row("b")], rev: 3)
         let outcome = TranscriptStream.apply(page: T.page(tabId: "t", rows: [T.row("x", .user)], rev: 9, epoch: "epoch-2"), stream: &stream, rows: &rows)

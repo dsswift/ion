@@ -156,10 +156,29 @@ async function answerThinBody(conn: Connection, frame: StudioBodyRequestFrame): 
     })
   }
   const newest = frame.before === undefined
-  const snapshot = openTabTranscript(frame.tabId, frame.instanceId, newest ? conn : null)
+  const snapshot = openTabTranscript(frame.tabId, frame.instanceId, newest ? conn : null, newest ? frame.held : undefined)
   if (!snapshot) {
     log('thin body answered empty: no such conversation', { connection_id: conn.id, tab_id: frame.tabId, instance_id: frame.instanceId ?? '' })
     await conn.sendAnswer({ type: 'studio_body', tabId: frame.tabId, instanceId: frame.instanceId, rows: [], hasMore: false, before: frame.before ?? null })
+    return
+  }
+  if (snapshot.resumed) {
+    log('thin body request answered unchanged: the client holds this revision', {
+      connection_id: conn.id, tab_id: frame.tabId, stream_id: snapshot.streamId, rev: snapshot.rev, total: snapshot.rows.length,
+    })
+    const delivered = await conn.sendAnswer({
+      type: 'studio_body',
+      tabId: frame.tabId,
+      instanceId: snapshot.instanceId,
+      rows: [],
+      before: null,
+      streamId: snapshot.streamId,
+      epoch: snapshot.epoch,
+      rev: snapshot.rev,
+      total: snapshot.rows.length,
+      unchanged: true,
+    })
+    if (!delivered) log('thin body answer not delivered', { connection_id: conn.id, tab_id: frame.tabId })
     return
   }
   const page = pageTranscript(snapshot.rows, frame.before, clampTranscriptPageRows(frame.limit))
@@ -206,6 +225,25 @@ async function answerDispatchBody(conn: Connection, frame: StudioBodyRequestFram
   const newest = frame.before === undefined
   let sent: Promise<boolean> | null = null
   const owned = await openDispatchTranscript(frame.tabId, conversationId, dispatchId, newest ? conn : null, (snapshot) => {
+    if (snapshot.resumed) {
+      log('dispatch body request answered unchanged: the client holds this revision', {
+        connection_id: conn.id, tab_id: frame.tabId, stream_id: snapshot.streamId, rev: snapshot.rev, total: snapshot.rows.length,
+      })
+      sent = conn.sendAnswer({
+        type: 'studio_body',
+        tabId: frame.tabId,
+        conversationId,
+        dispatchId,
+        rows: [],
+        before: null,
+        streamId: snapshot.streamId,
+        epoch: snapshot.epoch,
+        rev: snapshot.rev,
+        total: snapshot.rows.length,
+        unchanged: true,
+      })
+      return
+    }
     const page = pageTranscript(snapshot.rows, frame.before, clampTranscriptPageRows(frame.limit))
     log('dispatch body request answered', {
       connection_id: conn.id,
@@ -234,7 +272,7 @@ async function answerDispatchBody(conn: Connection, frame: StudioBodyRequestFram
       total: page.total,
       startIndex: page.startIndex,
     })
-  })
+  }, newest ? frame.held : undefined)
   if (!owned) {
     await conn.sendAnswer({ type: 'studio_body', tabId: frame.tabId, conversationId, dispatchId, rows: [], hasMore: false, before: frame.before ?? null })
     return

@@ -35,7 +35,7 @@ vi.mock('../../persistence/settings-store', () => ({
 }))
 
 import { handleBodyRequest, type StudioBodyRequestFrame } from '../bodies'
-import { _resetTranscriptPublisherForTest } from '../../transcript/transcript-publisher'
+import { _resetTranscriptPublisherForTest, forgetTranscriptSubscriber } from '../../transcript/transcript-publisher'
 import { recordingConnection } from './recording-connection'
 
 const request = (extra: Partial<StudioBodyRequestFrame> = {}): StudioBodyRequestFrame => ({ type: 'studio_body_request', tabId: 'tab-1', ...extra } as StudioBodyRequestFrame)
@@ -72,6 +72,21 @@ describe('handleBodyRequest for a thin connection', () => {
     // Owner-only reducer state never ships.
     expect(frame.rows[1]).not.toHaveProperty('dedupKey')
     expect(frame.rows[2]).not.toHaveProperty('sealed')
+  })
+
+  it('answers unchanged, with no rows, to a client that reconnects holding the current revision', async () => {
+    seed('tab-1', [{ id: 'u1', role: 'user', content: 'hi', timestamp: 1 }])
+    const first = recordingConnection({ view: 'thin' })
+    await handleBodyRequest(first.conn, request({ limit: 100 }))
+    const held = first.sent[0] as { instanceId: string; streamId: string; epoch: string; rev: number; total: number }
+    forgetTranscriptSubscriber(first.conn)
+
+    const second = recordingConnection({ view: 'thin' })
+    await handleBodyRequest(second.conn, request({ limit: 100, held: { epoch: held.epoch, rev: held.rev } }))
+    expect(second.sent).toEqual([{
+      type: 'studio_body', tabId: 'tab-1', instanceId: held.instanceId, rows: [], before: null,
+      streamId: held.streamId, epoch: held.epoch, rev: held.rev, total: 1, unchanged: true,
+    }])
   })
 
   it('pages from the cursor and places the page in the whole transcript', async () => {

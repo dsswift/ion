@@ -470,6 +470,16 @@ revision it holds. Anything else means it missed a patch, and it requests
 the newest page again. After a reconnect it does so for every stream it
 holds, because the subscription belonged to the connection that ended.
 
+**Resume.** A newest-page request may name the revision the client still
+holds: `held: {epoch, rev}`. The server keeps a stream for a while after its
+last subscriber leaves, at the revision that subscriber saw. When `held` is
+that revision, the reply is `studio_body` with `unchanged: true`, an empty
+`rows`, and `streamId`, `epoch`, `rev`, and `total` (no `startIndex`): the
+client keeps its rows, the connection is subscribed, and whatever changed
+since arrives as a patch from `rev`. Any other `held`, or none, is answered
+with the rows as usual. A client names a revision only when it trusts the
+rows it holds: after a reconnect, never after a missed patch.
+
 **Dispatches.** A `studio_body_request` with `conversationId` (and
 `dispatchId` when the agent has one) opens the dispatched agent's stream,
 `dispatch:<conversationId>:<dispatchId>`. Its rows are exactly what Studio's

@@ -12,7 +12,10 @@
  *
  * `epoch` changes whenever the server starts a stream over (a restart, or a
  * stream dropped and reopened), so revision numbers from two different runs
- * can never be mistaken for each other.
+ * can never be mistaken for each other. For the same reason a client that
+ * reconnects may name the `{epoch, rev}` it holds in its snapshot request:
+ * if that is still the stream's revision, the two hold the same rows and
+ * the server sends none.
  */
 import { utf8Bytes, type TranscriptRow } from './transcript-row'
 

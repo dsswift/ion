@@ -31,6 +31,20 @@ export function rowsForThinClients(rows: TranscriptRow[]): TranscriptRow[] {
   return rows.map((row) => (row.role === 'thinking' && row.content !== '' ? { ...row, content: '' } : row))
 }
 
+/**
+ * How long a stream is kept after its last subscriber leaves. A client whose
+ * connection dropped comes back holding the revision it last saw; while the
+ * stream is kept at that revision, the client resumes it instead of being
+ * sent every row again.
+ */
+export const TRANSCRIPT_LINGER_MS = 30 * 60_000
+
+/** The revision of a stream a client says it holds. */
+export interface HeldRevision {
+  epoch: string
+  rev: number
+}
+
 /** What a published stream holds: its identity, revision, rows, and audience. */
 export interface TranscriptChannelCore {
   streamId: string
@@ -38,6 +52,31 @@ export interface TranscriptChannelCore {
   rev: number
   rows: TranscriptRow[]
   subscribers: Set<Connection>
+  /** Set while the stream is kept with no subscribers: the timer that closes it. */
+  linger: ReturnType<typeof setTimeout> | null
+}
+
+/** Whether `held` is exactly the revision the channel last published. */
+export function holdsCurrent(channel: TranscriptChannelCore, held: HeldRevision | undefined): boolean {
+  return held !== undefined && held.epoch === channel.epoch && held.rev === channel.rev
+}
+
+/**
+ * Keep a channel whose last subscriber left, and close it with `close` if
+ * nobody resumes it in time. The owner publishes nothing while it is kept, so
+ * it stays at the revision its last subscriber saw.
+ */
+export function startLinger(channel: TranscriptChannelCore, close: () => void): void {
+  if (channel.linger) return
+  channel.linger = setTimeout(close, TRANSCRIPT_LINGER_MS)
+  channel.linger.unref()
+  log('transcript channel kept for resume', { stream_id: channel.streamId, rev: channel.rev, linger_ms: TRANSCRIPT_LINGER_MS })
+}
+
+export function endLinger(channel: TranscriptChannelCore): void {
+  if (!channel.linger) return
+  clearTimeout(channel.linger)
+  channel.linger = null
 }
 
 /** The fields of a patch that name its stream's owner. */

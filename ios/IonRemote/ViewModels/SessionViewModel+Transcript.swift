@@ -32,8 +32,13 @@ extension SessionViewModel {
     /// for the cases where the one in flight can no longer be trusted: a
     /// reconnect (it went to a connection that is gone), a detected gap, an
     /// explicit retry.
+    ///
+    /// `resume` names the revision held in the request, so a server that
+    /// still has the stream at that revision answers "unchanged" instead of
+    /// sending the rows again. Only a caller that trusts the rows held may
+    /// set it: a reconnect does, a detected gap does not.
     @MainActor
-    func requestTranscript(tabId: String, reason: String, force: Bool = false) {
+    func requestTranscript(tabId: String, reason: String, force: Bool = false, resume: Bool = false) {
         if !force, transcriptResyncing.contains(tabId) {
             DiagnosticLog.log("transcript request already in flight", tag: "transcript", level: .debug, fields: [
                 "tab_id": String(tabId.prefix(16)), "reason": reason
@@ -53,7 +58,10 @@ extension SessionViewModel {
         conversationLoadFailed.remove(tabId)
         // A request queued while disconnected is superseded by this one.
         removeEssential(key: "loadConversation:\(tabId)")
-        send(.loadConversation(tabId: tabId, before: nil, pageSize: Self.transcriptPageRows), intent: .automaticEssential)
+        send(
+            .loadConversation(tabId: tabId, before: nil, pageSize: Self.transcriptPageRows, held: resume ? held?.revision : nil),
+            intent: .automaticEssential
+        )
         startLoadTimer(tabId: tabId)
     }
 
@@ -72,12 +80,13 @@ extension SessionViewModel {
     }
 
     /// Every stream held was subscribed on a connection that is gone. The
-    /// server holds no subscription for the new one, so each is fetched anew.
+    /// server holds no subscription for the new one, so each is asked for
+    /// again, naming the revision held.
     @MainActor
     func resyncAllTranscripts(reason: String) {
         let tabIds = Set(transcriptStreams.keys).union(transcriptResyncing)
         for tabId in tabIds.sorted() {
-            requestTranscript(tabId: tabId, reason: reason, force: true)
+            requestTranscript(tabId: tabId, reason: reason, force: true, resume: true)
         }
     }
 
@@ -121,8 +130,13 @@ extension SessionViewModel {
             "total": String(page.total),
             "newest": String(page.isNewest),
             "outcome": String(describing: outcome),
+            "unchanged": String(page.unchanged),
         ])
         settle(outcome, tabId: tabId)
+        // The server confirmed the revision; the rows it stands for must
+        // still be where the views read them.
+        if page.unchanged { verifyTranscriptWindow(tabId: tabId) }
+        if page.isNewest, speechAwaitingTranscript.remove(tabId) != nil { speakLastAssistantRow(tabId: tabId) }
         restartPendingLoadTimers()
     }
 
@@ -138,6 +152,7 @@ extension SessionViewModel {
         if isNewest {
             transcriptResyncing.remove(tabId)
             loadingConversation.remove(tabId)
+            speechAwaitingTranscript.remove(tabId)
             cancelLoadTimer(tabId: tabId)
             if reason != "no_stream" { conversationLoadFailed.insert(tabId) }
         } else {
@@ -219,6 +234,7 @@ extension SessionViewModel {
         transcriptStreams.removeValue(forKey: tabId)
         transcriptResyncing.remove(tabId)
         transcriptOlderInFlight.remove(tabId)
+        speechAwaitingTranscript.remove(tabId)
         pendingPrompts.removeValue(forKey: tabId)
         loadingConversation.remove(tabId)
         conversationLoadFailed.remove(tabId)

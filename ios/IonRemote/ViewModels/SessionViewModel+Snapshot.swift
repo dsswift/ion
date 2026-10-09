@@ -42,10 +42,9 @@ extension SessionViewModel {
             connectionState = .connected
             cancelReconnectSafetyTimer()
             // RC-20: a reconnect gives the desktop a fresh chance to answer image
-            // fetches, so clear any transient failed/orphaned-pending state that
-            // accrued while disconnected — otherwise an image that failed to fetch
-            // during the outage stays blank forever.
-            RemoteImageFetcher.shared.resetTransientState()
+            // fetches, so ask again for every one still waiting — otherwise an
+            // image requested during the outage stays blank forever.
+            RemoteImageFetcher.shared.retryPending(viewModel: self)
             // The transport is now proven usable (we just got a real
             // snapshot back from the desktop), so release any commands
             // that were deferred via `runWhenConnected` during the
@@ -310,15 +309,12 @@ extension SessionViewModel {
                     "instances": instances.map(\.id).joined(separator: ","),
                     "active": tab.activeConversationInstanceId ?? "nil"
                 ])
-                // Open the transcript of every conversation the phone does
-                // not hold yet, so a conversation renders complete the moment
-                // it is opened. One already held is kept current by patches;
-                // this only checks its rows survived the merge above.
-                if transcriptStreams[tab.id] == nil {
-                    requestTranscript(tabId: tab.id, reason: "snapshot_preload")
-                } else {
-                    verifyTranscriptWindow(tabId: tab.id)
-                }
+                // A transcript is opened when its conversation is, never
+                // here: a snapshot lists every conversation, and fetching
+                // them all is far more than a person reads. One already
+                // held is kept current by patches; this only checks its rows
+                // survived the merge above.
+                verifyTranscriptWindow(tabId: tab.id)
             }
         }
         // Cache layout for the active device so reconnects restore it.

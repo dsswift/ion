@@ -113,7 +113,23 @@ extension SessionViewModel {
         deriveActiveTools(tabId: tabId)
         tabIdleSince[tabId] = Date()
 
-        // TTS: speak the last assistant row of the transcript.
+        // TTS: speak the last assistant row of the transcript. A conversation
+        // not opened on this phone has no rows here yet, so they are fetched
+        // first and spoken when they arrive.
+        if transcriptStreams[tabId] == nil, voiceService.isEnabled {
+            DiagnosticLog.log("voice tts waiting for transcript", tag: "session.voice", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
+            speechAwaitingTranscript.insert(tabId)
+            requestTranscript(tabId: tabId, reason: "completion_speech")
+        } else {
+            speakLastAssistantRow(tabId: tabId)
+        }
+    }
+
+    /// Speak the conversation's last assistant row, if it says enough to be worth hearing.
+    @MainActor
+    func speakLastAssistantRow(tabId: String) {
         let msgs = conversationMessages(tabId)
         let spoken = msgs.last(where: {
             $0.role == .assistant && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

@@ -5,6 +5,11 @@ import Foundation
 /// `rows[0]` is row `startIndex` of `total` at revision `rev`. `isNewest` says
 /// the page is the stream's newest (the reply subscribed this connection to
 /// the stream's patches); otherwise it is an older page, prepended.
+///
+/// `unchanged` says the server confirmed the revision the phone named in its
+/// request is still the stream's current one. Such a page carries no rows and
+/// no window (`rows`, `startIndex`, and `hasOlder` mean nothing on it): the
+/// rows held stand.
 struct TranscriptPage: Sendable {
     var tabId: String
     var instanceId: String
@@ -20,4 +25,5 @@ struct TranscriptPage: Sendable {
     var rows: [Message]
     var hasOlder: Bool
     var isNewest: Bool
+    var unchanged: Bool = false
 }

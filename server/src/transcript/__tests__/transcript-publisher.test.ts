@@ -42,6 +42,7 @@ import {
   openTabTranscript,
   openTranscriptStreams,
 } from '../transcript-publisher'
+import { TRANSCRIPT_LINGER_MS } from '../transcript-channel'
 import { recordingConnection } from '../../protocol/__tests__/recording-connection'
 
 function setRows(tabId: string, rows: Row[]): void {
@@ -135,25 +136,81 @@ describe('transcript publisher', () => {
     expect(openTranscriptStreams()).toEqual([])
   })
 
-  it('closes a stream when its last subscriber leaves, and a reopened one has a new epoch', () => {
+  it('keeps a stream its last subscriber left, then closes it when nobody resumes it in time', () => {
+    setRows('t', [u('a')])
+    const { conn } = recordingConnection({ view: 'thin' })
+    openTabTranscript('t', undefined, conn)
+    forgetTranscriptSubscriber(conn)
+    expect(openTranscriptStreams()).toEqual(['tab:t:main'])
+    vi.advanceTimersByTime(TRANSCRIPT_LINGER_MS)
+    expect(openTranscriptStreams()).toEqual([])
+  })
+
+  it('a client that comes back without its revision gets a new epoch and every row', () => {
     setRows('t', [u('a')])
     const { conn } = recordingConnection({ view: 'thin' })
     const first = openTabTranscript('t', undefined, conn)!
     forgetTranscriptSubscriber(conn)
-    expect(openTranscriptStreams()).toEqual([])
-    const again = openTabTranscript('t', undefined, conn)!
+    const again = openTabTranscript('t', undefined, recordingConnection({ view: 'thin' }).conn)!
+    expect(again).toMatchObject({ resumed: false, rev: 0 })
     expect(again.epoch).not.toBe(first.epoch)
-    expect(again.rev).toBe(0)
   })
 
-  it('drops a subscriber whose connection closed', () => {
+  it('resumes a client that comes back holding the revision it left with, and patches it from there', () => {
+    setRows('t', [u('a')])
+    const before = recordingConnection({ view: 'thin' })
+    const first = openTabTranscript('t', undefined, before.conn)!
+    forgetTranscriptSubscriber(before.conn)
+    // The conversation moves on while the client is away.
+    setRows('t', [u('a'), a('b', 'while you were gone')])
+    vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
+
+    const after = recordingConnection({ view: 'thin' })
+    const resumed = openTabTranscript('t', undefined, after.conn, { epoch: first.epoch, rev: first.rev })!
+    expect(resumed).toMatchObject({ resumed: true, epoch: first.epoch, rev: first.rev })
+    // Nothing is published before the caller has sent its reply.
+    expect(patches(after.sent)).toEqual([])
+    vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
+    const got = patches(after.sent)
+    expect(got).toEqual([expect.objectContaining({ baseRev: first.rev, rev: first.rev + 1, total: 2 })])
+    expect(applyTranscriptChange(first.rows, got[0].change)).toEqual(projectTranscript(store.panes.get('t')!.instances[0].messages as never))
+  })
+
+  it('resumes with no patch when nothing changed while the client was away', () => {
+    setRows('t', [u('a')])
+    const before = recordingConnection({ view: 'thin' })
+    const first = openTabTranscript('t', undefined, before.conn)!
+    forgetTranscriptSubscriber(before.conn)
+    const after = recordingConnection({ view: 'thin' })
+    expect(openTabTranscript('t', undefined, after.conn, { epoch: first.epoch, rev: first.rev })!.resumed).toBe(true)
+    vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
+    expect(patches(after.sent)).toEqual([])
+  })
+
+  it('does not resume a client holding an older revision than the stream published', () => {
+    setRows('t', [u('a')])
+    const stays = recordingConnection({ view: 'thin' })
+    const first = openTabTranscript('t', undefined, stays.conn)!
+    setRows('t', [u('a'), a('b', 'missed')])
+    vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
+    const back = recordingConnection({ view: 'thin' })
+    const snap = openTabTranscript('t', undefined, back.conn, { epoch: first.epoch, rev: first.rev })!
+    expect(snap).toMatchObject({ resumed: false, rev: 1 })
+    expect(snap.rows.map((r) => r.id)).toEqual(['a', 'b'])
+  })
+
+  it('keeps the stream of a subscriber whose connection closed, at the revision it last saw', () => {
     setRows('t', [u('a')])
     const { conn } = recordingConnection({ view: 'thin' })
-    openTabTranscript('t', undefined, conn)
+    const first = openTabTranscript('t', undefined, conn)!
     conn.markClosed()
     setRows('t', [u('a'), a('b', 'c')])
     vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
-    expect(openTranscriptStreams()).toEqual([])
+    setRows('t', [u('a'), a('b', 'cd')])
+    vi.advanceTimersByTime(TRANSCRIPT_FLUSH_MS)
+    const back = recordingConnection({ view: 'thin' })
+    // The refused send counted as a revision the client never received.
+    expect(openTabTranscript('t', undefined, back.conn, { epoch: first.epoch, rev: first.rev })!.resumed).toBe(false)
   })
 
   it('a snapshot taken mid-burst includes the burst, and the next patch builds on it', () => {

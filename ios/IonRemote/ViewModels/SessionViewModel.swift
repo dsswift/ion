@@ -46,6 +46,9 @@ final class SessionViewModel {
     var transcriptResyncing: Set<String> = []
     /// Conversations with an older page asked for and not answered.
     var transcriptOlderInFlight: Set<String> = []
+    /// Conversations whose finished run is spoken once their transcript,
+    /// asked for because the phone did not hold it, arrives.
+    var speechAwaitingTranscript: Set<String> = []
     /// Prompts this phone sent that the server has not made a row for yet,
     /// by tab. See SessionViewModel+PendingPrompts.swift.
     var pendingPrompts: [String: [Message]] = [:]

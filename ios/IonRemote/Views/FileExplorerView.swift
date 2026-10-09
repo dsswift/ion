@@ -10,11 +10,6 @@ struct FileExplorerView: View {
     @State private var expandedPaths: Set<String> = []
     @State private var loaded = false
     @State private var showHidden = false
-    @State private var imagePreview: (image: UIImage, name: String)?
-
-    private static let imageExtensions: Set<String> = [
-        "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp", "tiff"
-    ]
 
     private var directory: String {
         viewModel.tab(for: tabId)?.workingDirectory ?? ""
@@ -98,14 +93,6 @@ struct FileExplorerView: View {
                 expandedPaths.removeAll()
                 refresh()
             }
-            .sheet(isPresented: Binding(
-                get: { imagePreview != nil },
-                set: { if !$0 { imagePreview = nil } }
-            )) {
-                if let preview = imagePreview {
-                    AttachmentImagePreview(image: preview.image, name: preview.name)
-                }
-            }
         }
     }
 
@@ -146,35 +133,15 @@ struct FileExplorerView: View {
 
     // MARK: - Tap Handler
 
+    /// Directory rows expand and collapse here. A file row navigates on its own.
     private func handleTap(_ entry: FsEntry) {
-        if entry.isDirectory {
-            withAnimation(IonTheme.snappySpring) {
-                if expandedPaths.contains(entry.path) {
-                    expandedPaths.remove(entry.path)
-                } else {
-                    expandedPaths.insert(entry.path)
-                    viewModel.requestFsListDir(directory: entry.path, includeHidden: showHidden)
-                }
-            }
-        } else if Self.imageExtensions.contains(entry.fileExtension) {
-            loadImagePreview(entry)
-        }
-    }
-
-    // MARK: - Image Preview
-
-    private func loadImagePreview(_ entry: FsEntry) {
-        Haptic.light()
-        if let cached = AttachmentImageCache.shared.image(forKey: entry.path) {
-            imagePreview = (image: cached, name: entry.name)
-            return
-        }
-        RemoteImageFetcher.shared.request(
-            path: entry.path,
-            viewModel: viewModel
-        ) { image in
-            if let image {
-                imagePreview = (image: image, name: entry.name)
+        guard entry.isDirectory else { return }
+        withAnimation(IonTheme.snappySpring) {
+            if expandedPaths.contains(entry.path) {
+                expandedPaths.remove(entry.path)
+            } else {
+                expandedPaths.insert(entry.path)
+                viewModel.requestFsListDir(directory: entry.path, includeHidden: showHidden)
             }
         }
     }

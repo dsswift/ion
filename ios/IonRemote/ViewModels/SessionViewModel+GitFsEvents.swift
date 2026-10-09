@@ -80,8 +80,8 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleFsImageContent(filePath: String, dataUrl: String?) {
-        RemoteImageFetcher.shared.deliver(path: filePath, dataUrl: dataUrl)
+    func handleFsImageContent(filePath: String, dataUrl: String?, error: String?) {
+        RemoteImageFetcher.shared.deliver(path: filePath, dataUrl: dataUrl, error: error)
     }
 
     @MainActor
