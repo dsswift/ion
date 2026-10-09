@@ -148,6 +148,9 @@ export async function readImageDataUrl(filePath: string, opts: { maxBytes?: numb
         ext.endsWith('.gif') ? 'image/gif' :
         ext.endsWith('.svg') ? 'image/svg+xml' :
         (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) ? 'image/jpeg' :
+        ext.endsWith('.ico') ? 'image/x-icon' :
+        ext.endsWith('.bmp') ? 'image/bmp' :
+        ext.endsWith('.tiff') ? 'image/tiff' :
         null
       if (!mime) return { dataUrl: null, error: 'Unsupported image extension' }
       const limit = typeof opts.maxBytes === 'number' && opts.maxBytes > 0 ? Math.min(Math.floor(opts.maxBytes), IMAGE_DATA_URL_MAX_BYTES) : IMAGE_DATA_URL_MAX_BYTES

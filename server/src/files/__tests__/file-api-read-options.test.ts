@@ -70,6 +70,13 @@ describe('session.readImageDataUrl maxBytes', () => {
     expect(await readImageDataUrl(join(dir, 'dot.png'), { maxBytes: 63 })).toEqual({ dataUrl: null, error: 'Image too large (>63 bytes)' })
   })
 
+  it('embeds every raster format the Explorer opens as an image', async () => {
+    for (const [name, mime] of [['a.ico', 'image/x-icon'], ['a.bmp', 'image/bmp'], ['a.tiff', 'image/tiff']]) {
+      writeFileSync(join(dir, name), Buffer.from([1, 2, 3]))
+      expect((await readImageDataUrl(join(dir, name))).dataUrl).toBe(`data:${mime};base64,AQID`)
+    }
+  })
+
   it('names the reason for a missing file and for a file that is not an image', async () => {
     expect(await readImageDataUrl(join(dir, 'nope.png'))).toEqual({ dataUrl: null, error: 'File not found' })
     expect(await readImageDataUrl(join(dir, 'visible.txt'))).toEqual({ dataUrl: null, error: 'Unsupported image extension' })
