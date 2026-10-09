@@ -10,6 +10,15 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.14.1](https://github.com/dsswift/ion/compare/ios-v2.14.0...ios-v2.14.1) (2026-10-09)
+
+### Bug Fixes
+
+* **ios:** open explorer images in an image viewer ([aa0e96d](https://github.com/dsswift/ion/commit/aa0e96d476d90e86ebe087708fcc6e16ece1f03e))
+* **ios:** keep desktop images in the on-disk cache ([f6ff3c4](https://github.com/dsswift/ion/commit/f6ff3c4692a261cc74b22aa53b4c52865b2761cc))
+* **server:** resume a phone's transcripts after a reconnect ([7a7a1ee](https://github.com/dsswift/ion/commit/7a7a1ee48e7c0651feba04cc3dacfc37b418f4ef))
+* **ios:** load a conversation's transcript when it is opened ([ca0781d](https://github.com/dsswift/ion/commit/ca0781df49d5f07346e1e0890ab4c83e812a8b26))
+
 ## [2.14.0](https://github.com/dsswift/ion/compare/ios-v2.13.0...ios-v2.14.0) (2026-10-09)
 
 ### Features

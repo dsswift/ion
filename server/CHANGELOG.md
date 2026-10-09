@@ -8,6 +8,13 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.15.3](https://github.com/dsswift/ion/compare/server-v1.15.2...server-v1.15.3) (2026-10-09)
+
+### Bug Fixes
+
+* **server:** serve ico, bmp, and tiff to the image viewer ([3e0bccd](https://github.com/dsswift/ion/commit/3e0bccd84e1fab7534612f83b34669b31d81eb2b))
+* **server:** resume a phone's transcripts after a reconnect ([7a7a1ee](https://github.com/dsswift/ion/commit/7a7a1ee48e7c0651feba04cc3dacfc37b418f4ef))
+
 ## [1.15.2](https://github.com/dsswift/ion/compare/server-v1.15.1...server-v1.15.2) (2026-10-09)
 
 ### Bug Fixes
