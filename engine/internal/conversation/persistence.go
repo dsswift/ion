@@ -233,7 +233,7 @@ func saveSplit(conv *Conversation, dir string) error {
 		llmHeader["dispatchTranscriptMirror"] = true
 	}
 	// FR-01/FR-04: the durable owner attribution stamped at mint
-	// (stampPrincipalAtMint). Without this the split (current-format) save
+	// (StampPrincipalAtMint). Without this the split (current-format) save
 	// path silently dropped Principal on every round-trip -- the bare-JSON
 	// legacy format serializes the whole struct and never had this gap.
 	if conv.Principal != nil {

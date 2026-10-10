@@ -212,6 +212,8 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// run has already been cleared by the time the turn is persisted; an empty
 	// value is logged as-is rather than guessed at.
 	turnRunID := s.requestID
+	// Who the turn was run for, stamped on a record this write creates.
+	owner := s.principal
 	// The directory this delegated turn ran in, recorded on the header by the
 	// append below for the same reason as servingModel.
 	workingDirectory := s.config.WorkingDirectory
@@ -369,6 +371,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// so the turn is not lost. Mirrors the backend's loadOrCreate. There is
 		// no on-disk state to race with in this branch.
 		conv := conversation.CreateConversation(convID, "", "")
+		backend.StampPrincipalAtMint(conv, owner)
 		if _, err := appendTurn(conv); err == nil {
 			saveErr = conversation.Save(conv, "")
 		}

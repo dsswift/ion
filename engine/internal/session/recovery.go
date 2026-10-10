@@ -51,11 +51,14 @@ func (m *Manager) recordRunRecovery(s *engineSession, key, requestID string, opt
 	}
 	var userEntryID string
 	err := conversation.UpdateOrCreateOnDisk(s.conversationID, "", func() *conversation.Conversation {
-		return conversation.CreateConversation(s.conversationID, "", opts.Model)
+		created := conversation.CreateConversation(s.conversationID, "", opts.Model)
+		backend.StampPrincipalAtMint(created, opts.Principal)
+		return created
 	}, func(conv *conversation.Conversation) (bool, error) {
 		// This commit is often the conversation's first write, so it stamps the
-		// working directory; a delegated CLI never reaches the API runloop that
-		// would otherwise record it.
+		// owner and the working directory; a delegated CLI never reaches the API
+		// runloop that would otherwise record them.
+		backend.StampPrincipalAtMint(conv, opts.Principal)
 		conversation.SyncWorkingDirectory(conv, opts.ProjectPath, requestID)
 		userEntry := backend.AppendInboundUserMessage(conv, &opts)
 		if userEntry != nil {
