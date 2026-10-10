@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.15.1](https://github.com/dsswift/ion/compare/ios-v2.15.0...ios-v2.15.1) (2026-10-10)
+
+### Bug Fixes
+
+* **ios:** match the collapsed source rows test to the view ([13298ad](https://github.com/dsswift/ion/commit/13298ad6b22124f4b7350acac5b2495e065cc992))
+* **ios:** show the source band only beside another band ([a241587](https://github.com/dsswift/ion/commit/a241587c53b92cd8eb1ad146fedf65312d47a1a8))
+
 ## [2.15.0](https://github.com/dsswift/ion/compare/ios-v2.14.1...ios-v2.15.0) (2026-10-09)
 
 ### Features

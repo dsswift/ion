@@ -1,4 +1,7 @@
 {
+  "2.17.0": [
+    "You can now add a server to a hub directly from the hub's Servers page in Fleet."
+  ],
   "2.16.0": [
     "Fixed a problem where the app could fail to connect to a server after certain updates.",
     "Fixed a problem where a connection issue could leave the app stuck on \"Connecting\" instead of showing that the versions do not match."

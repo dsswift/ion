@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.17.0](https://github.com/dsswift/ion/compare/desktop-v2.16.0...desktop-v2.17.0) (2026-10-10)
+
+### Features
+
+* **server:** add a server to a fleet hub from its page ([3c56f80](https://github.com/dsswift/ion/commit/3c56f80e72c7490d9f688af7ef0451026ab7c96d))
+
+### Bug Fixes
+
+* **desktop:** show the source band only beside another band ([6e06dbd](https://github.com/dsswift/ion/commit/6e06dbd89ee5382b2486f9ed46376d7f50aae623))
+
 ## [2.16.0](https://github.com/dsswift/ion/compare/desktop-v2.15.1...desktop-v2.16.0) (2026-10-09)
 
 ### Features
