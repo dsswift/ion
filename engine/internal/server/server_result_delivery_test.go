@@ -22,12 +22,7 @@ import (
 // of the given capacity, WITHOUT starting a drain goroutine, so the test fully
 // controls when the queue drains.
 func registerClientWithQueue(s *Server, conn net.Conn, stateCap int) *clientWriter {
-	cw := &clientWriter{
-		conn:        conn,
-		stateQueue:  make(chan []byte, stateCap),
-		streamQueue: make(chan []byte, streamQueueSize),
-		done:        make(chan struct{}),
-	}
+	cw := newClientWriter("client-test", conn, stateCap)
 	s.mu.Lock()
 	s.clients[conn] = cw
 	s.mu.Unlock()
