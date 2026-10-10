@@ -132,17 +132,10 @@ struct InboxNavigator {
             var worktreeOrder: [String] = []
             let benchPaths = Set(state?.benches.map(\.benchPath) ?? [])
             let worktreePaths = Set(state?.worktrees.map(\.worktreePath) ?? [])
-            // Desktop parity (inbox-navigator.ts:187): a conversation earns the
-            // Source Repository band only when the project HAS worktree
-            // inventory or a bench. A plain project files its conversations
-            // flat, exactly as the desktop's flatTabs does.
-            //
-            // This used to key on "a state record exists" instead. Every
-            // project with a live conversation gets a record — refreshAllWorktrees
-            // asks for one per project and the desktop always answers, with
-            // empty arrays for a repo that has no worktrees — so a plain project
-            // filed all of its conversations under a band that never rendered.
-            let isManaged = !(state?.worktrees.isEmpty ?? true) || !(state?.benches.isEmpty ?? true)
+            // Conversations in the source checkout itself. Whether they earn
+            // the Source Repository band is decided below, once every band
+            // that could sit beside it is known.
+            var checkoutTabs: [RemoteTabState] = []
             func containedPath(for path: String, paths: Set<String>) -> String? {
                 paths.filter { path == $0 || path.hasPrefix($0 + "/") }.max { $0.count < $1.count }
             }
@@ -164,10 +157,8 @@ struct InboxNavigator {
                     ?? containedPath(for: tab.workingDirectory, paths: worktreePaths) {
                     if worktreeTabs[worktreePath] == nil { worktreeOrder.append(worktreePath) }
                     worktreeTabs[worktreePath, default: []].append(tab)
-                } else if isManaged {
-                    sourceTabs.append(tab)
                 } else {
-                    directTabs.append(tab)
+                    checkoutTabs.append(tab)
                 }
             }
             for worktree in state?.worktrees ?? [] where !worktree.isLanded {
@@ -175,6 +166,17 @@ struct InboxNavigator {
                     worktreeTabs[worktree.worktreePath] = []
                     worktreeOrder.append(worktree.worktreePath)
                 }
+            }
+            // The Source Repository band exists to set the checkout's own
+            // conversations apart from a bench or worktree band. It is earned
+            // only when one of those bands renders: a project whose inventory
+            // holds nothing but landed worktrees has no such band, so its
+            // conversations file flat like any plain project's.
+            let hasSiblingBand = !(state?.benches.isEmpty ?? true) || !worktreeOrder.isEmpty
+            if hasSiblingBand {
+                sourceTabs = checkoutTabs
+            } else {
+                directTabs = checkoutTabs
             }
             // Bench membership is the primary worktree order. Members stay
             // together first in the exact merge order supplied by the desktop.

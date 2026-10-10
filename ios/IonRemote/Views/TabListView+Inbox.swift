@@ -251,9 +251,9 @@ extension TabListView {
                     inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Source Repository", branch: nil, level: 2)
                 }
             }
-            // A plain project — no worktree inventory, no bench — has no band
-            // for its conversations, so they render directly under the header
-            // (the desktop's flatTabs).
+            // A project with no bench band and no worktree band has no band for
+            // its conversations either, so they render directly under the
+            // header.
             ForEach(project.directTabs) { tab in
                 inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: nil, branch: nil, level: 1)
             }

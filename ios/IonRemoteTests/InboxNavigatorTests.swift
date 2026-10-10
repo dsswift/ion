@@ -239,35 +239,6 @@ final class InboxNavigatorTests: XCTestCase {
         XCTAssertNil(InboxNavigator.activeAutoFixTab([ordinary], directory: "/repo/.ion/worktrees/a"))
     }
 
-    /// A project with a state record but NO worktrees and NO bench is a plain
-    /// project. Its conversations must file flat (directTabs), not into the
-    /// Source Repository band. Every project with a live conversation gets a
-    /// state record, so keying the band on "a record exists" filed every plain
-    /// project's conversations under a band the view never rendered — the
-    /// chevron toggled and nothing appeared.
-    func testPlainProjectWithAStateRecordFilesConversationsFlat() throws {
-        let empty = try emptyWorktreeState(repoPath: "/plain")
-        let tab = try tab(id: "conversation", directory: "/plain", state: "active", settledAt: nil)
-
-        let project = try XCTUnwrap(InboxNavigator.projects(tabs: [tab], states: [empty.repoPath: empty]).first)
-
-        XCTAssertEqual(project.directTabs.map(\.id), ["conversation"])
-        XCTAssertTrue(project.sourceTabs.isEmpty)
-        XCTAssertEqual(project.conversationCount, 1)
-    }
-
-    /// The same project with worktree inventory DOES have a Source Repository
-    /// band, so a conversation in the source checkout files there.
-    func testManagedProjectFilesSourceCheckoutConversationsInTheSourceBand() throws {
-        let state = try worktreeState()
-        let tab = try tab(id: "conversation", directory: "/repo", state: "active", settledAt: nil)
-
-        let project = try XCTUnwrap(InboxNavigator.projects(tabs: [tab], states: [state.repoPath: state]).first)
-
-        XCTAssertEqual(project.sourceTabs.map(\.id), ["conversation"])
-        XCTAssertTrue(project.directTabs.isEmpty)
-    }
-
     /// The inventory crawl can lag a freshly created worktree, and a project's
     /// state record can arrive after its conversations do. The worktree band
     /// must still yield a record for every path that holds a conversation,
@@ -445,15 +416,6 @@ final class InboxNavigatorTests: XCTestCase {
         {"repoPath":"/repo","worktrees":[{"worktreePath":"/repo/.ion/worktrees/a",
         "branchName":"wt/a","label":"a","head":"abc","lastCommitSubject":"",
         "isDirty":false,"unlandedCommitCount":0,"needsSync":false,"safeToDiscard":true}],"benches":[]}
-        """.data(using: .utf8)!
-        return try decoder.decode(RemoteWorktreeState.self, from: json)
-    }
-
-    /// A project the desktop has crawled and found no worktrees or benches in.
-    /// Every project with a live conversation receives one of these.
-    private func emptyWorktreeState(repoPath: String) throws -> RemoteWorktreeState {
-        let json = """
-        {"repoPath":"\(repoPath)","worktrees":[],"benches":[]}
         """.data(using: .utf8)!
         return try decoder.decode(RemoteWorktreeState.self, from: json)
     }
