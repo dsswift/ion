@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.16.1](https://github.com/dsswift/ion/compare/ios-v2.16.0...ios-v2.16.1) (2026-10-10)
+
+### Bug Fixes
+
+* **ios:** say a phone lacks admin before it adds a fleet hub ([4a39c80](https://github.com/dsswift/ion/commit/4a39c80cf207de98aebb22bd3a8926a5b608572e))
+
 ## [2.16.0](https://github.com/dsswift/ion/compare/ios-v2.15.1...ios-v2.16.0) (2026-10-10)
 
 ### Features

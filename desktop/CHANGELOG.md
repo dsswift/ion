@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.17.1](https://github.com/dsswift/ion/compare/desktop-v2.17.0...desktop-v2.17.1) (2026-10-10)
+
+### Bug Fixes
+
+* **desktop:** say a device lacks admin before it adds a fleet hub ([e0ceb65](https://github.com/dsswift/ion/commit/e0ceb65296d839b1e35a15ebe8fc6b5178ab823b))
+
 ## [2.17.0](https://github.com/dsswift/ion/compare/desktop-v2.16.0...desktop-v2.17.0) (2026-10-10)
 
 ### Features

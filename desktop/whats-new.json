@@ -1,4 +1,7 @@
 {
+  "2.17.1": [
+    "Fixed a problem where you could fill out the form to add a Fleet hub only to be told at the end that you did not have permission."
+  ],
   "2.17.0": [
     "You can now add a server to a hub directly from the hub's Servers page in Fleet."
   ],
