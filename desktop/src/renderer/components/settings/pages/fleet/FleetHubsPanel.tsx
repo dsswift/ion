@@ -9,8 +9,10 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import type { EnvironmentCatalogEntry } from '@ion/shared/types-environments'
 import type { FleetHubAddRequest, FleetHubState, FleetHubStatus, FleetHubsList } from '@ion/shared/fleet-hub'
+import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
 import { action } from '../../../../host/host-instance'
 import { rInfo, rWarn } from '../../../../rendererLogger'
+import { useEnvironmentSettingsStore } from '../../../../studio/state/environment-settings-store'
 import { Button, Chip, EmptyState, ErrorText, Field, FormGroup, IconButton, MonoLine, Muted, Notice, SidePanel, Stack, Switch, TextInput, type Tone } from '../../kit'
 import { formatAgo } from '../../fleet/fleet-format'
 
@@ -26,10 +28,10 @@ export function FleetHubsPanel({ entry, onClose }: { entry: EnvironmentCatalogEn
   return entry ? <FleetHubsFlow key={entry.id} entry={entry} onClose={onClose} /> : null
 }
 
-function HubRow({ hub, onRemove }: { hub: FleetHubStatus; onRemove(): void }): React.JSX.Element {
+function HubRow({ hub, onRemove }: { hub: FleetHubStatus; onRemove?: () => void }): React.JSX.Element {
   const state = STATE[hub.state]
   return (
-    <FormGroup title={hub.label} actions={hub.source === 'added' ? <IconButton icon={Trash} label={`Stop reporting to ${hub.label}`} onClick={onRemove} /> : undefined}>
+    <FormGroup title={hub.label} actions={hub.source === 'added' && onRemove ? <IconButton icon={Trash} label={`Stop reporting to ${hub.label}`} onClick={onRemove} /> : undefined}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 12px' }}>
         <MonoLine>{hub.url}</MonoLine>
         <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
@@ -51,6 +53,10 @@ function FleetHubsFlow({ entry, onClose }: { entry: EnvironmentCatalogEntry; onC
   const [token, setToken] = useState('')
   const [manage, setManage] = useState(true)
   const [busy, setBusy] = useState(false)
+  // The scopes this connection holds on the server, from its welcome; null until it arrives.
+  const scopes = useEnvironmentSettingsStore((s) => s.byEnvironment[entry.id]?.scopes ?? null)
+  // Changing a server's hubs needs admin there. Unknown scopes leave the form open: the server still decides.
+  const denied = scopes !== null && !scopeSatisfies(scopes, 'admin')
 
   const read = useCallback(() => {
     action(entry.id, 'fleet.hubs.list', [])
@@ -96,9 +102,10 @@ function FleetHubsFlow({ entry, onClose }: { entry: EnvironmentCatalogEntry; onC
         <ErrorText>{error}</ErrorText>
         {list === null ? (error ? null : <Muted>Reading {entry.label}…</Muted>)
           : list.hubs.length === 0 ? <EmptyState title="No hubs." detail={`${entry.label} reports to no hub.`} />
-          : <section aria-label="Hubs"><Stack gap={12}>{list.hubs.map((hub) => <HubRow key={hub.url} hub={hub} onRemove={() => change('fleet.hubs.remove', [{ url: hub.url }])} />)}</Stack></section>}
+          : <section aria-label="Hubs"><Stack gap={12}>{list.hubs.map((hub) => <HubRow key={hub.url} hub={hub} onRemove={denied ? undefined : () => change('fleet.hubs.remove', [{ url: hub.url }])} />)}</Stack></section>}
         <FormGroup title="Add a hub">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}>
+            {denied && <Notice tone="warn">Adding a hub needs admin access on {entry.label}. Pair this device again with a link that grants it. The enrollment token is not what is missing.</Notice>}
             <Field label="Hub address" hint="The address you open the hub's page at.">
               <TextInput aria-label="Hub address" mono value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hub.example.org" />
             </Field>
@@ -109,7 +116,7 @@ function FleetHubsFlow({ entry, onClose }: { entry: EnvironmentCatalogEntry; onC
               <Switch checked={manage} onChange={setManage} label="Let this hub manage the server" />
               Let this hub manage the server: refresh usage, restart, and update it
             </label>
-            <div><Button variant="primary" onClick={add} disabled={busy || !url.trim() || !token.trim()}>Add hub</Button></div>
+            <div><Button variant="primary" onClick={add} disabled={denied || busy || !url.trim() || !token.trim()}>Add hub</Button></div>
           </div>
         </FormGroup>
       </Stack>

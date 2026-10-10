@@ -10,6 +10,7 @@ vi.mock('../../../../host/host-instance', () => ({ host: {}, action }))
 vi.mock('../../../../rendererLogger', () => ({ rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn() }))
 
 const { FleetHubsPanel } = await import('../fleet/FleetHubsPanel')
+const { useEnvironmentSettingsStore } = await import('../../../../studio/state/environment-settings-store')
 
 const local: EnvironmentCatalogEntry = { id: 'local', label: 'This Mac', target: { kind: 'local' } }
 let h: Harness
@@ -19,7 +20,7 @@ function type(label: string, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-beforeEach(() => { h = createHarness(); action.mockReset() })
+beforeEach(() => { h = createHarness(); action.mockReset(); useEnvironmentSettingsStore.setState({ byEnvironment: {} }) })
 afterEach(() => h.unmount())
 
 describe('FleetHubsPanel', () => {
@@ -69,5 +70,19 @@ describe('FleetHubsPanel', () => {
     type('Enrollment token', 't')
     await h.click('Add hub')
     expect(action).toHaveBeenCalledWith('env-w', 'fleet.hubs.add', [{ url: 'hub.example.org', enrollmentToken: 't', manage: true, label: 'win-arm64' }])
+  })
+
+  it('says a connection without admin may not change the hubs, before a token is typed', async () => {
+    const remote: EnvironmentCatalogEntry = { id: 'env-j', label: 'Build box', target: { kind: 'paired', label: 'Build box', url: 'http://vm.example:7331', credentialRef: 'j', via: 'lan' } }
+    useEnvironmentSettingsStore.getState().hydrate('env-j', {}, ['conversations:read', 'conversations:operate'])
+    action.mockImplementation(async () => ({ restricted: false, hubs: [{ url: 'https://hub.home.example.org', label: 'Home hub', source: 'added', manage: true, state: 'connected' }] }))
+    await h.render(<FleetHubsPanel entry={remote} onClose={() => {}} />)
+    await act(async () => { await flush() })
+    expect(document.body.textContent).toContain('Adding a hub needs admin access on Build box.')
+    expect(document.querySelector('[aria-label="Stop reporting to Home hub"]')).toBeNull()
+    type('Hub address', 'hub.example.org')
+    type('Enrollment token', 't')
+    await h.click('Add hub')
+    expect(action).not.toHaveBeenCalledWith('env-j', 'fleet.hubs.add', expect.anything())
   })
 })
