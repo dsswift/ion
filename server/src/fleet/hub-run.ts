@@ -10,7 +10,7 @@ import { currentServerConfig } from '../config/current'
 import { resolveSecretRef } from '../config/secret-ref'
 import { currentEnvironmentId } from '../identity/environment-id'
 import { currentEnterprisePolicy } from '../enterprise-policy-source'
-import { onEnterprisePolicyChange } from '../enterprise-policy-publish'
+import { onEnterprisePolicyChange, settledEnterprisePolicy } from '../enterprise-policy-publish'
 import { dataDir } from '../paths'
 import { pollAccountsNow } from './account-poll'
 import { buildFleetReport, hostDeviceCounts } from './report'
@@ -59,8 +59,18 @@ export function startFleetHubs(): () => void {
   setFleetHubLinks(links)
   links.reconcile()
   const unsubscribe = onEnterprisePolicyChange(() => links.reconcile())
+  // The first read of the policy settles without telling subscribers, and it
+  // can land after the reconcile above. A hub the policy names is joined
+  // once that read is in.
+  let stopped = false
+  void settledEnterprisePolicy().then((policy) => {
+    if (stopped) return
+    log('fleet hubs reconciled after the first policy read', { has_policy: policy !== null })
+    links.reconcile()
+  })
   log('fleet hubs started', { report_seconds: config.fleet.hubReportSeconds })
   return () => {
+    stopped = true
     unsubscribe()
     links.close()
     setFleetHubLinks(null)
