@@ -23,7 +23,7 @@ vi.mock('../../host/host-instance', () => ({
   },
 }))
 vi.mock('../connection/tab-environment', () => ({ environmentOfTab: () => 'local' }))
-vi.mock('../../rendererLogger', () => ({ rDebug: vi.fn(), rWarn: vi.fn() }))
+vi.mock('../../rendererLogger', () => ({ rTrace: vi.fn(), rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn() }))
 
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { initBodySyncFromWire } from './body-sync'

@@ -100,6 +100,10 @@ export function installFakeWire<T extends Record<string, unknown>>(stub: T): T {
     hostGetDeviceSettings: async () => ({}),
     hostSetDeviceSetting: async () => ({ ok: true as const }),
     onHostConnections: () => () => {},
+    // The renderer reports its round-trip time for every action result
+    // before resolving it. A wire with no sink for that report would throw
+    // inside the result listener and leave the action waiting forever.
+    hostNoteActionTiming: () => {},
     ...stub,
 
     hostSendFrame(environmentId: string, frame: StudioFrame): void {
