@@ -17,7 +17,7 @@ import { join } from 'path'
 
 vi.mock('../../logger', () => ({ log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }))
 
-import { createHiddenAttributeProbe, type HiddenAttributeProbe } from '../hidden-attribute-probe'
+import { createHiddenAttributeProbe, PROBE_READY_LINE, type HiddenAttributeProbe } from '../hidden-attribute-probe'
 
 interface FakeHelper extends EventEmitter {
   stdin: PassThrough
@@ -27,9 +27,14 @@ interface FakeHelper extends EventEmitter {
   unref: () => void
 }
 
-/** A helper that answers each request line through `answer`, or stays silent when it returns null. */
-function fakeSpawn(answer: (id: string, directory: string) => string | null) {
-  const helpers: FakeHelper[] = []
+/**
+ * A helper that answers each request line through `answer`, or stays silent
+ * when it returns null. It reports ready at once unless `silentStart` is
+ * set; then `helper.ready()` reports it, and answers to requests written
+ * before that are held until then, as a shell still starting holds them.
+ */
+function fakeSpawn(answer: (id: string, directory: string) => string | null, { silentStart = false } = {}) {
+  const helpers: Array<FakeHelper & { ready: () => void }> = []
   const spawn = vi.fn(() => {
     const helper = Object.assign(new EventEmitter(), {
       stdin: new PassThrough(),
@@ -37,7 +42,15 @@ function fakeSpawn(answer: (id: string, directory: string) => string | null) {
       stderr: new PassThrough(),
       pid: 4242 + helpers.length,
       unref: () => undefined,
-    }) as FakeHelper
+      ready: () => {
+        helper.stdout.write(`${PROBE_READY_LINE}\n`)
+        running = true
+        for (const reply of held.splice(0)) helper.stdout.write(`${reply}\n`)
+      },
+    }) as FakeHelper & { ready: () => void }
+    let running = false
+    const held: string[] = []
+    if (!silentStart) helper.ready()
     let buffered = ''
     helper.stdin.on('data', (chunk: Buffer) => {
       buffered += chunk.toString('utf-8')
@@ -46,7 +59,9 @@ function fakeSpawn(answer: (id: string, directory: string) => string | null) {
       for (const line of lines) {
         const [id, encoded] = line.split(' ')
         const reply = answer(id, Buffer.from(encoded, 'base64').toString('utf-8'))
-        if (reply !== null) helper.stdout.write(`${reply}\n`)
+        if (reply === null) continue
+        if (running) helper.stdout.write(`${reply}\n`)
+        else held.push(reply)
       }
     })
     helper.stdin.on('end', () => helper.emit('exit', 0, null))
@@ -107,6 +122,31 @@ describe('hidden attribute probe', () => {
     const answer = probe.hiddenNames('C:\\slow')
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await answer).toEqual(new Set())
+  })
+
+  it('does not count a slow helper start against the answer wait', async () => {
+    vi.useFakeTimers()
+    const { spawn, helpers } = fakeSpawn((id, directory) => ok(id, directory.endsWith('Users') ? ['AppData'] : []), { silentStart: true })
+    const probe = probeWith({ platform: 'win32', spawn: spawn as never, requestTimeoutMs: 1_000, startTimeoutMs: 10_000 })
+    let settled = false
+    const answer = probe.hiddenNames('C:\\Users').then((names) => { settled = true; return names })
+    // Longer than the answer wait, but the helper is still starting.
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(settled).toBe(false)
+    helpers[0].ready()
+    expect(await answer).toEqual(new Set(['AppData']))
+  })
+
+  it('stops a helper that never reports ready and answers its listings', async () => {
+    vi.useFakeTimers()
+    const { spawn, helpers } = fakeSpawn(() => null, { silentStart: true })
+    const probe = probeWith({ platform: 'win32', spawn: spawn as never, requestTimeoutMs: 1_000, startTimeoutMs: 10_000 })
+    const ended = vi.fn()
+    const answer = probe.hiddenNames('C:\\a')
+    helpers[0].stdin.on('finish', ended)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await answer).toEqual(new Set())
+    expect(ended).toHaveBeenCalled()
   })
 
   it('answers waiting listings when the helper dies, and does not restart it per listing', async () => {

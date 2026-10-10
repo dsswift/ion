@@ -15,6 +15,11 @@
  * decides how PowerShell decodes and encodes raw text, and a name outside
  * that code page would otherwise arrive as a different name.
  *
+ * The helper says `ready` once its program is running. A request's wait
+ * starts then, not when it was written: PowerShell takes seconds to start
+ * cold, and a wait that began at the write would expire during the start
+ * and render the first listings unhidden.
+ *
  * A failure resolves to an empty set rather than rejecting: losing the
  * dimming on a directory is a cosmetic degradation, while failing the
  * listing would empty the tree.
@@ -28,23 +33,31 @@ function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, ms
 function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
-/** Longest a single answer is waited for before the listing goes ahead without it. */
+/** Longest a single answer is waited for, once the helper is ready, before the listing goes ahead without it. */
 export const PROBE_REQUEST_TIMEOUT_MS = 5_000
+/** Longest a helper is given to report ready before it is stopped and the waiting listings go ahead. */
+export const PROBE_START_TIMEOUT_MS = 30_000
 /** The helper exits after this long with nothing asked of it. */
 export const PROBE_IDLE_EXIT_MS = 10 * 60_000
 /** Shortest gap between two helper starts, so a helper that cannot run is not restarted per listing. */
 export const PROBE_RESTART_GAP_MS = 5_000
 
+/** The line the helper prints once its program is running and reading requests. */
+export const PROBE_READY_LINE = 'ready'
+
 /**
- * The helper's whole program. One request per line, `<id> <base64 path>`;
- * one answer per line, `<id> ok <base64 names joined by LF>` or
- * `<id> err <base64 message>`. Written for Windows PowerShell 5.1, which is
- * what `powershell.exe` is on every supported Windows.
+ * The helper's whole program. It prints `ready` first. Then one request per
+ * line, `<id> <base64 path>`; one answer per line,
+ * `<id> ok <base64 names joined by LF>` or `<id> err <base64 message>`.
+ * Written for Windows PowerShell 5.1, which is what `powershell.exe` is on
+ * every supported Windows.
  */
 export const PROBE_SCRIPT = [
   '$utf8 = New-Object System.Text.UTF8Encoding($false)',
   '$stdin = [Console]::In',
   '$stdout = [Console]::Out',
+  `$stdout.WriteLine('${PROBE_READY_LINE}')`,
+  '$stdout.Flush()',
   'while ($true) {',
   '  $line = $stdin.ReadLine()',
   '  if ($null -eq $line) { break }',
@@ -81,6 +94,7 @@ export interface HiddenAttributeProbeDeps {
   shell?: string
   spawn?: typeof nodeSpawn
   requestTimeoutMs?: number
+  startTimeoutMs?: number
   idleExitMs?: number
   restartGapMs?: number
   now?: () => number
@@ -89,8 +103,17 @@ export interface HiddenAttributeProbeDeps {
 interface Pending {
   directory: string
   resolve: (names: Set<string>) => void
-  timer: ReturnType<typeof setTimeout>
+  /** Armed once the helper is ready; null while it is still starting. */
+  timer: ReturnType<typeof setTimeout> | null
   startedAt: number
+}
+
+/** One helper process and what is known about it. */
+interface Helper {
+  child: ChildProcessWithoutNullStreams
+  ready: boolean
+  startedAt: number
+  startTimer: ReturnType<typeof setTimeout>
 }
 
 export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}): HiddenAttributeProbe {
@@ -98,11 +121,12 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
   const shell = deps.shell ?? 'powershell.exe'
   const spawn = deps.spawn ?? nodeSpawn
   const requestTimeoutMs = deps.requestTimeoutMs ?? PROBE_REQUEST_TIMEOUT_MS
+  const startTimeoutMs = deps.startTimeoutMs ?? PROBE_START_TIMEOUT_MS
   const idleExitMs = deps.idleExitMs ?? PROBE_IDLE_EXIT_MS
   const restartGapMs = deps.restartGapMs ?? PROBE_RESTART_GAP_MS
   const now = deps.now ?? Date.now
 
-  let helper: ChildProcessWithoutNullStreams | null = null
+  let helper: Helper | null = null
   let lastStartAt = -Infinity
   let nextId = 1
   let idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -112,8 +136,16 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
     const entry = pending.get(id)
     if (!entry) return
     pending.delete(id)
-    clearTimeout(entry.timer)
+    if (entry.timer) clearTimeout(entry.timer)
     entry.resolve(names)
+  }
+
+  /** Starts the answer wait for one request. Only once the helper is ready. */
+  function armRequestTimeout(id: string, entry: Pending): void {
+    entry.timer = setTimeout(() => {
+      warn('no answer in time; entries render unhidden', { directory: entry.directory, timeout_ms: requestTimeoutMs })
+      settle(id, new Set())
+    }, requestTimeoutMs)
   }
 
   function settleAll(reason: string): void {
@@ -133,12 +165,28 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
   }
 
   /** Closing stdin ends the helper's read loop, which is how it exits cleanly. */
-  function stop(child: ChildProcessWithoutNullStreams): void {
-    if (helper === child) helper = null
-    child.stdin.end()
+  function stop(current: Helper): void {
+    if (helper === current) helper = null
+    clearTimeout(current.startTimer)
+    current.child.stdin.end()
   }
 
-  function onAnswer(line: string): void {
+  function onReady(current: Helper): void {
+    if (current.ready) {
+      debug('helper reported ready again', { pid: current.child.pid })
+      return
+    }
+    current.ready = true
+    clearTimeout(current.startTimer)
+    log('helper ready', { pid: current.child.pid, start_ms: now() - current.startedAt, waiting: pending.size })
+    for (const [id, entry] of pending) if (!entry.timer) armRequestTimeout(id, entry)
+  }
+
+  function onAnswer(current: Helper, line: string): void {
+    if (line.trim() === PROBE_READY_LINE) {
+      onReady(current)
+      return
+    }
     const [id, status, body = ''] = line.trim().split(' ')
     const entry = pending.get(id)
     if (!entry) {
@@ -156,7 +204,7 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
     settle(id, names)
   }
 
-  function start(): ChildProcessWithoutNullStreams | null {
+  function start(): Helper | null {
     const at = now()
     if (at - lastStartAt < restartGapMs) {
       debug('helper start skipped, the last start was too recent', { since_last_start_ms: at - lastStartAt })
@@ -178,39 +226,57 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
     child.unref()
     for (const stream of [child.stdin, child.stdout, child.stderr]) (stream as unknown as { unref?: () => void }).unref?.()
 
-    createInterface({ input: child.stdout }).on('line', onAnswer)
+    const current: Helper = {
+      child,
+      ready: false,
+      startedAt: at,
+      // A helper that never reports ready is stopped, so the listings it
+      // holds go ahead and the next listing (after the restart gap) tries a
+      // fresh one. Shell startup is the only thing this timer covers.
+      startTimer: setTimeout(() => {
+        if (current.ready) return
+        warn('helper did not report ready in time; stopping it', { shell, pid: child.pid, timeout_ms: startTimeoutMs })
+        stop(current)
+        settleAll('helper did not start')
+      }, startTimeoutMs),
+    }
+    current.startTimer.unref?.()
+
+    createInterface({ input: child.stdout }).on('line', (line) => onAnswer(current, line))
     child.stderr.on('data', (chunk: Buffer) => debug('helper stderr', { text: chunk.toString('utf-8').slice(0, 500) }))
     child.stdin.on('error', (err) => debug('helper stdin errored', { error: String(err) }))
     child.on('error', (err) => {
       warn('helper errored', { shell, error: String(err) })
-      if (helper === child) helper = null
+      clearTimeout(current.startTimer)
+      if (helper === current) helper = null
       settleAll('helper errored')
     })
     child.on('exit', (code, signal) => {
-      log('helper exited', { code, signal })
-      if (helper === child) {
+      log('helper exited', { code, signal, ready: current.ready })
+      clearTimeout(current.startTimer)
+      if (helper === current) {
         helper = null
         settleAll('helper exited')
       }
     })
     log('helper started', { shell, pid: child.pid })
-    return child
+    return current
   }
 
   return {
     hiddenNames(directory: string): Promise<Set<string>> {
       if (platform !== 'win32') return Promise.resolve(new Set())
       helper ??= start()
-      const child = helper
-      if (!child) return Promise.resolve(new Set())
+      const current = helper
+      if (!current) return Promise.resolve(new Set())
       return new Promise((resolve) => {
         const id = String(nextId++)
-        const timer = setTimeout(() => {
-          warn('no answer in time; entries render unhidden', { directory, timeout_ms: requestTimeoutMs })
-          settle(id, new Set())
-        }, requestTimeoutMs)
-        pending.set(id, { directory, resolve, timer, startedAt: now() })
-        child.stdin.write(`${id} ${Buffer.from(directory, 'utf-8').toString('base64')}\n`)
+        const entry: Pending = { directory, resolve, timer: null, startedAt: now() }
+        pending.set(id, entry)
+        // The request is written now; the pipe holds it until the helper
+        // reads. The wait for its answer starts when the helper is ready.
+        if (current.ready) armRequestTimeout(id, entry)
+        current.child.stdin.write(`${id} ${Buffer.from(directory, 'utf-8').toString('base64')}\n`)
         armIdleExit()
       })
     },
@@ -218,8 +284,8 @@ export function createHiddenAttributeProbe(deps: HiddenAttributeProbeDeps = {}):
     dispose(): void {
       if (idleTimer) clearTimeout(idleTimer)
       idleTimer = null
-      const child = helper
-      if (child) stop(child)
+      const current = helper
+      if (current) stop(current)
       settleAll('probe disposed')
     },
   }
