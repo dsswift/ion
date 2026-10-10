@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.24](https://github.com/dsswift/ion/compare/sdk/go-v0.1.23...sdk/go-v0.1.24) (2026-10-10)
+
+### Features
+
+* **sdk:** carry the hook span id in the go context (#499) ([ad1e4e6](https://github.com/dsswift/ion/commit/ad1e4e67595b1e2eafc017f79d2c3266d61a5a2d))
+
 ## [0.1.23](https://github.com/dsswift/ion/compare/sdk/go-v0.1.22...sdk/go-v0.1.23) (2026-10-05)
 
 ### Features

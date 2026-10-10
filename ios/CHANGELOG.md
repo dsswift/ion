@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.16.2](https://github.com/dsswift/ion/compare/ios-v2.16.1...ios-v2.16.2) (2026-10-10)
+
+### Bug Fixes
+
+* **ios:** rewrite the default span writer for the compiler (#502) ([e7ad2b0](https://github.com/dsswift/ion/commit/e7ad2b0831c1b65efd6e7df3e9d0b9513e8e583e))
+
 ## [2.16.1](https://github.com/dsswift/ion/compare/ios-v2.16.0...ios-v2.16.1) (2026-10-10)
 
 ### Bug Fixes

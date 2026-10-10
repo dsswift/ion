@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.17.2](https://github.com/dsswift/ion/compare/desktop-v2.17.1...desktop-v2.17.2) (2026-10-10)
+
+### Bug Fixes
+
+* **desktop:** fix test wire, logger mock, and profile path (#500) ([cbe2db0](https://github.com/dsswift/ion/commit/cbe2db0cba75a6dc086c0cb38c72846f523490bd))
+
 ## [2.17.1](https://github.com/dsswift/ion/compare/desktop-v2.17.0...desktop-v2.17.1) (2026-10-10)
 
 ### Bug Fixes

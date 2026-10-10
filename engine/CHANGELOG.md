@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.101.1](https://github.com/dsswift/ion/compare/engine-v1.101.0...engine-v1.101.1) (2026-10-10)
+
+### Bug Fixes
+
+* **engine:** flush client results before stop closes it (#498) ([312f75f](https://github.com/dsswift/ion/commit/312f75fb2cbe5a30cee714f00aaed4819ce812cf))
+* **engine:** make provider tests platform-neutral (#498) ([bfbc56e](https://github.com/dsswift/ion/commit/bfbc56ef4777852b60c1b87fffccafeb1f4efcf4))
+
 ## [1.101.0](https://github.com/dsswift/ion/compare/engine-v1.100.4...engine-v1.101.0) (2026-10-09)
 
 ### Features

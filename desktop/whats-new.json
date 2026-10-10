@@ -1,4 +1,8 @@
 {
+  "2.17.2": [
+    "Fixed a problem where some items showed the wrong name the first time a list loaded.",
+    "Fixed a problem where the app could sometimes stop responding when it was closing."
+  ],
   "2.17.1": [
     "Fixed a problem where you could fill out the form to add a Fleet hub only to be told at the end that you did not have permission."
   ],
