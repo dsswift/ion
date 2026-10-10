@@ -247,6 +247,21 @@ final class FleetModelTests: XCTestCase {
         XCTAssertNil(FleetView.hubLine(nil))
     }
 
+    func testAddingAHubSaysThePhoneLacksAdminBeforeATokenIsTyped() {
+        let limited = ServerAdminAccess(serverLabel: "Build box", scopes: ["conversations:read", "conversations:operate"])
+        XCTAssertFalse(limited.allows(.fleetHubsAdd))
+        XCTAssertFalse(limited.allows(.fleetHubsRemove))
+        XCTAssertTrue(limited.allows(.fleetHubsList))
+        XCTAssertEqual(
+            FleetHubsContent.addFooter(denial: limited.denialReason(.fleetHubsAdd)),
+            "Needs admin access on Build box. Pair again with a link that grants it. The enrollment token is not what is missing."
+        )
+
+        let admin = ServerAdminAccess(serverLabel: "Build box", scopes: ["conversations:read", "admin"])
+        XCTAssertTrue(admin.allows(.fleetHubsAdd))
+        XCTAssertTrue(FleetHubsContent.addFooter(denial: admin.denialReason(.fleetHubsAdd)).hasPrefix("The token comes from the hub's own configuration."))
+    }
+
     func testTheHubsOfAServerDecodeWithWhichCanBeRemoved() throws {
         let list = try value("""
         {"restricted":true,"hubs":[

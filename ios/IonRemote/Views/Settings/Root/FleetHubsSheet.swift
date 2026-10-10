@@ -70,7 +70,7 @@ struct FleetHubsContent: View {
                 ForEach(list.hubs) { hub in
                     FleetHubRow(hub: hub)
                         .swipeActions(edge: .trailing) {
-                            if hub.removable {
+                            if hub.removable, session.allows(.fleetHubsRemove) {
                                 Button(role: .destructive) {
                                     Task { await change { try await session.client.removeFleetHub(url: hub.url) } }
                                 } label: {
@@ -114,8 +114,15 @@ struct FleetHubsContent: View {
         } header: {
             Text("Add a Hub")
         } footer: {
-            Text("The token comes from the hub's own configuration. It is used once. A hub that manages the server can refresh its usage, restart it, and update it.")
+            Text(Self.addFooter(denial: session.denialReason(.fleetHubsAdd)))
         }
+        .disabled(!session.allows(.fleetHubsAdd))
+    }
+
+    /// The line under the add form: why this phone may not add a hub, or where the token comes from.
+    static func addFooter(denial: String?) -> String {
+        if let denial { return "\(denial) The enrollment token is not what is missing." }
+        return "The token comes from the hub's own configuration. It is used once. A hub that manages the server can refresh its usage, restart it, and update it."
     }
 
     private func read() async {
