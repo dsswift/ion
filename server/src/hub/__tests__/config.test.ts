@@ -1,6 +1,7 @@
 /**
  * `hub.json`: the views the hub's page shows are each on unless the file
- * turns one off, and a value that is not true or false leaves it on.
+ * turns one off, and a value that is not true or false leaves it on. A token
+ * made on the page lasts as long as the file says, or the default.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
@@ -9,7 +10,7 @@ import { join } from 'path'
 
 vi.mock('../../logger', () => ({ log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }))
 
-import { loadHubConfig } from '../config'
+import { DEFAULT_ENROLLMENT_TOKEN_MINUTES, loadHubConfig } from '../config'
 
 let dir: string
 const load = (json: unknown): ReturnType<typeof loadHubConfig> => {
@@ -32,5 +33,17 @@ describe('loadHubConfig views', () => {
 
   it('keeps Quota on when the value is not true or false', () => {
     expect(load({ views: { quota: 'no' } }).views).toEqual({ quota: true })
+  })
+})
+
+describe('loadHubConfig enrollment', () => {
+  it('gives a token made on the page the default life unless hub.json sets one', () => {
+    expect(loadHubConfig(dir).enrollmentTokenMinutes).toBe(DEFAULT_ENROLLMENT_TOKEN_MINUTES)
+    expect(load({ enrollment: { tokenMinutes: 5 } }).enrollmentTokenMinutes).toBe(5)
+  })
+
+  it('keeps the default when the value is not a number above zero', () => {
+    expect(load({ enrollment: { tokenMinutes: 0 } }).enrollmentTokenMinutes).toBe(DEFAULT_ENROLLMENT_TOKEN_MINUTES)
+    expect(load({ enrollment: { tokenMinutes: 'soon' } }).enrollmentTokenMinutes).toBe(DEFAULT_ENROLLMENT_TOKEN_MINUTES)
   })
 })

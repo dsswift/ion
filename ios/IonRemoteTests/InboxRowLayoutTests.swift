@@ -127,7 +127,7 @@ final class InboxRowLayoutTests: XCTestCase {
     /// working rows, as every other group does. It used to hide all of them.
     func testCollapsedSourceGroupKeepsItsPinnedRows() throws {
         let source = try viewSource("TabListView+Inbox.swift")
-        XCTAssertTrue(source.contains("InboxNavigator.collapsedRows(project.sourceTabs, activeTabId: currentTabId)"))
+        XCTAssertTrue(source.contains("InboxNavigator.collapsedRows(project.sourceTabs, activeTabId: selectedTabId)"))
     }
 
     func testPinnedRowSurvivesCollapse() throws {

@@ -8,7 +8,7 @@ import type { AddressInfo } from 'net'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import WebSocket from 'ws'
-import type { HubFleet } from '@ion/shared/fleet-hub'
+import type { HubEnrollmentToken, HubFleet } from '@ion/shared/fleet-hub'
 import type { FleetReport } from '@ion/shared/types-fleet'
 
 vi.mock('../../logger', () => ({ log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }))
@@ -29,7 +29,7 @@ let links: HubLink[]
 let base: string
 
 async function boot(config: Partial<HubConfig> = {}): Promise<void> {
-  hub = startHub({ dir, webDir: dir, config: { label: 'Test hub', listen: { port: 0, host: '127.0.0.1' }, oidc: null, enrollmentTokens: [TOKEN], views: { quota: true }, ...config } })
+  hub = startHub({ dir, webDir: dir, config: { label: 'Test hub', listen: { port: 0, host: '127.0.0.1' }, oidc: null, enrollmentTokens: [TOKEN], enrollmentTokenMinutes: 30, views: { quota: true }, ...config } })
   await new Promise<void>((resolve) => hub.server.once('listening', () => resolve()))
   base = `http://127.0.0.1:${(hub.server.address() as AddressInfo).port}`
 }
@@ -67,6 +67,8 @@ async function until(check: () => boolean | Promise<boolean>, what: string): Pro
 const fleet = async (headers: Record<string, string> = {}): Promise<HubFleet> => (await fetch(`${base}/api/fleet`, { headers })).json() as Promise<HubFleet>
 const act = (id: string, body: unknown, headers: Record<string, string> = { 'x-ion-hub': '1' }): Promise<Response> =>
   fetch(`${base}/api/servers/${id}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+
+const issue = (headers: Record<string, string> = { 'x-ion-hub': '1' }): Promise<Response> => fetch(`${base}/api/enrollment-tokens`, { method: 'POST', headers })
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'ion-hub-test-'))
@@ -183,6 +185,47 @@ describe('a server reporting to a hub', () => {
     expect(l.status().detail).toContain('removed')
     expect(credential.value).toBeNull()
     expect((await fleet()).servers).toEqual([])
+  })
+})
+
+describe('an enrollment token made on the hub\'s page', () => {
+  it('lets one server join a hub that has none in hub.json, and no second server after it', async () => {
+    await boot({ enrollmentTokens: [] })
+    const issued = await (await issue()).json() as HubEnrollmentToken
+    expect(issued.token.length).toBeGreaterThan(20)
+    expect(issued.expiresAt).toBeGreaterThan(Date.now())
+    const first = link({ enrollmentToken: issued.token })
+    await until(() => first.link.status().state === 'connected', 'the first server')
+    expect(first.credential.value).toBeTruthy()
+    const second = link({ enrollmentToken: issued.token, environmentId: 'env-2', label: 'server two' })
+    await until(() => second.link.status().state === 'refused', 'the second server to be turned away')
+    expect((await fleet()).servers.map((s) => s.id)).toEqual(['env-1'])
+  })
+
+  it('is a new one each time, and is made only for the hub\'s own page', async () => {
+    await boot()
+    const one = await (await issue()).json() as HubEnrollmentToken
+    const two = await (await issue()).json() as HubEnrollmentToken
+    expect(one.token).not.toBe(two.token)
+    expect((await issue({})).status).toBe(403)
+    expect((await issue({ 'x-ion-hub': '1', origin: 'https://elsewhere.example.org' })).status).toBe(403)
+    expect((await fetch(`${base}/api/enrollment-tokens`, { headers: { 'x-ion-hub': '1' } })).status).toBe(405)
+  })
+
+  it('stops working once its time is up', async () => {
+    await boot({ enrollmentTokens: [], enrollmentTokenMinutes: 0 })
+    const issued = await (await issue()).json() as HubEnrollmentToken
+    const { link: l } = link({ enrollmentToken: issued.token })
+    await until(() => l.status().state === 'refused', 'the server to be turned away')
+  })
+
+  it('still works after the hub restarts', async () => {
+    await boot({ enrollmentTokens: [] })
+    const issued = await (await issue()).json() as HubEnrollmentToken
+    await hub.close()
+    await boot({ enrollmentTokens: [] })
+    const { link: l } = link({ enrollmentToken: issued.token })
+    await until(() => l.status().state === 'connected', 'the server')
   })
 })
 
@@ -309,6 +352,7 @@ describe('a hub with a sign-in', () => {
     const asset = await fetch(`${base}/assets/hub.js`, { redirect: 'manual' })
     expect(asset.status).toBe(302)
     expect((await act('env-1', { action: 'fleet.refreshAccounts' })).status).toBe(401)
+    expect((await issue()).status).toBe(401)
   })
 
   it('shows the Fleet to anyone signed in, and lets only an admin act', async () => {
@@ -320,6 +364,8 @@ describe('a hub with a sign-in', () => {
     expect((await fleet(reader)).hub).toEqual({ label: 'Test hub', authRequired: true, user: 'A Person', canManage: false, views: { quota: true } })
     expect((await act('env-1', { action: 'fleet.refreshAccounts' }, { 'x-ion-hub': '1', ...reader })).status).toBe(403)
     expect(ran).toEqual([])
+    expect((await issue({ 'x-ion-hub': '1', ...reader })).status).toBe(403)
+    expect((await issue({ 'x-ion-hub': '1', ...admin })).status).toBe(200)
     expect((await fleet(admin)).hub.canManage).toBe(true)
     expect(await (await act('env-1', { action: 'fleet.refreshAccounts' }, { 'x-ion-hub': '1', ...admin })).json()).toMatchObject({ ok: true })
     expect(ran).toHaveLength(1)

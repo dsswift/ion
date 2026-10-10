@@ -165,6 +165,13 @@ export interface FleetHubAddRequest {
   label?: string
 }
 
+/** `POST /api/enrollment-tokens`: a token the hub made for one server to join with. */
+export interface HubEnrollmentToken {
+  token: string
+  /** Unix ms after which the hub no longer accepts it. */
+  expiresAt: number
+}
+
 /** `PATCH /api/servers/:id`: the hub's own name for a server. An empty label goes back to the name the server reports under. */
 export interface HubServerRename {
   label: string

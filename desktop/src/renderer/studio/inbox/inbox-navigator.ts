@@ -234,8 +234,10 @@ export function buildInboxNavigator(
       })
     }
     const worktreeGroups = new Map<string, InboxNavigatorGroup>()
-    let sourceGroup: InboxNavigatorGroup | null = null
-    const flatTabs: TabState[] = []
+    // Conversations in the source checkout itself. Whether they earn the
+    // Source Repository band is decided below, once every band that could sit
+    // beside it is known.
+    const checkoutTabs: TabState[] = []
 
     for (const tab of projectTabs) {
       const workspace = [...workspaceByPath.values()]
@@ -272,12 +274,7 @@ export function buildInboxNavigator(
         continue
       }
 
-      if (entries.length > 0 || workspaces.length > 0) {
-        sourceGroup ??= { key: `source:${project.key}`, kind: 'source' as const, label: 'Source Repository', tabs: [] }
-        sourceGroup.tabs.push(tab)
-      } else {
-        flatTabs.push(tab)
-      }
+      checkoutTabs.push(tab)
     }
 
     for (const entry of entries) {
@@ -304,6 +301,15 @@ export function buildInboxNavigator(
       if (rightOrder !== undefined) return 1
       return 0
     })
+    // The Source Repository band exists to set the checkout's own conversations
+    // apart from a bench or worktree band. It is earned only when one of those
+    // bands renders: a project whose inventory holds nothing but landed
+    // worktrees has no such band, so its conversations stay flat.
+    const hasSiblingBand = benchGroups.size > 0 || orderedWorktreeGroups.length > 0
+    const sourceGroup: InboxNavigatorGroup | null = hasSiblingBand && checkoutTabs.length > 0
+      ? { key: `source:${project.key}`, kind: 'source', label: 'Source Repository', tabs: checkoutTabs }
+      : null
+    const flatTabs = hasSiblingBand ? [] : checkoutTabs
     const groups = [...benchGroups.values(), ...orderedWorktreeGroups, ...(sourceGroup ? [sourceGroup] : [])]
     return { project, scopeKey, checkouts: [{ environmentId, key: project.key }], groups, flatTabs, environmentId }
   })

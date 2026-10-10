@@ -75,12 +75,13 @@ It reads `hub.json` from the data directory:
 | `label` | the host's name | The hub's name, shown on its page and on each server that reports to it. |
 | `listen.port` | `7400` | The port the page, the API, and the servers' sockets share. |
 | `listen.host` | all interfaces | The address to bind. |
-| `enrollment.tokens` | none | Tokens that let a server join. With none, no server can join. A `secretstore:` reference resolves from an environment variable or `server-secrets.json`, the same way [server.json](../configuration/server-json.md) resolves one. |
+| `enrollment.tokens` | none | Standing tokens that let any number of servers join, for a policy that puts servers on the hub. With none, a server joins with a token made on the hub's page. A `secretstore:` reference resolves from an environment variable or `server-secrets.json`, the same way [server.json](../configuration/server-json.md) resolves one. |
+| `enrollment.tokenMinutes` | `30` | How long a token made on the hub's page lets a server join. |
 | `oidc` | none | The sign-in. See below. |
 | `webDir` | beside the bundle | Where the page's files are, for a layout that keeps them elsewhere. |
 | `views.quota` | `true` | Show the Quota view. Set `false` for a Fleet with no provider subscriptions. |
 
-The hub keeps what it knows in the data directory: `hub-servers.json` (each server and its last report) and `browser-sessions.json` (who is signed in). Keep that directory on a volume. Run one replica: a sign-in in progress is held in memory.
+The hub keeps what it knows in the data directory: `hub-servers.json` (each server, its last report, and the hash of each token made on the page that is still unused) and `browser-sessions.json` (who is signed in). Keep that directory on a volume. Run one replica: a sign-in in progress is held in memory.
 
 `/healthz` answers `200` with no sign-in, for a probe.
 
@@ -93,7 +94,7 @@ With no `oidc`, the hub is open: anyone who can reach it can manage every server
 The `oidc` block has the same fields as [server.json's](../configuration/server-json.md):
 
 - `allowedSubjects` limits who may sign in. An entry matches a token's `sub` or its `oid`. Entra's `sub` is different for each app, so list a person by their object ID.
-- `defaultScopes` and `rolesToScopes` decide what a signed-in person may do. Anyone signed in can read the Fleet. Running an action or removing a server needs `admin`.
+- `defaultScopes` and `rolesToScopes` decide what a signed-in person may do. Anyone signed in can read the Fleet. Adding a server, running an action, renaming a server, or removing one needs `admin`.
 
 ### Microsoft Entra
 
@@ -111,18 +112,22 @@ The hub runs the sign-in itself and gives the browser only a session cookie. A t
 
 ## Put a server on a hub
 
+On the hub's page, open **Servers** and choose **Add server**. The page shows the hub's address and a new enrollment token, each with a **Copy** button. The token lets one server join, and it stops working after `enrollment.tokenMinutes`. The hub keeps only its hash, so the page shows it once. Choose **Add server** again for another.
+
+Then, on the server:
+
 - **Desktop.** Settings → Fleet → Servers, open a server's `…` menu, and choose **Fleet hubs**.
 - **iPhone.** Open a server from the Fleet screen and tap **Fleet Hubs**, or swipe the server and tap **Fleet Hubs**.
 
-Enter the hub's address and an enrollment token. Leave **Let this hub manage the server** on, or turn it off so the server only reports. The answer says how joining went: reporting, or why the hub refused.
+Paste the hub's address and the enrollment token. Leave **Let this hub manage the server** on, or turn it off so the server only reports. The answer says how joining went: reporting, or why the hub refused.
 
-The token is used once. The hub then issues the server its own credential, which the server keeps sealed in `fleet-hubs.json`. The server sends a report every `fleet.hubReportSeconds` (default 60) and after each action.
+The server uses the token once. The hub then issues the server its own credential, which the server keeps sealed in `fleet-hubs.json`. The server sends a report every `fleet.hubReportSeconds` (default 60) and after each action.
 
 The panel shows how each link stands: reporting, connecting, unreachable, refused, or not allowed. Each server's row on the Fleet page, on the iPhone's Fleet screen, and on a hub's own page also names the hubs that server reports to.
 
 A server joins under the name the device that added the hub knows it by. A server its organization's policy put on a hub joins under its own name, which is its host name unless `label` is set in its `server.json`. Either way, a server's `…` menu on the hub's page has **Rename**, which gives it a name on that hub only.
 
-A server the hub removed does not rejoin by itself. Add the hub on it again to bring it back.
+A server the hub removed does not rejoin by itself. Add the hub on it again, with a new token, to bring it back.
 
 ## Limit which hubs a server may join
 

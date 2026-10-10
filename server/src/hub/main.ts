@@ -44,7 +44,7 @@ export function startHub(options: StartHubOptions = {}): HubHandle {
   } else if (!config.oidc.clientId) {
     throw new Error('hub.json oidc.clientId is required: the hub signs people in through a browser')
   }
-  if (config.enrollmentTokens.length === 0) warn('this hub has no enrollment token: no server can join it')
+  if (config.enrollmentTokens.length === 0) log('this hub has no enrollment token in hub.json: a server joins with one made on its page')
   const registry = new HubRegistry({ dir, label: config.label, enrollmentTokens: config.enrollmentTokens })
   const handler = hubRequestHandler({
     config,

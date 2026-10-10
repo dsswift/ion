@@ -64,6 +64,32 @@ describe('buildInboxNavigator', () => {
     ])
   })
 
+  it('lists conversations flat when every inventory worktree has landed', () => {
+    const repo = '/repo'
+    const landed = { ...entry('/worktrees/landed', 'Landed'), landedAt: 1 }
+
+    const projects = buildInboxNavigator([tab('source', repo)], new Map(), new Map([[repo, [landed]]]))
+
+    expect(projects[0]!.groups).toEqual([])
+    expect(projects[0]!.flatTabs.map((item) => item.id)).toEqual(['source'])
+  })
+
+  it('keeps the Source Repository band beside a landed worktree that still holds a conversation', () => {
+    const repo = '/repo'
+    const landed = { ...entry('/worktrees/landed', 'Landed'), landedAt: 1 }
+    const inLanded = tab('landed', landed.worktreePath, {
+      worktree: { repoPath: repo, worktreePath: landed.worktreePath, branchName: landed.branchName, sourceBranch: 'main' },
+    })
+
+    const projects = buildInboxNavigator([inLanded, tab('source', repo)], new Map(), new Map([[repo, [landed]]]))
+
+    expect(projects[0]!.groups.map((group) => [group.kind, group.tabs.map((item) => item.id)])).toEqual([
+      ['worktree', ['landed']],
+      ['source', ['source']],
+    ])
+    expect(projects[0]!.flatTabs).toEqual([])
+  })
+
   it('uses the inventory label before the branch for an empty worktree group', () => {
     const repo = '/repo'
     const worktree = { ...entry('/worktrees/open', ''), label: 'Friendly title', title: '', branchName: 'wt/open' }

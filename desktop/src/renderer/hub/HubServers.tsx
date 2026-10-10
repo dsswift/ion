@@ -1,18 +1,21 @@
 /**
  * HubServers — the servers that report to this hub, one row each: name,
  * whether its link is open, what its own install is doing when it says, and
- * what it last reported. A server's menu
+ * what it last reported. Add server shows the hub's address and a new
+ * enrollment token to carry to the server that is joining. A server's menu
  * refreshes its usage (on a hub that shows Quota), restarts it, updates it, renames it on the hub, or
  * removes it from the hub. A server whose link is closed keeps its last report, dimmed, with
  * its age.
  */
 import React, { useState } from 'react'
-import { ArrowClockwise, ArrowsClockwise, DownloadSimple, PencilSimple, Trash } from '@phosphor-icons/react'
-import type { HubAction, HubServer } from '@ion/shared/fleet-hub'
+import { ArrowClockwise, ArrowsClockwise, DownloadSimple, PencilSimple, Plus, Trash } from '@phosphor-icons/react'
+import type { HubAction, HubEnrollmentToken, HubServer } from '@ion/shared/fleet-hub'
 import { scorePlacement } from '@ion/shared/fleet-placement'
 import { Button, Chip, DataList, EmptyState, Muted, Notice, StatusDot, TextInput, type Tone } from '../components/settings/kit'
 import { describeHostInstall, formatAgo } from '../components/settings/fleet/fleet-format'
 import { ServerFacts, serverFacts } from '../components/settings/pages/fleet/FleetServers'
+import { HubAddServer } from './HubAddServer'
+import type { IssuedEnrollmentToken } from './hub-client'
 
 export interface HubServersProps {
   servers: readonly HubServer[]
@@ -26,16 +29,28 @@ export interface HubServersProps {
   onRemove(server: HubServer): Promise<void>
   /** Gives a server the hub's own name; an empty one goes back to the name it reports under. */
   onRename(server: HubServer, label: string): Promise<void>
+  /** The address a server dials to reach this hub. */
+  hubUrl: string
+  /** Has the hub make a token one server can join with. */
+  onIssueToken(): Promise<IssuedEnrollmentToken>
 }
 
 function standing(server: HubServer, now: number): string {
   return scorePlacement({ id: server.id, label: server.label, online: server.online, manageOnly: false, weight: undefined, report: server.report, readAt: server.readAt ?? undefined }, now).reason
 }
 
-export function HubServers({ servers, canManage, showUsage, revealEmails, now, onAction, onRemove, onRename }: HubServersProps): React.JSX.Element {
+export function HubServers({ servers, canManage, showUsage, revealEmails, now, onAction, onRemove, onRename, hubUrl, onIssueToken }: HubServersProps): React.JSX.Element {
   const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
   const [removing, setRemoving] = useState<HubServer | null>(null)
   const [renaming, setRenaming] = useState<{ server: HubServer; label: string } | null>(null)
+  const [adding, setAdding] = useState<HubEnrollmentToken | 'asking' | null>(null)
+  const add = (): void => {
+    setAdding('asking')
+    void onIssueToken().then((answer) => {
+      setAdding(answer.ok ? answer.issued : null)
+      if (!answer.ok) setNotice({ tone: 'error', text: answer.error })
+    })
+  }
   const saveName = (): void => {
     if (!renaming) return
     const { server, label } = renaming
@@ -49,6 +64,7 @@ export function HubServers({ servers, canManage, showUsage, revealEmails, now, o
   const acts = (server: HubServer): boolean => canManage && server.online && server.manage
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {adding && adding !== 'asking' && <HubAddServer hubUrl={hubUrl} issued={adding} onClose={() => setAdding(null)} />}
       {removing && (
         <Notice tone="warn" action={<><Button onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" onClick={() => { const server = removing; setRemoving(null); void onRemove(server) }}>Remove</Button></>}>
           Remove {removing.label} from this hub? It stops showing here and does not rejoin until the hub is added on it again.
@@ -69,6 +85,7 @@ export function HubServers({ servers, canManage, showUsage, revealEmails, now, o
         items={servers}
         getKey={(s) => s.id}
         noun={['server', 'servers']}
+        actions={canManage && <Button icon={Plus} disabled={adding === 'asking'} onClick={add}>Add server</Button>}
         filter={(s, q) => s.label.toLowerCase().includes(q)}
         columns={[
           { id: 'name', render: (s) => (
@@ -102,7 +119,7 @@ export function HubServers({ servers, canManage, showUsage, revealEmails, now, o
           canManage && { label: 'Rename…', icon: PencilSimple, onSelect: () => setRenaming({ server: s, label: s.reportedLabel ? s.label : '' }) },
           canManage && { label: 'Remove from this hub…', icon: Trash, danger: true, onSelect: () => setRemoving(s) },
         ]}
-        empty={<EmptyState title="No servers report to this hub yet." detail="On a server, add this hub with its web address and its enrollment token: Settings → the server → Fleet hubs." />}
+        empty={<EmptyState title="No servers report to this hub yet." detail={canManage ? 'Choose Add server for this hub\'s web address and an enrollment token. Then add this hub on the server with them: Settings → the server → Fleet hubs.' : 'Someone who manages this hub can add a server to it.'} />}
       />
     </div>
   )

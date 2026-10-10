@@ -2,11 +2,12 @@
  * The hub's HTTP surface. `/healthz` and the sign-in routes are open. When
  * the hub has a sign-in, every other request — each page, each asset, each
  * API call — needs a signed-in session: a page is sent to sign in, an API
- * call is answered 401. Reading the Fleet needs any allowed person; running
- * an action or removing a server needs the `admin` scope.
+ * call is answered 401. Reading the Fleet needs any allowed person; any
+ * change — an action, a rename, a removal, a new enrollment token — needs
+ * the `admin` scope.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
-import { isHubAction, type HubActionResponse, type HubFleet } from '@ion/shared/fleet-hub'
+import { isHubAction, type HubActionResponse, type HubEnrollmentToken, type HubFleet } from '@ion/shared/fleet-hub'
 import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
 import type { Scope } from '@ion/shared/studio-wire/types'
 import type { BrowserSessionStore } from '../auth/browser-session-store'
@@ -144,9 +145,31 @@ export function hubRequestHandler(deps: HubHttpDeps): Handler {
     res.on('close', stop)
   }
 
+  /** Whether this person may make a change from this request. Answers the refusal itself. */
+  function mayChange(req: IncomingMessage, res: ServerResponse, path: string, who: Caller): boolean {
+    if (!fromOwnPage(req)) {
+      warn('change refused: not from the hub\'s own page', { path, origin: req.headers.origin })
+      json(res, 403, { error: 'forbidden' })
+      return false
+    }
+    if (!who.canManage) {
+      warn('change refused: the person signed in may not manage', { path, subject: who.subject })
+      json(res, 403, { error: 'not_allowed' })
+      return false
+    }
+    return true
+  }
+
   async function api(req: IncomingMessage, res: ServerResponse, path: string, who: Caller): Promise<void> {
     if (path === '/api/fleet' && req.method === 'GET') return json(res, 200, fleet(who))
     if (path === '/api/events' && req.method === 'GET') return events(req, res, who)
+    if (path === '/api/enrollment-tokens') {
+      if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' })
+      if (!mayChange(req, res, path, who)) return
+      const issued: HubEnrollmentToken = registry.issueEnrollmentToken(config.enrollmentTokenMinutes * 60_000)
+      log('enrollment token requested', { subject: who.subject, expires_at: issued.expiresAt })
+      return json(res, 200, issued)
+    }
     const server = /^\/api\/servers\/([^/]+)(\/actions)?$/.exec(path)
     if (!server) return json(res, 404, { error: 'not_found' })
     const id = decodeURIComponent(server[1])
@@ -154,14 +177,7 @@ export function hubRequestHandler(deps: HubHttpDeps): Handler {
     const isRemove = server[2] === undefined && req.method === 'DELETE'
     const isRename = server[2] === undefined && req.method === 'PATCH'
     if (!isAction && !isRemove && !isRename) return json(res, 405, { error: 'method_not_allowed' })
-    if (!fromOwnPage(req)) {
-      warn('change refused: not from the hub\'s own page', { path, origin: req.headers.origin })
-      return json(res, 403, { error: 'forbidden' })
-    }
-    if (!who.canManage) {
-      warn('change refused: the person signed in may not manage', { path, subject: who.subject })
-      return json(res, 403, { error: 'not_allowed' })
-    }
+    if (!mayChange(req, res, path, who)) return
     if (isRemove) {
       const removed = registry.remove(id)
       log('server removal requested', { environment_id: id, removed, subject: who.subject })

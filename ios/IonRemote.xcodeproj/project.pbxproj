@@ -565,6 +565,7 @@
 		EMRSUPP000000000000001 /* EngineMessageRow+Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */; };
 		RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */; };
 		C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000A /* InboxNavigatorTests.swift */; };
+		IBSRCBAND00000000000001 /* InboxNavigatorSourceBandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */; };
 		B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */; };
 		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
@@ -1593,6 +1594,7 @@
 		EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+Support.swift"; sourceTree = "<group>"; };
 		RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabStateDecodeTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000A /* InboxNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorTests.swift; sourceTree = "<group>"; };
+		IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorSourceBandTests.swift; sourceTree = "<group>"; };
 		B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalTests.swift; sourceTree = "<group>"; };
 		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
@@ -2596,6 +2598,7 @@
 				TRNSCLIPT000000000001 /* ConversationClipboardActionsTests.swift */,
 				PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
+				IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */,
 				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
@@ -4423,6 +4426,7 @@
 				TRNSCLIPT000000000002 /* ConversationClipboardActionsTests.swift in Sources */,
 				PRJCTSNAPTEST000000002 /* ProjectSnapshotTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
+				IBSRCBAND00000000000001 /* InboxNavigatorSourceBandTests.swift in Sources */,
 				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,
