@@ -115,7 +115,8 @@ final class TraceSpan: @unchecked Sendable {
     /// Where a span with no writer of its own goes: the span log line, or the
     /// writer a test installed with `installWriter`.
     static var defaultWriter: Writer {
-        contextLock.withLock { storedWriter } ?? { DiagnosticLog.logSpan($0) }
+        if let installed = contextLock.withLock({ storedWriter }) { return installed }
+        return { DiagnosticLog.logSpan($0) }
     }
 
     /// Test seam: every span started without an explicit writer is handed to
