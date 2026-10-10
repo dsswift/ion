@@ -264,8 +264,14 @@ func TestApplyConfig_SelectsMockProvider(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"seed": 5, "turns": [{"ttft_ms": 0, "tokens": 2, "tokens_per_s": 0, "tool_calls": []}], "repeat": true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The path is JSON-encoded rather than spliced into the literal: a
+	// Windows path carries backslashes, which are escapes inside a string.
+	raw, err := json.Marshal(map[string]any{"providers": map[string]any{"mock": map[string]any{"scenarioFile": path}}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var cfg types.EngineRuntimeConfig
-	if err := json.Unmarshal([]byte(`{"providers": {"mock": {"scenarioFile": "`+path+`"}}}`), &cfg); err != nil {
+	if err := json.Unmarshal(raw, &cfg); err != nil {
 		t.Fatal(err)
 	}
 	ApplyConfig(cfg.Providers)

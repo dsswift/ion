@@ -64,7 +64,10 @@ type midStreamFailProvider struct {
 	failErr          *ProviderError
 	eventsBeforeFail []types.LlmStreamEvent
 	successEvents    []types.LlmStreamEvent
-	callCount        int
+	// successDelay holds the first success event back, so a test that
+	// measures time to first event sees one the clock can resolve.
+	successDelay time.Duration
+	callCount    int
 }
 
 func (m *midStreamFailProvider) ID() string { return m.id }
@@ -91,6 +94,9 @@ func (m *midStreamFailProvider) Stream(ctx context.Context, _ types.LlmStreamOpt
 			}
 			errc <- m.failErr
 			return
+		}
+		if m.successDelay > 0 {
+			time.Sleep(m.successDelay)
 		}
 		for _, ev := range m.successEvents {
 			select {
