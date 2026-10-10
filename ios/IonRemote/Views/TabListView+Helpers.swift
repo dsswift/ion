@@ -42,6 +42,15 @@ extension TabListView {
         return projectDirectory
     }
 
+    /// Open a checkout's files or git state over the list.
+    func browseCheckout(_ browser: CheckoutBrowser) {
+        DiagnosticLog.log("checkout browser opened", tag: "view.inbox", fields: [
+            "surface": browser.surface.rawValue,
+            "directory": browser.directory
+        ])
+        checkoutBrowser = browser
+    }
+
     /// Open the worktree branch chooser for `repoPath` and ask for its branches.
     func chooseWorktreeBranch(repoPath: String) {
         DiagnosticLog.log("worktree branch chooser opened", tag: "view.inbox", fields: ["repo_path": repoPath])

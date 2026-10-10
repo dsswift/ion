@@ -1,21 +1,16 @@
 import SwiftUI
 
-/// Full-screen git pane showing changes and commit graph for a tab's working directory.
-/// Presented via `.fullScreenCover` from `ConversationView`.
+/// Full-screen git pane showing the changes and commit graph of one directory.
 struct GitPaneView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
-    let tabId: String
+    let directory: String
 
     @State private var changesExpanded = true
     @State private var graphExpanded = true
 
     private var surfaces: DeveloperSurfaces { viewModel.developerSurfaces }
-
-    private var directory: String {
-        viewModel.tab(for: tabId)?.workingDirectory ?? ""
-    }
 
     private var branch: String {
         viewModel.gitChanges[directory]?.branch ?? ""

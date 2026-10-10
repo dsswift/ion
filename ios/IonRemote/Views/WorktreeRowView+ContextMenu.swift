@@ -26,6 +26,9 @@ extension WorktreeRowView {
                 Label("New conversation here", systemImage: "plus.bubble")
             }
         }
+        if let onBrowse {
+            InboxCheckoutShortcuts(directory: worktree.worktreePath, style: .menuItems, onBrowse: onBrowse)
+        }
         // The conversations by name: the phone has no hover, so the menu
         // is where "what is actually running in here" belongs. Each row
         // is tappable when the host wires `onSelectConversation` -- the

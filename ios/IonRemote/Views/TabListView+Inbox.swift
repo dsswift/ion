@@ -154,6 +154,13 @@ extension TabListView {
                 emphasis: .primary
             ) {
                 InboxProjectRollup(counts: InboxProjectRollup.counts(for: project.allTabs))
+                // The project's own directory: the source checkout. A worktree
+                // or bench header carries the shortcuts to its own.
+                InboxCheckoutShortcuts(
+                    directory: project.id,
+                    style: .icons(height: InboxLayout.minHeight(.cardHeader)),
+                    onBrowse: browseCheckout
+                )
             }
         }
         .buttonStyle(.plain)
@@ -170,6 +177,7 @@ extension TabListView {
             } label: {
                 Label("New conversation", systemImage: "plus.bubble")
             }
+            InboxCheckoutShortcuts(directory: project.id, style: .menuItems, onBrowse: browseCheckout)
             if viewModel.developerSurfaces.worktrees {
             Button {
                 let effectiveDirectory = worktreeRepoPath(for: project.id)
@@ -216,6 +224,7 @@ extension TabListView {
                     state: state,
                     tabsByBenchPath: benchTabsByPath(project.benchTabs, state: state),
                     terminalTabsByID: Dictionary(uniqueKeysWithValues: project.benchTerminals.map { ($0.id, $0) }),
+                    onBrowse: browseCheckout,
                     row: { tab in
                         inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: "Integration Bench", branch: nil, level: 2)
                     }
@@ -232,6 +241,7 @@ extension TabListView {
                     activeTabId: selectedTabId,
                     expanded: expansion,
                     cyclesOnHeaderTap: cyclesOnTap,
+                    onBrowse: browseCheckout,
                     row: { tab in
                         inboxRow(tab, selectionStyle: selectionStyle, project: project.name, location: worktree.displayName, branch: worktree.branchName, level: 2)
                     }

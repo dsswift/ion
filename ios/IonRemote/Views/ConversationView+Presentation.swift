@@ -40,7 +40,7 @@ extension ConversationView {
                 .environment(viewModel)
             }
             .fullScreenCover(isPresented: $showGitPane) {
-                GitPaneView(tabId: tabId)
+                GitPaneView(directory: workingDirectory)
                     .environment(viewModel)
             }
             .fullScreenCover(isPresented: $showTerminal) {
@@ -73,7 +73,7 @@ extension ConversationView {
                 }
             }
             .fullScreenCover(isPresented: $showFileExplorer) {
-                FileExplorerView(tabId: tabId)
+                FileExplorerView(directory: workingDirectory)
                     .environment(viewModel)
             }
             .fullScreenCover(isPresented: Binding(
