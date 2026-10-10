@@ -540,7 +540,7 @@ case err != nil:
 The Go and TypeScript SDKs are held in sync by tests, not by convention. A hook or context method added to one and not the other fails the build:
 
 - `sdk/go/parity_test.go` reads the engine's generated contract manifest and checks hooks, payload fields, result shapes, the `ext/*` method set, and the wire constants — in both directions.
-- `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` reads that manifest plus the Go SDK's reflected surface and asserts the TypeScript SDK matches both.
+- `packages/shared/src/__tests__/sdk-surface-sync.test.ts` reads that manifest plus the Go SDK's reflected surface and asserts the TypeScript SDK matches both.
 - `engine/tests/integration/parity_canary_test.go` runs two behaviourally-identical canary extensions, one per language, and asserts they produce the _same_ observations rather than merely each passing.
 
 Regenerating the goldens after an engine-side change:

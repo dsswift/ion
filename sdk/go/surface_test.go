@@ -19,7 +19,7 @@ import (
 // ctx.GetPlanMode and the other ctx.PlanMode().Get().
 //
 // This golden is the canonical cross-SDK surface. The TypeScript side reads it
-// (desktop/src/shared/__tests__/sdk-surface-sync.test.ts) and asserts its own
+// (packages/shared/src/__tests__/sdk-surface-sync.test.ts) and asserts its own
 // IonContext and IonSDK members match, camelCase-normalised. That is what makes
 // "a context method added to one SDK but absent from the other" a test failure
 // rather than a code-review catch.
@@ -163,7 +163,7 @@ func TestGoSDKSurfaceManifest(t *testing.T) {
 		t.Errorf("Go SDK surface has drifted from %s\n"+
 			"Run: cd sdk/go && go test -run TestGoSDKSurfaceManifest -update\n"+
 			"Then check whether the TypeScript SDK needs the same member "+
-			"(desktop/src/shared/__tests__/sdk-surface-sync.test.ts reads this file).",
+			"(packages/shared/src/__tests__/sdk-surface-sync.test.ts reads this file).",
 			golden)
 		t.Logf("got:\n%s", data)
 	}
