@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.16.0](https://github.com/dsswift/ion/compare/ios-v2.15.1...ios-v2.16.0) (2026-10-10)
+
+### Features
+
+* **ios:** open a project's files and git from the inbox ([735b288](https://github.com/dsswift/ion/commit/735b288c79631ec66b12ed138225408cfbe50e92))
+
 ## [2.15.1](https://github.com/dsswift/ion/compare/ios-v2.15.0...ios-v2.15.1) (2026-10-10)
 
 ### Bug Fixes
