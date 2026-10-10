@@ -29,19 +29,40 @@ expect_failure() {
 
 run_check
 
+# The stale version is derived from the pinned one, so a toolchain bump never
+# turns these substitutions into no-ops.
+CURRENT="$(awk '/^toolchain go/ {sub(/^toolchain go/, ""); print; exit}' "$REPO_ROOT/engine/go.mod")"
+[[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  echo "go-toolchain regression: cannot read the pinned toolchain from engine/go.mod" >&2
+  exit 1
+}
+STALE="${CURRENT%.*}.$(( ${CURRENT##*.} + 1 ))"
+CURRENT_RE="${CURRENT//./\\.}"
+
+# Rewrites one pinned version in a fixture file and fails when nothing changed.
+make_stale() {
+  local label="$1" file="$2" expr="$3"
+  sed -i.bak -E "$expr" "$file"
+  if cmp -s "$file" "$file.bak"; then
+    echo "go-toolchain regression: $label fixture was not changed" >&2
+    exit 1
+  fi
+  rm -f "$file.bak"
+}
+
 cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-sed -i.bak 's/toolchain go1\.27\.1/toolchain go1.27.0/' "$TMP_ROOT/relay/go.mod"
-rm -f "$TMP_ROOT/relay/go.mod.bak"
+make_stale "stale relay module" "$TMP_ROOT/relay/go.mod" \
+  "s/^toolchain go${CURRENT_RE}\$/toolchain go${STALE}/"
 expect_failure "stale relay module"
 
 cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-sed -i.bak 's/golang:1\.27\.1-alpine/golang:1.27.0-alpine/' "$TMP_ROOT/relay/Dockerfile"
-rm -f "$TMP_ROOT/relay/Dockerfile.bak"
+make_stale "stale relay Docker builder" "$TMP_ROOT/relay/Dockerfile" \
+  "s/golang:${CURRENT_RE}-alpine/golang:${STALE}-alpine/"
 expect_failure "stale relay Docker builder"
 
 cp "$REPO_ROOT/relay/Dockerfile" "$TMP_ROOT/relay/Dockerfile"
-sed -i.bak "s|GO_VERSION := .*|GO_VERSION := 1.25.0|" "$TMP_ROOT/Makefile"
-rm -f "$TMP_ROOT/Makefile.bak"
+make_stale "stale Linux parity image" "$TMP_ROOT/Makefile" \
+  "s|^GO_VERSION := .*|GO_VERSION := ${STALE}|"
 expect_failure "stale Linux parity image"
 
 echo "go-toolchain regression checks: OK"

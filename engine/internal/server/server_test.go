@@ -873,12 +873,7 @@ func TestStopNonExistentSession(t *testing.T) {
 func registerPipeClient(t *testing.T, srv *Server) (serverConn, clientConn net.Conn) {
 	t.Helper()
 	serverConn, clientConn = net.Pipe()
-	cw := &clientWriter{
-		conn:        serverConn,
-		stateQueue:  make(chan []byte, stateQueueSize),
-		streamQueue: make(chan []byte, streamQueueSize),
-		done:        make(chan struct{}),
-	}
+	cw := newClientWriter("client-test", serverConn, stateQueueSize)
 	srv.mu.Lock()
 	srv.clients[serverConn] = cw
 	srv.mu.Unlock()

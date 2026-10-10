@@ -4,6 +4,7 @@
  * writes `desktop-<process>-<kind>-<ts>` under `<data dir>/profiles/`.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { join } from 'path'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }))
 
@@ -39,12 +40,14 @@ describe('ProfileCapturer', () => {
 
   it('captures main into the profiles dir and refuses a second capture while busy', async () => {
     let release!: () => void
-    const node = vi.fn((r: { dir: string }) => new Promise<{ path: string }>((resolve) => { release = () => resolve({ path: `${profilesDir(r.dir)}/p.cpuprofile` }) }))
+    // Joined the way the profiles dir is, so the path reads the same on Windows.
+    const written = join(profilesDir('/data'), 'p.cpuprofile')
+    const node = vi.fn((r: { dir: string }) => new Promise<{ path: string }>((resolve) => { release = () => resolve({ path: join(profilesDir(r.dir), 'p.cpuprofile') }) }))
     const capturer = new ProfileCapturer(deps(null, node as never))
     const first = capturer.capture({ process: 'main', kind: 'cpu', seconds: 1 })
     expect(await capturer.capture({ process: 'main', kind: 'heap' })).toMatchObject({ ok: false, code: 'busy' })
     release()
-    expect(await first).toMatchObject({ ok: true, path: '/data/profiles/p.cpuprofile', process: 'main', kind: 'cpu' })
+    expect(await first).toMatchObject({ ok: true, path: written, process: 'main', kind: 'cpu' })
     expect(node).toHaveBeenCalledWith({ kind: 'cpu', seconds: 1, dir: '/data', processName: 'desktop-main' })
   })
 

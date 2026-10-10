@@ -370,7 +370,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 | Area                | Methods                                                                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
+| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `SpanID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                               |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
@@ -506,7 +506,7 @@ for _, message := range record.Messages {
 // record.Total is the full message count; record.HasMore says whether to page on.
 ```
 
-At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.
+At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run. `SpanID` is the engine's own span for this hook call; a span exported with `traceparent: 00-<TraceID>-<SpanID>-01` nests under it. It is `""` when the call is not a span.
 
 `Model` is a `*ion.ModelRef` when the engine resolved an active model and `nil` when it did not:
 
@@ -540,7 +540,7 @@ case err != nil:
 The Go and TypeScript SDKs are held in sync by tests, not by convention. A hook or context method added to one and not the other fails the build:
 
 - `sdk/go/parity_test.go` reads the engine's generated contract manifest and checks hooks, payload fields, result shapes, the `ext/*` method set, and the wire constants — in both directions.
-- `desktop/src/shared/__tests__/sdk-surface-sync.test.ts` reads that manifest plus the Go SDK's reflected surface and asserts the TypeScript SDK matches both.
+- `packages/shared/src/__tests__/sdk-surface-sync.test.ts` reads that manifest plus the Go SDK's reflected surface and asserts the TypeScript SDK matches both.
 - `engine/tests/integration/parity_canary_test.go` runs two behaviourally-identical canary extensions, one per language, and asserts they produce the _same_ observations rather than merely each passing.
 
 Regenerating the goldens after an engine-side change:

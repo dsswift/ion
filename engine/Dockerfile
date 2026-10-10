@@ -1,4 +1,4 @@
-FROM golang:1.27.1-alpine AS build
+FROM golang:1.27.2-alpine AS build
 # Defaults to a parseable-but-obviously-synthetic semver rather than the Go
 # source default ("dev", set in cmd/ion/main.go): `internal/config`'s and
 # `@ion/server`'s `version-check.ts`'s `parseVersion` both require

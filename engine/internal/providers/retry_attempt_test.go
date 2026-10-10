@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -24,6 +25,9 @@ func TestWithRetryObservesEveryAttempt(t *testing.T) {
 		id:        "attempt-prov",
 		failCount: 1,
 		failErr:   NewProviderError(ErrStreamTruncated, "stream died", 0, true),
+		// Long enough for a coarse clock (Windows resolves about a
+		// millisecond) to measure a positive time to first event.
+		successDelay: 5 * time.Millisecond,
 		successEvents: []types.LlmStreamEvent{
 			{Type: "message_start", MessageInfo: &types.LlmStreamMessageInfo{ID: "m_ok", Model: "attempt"}},
 			{Type: "message_stop"},

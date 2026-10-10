@@ -25,13 +25,31 @@ const (
 // The drain goroutine always prefers the state queue so agent-state and
 // status events are never blocked behind a burst of text deltas.
 type clientWriter struct {
-	id            string
-	conn          net.Conn
-	stateQueue    chan []byte
-	streamQueue   chan []byte
-	done          chan struct{}
+	id          string
+	conn        net.Conn
+	stateQueue  chan []byte
+	streamQueue chan []byte
+	done        chan struct{}
+	// drained is closed when the drain goroutine has returned: everything on
+	// the state queue when done closed has been written, or the write
+	// failed. Stop waits on it before closing the conn, so a result queued
+	// just before the stop (the shutdown command's own) reaches its client.
+	drained       chan struct{}
 	stateDropped  int64
 	streamDropped int64
+}
+
+// newClientWriter builds the writer for one accepted conn. stateCap sizes
+// the state queue; the stream queue is always streamQueueSize.
+func newClientWriter(id string, conn net.Conn, stateCap int) *clientWriter {
+	return &clientWriter{
+		id:          id,
+		conn:        conn,
+		stateQueue:  make(chan []byte, stateCap),
+		streamQueue: make(chan []byte, streamQueueSize),
+		done:        make(chan struct{}),
+		drained:     make(chan struct{}),
+	}
 }
 
 // listenerHandle wraps a registered broadcast listener with its own
@@ -181,7 +199,10 @@ func (s *Server) emitBackpressure(queue string, droppedTotal int64, listener boo
 
 // drainClient reads from both queues with priority on state, writes to
 // the underlying conn under a per-write deadline. A failed write evicts.
+// When done closes, the state lines still queued are written before it
+// returns; stream lines are dropped. drained is closed on return.
 func (s *Server) drainClient(cw *clientWriter) {
+	defer close(cw.drained)
 	write := func(line []byte) bool {
 		if err := cw.conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline)); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "server", "set write deadline failed", map[string]any{"error": err.Error()})
@@ -195,6 +216,22 @@ func (s *Server) drainClient(cw *clientWriter) {
 		return true
 	}
 
+	// flushState writes every state line queued at the moment done closed.
+	// A select with done closed and a line queued picks either at random,
+	// so without this a result enqueued just before the stop is lost.
+	flushState := func() {
+		for {
+			select {
+			case line := <-cw.stateQueue:
+				if !write(line) {
+					return
+				}
+			default:
+				return
+			}
+		}
+	}
+
 	for {
 		// Always prefer state events.
 		select {
@@ -203,6 +240,7 @@ func (s *Server) drainClient(cw *clientWriter) {
 				return
 			}
 		case <-cw.done:
+			flushState()
 			return
 		default:
 			// No state event pending — drain one stream event or block
@@ -217,6 +255,7 @@ func (s *Server) drainClient(cw *clientWriter) {
 					return
 				}
 			case <-cw.done:
+				flushState()
 				return
 			}
 		}

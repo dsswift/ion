@@ -67,6 +67,7 @@
     "Model",
     "RunID",
     "SessionKey",
+    "SpanID",
     "TraceID"
   ],
   "sdk": [
