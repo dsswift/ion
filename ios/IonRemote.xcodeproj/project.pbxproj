@@ -256,6 +256,7 @@
 		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
 		D5E7E10A00000000000392A2 /* DeveloperSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */; };
+		CKBROWSER00000000000002 /* CheckoutBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CKBROWSER00000000000001 /* CheckoutBrowser.swift */; };
 		A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */; };
 		QUESTNS010000000000BF01 /* QuestionsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = QUESTNS010000000000FR01 /* QuestionsModels.swift */; };
 		C0DE57A6E00000000000A001 /* WorkStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE57A6E00000000000F001 /* WorkStage.swift */; };
@@ -386,6 +387,7 @@
 		48D63805DE42FD094029D924 /* ConversationStatusBar+Context.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */; };
 		C0DE72FE63F05512DE1993DF /* WorktreeRowView+ContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11E72FE63F05512DE1993DF /* WorktreeRowView+ContextMenu.swift */; };
 		C0DEB5E19A14E9132E6504A1 /* InboxProjectRollup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11EB5E19A14E9132E6504A1 /* InboxProjectRollup.swift */; };
+		CKSHORTCUT0000000000002 /* InboxCheckoutShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = CKSHORTCUT0000000000001 /* InboxCheckoutShortcuts.swift */; };
 		C0DEA70860E478D91F685BE4 /* TabListView+InboxControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11EA70860E478D91F685BE4 /* TabListView+InboxControls.swift */; };
 		C0DE1A8F5887C0F9510ADEE3 /* InboxDisclosureHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11E1A8F5887C0F9510ADEE3 /* InboxDisclosureHeader.swift */; };
 		C0DEB3B618BAD3E941D53E65 /* InboxLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11EB3B618BAD3E941D53E65 /* InboxLayout.swift */; };
@@ -566,6 +568,7 @@
 		RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */; };
 		C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000A /* InboxNavigatorTests.swift */; };
 		IBSRCBAND00000000000001 /* InboxNavigatorSourceBandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */; };
+		CKBROWSERTEST0000000002 /* CheckoutBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CKBROWSERTEST0000000001 /* CheckoutBrowserTests.swift */; };
 		B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */; };
 		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
@@ -1279,6 +1282,7 @@
 		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
 		D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSurfaces.swift; sourceTree = "<group>"; };
+		CKBROWSER00000000000001 /* CheckoutBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutBrowser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeTypes.swift"; sourceTree = "<group>"; };
 		QUESTNS010000000000FR01 /* QuestionsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "QuestionsModels.swift"; sourceTree = "<group>"; };
 		C0DE57A6E00000000000F001 /* WorkStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkStage.swift"; sourceTree = "<group>"; };
@@ -1395,6 +1399,7 @@
 		5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationStatusBar+Context.swift"; sourceTree = "<group>"; };
 		F11E72FE63F05512DE1993DF /* WorktreeRowView+ContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeRowView+ContextMenu.swift"; sourceTree = "<group>"; };
 		F11EB5E19A14E9132E6504A1 /* InboxProjectRollup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxProjectRollup.swift; sourceTree = "<group>"; };
+		CKSHORTCUT0000000000001 /* InboxCheckoutShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxCheckoutShortcuts.swift; sourceTree = "<group>"; };
 		F11EA70860E478D91F685BE4 /* TabListView+InboxControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+InboxControls.swift"; sourceTree = "<group>"; };
 		F11E1A8F5887C0F9510ADEE3 /* InboxDisclosureHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxDisclosureHeader.swift; sourceTree = "<group>"; };
 		F11EB3B618BAD3E941D53E65 /* InboxLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxLayout.swift; sourceTree = "<group>"; };
@@ -1595,6 +1600,7 @@
 		RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabStateDecodeTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000A /* InboxNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorTests.swift; sourceTree = "<group>"; };
 		IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorSourceBandTests.swift; sourceTree = "<group>"; };
+		CKBROWSERTEST0000000001 /* CheckoutBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutBrowserTests.swift; sourceTree = "<group>"; };
 		B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalTests.swift; sourceTree = "<group>"; };
 		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
@@ -2185,6 +2191,7 @@
 				A1B2C3D4E5F600010000F1AA /* EngineProfile.swift */,
 				A1B2C3D4E5F60001000300AA /* GitTypes.swift */,
 				D5E7E10A00000000000392A1 /* DeveloperSurfaces.swift */,
+				CKBROWSER00000000000001 /* CheckoutBrowser.swift */,
 				GITBRANCHRESP00000001 /* GitBranchesResponse.swift */,
 				A1B2C3D4E5F60001000400AA /* FileTypes.swift */,
 				B1C2D3E4F5A6048100000000 /* ConversationBranches.swift */,
@@ -2337,6 +2344,7 @@
 				5B92E855C57295F873E580AB /* ConversationStatusBar+Context.swift */,
 				F11E72FE63F05512DE1993DF /* WorktreeRowView+ContextMenu.swift */,
 				F11EB5E19A14E9132E6504A1 /* InboxProjectRollup.swift */,
+				CKSHORTCUT0000000000001 /* InboxCheckoutShortcuts.swift */,
 				F11EA70860E478D91F685BE4 /* TabListView+InboxControls.swift */,
 				F11E1A8F5887C0F9510ADEE3 /* InboxDisclosureHeader.swift */,
 				F11EB3B618BAD3E941D53E65 /* InboxLayout.swift */,
@@ -2599,6 +2607,7 @@
 				PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
 				IBSRCBAND00000000000002 /* InboxNavigatorSourceBandTests.swift */,
+				CKBROWSERTEST0000000001 /* CheckoutBrowserTests.swift */,
 				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
@@ -3789,6 +3798,7 @@
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
 				D5E7E10A00000000000392A2 /* DeveloperSurfaces.swift in Sources */,
+				CKBROWSER00000000000002 /* CheckoutBrowser.swift in Sources */,
 				GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */,
 				A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */,
 				A1B2C3D4E5F6000100049C01 /* WorktreeCloseWarning.swift in Sources */,
@@ -3844,6 +3854,7 @@
 				48D63805DE42FD094029D924 /* ConversationStatusBar+Context.swift in Sources */,
 				C0DE72FE63F05512DE1993DF /* WorktreeRowView+ContextMenu.swift in Sources */,
 				C0DEB5E19A14E9132E6504A1 /* InboxProjectRollup.swift in Sources */,
+				CKSHORTCUT0000000000002 /* InboxCheckoutShortcuts.swift in Sources */,
 				C0DEA70860E478D91F685BE4 /* TabListView+InboxControls.swift in Sources */,
 				C0DE1A8F5887C0F9510ADEE3 /* InboxDisclosureHeader.swift in Sources */,
 				C0DEB3B618BAD3E941D53E65 /* InboxLayout.swift in Sources */,
@@ -4427,6 +4438,7 @@
 				PRJCTSNAPTEST000000002 /* ProjectSnapshotTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
 				IBSRCBAND00000000000001 /* InboxNavigatorSourceBandTests.swift in Sources */,
+				CKBROWSERTEST0000000002 /* CheckoutBrowserTests.swift in Sources */,
 				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,

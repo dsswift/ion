@@ -62,6 +62,8 @@ struct InboxBenchGroup<Row: View>: View {
     let state: RemoteWorktreeState
     let tabsByBenchPath: [String: [RemoteTabState]]
     let terminalTabsByID: [String: RemoteTabState]
+    /// Open the bench checkout's files or git state.
+    let onBrowse: (CheckoutBrowser) -> Void
     /// Full-featured inbox conversation row (same builder as worktree groups).
     @ViewBuilder let row: (RemoteTabState) -> Row
     @State private var confirmPipelineAi = false
@@ -346,6 +348,9 @@ struct InboxBenchGroup<Row: View>: View {
         Button("Open Bench Terminal") {
             openBenchTerminal(bench)
         }
+        // In the menu rather than on the header: the header's trailing edge
+        // already holds two actions and the bench status.
+        InboxCheckoutShortcuts(directory: bench.benchPath, style: .menuItems, onBrowse: onBrowse)
         Button("Sync worktree pipeline") {
             viewModel.startWorktreePipeline(repoPath: state.repoPath, sourceBranch: bench.sourceBranch)
         }

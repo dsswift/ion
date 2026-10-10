@@ -1,19 +1,14 @@
 import SwiftUI
 
-/// Full-screen file explorer for browsing and editing files in a tab's working directory.
-/// Presented via `.fullScreenCover` from `ConversationView`.
+/// Full-screen file explorer for browsing and editing the files under one directory.
 struct FileExplorerView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
-    let tabId: String
+    let directory: String
 
     @State private var expandedPaths: Set<String> = []
     @State private var loaded = false
     @State private var showHidden = false
-
-    private var directory: String {
-        viewModel.tab(for: tabId)?.workingDirectory ?? ""
-    }
 
     private var directoryName: String {
         (directory as NSString).lastPathComponent

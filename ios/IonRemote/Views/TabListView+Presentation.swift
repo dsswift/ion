@@ -15,9 +15,9 @@ import SwiftUI
 // The fix is to break the chain into named groups, each returning `some View`.
 // An opaque return type is a type-checking barrier: the compiler solves one
 // group, erases the result to `some View`, and starts the next group fresh
-// rather than carrying the accumulated generic type forward. Three groups keep
+// rather than carrying the accumulated generic type forward. Small groups keep
 // each solvable, and the split is along real seams rather than arbitrary
-// counts — inbox surfaces, lifecycle observers, and conversation creation.
+// counts.
 //
 // Behavior is unchanged: the groups are applied in the same order the chain
 // had, so presentation precedence and modifier semantics are identical.
@@ -248,6 +248,22 @@ extension TabListView {
                     conversationPickerProject = nil
                     conversationPickerUseWorktree = nil
                     conversationPickerSourceBranch = nil
+                }
+            }
+    }
+
+    /// A checkout's files or git state, opened from an inbox header.
+    @ViewBuilder
+    func checkoutBrowsing<V: View>(_ content: V) -> some View {
+        content
+            .fullScreenCover(item: $checkoutBrowser) { browser in
+                switch browser.surface {
+                case .files:
+                    FileExplorerView(directory: browser.directory)
+                        .environment(viewModel)
+                case .git:
+                    GitPaneView(directory: browser.directory)
+                        .environment(viewModel)
                 }
             }
     }

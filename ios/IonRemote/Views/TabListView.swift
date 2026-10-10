@@ -69,6 +69,8 @@ struct TabListView: View {
     /// Tab awaiting a snooze-preset choice (confirmationDialog).
     @State var snoozeSheetTabId: String? = nil
     @State var inboxRenameTabId: String? = nil
+    /// The checkout whose files or git state are open over the list.
+    @State var checkoutBrowser: CheckoutBrowser?
     @State var inboxRenameTitle = ""
 
     // The open conversation, shared by both layouts. The iPhone stack pushes
@@ -108,26 +110,28 @@ struct TabListView: View {
     @State var flickerOpacity: Double = 1.0
 
     // The presentation modifiers live in TabListView+Presentation.swift, applied
-    // here in three groups. Splitting them is not cosmetic: as one chain they
+    // here in groups. Splitting them is not cosmetic: as one chain they
     // exceeded what the Swift type checker would solve and the build failed at
     // this declaration. Each group returns `some View`, which erases the
     // accumulated generic type and lets the next group start fresh. Order is
     // preserved from the original chain, so presentation behavior is unchanged.
     var body: some View {
-        conversationAlerts(
-            conversationCreation(
-                listLifecycle(
-                    inboxSurfaces(
-                        Group {
-                            if sizeClass == .regular {
-                                iPadLayout
-                            } else {
-                                iPhoneLayout
+        checkoutBrowsing(
+            conversationAlerts(
+                conversationCreation(
+                    listLifecycle(
+                        inboxSurfaces(
+                            Group {
+                                if sizeClass == .regular {
+                                    iPadLayout
+                                } else {
+                                    iPhoneLayout
+                                }
                             }
-                        }
-                        .onChange(of: sizeClass) { old, new in
-                            sizeClassChanged(from: old, to: new)
-                        }
+                            .onChange(of: sizeClass) { old, new in
+                                sizeClassChanged(from: old, to: new)
+                            }
+                        )
                     )
                 )
             )

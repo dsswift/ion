@@ -32,6 +32,8 @@ struct InboxWorktreeGroup<Row: View>: View {
     /// round trip the operator cannot see. Explicit open verbs stay in the
     /// context menu either way. See InboxNavigator.headerTapCycles.
     var cyclesOnHeaderTap: Bool = true
+    /// Open this worktree's files or git state.
+    let onBrowse: (CheckoutBrowser) -> Void
     /// Full-featured inbox conversation row, supplied by TabListView+Inbox so
     /// rows inside a worktree group are IDENTICAL to rows anywhere else.
     @ViewBuilder let row: (RemoteTabState) -> Row
@@ -67,6 +69,7 @@ struct InboxWorktreeGroup<Row: View>: View {
                 guard let sourceBranch = worktree.membership?.sourceBranch else { return }
                 viewModel.benchConflictAssist(repoPath: repoPath, sourceBranch: sourceBranch)
             },
+            onBrowse: onBrowse,
             disclosureExpanded: isExpanded,
             actionsLocked: viewModel.worktreeActionsLocked(repoPath: repoPath),
         )

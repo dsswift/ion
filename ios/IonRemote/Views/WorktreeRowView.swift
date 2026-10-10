@@ -63,6 +63,9 @@ struct WorktreeRowView: View {
     /// Bench chain: recreate the failed assembly merge, then launch the
     /// assisted resolver on the bench directory.
     var onBenchConflictAssist: (() -> Void)?
+    /// Open this worktree's files or git state. Absent on a surface that
+    /// offers no browsing, which then draws no shortcuts.
+    var onBrowse: ((CheckoutBrowser) -> Void)?
     /// When the row heads a collapsible group, whether that group is open.
     /// Draws the disclosure chevron in the leading column every inbox header
     /// uses. Nil for a row that heads nothing.
@@ -389,6 +392,13 @@ struct WorktreeRowView: View {
                             .controlSize(.small)
                             .frame(width: Self.actionSize, height: Self.actionSize)
                             .accessibilityLabel("Working")
+                    }
+                    if let onBrowse {
+                        InboxCheckoutShortcuts(
+                            directory: worktree.worktreePath,
+                            style: .icons(height: InboxLayout.minHeight(.groupHeader)),
+                            onBrowse: onBrowse
+                        )
                     }
                 }
 
