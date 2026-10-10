@@ -46,6 +46,11 @@ type Context struct {
 	// TraceID is the active run's W3C trace-context trace ID. Empty when no run
 	// is active.
 	TraceID string
+	// SpanID is the W3C span ID of the engine's own span for this hook call.
+	// Spans an extension exports with traceparent 00-<TraceID>-<SpanID>-01
+	// nest under it. Empty when the call is not a span: no run is in flight
+	// and no schedule or webhook fire minted a trace for the delivery.
+	SpanID string
 	// Depth is the dispatch depth: 0 for the root session, 1 for an agent it
 	// dispatched, and so on.
 	Depth int
@@ -128,6 +133,7 @@ type ctxEnvelope struct {
 	RecordPath     string           `json:"conversationRecordPath"`
 	RunID          string           `json:"runId"`
 	TraceID        string           `json:"traceId"`
+	SpanID         string           `json:"spanId"`
 	Depth          int              `json:"depth"`
 	DispatchID     string           `json:"dispatchId"`
 	Cwd            string           `json:"cwd"`
@@ -157,6 +163,7 @@ func (s *SDK) newContext(meta json.RawMessage) *Context {
 	ctx.ConversationRecordPath = env.RecordPath
 	ctx.RunID = env.RunID
 	ctx.TraceID = env.TraceID
+	ctx.SpanID = env.SpanID
 	ctx.Depth = env.Depth
 	ctx.DispatchID = env.DispatchID
 	ctx.Model = env.Model

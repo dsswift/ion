@@ -370,7 +370,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 
 | Area                | Methods                                                                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
+| Identity (fields)   | `SessionKey`, `ConversationID`, `ConversationRecordPath`, `RunID`, `TraceID`, `SpanID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                               |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
 | Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `ReadDispatchConversation`, `AnswerDispatchQuestion`, `AnswerDispatchParkCheckIn`, `AckDispatchLost` |
@@ -506,7 +506,7 @@ for _, message := range record.Messages {
 // record.Total is the full message count; record.HasMore says whether to page on.
 ```
 
-At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run.
+At the root session the engine omits `Depth` and `DispatchID`, so their zero values (`0` and `""`) _are_ the root shape rather than missing data. It omits `RunID` and `TraceID` when no prompt-to-completion run is active, so both are `""` for lifecycle hooks, schedules, and webhooks outside a run. `SpanID` is the engine's own span for this hook call; a span exported with `traceparent: 00-<TraceID>-<SpanID>-01` nests under it. It is `""` when the call is not a span.
 
 `Model` is a `*ion.ModelRef` when the engine resolved an active model and `nil` when it did not:
 

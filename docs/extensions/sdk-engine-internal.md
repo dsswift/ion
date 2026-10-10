@@ -291,6 +291,7 @@ type Context struct {
     ConversationRecordPath string
     RunID          string
     TraceID        string
+    SpanID         string
     Depth          int
     DispatchId     string
     Cwd            string
@@ -322,7 +323,7 @@ type Context struct {
 
 **`ConversationRecordPath`** -- absolute path of the file the session's conversation record is written to. Empty when no conversation is active.
 
-**`RunID`** -- engine-native prompt-to-completion run identity. **`TraceID`** is the W3C trace-context identity for that same run. Both are empty when no run is active.
+**`RunID`** -- engine-native prompt-to-completion run identity. **`TraceID`** is the W3C trace-context identity for that same run. Both are empty when no run is active. **`SpanID`** is the engine's own span for this hook call, the parent for spans the extension exports; empty when the call is not a span.
 
 **`Depth`** and **`DispatchId`** -- dispatched-session identity. Root sessions carry zero depth and an empty dispatch ID.
 
