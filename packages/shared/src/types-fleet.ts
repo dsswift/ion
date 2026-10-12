@@ -15,6 +15,8 @@ export const FLEET_ACCOUNT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 export interface FleetAccountLimit extends ProviderUsageLimit {
   /** Unix ms this limit was last read. */
   fetchedAt: number
+  /** `run` when a conversation's own usage report set it; absent when a read of the CLI did. */
+  source?: 'run'
 }
 
 /**
