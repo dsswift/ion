@@ -4,8 +4,8 @@
  * limits as a block, and the servers it has been seen on. A solid chip is a
  * server it is signed in on now; a muted one, a server that saw it in the
  * last 30 days. An account signed in nowhere keeps its last numbers, dimmed,
- * with their age. The chip under a name is the burn-down: weekly quota that
- * will reset with a share left over. A row's menu opens the accounts of a
+ * with their age. The chips under a name are the burn-down: each weekly limit
+ * that will reset with a share left over, a model's before the account's own. A row's menu opens the accounts of a
  * connected server it is on, to sign in to another one there.
  *
  * Every group shares one set of columns, so the same limit lines up from
@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react'
 import { UserSwitch } from '@phosphor-icons/react'
 import { fleetAccountName, fleetLimit, type FleetAccountRow, type FleetExpiringAccount, type FleetQuotaPool } from '@ion/shared/fleet-view'
-import type { ExpiringQuota } from '@ion/shared/usage-limit'
+import { unusedAtResetLabel, type ExpiringQuota } from '@ion/shared/usage-limit'
 import { getProviderDisplayName } from '@ion/shared/types-models'
 import { useColors } from '../../../../theme'
 import { Tooltip } from '../../../git/Tooltip'
@@ -68,15 +68,20 @@ function Machines({ row, now }: { row: FleetAccountRow; now: number }): React.JS
   )
 }
 
-/** What will be lost at the next weekly reset; nothing when the account is on course to use it. */
-function Expiring({ expiring, now }: { expiring: readonly ExpiringQuota[] | undefined; now: number }): React.JSX.Element | null {
-  const first = expiring?.[0]
-  if (!first) return null
-  const what = first.limit.kind === 'weekly_model' && first.limit.label ? `7-day ${first.limit.label}` : '7-day'
+/** What will be lost at the next weekly reset, one chip per limit; nothing when the account is on course to use it. */
+function Expiring({ unused, now }: { unused: readonly ExpiringQuota[] | undefined; now: number }): React.JSX.Element | null {
+  if (!unused?.length) return null
   return (
-    <Tooltip text={`${Math.round(first.unusedPercent)}% of the ${what} limit is unused and resets ${formatUntil(first.limit.resetsAt, now) ?? 'soon'}. Unused quota does not carry over.`}>
-      <Chip tone="warn">{Math.round(first.unusedPercent)}% unused</Chip>
-    </Tooltip>
+    <>
+      {unused.map((entry) => {
+        const what = entry.limit.kind === 'weekly_model' && entry.limit.label ? `7-day ${entry.limit.label}` : '7-day'
+        return (
+          <Tooltip key={`${entry.limit.kind}|${entry.limit.label ?? ''}`} text={`${Math.round(entry.unusedPercent)}% of the ${what} limit is unused and resets ${formatUntil(entry.limit.resetsAt, now) ?? 'soon'}. Unused quota does not carry over.`}>
+            <Chip tone="warn">{unusedAtResetLabel(entry, unused)}</Chip>
+          </Tooltip>
+        )
+      })}
+    </>
   )
 }
 
@@ -99,7 +104,7 @@ export interface FleetAccountsProps {
 export function FleetAccounts({ accounts, pools, expiring, loading, switchable, onSwitch, revealEmails, now }: FleetAccountsProps): React.JSX.Element {
   const colors = useColors()
   const [sectionRef, stacked] = useNarrowerThan(STACK_BELOW_PX)
-  const expiringByKey = new Map(expiring.map((entry) => [entry.row.key, entry.expiring]))
+  const unusedByKey = new Map(expiring.map((entry) => [entry.row.key, entry.unused]))
   const blocks = Math.max(1, ...pools.map((pool) => pool.limits.length))
   const template = `minmax(150px, 1.1fr) repeat(${blocks}, minmax(120px, 1fr)) max-content ${KIT.controlHeight}px`
   if (accounts.length === 0) {
@@ -122,7 +127,7 @@ export function FleetAccounts({ accounts, pools, expiring, loading, switchable, 
       <span style={{ display: 'flex', minWidth: 0, fontSize: KIT.font, fontWeight: 600, color: colors.textPrimary }}><CellText>{fleetAccountName(row, revealEmails)}</CellText></span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: KIT.fontTiny }}>
         <CellText muted>{accountDetail(row, now)}</CellText>
-        <Expiring expiring={expiringByKey.get(row.key)} now={now} />
+        <Expiring unused={unusedByKey.get(row.key)} now={now} />
       </span>
     </div>
   )

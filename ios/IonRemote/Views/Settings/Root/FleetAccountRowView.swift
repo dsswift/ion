@@ -29,8 +29,8 @@ struct FleetAccountRowView: View {
             ForEach(Array(row.limits.enumerated()), id: \.offset) { _, limit in
                 limitRow(limit)
             }
-            if let expiring = FleetSummary.expiring(row).first {
-                Label(Self.expiringText(expiring), systemImage: "hourglass.bottomhalf.filled")
+            ForEach(Array(FleetSummary.unusedAtReset(row).enumerated()), id: \.offset) { _, unused in
+                Label(Self.expiringText(unused), systemImage: "hourglass.bottomhalf.filled")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

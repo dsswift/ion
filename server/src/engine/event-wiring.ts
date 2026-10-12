@@ -13,6 +13,8 @@ import {
 } from "../state";
 import { broadcast } from "../broadcast";
 import { tabIdFromKey } from "@ion/shared/session-key";
+import { rateLimitUtilization } from "@ion/shared/usage-limit";
+import type { RateLimitWindow } from "@ion/shared/types-engine-event-model";
 import {
   subscribeToResourceKinds,
   subscribeToGlobalResourceKinds,
@@ -206,11 +208,14 @@ export function wireEngineBridgeEvents(): void {
     // engine_rate_limit: the backend's usage limit report for this run.
     if (event.type === "engine_rate_limit" && event.rateLimit) {
       broadcastNormalized(tabIdFromKey(key), { type: "rate_limit", ...event.rateLimit });
+      const windows: Record<string, RateLimitWindow> = event.rateLimit.windows ?? {};
       log("engine_rate_limit: forwarded", {
         key,
         status: event.rateLimit.status,
         rate_limit_type: event.rateLimit.rateLimitType,
-        window_count: Object.keys(event.rateLimit.windows ?? {}).length,
+        resets_at: event.rateLimit.resetsAt,
+        utilization: rateLimitUtilization(event.rateLimit),
+        windows: Object.fromEntries(Object.entries(windows).map(([name, w]) => [name, w.utilization])),
       });
     }
 

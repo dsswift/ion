@@ -60,6 +60,25 @@ describe('the backend refuses a run', () => {
   })
 })
 
+describe('the backend warns that a limit is close', () => {
+  const warning = { type: 'rate_limit', status: 'allowed_warning', rateLimitType: 'seven_day_overage_included', resetsAt: 1_800_000_000, utilization: 0.91 } as const
+  const lines = (state: State): string[] => state.conversationPanes.get('tab1')!.instances[0].messages.map((m) => m.content)
+
+  it('leaves the conversation unlimited and says it is a warning', () => {
+    const { state } = harness()
+    state.handleNormalizedEvent('tab1', warning)
+    expect(state.tabs[0].usageLimit).toBeNull()
+    expect(lines(state)).toHaveLength(1)
+    expect(lines(state)[0]).toMatch(/^Approaching the 7-day limit \(91% used\)\. Requests are still allowed\./)
+  })
+
+  it('says the limit was reached when the run is refused', () => {
+    const { state } = harness()
+    state.handleNormalizedEvent('tab1', rejected(1_800_000_000))
+    expect(lines(state)[0]).toMatch(/^5-hour limit reached\./)
+  })
+})
+
 describe('a held prompt', () => {
   const limited = { usageLimit: { limitType: 'five_hour', resetsAt: Date.now() + HOUR, hitAt: Date.now() } }
 

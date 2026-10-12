@@ -257,9 +257,9 @@ describe('FleetPage fleet', () => {
     expect(g.textContent).toContain('1.1.0')
     expect(g.textContent).toContain('b@example.com')
 
-    // The burn-down: 37% of the weekly limit resets unused in 3 hours.
+    // The burn-down: 37% of the weekly limit resets unused in 3 hours, and the model's 9% is named before it.
     expect(text('Quota summary')).toContain('1 with weekly quota about to reset unused')
-    expect(accounts[0].textContent).toContain('37% unused')
+    expect(accounts[0].textContent).toContain('9% Model One unused37% total unused')
     expect(accounts[1].textContent).not.toContain('unused')
     // Where new work would go: the tightest limit leaves 9% on this Mac; devbox has no limits read.
     expect(l.textContent).toContain('9% room')

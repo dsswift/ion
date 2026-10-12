@@ -293,6 +293,20 @@ enum FleetSummary {
         .sorted { $0.resetsAt < $1.resetsAt }
     }
 
+    /// What an account loses at its coming weekly reset, as a list to show:
+    /// every weekly limit resetting within `withinHours` with a whole percent
+    /// or more unused, a model's before the account's own. Empty unless one of
+    /// them is expiring. The same list as `unusedAtReset` in
+    /// `packages/shared/src/usage-limit.ts`.
+    static func unusedAtReset(_ row: FleetAccountRow, now: Date = .now, withinHours: Double = expiringWithinHours, unusedPercent: Double = expiringUnusedPercent) -> [FleetExpiringQuota] {
+        guard !expiring(row, now: now, withinHours: withinHours, unusedPercent: unusedPercent).isEmpty else { return [] }
+        return expiring(row, now: now, withinHours: withinHours, unusedPercent: 1).sorted { a, b in
+            let aModel = a.limit.kind == "weekly_model", bModel = b.limit.kind == "weekly_model"
+            if aModel != bModel { return aModel }
+            return (a.limit.label ?? "") < (b.limit.label ?? "")
+        }
+    }
+
     /// The name a limit is shown under: a model's weekly limit by its model.
     static func title(_ limit: FleetAccount.Limit) -> String {
         title(kind: limit.kind, label: limit.label)

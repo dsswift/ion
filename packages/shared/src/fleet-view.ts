@@ -7,7 +7,7 @@
 import type { FormatRule, FormatVersion } from './format-versions'
 import { fleetAccountKey, type FleetAccount, type FleetAccountLimit, type FleetEnterpriseAccount, type FleetReport } from './types-fleet'
 import { getProviderDisplayName, type ProviderUsageLimitKind } from './types-models'
-import { DEFAULT_SPARE_QUOTA_RULE, expiringQuota, type ExpiringQuota, type SpareQuotaRule } from './usage-limit'
+import { DEFAULT_SPARE_QUOTA_RULE, expiringQuota, unusedAtReset, type ExpiringQuota, type SpareQuotaRule } from './usage-limit'
 
 /** One server's place in the Fleet: its report, when one has been read. */
 export interface FleetServer {
@@ -262,6 +262,8 @@ export interface FleetExpiringAccount {
   row: FleetAccountRow
   /** Its expiring limits, soonest reset first. */
   expiring: ExpiringQuota[]
+  /** What it loses at that reset, limit by limit, a model's first (`unusedAtReset`). */
+  unused: ExpiringQuota[]
 }
 
 /**
@@ -272,7 +274,7 @@ export interface FleetExpiringAccount {
 export function fleetExpiringQuota(accounts: readonly FleetAccountRow[], now: number, rule: SpareQuotaRule = DEFAULT_SPARE_QUOTA_RULE): FleetExpiringAccount[] {
   return accounts
     .filter((row) => row.signedIn)
-    .map((row) => ({ row, expiring: expiringQuota(row.limits, now, rule) }))
+    .map((row) => ({ row, expiring: expiringQuota(row.limits, now, rule), unused: unusedAtReset(row.limits, now, rule) }))
     .filter((entry) => entry.expiring.length > 0)
     .sort((a, b) => a.expiring[0].resetsAt - b.expiring[0].resetsAt)
 }

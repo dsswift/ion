@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FleetAccountLimit } from '../types-fleet'
-import { accountHasRoom, expiringQuota, hasSpareQuota, usageLimitLabel, usageLimitedUntil } from '../usage-limit'
+import { accountHasRoom, expiringQuota, hasSpareQuota, rateLimitNotice, rateLimitUtilization, sameResetWindow, unusedAtReset, unusedAtResetLabel, usageLimitLabel, usageLimitedUntil } from '../usage-limit'
 import { effectiveSnoozed, inboxQuiet, type InboxTabView } from '../inbox-classify'
 
 const NOW = Date.parse('2026-10-03T12:00:00Z')
@@ -34,6 +34,37 @@ describe('usageLimitedUntil', () => {
   })
 })
 
+describe('rateLimitNotice', () => {
+  const resetsAt = Math.floor((NOW + HOUR) / 1000)
+
+  it('says nothing about a request that was simply allowed', () => {
+    expect(rateLimitNotice({ status: 'allowed', rateLimitType: 'five_hour', resetsAt }, NOW)).toBeNull()
+  })
+
+  it('words a warning as a warning, never as a refusal', () => {
+    const notice = rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'seven_day_overage_included', resetsAt, utilization: 0.873 }, NOW)
+    expect(notice).toMatch(/^Approaching the 7-day limit \(87% used\)\. Requests are still allowed\. Resets at /)
+    expect(notice).not.toMatch(/reached|rate limited/i)
+  })
+
+  it('reads the percent from the matching window, and leaves it out when unknown', () => {
+    const fromWindow = rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt, windows: { five_hour: { utilization: 0.9 } } }, NOW)
+    expect(fromWindow).toContain('5-hour limit (90% used)')
+    expect(rateLimitUtilization({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt })).toBeNull()
+    expect(rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt }, NOW)).toMatch(/^Approaching the 5-hour limit\. /)
+  })
+
+  it('says the limit was reached only on a refusal', () => {
+    expect(rateLimitNotice({ status: 'rejected', rateLimitType: 'seven_day', resetsAt }, NOW)).toMatch(/^7-day limit reached\. Resets at /)
+  })
+
+  it('names the day when the reset is more than a day out', () => {
+    const far = Math.floor((NOW + 72 * HOUR) / 1000)
+    const weekday = new Date(far * 1000).toLocaleString(undefined, { weekday: 'short' })
+    expect(rateLimitNotice({ status: 'rejected', rateLimitType: 'seven_day', resetsAt: far }, NOW)).toContain(weekday)
+  })
+})
+
 describe('expiring quota', () => {
   it('is a weekly limit close to its reset with enough unused', () => {
     const found = expiringQuota([limit({ percent: 60 })], NOW, { withinHours: 12, unusedPercent: 25 })
@@ -47,6 +78,25 @@ describe('expiring quota', () => {
     expect(expiringQuota([limit({ percent: 90 })], NOW, rule)).toEqual([])
     expect(expiringQuota([limit({ kind: 'session' })], NOW, rule)).toEqual([])
     expect(expiringQuota([limit({ resetsAt: iso(NOW - HOUR) })], NOW, rule)).toEqual([])
+  })
+
+  it('lists what each weekly limit loses at the reset, a model first, once one of them is expiring', () => {
+    const rule = { withinHours: 12, unusedPercent: 25 }
+    const weekly = limit({ percent: 57 })
+    const model = limit({ kind: 'weekly_model', label: 'Model One', percent: 79 })
+    const spent = limit({ kind: 'weekly_model', label: 'Model Two', percent: 100 })
+    const lost = unusedAtReset([limit({ kind: 'session', percent: 10 }), weekly, spent, model], NOW, rule)
+    // The model's 21% is under the rule's 25%, and is still named beside the 43% that is over it.
+    expect(lost.map((entry) => unusedAtResetLabel(entry, lost))).toEqual(['21% Model One unused', '43% total unused'])
+    const alone = unusedAtReset([weekly], NOW, rule)
+    expect(alone.map((entry) => unusedAtResetLabel(entry, alone))).toEqual(['43% unused'])
+    // Nothing is over the rule's share: nothing is listed.
+    expect(unusedAtReset([limit({ percent: 80 }), model], NOW, rule)).toEqual([])
+  })
+
+  it('reads two reset times a moment apart as one window, and ones hours apart as two', () => {
+    expect(sameResetWindow(NOW + 905, NOW - 448)).toBe(true)
+    expect(sameResetWindow(NOW, NOW + 7 * 24 * HOUR)).toBe(false)
   })
 
   it('is spare only while the account can take work', () => {
