@@ -10,6 +10,43 @@ func account(email string, signedIn bool, lastSeen int64, limits ...AccountLimit
 	return Account{Provider: "anthropic", Backend: "claude-code", Email: email, OrgID: "org-" + email, SignedIn: signedIn, LastSeen: lastSeen, Limits: limits}
 }
 
+// A login with no email that names its organization joins the one account
+// of that organization, and stays its own row when none or several are.
+func TestMergeAccountsJoinsALoginToItsAccount(t *testing.T) {
+	token := func(orgID string, lastSeen int64, limits ...AccountLimit) Account {
+		return Account{Provider: "anthropic", Backend: "claude-code", OrgID: orgID, AuthMethod: "oauth_token", Label: "Claude", SignedIn: true, LastSeen: lastSeen, Limits: limits}
+	}
+	owner := account("a@example.com", false, 100, AccountLimit{Kind: "session", Percent: 19, FetchedAt: 100}, AccountLimit{Kind: "weekly", Percent: 51, FetchedAt: 100})
+	owner.Label = "Claude Max"
+	rows := MergeAccounts(map[string][]Account{
+		"container": {token("org-a@example.com", 900, AccountLimit{Kind: "session", Percent: 22, FetchedAt: 900})},
+		"laptop":    {owner},
+	}, []string{"container", "laptop"})
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	row := rows[0]
+	if row.Email != "a@example.com" || row.Label != "Claude Max" || !row.SignedIn || row.LastSeen != 900 || len(row.Machines) != 2 {
+		t.Errorf("row = %+v", row)
+	}
+	if session, _ := row.Limit("session", ""); session.Percent != 22 {
+		t.Errorf("session = %+v", session)
+	}
+	if weekly, _ := row.Limit("weekly", ""); weekly.Percent != 51 {
+		t.Errorf("weekly = %+v", weekly)
+	}
+
+	if alone := MergeAccounts(map[string][]Account{"container": {token("org-x", 1)}}, []string{"container"}); len(alone) != 1 || alone[0].Email != "" {
+		t.Errorf("a login with no account of its organization = %+v", alone)
+	}
+	a, b := account("a@example.com", true, 1), account("b@example.com", true, 1)
+	a.OrgID, b.OrgID = "team", "team"
+	shared := MergeAccounts(map[string][]Account{"container": {token("team", 1)}, "laptop": {a, b}}, []string{"container", "laptop"})
+	if len(shared) != 3 {
+		t.Errorf("a login whose organization has two accounts = %+v", shared)
+	}
+}
+
 func TestMergeAccounts(t *testing.T) {
 	byHost := map[string][]Account{
 		"oscar": {

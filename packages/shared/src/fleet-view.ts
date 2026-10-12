@@ -53,42 +53,69 @@ function limitKey(l: Pick<FleetAccountLimit, 'kind' | 'label'>): string {
 }
 
 /**
+ * Which row each login with no email belongs to. A login by long-lived token
+ * reports its organization and nothing else. When exactly one account with
+ * an email in the Fleet is of that organization, the login is that account.
+ * Keyed by the login's own key; a login with no such account is absent.
+ */
+function fleetLoginOwners(servers: readonly FleetServer[]): Map<string, string> {
+  const accounts = servers.flatMap((server) => server.report?.accounts ?? [])
+  const byOrg = new Map<string, Set<string>>()
+  for (const account of accounts) {
+    if (!account.email || !account.orgId) continue
+    const org = `${account.provider}|${account.orgId}`
+    byOrg.set(org, (byOrg.get(org) ?? new Set<string>()).add(fleetAccountKey(account)))
+  }
+  const owners = new Map<string, string>()
+  for (const account of accounts) {
+    if (account.email || !account.orgId) continue
+    const named = byOrg.get(`${account.provider}|${account.orgId}`)
+    if (named?.size === 1) owners.set(fleetAccountKey(account), [...named][0])
+  }
+  return owners
+}
+
+/**
  * One row per account across every server's ledger. The same account on
  * two servers is one row with two machines; each of its limits is the
- * newest read any server holds. Rows are ordered by provider name, then by
- * account email; an account with no email follows its provider's others.
+ * newest read any server holds. A login with no email joins the row of the
+ * account it belongs to (`fleetLoginOwners`), which keeps its own name and
+ * plan. Rows are ordered by provider name, then by account email; an account
+ * with no email follows its provider's others.
  */
 export function mergeFleetAccounts(servers: readonly FleetServer[]): FleetAccountRow[] {
+  const owners = fleetLoginOwners(servers)
   const rows = new Map<string, FleetAccountRow>()
   const limits = new Map<string, Map<string, FleetAccountLimit>>()
-  for (const server of servers) {
-    for (const account of server.report?.accounts ?? []) {
-      const key = fleetAccountKey(account)
-      const newer = (rows.get(key)?.lastSeen ?? -1) < account.lastSeen
-      const prev = rows.get(key)
-      const row: FleetAccountRow = prev && !newer ? prev : {
-        key,
-        provider: account.provider,
-        backend: account.backend,
-        email: account.email,
-        orgName: account.orgName,
-        planType: account.planType,
-        label: account.label,
-        signedIn: prev?.signedIn ?? false,
-        lastSeen: account.lastSeen,
-        limits: [],
-        machines: prev?.machines ?? [],
-      }
-      row.signedIn = row.signedIn || account.signedIn
-      row.machines.push({ serverId: server.id, label: server.label, signedIn: account.signedIn, lastSeen: account.lastSeen })
-      rows.set(key, row)
-      const byLimit = limits.get(key) ?? new Map<string, FleetAccountLimit>()
-      for (const limit of account.limits) {
-        const held = byLimit.get(limitKey(limit))
-        if (!held || held.fetchedAt < limit.fetchedAt) byLimit.set(limitKey(limit), limit)
-      }
-      limits.set(key, byLimit)
+  // Each account's own reports first, so the row a login joins already exists.
+  const reports = servers.flatMap((server) => (server.report?.accounts ?? []).map((account) => ({ server, account, owner: owners.get(fleetAccountKey(account)) })))
+  for (const { server, account, owner } of [...reports.filter((r) => !r.owner), ...reports.filter((r) => r.owner)]) {
+    const key = owner ?? fleetAccountKey(account)
+    const prev = rows.get(key)
+    const newer = (prev?.lastSeen ?? -1) < account.lastSeen
+    const row: FleetAccountRow = prev && (owner || !newer) ? prev : {
+      key,
+      provider: account.provider,
+      backend: account.backend,
+      email: account.email,
+      orgName: account.orgName,
+      planType: account.planType,
+      label: account.label,
+      signedIn: prev?.signedIn ?? false,
+      lastSeen: account.lastSeen,
+      limits: [],
+      machines: prev?.machines ?? [],
     }
+    row.signedIn = row.signedIn || account.signedIn
+    row.lastSeen = Math.max(row.lastSeen, account.lastSeen)
+    row.machines.push({ serverId: server.id, label: server.label, signedIn: account.signedIn, lastSeen: account.lastSeen })
+    rows.set(key, row)
+    const byLimit = limits.get(key) ?? new Map<string, FleetAccountLimit>()
+    for (const limit of account.limits) {
+      const held = byLimit.get(limitKey(limit))
+      if (!held || held.fetchedAt < limit.fetchedAt) byLimit.set(limitKey(limit), limit)
+    }
+    limits.set(key, byLimit)
   }
   return [...rows.values()]
     .map((row) => ({

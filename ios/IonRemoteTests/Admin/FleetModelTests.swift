@@ -186,6 +186,36 @@ final class FleetModelTests: XCTestCase {
                        ["anthropic|gone@example.com", "anthropic|Zed@example.com", "anthropic|", "openai|b@example.com", "xai|"])
     }
 
+    func testALoginWithNoEmailJoinsTheOneAccountOfItsOrganization() throws {
+        func entry(_ email: String, org: String, lastSeen: Int, extra: String = "", limits: String = "") -> String {
+            #"{"provider":"anthropic","backend":"claude-code","email":"\#(email)","orgId":"\#(org)"\#(extra),"firstSeen":1789000000000,"lastSeen":\#(lastSeen),"signedIn":true,"limits":[\#(limits)]}"#
+        }
+        func server(_ id: String, _ accounts: [String]) throws -> FleetServer {
+            let json = Self.report(version: "1.0.0", running: 0, accounts: "[\(accounts.joined(separator: ","))]")
+            return FleetServer(id: id, label: id, report: try JSONDecoder().decode(FleetReport.self, from: Data(json.utf8)))
+        }
+        let token = entry("", org: "org-1", lastSeen: 1790000009000, extra: #","authMethod":"oauth_token","label":"Claude""#,
+                          limits: #"{"kind":"session","percent":22,"fetchedAt":1790000009000}"#)
+        let owner = entry("user@example.com", org: "org-1", lastSeen: 1790000000000, extra: #","planType":"max","label":"Claude Max""#,
+                          limits: #"{"kind":"session","percent":19,"fetchedAt":1790000000000},{"kind":"weekly","percent":51,"fetchedAt":1790000000000}"#)
+
+        let rows = FleetSummary.accounts([try server("container", [token]), try server("laptop", [owner])])
+
+        XCTAssertEqual(rows.count, 1)
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.email, "user@example.com")
+        XCTAssertEqual(row.label, "Claude Max")
+        XCTAssertEqual(row.lastSeen, 1790000009000)
+        XCTAssertEqual(row.machines.map(\.label), ["container", "laptop"])
+        XCTAssertEqual(row.limits.first { $0.kind == "session" }?.percent, 22)
+        XCTAssertEqual(row.limits.first { $0.kind == "weekly" }?.percent, 51)
+
+        // No account, or more than one, of the organization: the login stays its own row.
+        XCTAssertEqual(FleetSummary.accounts([try server("container", [token])]).map(\.email), [""])
+        let second = entry("other@example.com", org: "org-1", lastSeen: 1790000000000)
+        XCTAssertEqual(FleetSummary.accounts([try server("container", [token]), try server("laptop", [owner, second])]).count, 3)
+    }
+
     func testQuotaPoolsSumEachLimitOverAProvidersAccounts() throws {
         let now = Date(timeIntervalSince1970: 1_790_000_000)
         func limit(_ kind: String, _ percent: Double, label: String? = nil, resetsIn: TimeInterval? = nil) -> FleetAccount.Limit {
