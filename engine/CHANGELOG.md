@@ -18,6 +18,17 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.102.0](https://github.com/dsswift/ion/compare/engine-v1.101.1...engine-v1.102.0) (2026-10-12)
+
+### Features
+
+* **engine:** read the organization of a claude-code token login ([d251653](https://github.com/dsswift/ion/commit/d251653d9a65896786db36e3f9a96bcc57f4ddb5))
+* **repo:** join a token login to its account in the fleet ([28dfcc1](https://github.com/dsswift/ion/commit/28dfcc13b8d6aee2270f2b84ed09a245da9e9417))
+
+### Bug Fixes
+
+* **engine:** record the owner of a cli-backend conversation ([86f6643](https://github.com/dsswift/ion/commit/86f66434a7b3b3e15b256781b6ccf336b0dac007))
+
 ## [1.101.1](https://github.com/dsswift/ion/compare/engine-v1.101.0...engine-v1.101.1) (2026-10-10)
 
 ### Bug Fixes

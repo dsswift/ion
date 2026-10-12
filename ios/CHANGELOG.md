@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.17.0](https://github.com/dsswift/ion/compare/ios-v2.16.2...ios-v2.17.0) (2026-10-12)
+
+### Features
+
+* **repo:** join a token login to its account in the fleet ([28dfcc1](https://github.com/dsswift/ion/commit/28dfcc13b8d6aee2270f2b84ed09a245da9e9417))
+
 ## [2.16.2](https://github.com/dsswift/ion/compare/ios-v2.16.1...ios-v2.16.2) (2026-10-10)
 
 ### Bug Fixes
