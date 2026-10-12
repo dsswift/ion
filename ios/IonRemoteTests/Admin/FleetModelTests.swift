@@ -101,6 +101,22 @@ final class FleetModelTests: XCTestCase {
         XCTAssertEqual(row(email: "", label: "Claude Max").title(revealEmail: false), "Claude Max")
     }
 
+    func testEachWeeklyLimitLosingQuotaIsListedModelFirstOnceOneIsExpiring() throws {
+        let reset = try Date("2026-10-08T00:00:00Z", strategy: .iso8601)
+        func row(weekly: Double, model: Double) -> FleetAccountRow {
+            FleetAccountRow(key: "k", provider: "anthropic", email: "user@example.com", orgName: nil, planType: nil, label: nil, signedIn: true, lastSeen: 0,
+                            limits: [.init(kind: "weekly", label: nil, percent: weekly, resetsAt: "2026-10-08T00:00:00Z", fetchedAt: 1),
+                                     .init(kind: "weekly_model", label: "Model One", percent: model, resetsAt: "2026-10-08T00:00:00Z", fetchedAt: 1)], machines: [])
+        }
+        let sixHoursBefore = reset.addingTimeInterval(-6 * 3600)
+        // The model's 21% is under the rule's 25%, and is still listed beside the 43% that is over it.
+        let lost = FleetSummary.unusedAtReset(row(weekly: 57, model: 79), now: sixHoursBefore)
+        XCTAssertEqual(lost.map(\.limit.kind), ["weekly_model", "weekly"])
+        XCTAssertEqual(lost.map(\.unusedPercent), [21, 43])
+        XCTAssertTrue(FleetAccountRowView.expiringText(lost[0], now: sixHoursBefore).hasPrefix("21% of the 7-day Model One limit resets unused"))
+        XCTAssertTrue(FleetSummary.unusedAtReset(row(weekly: 80, model: 79), now: sixHoursBefore).isEmpty)
+    }
+
     func testWeeklyQuotaCloseToItsResetWithEnoughUnusedIsExpiring() throws {
         let reset = try Date("2026-10-08T00:00:00Z", strategy: .iso8601)
         func row(signedIn: Bool, percent: Double) -> FleetAccountRow {

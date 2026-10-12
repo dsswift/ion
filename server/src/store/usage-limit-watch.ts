@@ -17,7 +17,7 @@ import type { StoreApi } from 'zustand'
 import type { FleetAccount } from '@ion/shared/types-fleet'
 import { fleetAccountKey } from '@ion/shared/types-fleet'
 import type { RelayPushMeta } from '@ion/shared/studio-wire/relay-envelope'
-import { expiringQuota, hasSpareQuota, usageLimitLabel, usageLimitedUntil, type SpareQuotaRule } from '@ion/shared/usage-limit'
+import { expiringQuota, hasSpareQuota, sameResetWindow, usageLimitLabel, usageLimitedUntil, type SpareQuotaRule } from '@ion/shared/usage-limit'
 import { isPersistedSettled } from '@ion/shared/tab-predicates'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { dataDir } from '../paths'
@@ -60,8 +60,8 @@ export interface UsageLimitWatchDeps {
   /** The provider a conversation's model is served by, or '' when it cannot be told. */
   providerOf: (state: State, tab: Tab) => Promise<string>
   automation: (type: UsageAutomationEvent, payload: Record<string, unknown>) => Promise<void>
-  /** Account windows already alerted on, kept across restarts. */
-  alerted: { has(key: string): boolean; add(key: string): void }
+  /** The reset (unix ms) of the window last alerted on, per account limit, kept across restarts. */
+  alerted: { get(limitKey: string): number | undefined; set(limitKey: string, resetsAt: number): void }
   now: () => number
   sweepMs: number
 }
@@ -70,22 +70,22 @@ function alertsFile(): string {
   return join(dataDir(), 'quota-alerts.json')
 }
 
-/** One entry per account window that has rung; windows long past are dropped on load. */
+/** One entry per account limit: the reset of the window that last rang. Windows long past are dropped on load. */
 function fileBackedAlerts(now: number): UsageLimitWatchDeps['alerted'] {
   const seen = new Map<string, number>()
   const path = alertsFile()
   if (existsSync(path)) {
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, number>
-      for (const [key, at] of Object.entries(parsed)) if (typeof at === 'number' && now - at < 14 * 86_400_000) seen.set(key, at)
+      for (const [key, resetsAt] of Object.entries(parsed)) if (typeof resetsAt === 'number' && now - resetsAt < 14 * 86_400_000) seen.set(key, resetsAt)
     } catch (err) {
       rWarn(TAG, 'quota alert record unreadable; starting empty', { path, error: String(err) })
     }
   }
   return {
-    has: (key) => seen.has(key),
-    add: (key) => {
-      seen.set(key, Date.now())
+    get: (key) => seen.get(key),
+    set: (key, resetsAt) => {
+      seen.set(key, resetsAt)
       try {
         atomicWriteFileSync(path, JSON.stringify(Object.fromEntries(seen)), 0o600)
       } catch (err) {
@@ -222,9 +222,16 @@ export function setupUsageLimitWatch(store: StoreApi<State>, overrides: Partial<
     for (const account of deps.accounts()) {
       if (!account.signedIn) continue
       for (const expiring of expiringQuota(account.limits, now, settings.spare)) {
-        const key = `${fleetAccountKey(account)}|${expiring.limit.kind}|${expiring.limit.label ?? ''}|${expiring.resetsAt}`
-        if (deps.alerted.has(key)) continue
-        deps.alerted.add(key)
+        // The window is told apart by how far its reset is from the one last
+        // alerted on, never by the exact time: a backend reports the same
+        // reset a little differently on each read.
+        const key = `${fleetAccountKey(account)}|${expiring.limit.kind}|${expiring.limit.label ?? ''}`
+        const alertedReset = deps.alerted.get(key)
+        if (alertedReset !== undefined && sameResetWindow(alertedReset, expiring.resetsAt)) {
+          rDebug(TAG, 'expiring quota already alerted for this window', { provider: account.provider, limit_kind: expiring.limit.kind, resets_at: expiring.resetsAt, alerted_reset: alertedReset })
+          continue
+        }
+        deps.alerted.set(key, expiring.resetsAt)
         const what = expiring.limit.kind === 'weekly_model' && expiring.limit.label ? `7-day ${expiring.limit.label}` : '7-day'
         const hours = Math.max(1, Math.round((expiring.resetsAt - now) / 3_600_000))
         deps.ring({

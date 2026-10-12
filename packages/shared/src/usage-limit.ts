@@ -130,6 +130,36 @@ export function expiringQuota(limits: readonly FleetAccountLimit[], now: number,
 }
 
 /**
+ * What an account loses at its coming weekly reset, as a list to show: every
+ * weekly limit resetting within the rule's hours with a whole percent or more
+ * unused, a model's before the account's own. Empty unless one of them is
+ * expiring, so a limit under the rule's share is named only beside one over it.
+ */
+export function unusedAtReset(limits: readonly FleetAccountLimit[], now: number, rule: SpareQuotaRule = DEFAULT_SPARE_QUOTA_RULE): ExpiringQuota[] {
+  if (expiringQuota(limits, now, rule).length === 0) return []
+  const modelFirst = (entry: ExpiringQuota): number => (entry.limit.kind === 'weekly_model' ? 0 : 1)
+  return expiringQuota(limits, now, { ...rule, unusedPercent: 1 })
+    .sort((a, b) => modelFirst(a) - modelFirst(b) || (a.limit.label ?? '').localeCompare(b.limit.label ?? ''))
+}
+
+/** "21% Fable unused" for a model's limit; "43% unused" for the account's own, "43% total unused" when it is listed beside a model's. */
+export function unusedAtResetLabel(entry: ExpiringQuota, all: readonly ExpiringQuota[]): string {
+  const percent = `${Math.round(entry.unusedPercent)}%`
+  if (entry.limit.kind === 'weekly_model') return `${percent} ${entry.limit.label ?? 'model'} unused`
+  return all.some((other) => other.limit.kind === 'weekly_model') ? `${percent} total unused` : `${percent} unused`
+}
+
+/**
+ * Whether two reset times name the same weekly window. A backend reports one
+ * window's reset a little differently from read to read; two windows of one
+ * limit are days apart.
+ */
+export const SAME_WINDOW_MS = 3_600_000
+export function sameResetWindow(a: number, b: number): boolean {
+  return Math.abs(a - b) < SAME_WINDOW_MS
+}
+
+/**
  * Whether an account can take work now: no limit that still holds is used up.
  * A limit read before its reset and looked at after it no longer counts.
  */

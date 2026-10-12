@@ -50,11 +50,11 @@ function harness(settings: Partial<UsageLimitSettings> = {}, accounts: FleetAcco
   } as unknown as StoreApi<State>
   const ring = vi.fn()
   const automation = vi.fn(async () => {})
-  const alerted = new Set<string>()
+  const alerted = new Map<string, number>()
   const watch = setupUsageLimitWatch(store, {
     ring, automation, host: () => 'jolteon', title: () => null, accounts: () => accounts,
     settings: () => ({ autoResume: false, resumePrompt: 'Continue.', spare: { withinHours: 12, unusedPercent: 25 }, expiryAlert: true, ...settings }),
-    providerOf: async () => 'anthropic', alerted: { has: (k) => alerted.has(k), add: (k) => { alerted.add(k) } },
+    providerOf: async () => 'anthropic', alerted: { get: (k) => alerted.get(k), set: (k, at) => { alerted.set(k, at) } },
     now: () => NOW, sweepMs: 60_000_000,
   })
   const setTab = (over: Record<string, unknown>): void => apply({ ...state, tabs: [tab(over)] } as State)
@@ -150,6 +150,20 @@ describe('the minute sweep', () => {
     expect(rings).toHaveLength(1)
     expect(rings[0][0].pushBody).toContain('60% of the 7-day limit on jolteon resets in 6 h')
     expect(h.automation).toHaveBeenCalledWith('usage:quota-expiring', expect.objectContaining({ provider: 'anthropic', unusedPercent: 60 }))
+  })
+
+  it('rings once for a window whose reset time is reported a little differently on each read, and again for the next window', async () => {
+    const accounts = [account()]
+    const h = active = harness({}, accounts)
+    const expiringRings = (): number => h.ring.mock.calls.filter(([push]) => push.notifyKind === QUOTA_EXPIRING_PUSH_KIND).length
+    for (const driftMs of [905, 335, -448, 0]) {
+      accounts[0] = account({ limits: [{ kind: 'weekly', percent: 40, resetsAt: new Date(NOW + 6 * HOUR + driftMs).toISOString(), fetchedAt: NOW }] })
+      await h.watch.sweep()
+    }
+    expect(expiringRings()).toBe(1)
+    accounts[0] = account({ limits: [{ kind: 'weekly', percent: 40, resetsAt: new Date(NOW + 10 * HOUR).toISOString(), fetchedAt: NOW }] })
+    await h.watch.sweep()
+    expect(expiringRings()).toBe(2)
   })
 
   it('stays silent about expiring quota when the alert is off', async () => {
