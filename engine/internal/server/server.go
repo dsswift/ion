@@ -107,6 +107,9 @@ type Server struct {
 	// provider_account_usage read running at a time.
 	usageFn cliprobe.UsageFunc
 	usageMu sync.Mutex
+	// orgFn reads the organization of a claude-code login whose auth status
+	// names none, on the given model.
+	orgFn func(authMethod, model string) string
 
 	// hybrid is the typed view of the backend when it is a *HybridBackend,
 	// captured at NewServer so SetConfig can wire the live CLI-auth probe into
@@ -315,6 +318,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		contextBreakdownActive:  make(map[string]struct{}),
 		probes:                  newProbeRegistry(),
 		usageFn:                 cliprobe.DefaultUsage,
+		orgFn:                   cliprobe.NewClaudeOrgResolver().Resolve,
 		hybrid:                  hybrid,
 	}
 	// Reap orphaned sessions a grace window after their last owning

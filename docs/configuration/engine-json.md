@@ -82,6 +82,7 @@ Map of provider name to credentials. Keys are provider identifiers (e.g., `"anth
 | `baseURL` | string | `""` | Custom API endpoint. Use this for proxies, gateways, or self-hosted providers. |
 | `authHeader` | string | `""` | Custom authorization header name. Overrides the provider's default auth header. |
 | `displayName` | string | `""` | Human-friendly name clients show for this provider (e.g. `"Corp Gateway"` for the provider id `corp-gateway`). Surfaced on the `list_models` `ProviderEntry` wire shape. Empty ⇒ clients fall back to their own built-in name map, then to the capitalized id. |
+| `accountOrgRead` | object | unset | How the engine learns the organization of a delegated CLI login that names none (a Claude Code login by long-lived token). `enabled` (boolean, default `true`) turns the read on or off. `model` (string, default `claude-haiku-4-5-20251001`) is the model its one small turn runs on. The read spends a little of the account's usage; the CLI alone sends the credential. See [`provider_account_usage`](../protocol/client-commands.md#provider_account_usage). |
 
 A key the engine does not provide itself, with a `baseURL`, defines a custom provider. `list_models` marks it `custom: true`, and the [`provider_remove`](../protocol/client-commands.md#provider_remove) command deletes its entry along with its stored key.
 

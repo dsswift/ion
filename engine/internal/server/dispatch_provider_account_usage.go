@@ -3,6 +3,10 @@
 // Each delegated provider CLI knows which account it is signed in to and
 // what that account's usage limits are. This handler asks the CLIs and
 // reports what they say. The engine never handles an account's credential.
+//
+// A claude-code login by long-lived token names no organization. For it the
+// handler has the CLI run one small turn and takes the organization from the
+// CLI's own log of the response (cliprobe.ClaudeOrgResolver).
 package server
 
 import (
@@ -41,6 +45,28 @@ func cliBackendProviders() map[string]string {
 		}
 	}
 	return out
+}
+
+// readAccountOrg reads the organization of a claude-code login whose auth
+// status names none, unless the provider's configuration turns the read off.
+func (s *Server) readAccountOrg(providerID, authMethod string) string {
+	model := ""
+	if s.config != nil {
+		if rc := s.config.Providers[providerID].AccountOrgRead; rc != nil {
+			if rc.Enabled != nil && !*rc.Enabled {
+				utils.LogWithFields(utils.LevelInfo, "server", "account organization read skipped: turned off in config", map[string]any{
+					"provider": providerID, "authMethod": authMethod,
+				})
+				return ""
+			}
+			model = rc.Model
+		}
+	}
+	orgID := s.orgFn(authMethod, model)
+	utils.LogWithFields(utils.LevelInfo, "server", "account organization resolved for a login that names none", map[string]any{
+		"provider": providerID, "authMethod": authMethod, "resolved": orgID != "",
+	})
+	return orgID
 }
 
 // readProviderAccountUsage re-probes the usage-reporting CLIs, then reports
@@ -95,6 +121,9 @@ func (s *Server) readProviderAccountUsage() []types.ProviderAccountUsage {
 				PlanType:   p.PlanType,
 				AuthMethod: p.AuthMethod,
 				Label:      p.Label,
+			}
+			if kind == "claude-code" && p.OrgID == "" {
+				entry.Account.OrgID = s.readAccountOrg(providers[kind], p.AuthMethod)
 			}
 			limits, err := s.usageFn(kind)
 			switch {
