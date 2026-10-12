@@ -27,6 +27,11 @@ Each server keeps a ledger of the provider CLI accounts it has seen signed in du
 
 The Quota tab of the Fleet page adds every server's ledger into one row per account, grouped by provider. A server shown solid is signed in to the account now. A server shown gray saw it in the last 30 days. An account that is signed in nowhere keeps the last numbers read for it.
 
+A server signed in by long-lived token (`CLAUDE_CODE_OAUTH_TOKEN`) is a special case, because the Claude Code CLI names no email, plan, or limits for that login. Two things fill the gap:
+
+- **Whose login it is.** The engine has the CLI run one small turn and reads the organization from the CLI's own log. The CLI alone sends the token. When exactly one account in the Fleet belongs to that organization, the server joins that account's row. Otherwise it keeps a row of its own, named by its plan label. `providers.anthropic.accountOrgRead` in the server's `engine.json` turns this off or picks the model ([reference](../configuration/engine-json.md)).
+- **Its usage.** The 5-hour and 7-day numbers come from each conversation that runs there, and stay until their window resets.
+
 ```bash
 ion fleet accounts          # every account, its limits, and the hosts it is on
 ion fleet accounts --json

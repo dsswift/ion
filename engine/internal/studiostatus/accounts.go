@@ -125,43 +125,94 @@ type FleetAccount struct {
 	Machines []AccountMachine `json:"machines"`
 }
 
+// loginOwners says which row each login with no email belongs to. A login by
+// long-lived token reports its organization and nothing else. When exactly
+// one account with an email across the hosts is of that organization, the
+// login is that account. Keyed by the login's own key; a login with no such
+// account is absent.
+func loginOwners(byHost map[string][]Account) map[string]string {
+	named := map[string]map[string]bool{}
+	for _, accounts := range byHost {
+		for _, a := range accounts {
+			if a.Email == "" || a.OrgID == "" {
+				continue
+			}
+			org := a.Provider + "|" + a.OrgID
+			if named[org] == nil {
+				named[org] = map[string]bool{}
+			}
+			named[org][a.Key()] = true
+		}
+	}
+	owners := map[string]string{}
+	for _, accounts := range byHost {
+		for _, a := range accounts {
+			if a.Email != "" || a.OrgID == "" {
+				continue
+			}
+			if keys := named[a.Provider+"|"+a.OrgID]; len(keys) == 1 {
+				for key := range keys {
+					owners[a.Key()] = key
+				}
+			}
+		}
+	}
+	return owners
+}
+
 // MergeAccounts makes one row per account across hosts. An account is
 // signed in when any host has it signed in now; each of its limits is the
-// one read most recently on any host. Signed-in accounts lead, then the
-// most recently seen.
+// one read most recently on any host. A login with no email joins the row of
+// the account it belongs to (loginOwners), which keeps its own name and
+// plan. Signed-in accounts lead, then the most recently seen.
 func MergeAccounts(byHost map[string][]Account, hostOrder []string) []FleetAccount {
+	owners := loginOwners(byHost)
 	rows := map[string]*FleetAccount{}
 	var keys []string
-	for _, host := range hostOrder {
-		for _, a := range byHost[host] {
-			key := a.Key()
-			row, ok := rows[key]
-			if !ok {
-				row = &FleetAccount{Account: a}
-				row.Limits = nil
-				row.SignedIn = false
-				rows[key] = row
-				keys = append(keys, key)
-			} else if a.LastSeen > row.LastSeen {
-				signedIn, limits, machines := row.SignedIn, row.Limits, row.Machines
-				row.Account = a
-				row.SignedIn, row.Limits, row.Machines = signedIn, limits, machines
-			}
-			row.SignedIn = row.SignedIn || a.SignedIn
-			row.Machines = append(row.Machines, AccountMachine{Host: host, SignedIn: a.SignedIn, LastSeen: a.LastSeen})
-			for _, l := range a.Limits {
-				at := -1
-				for i, held := range row.Limits {
-					if held.Kind == l.Kind && held.Label == l.Label {
-						at = i
-						break
-					}
+	// Each account's own reports first, so the row a login joins already exists.
+	for _, joining := range []bool{false, true} {
+		for _, host := range hostOrder {
+			for _, a := range byHost[host] {
+				key, joins := owners[a.Key()]
+				if joins != joining {
+					continue
 				}
+				if !joins {
+					key = a.Key()
+				}
+				row, ok := rows[key]
 				switch {
-				case at < 0:
-					row.Limits = append(row.Limits, l)
-				case row.Limits[at].FetchedAt < l.FetchedAt:
-					row.Limits[at] = l
+				case !ok:
+					row = &FleetAccount{Account: a}
+					row.Limits = nil
+					row.SignedIn = false
+					rows[key] = row
+					keys = append(keys, key)
+				case joins:
+					if a.LastSeen > row.LastSeen {
+						row.LastSeen = a.LastSeen
+					}
+				case a.LastSeen > row.LastSeen:
+					signedIn, limits, machines := row.SignedIn, row.Limits, row.Machines
+					row.Account = a
+					row.SignedIn, row.Limits, row.Machines = signedIn, limits, machines
+				}
+				row.SignedIn = row.SignedIn || a.SignedIn
+				row.Machines = append(row.Machines, AccountMachine{Host: host, SignedIn: a.SignedIn, LastSeen: a.LastSeen})
+				for _, l := range a.Limits {
+					at := -1
+					for i, held := range row.Limits {
+						if held.Kind == l.Kind && held.Label == l.Label {
+							at = i
+							break
+						}
+					}
+					switch {
+					case at < 0:
+						row.Limits = append(row.Limits, l)
+					case row.Limits[at].FetchedAt < l.FetchedAt:
+						row.Limits[at] = l
+					}
 				}
 			}
 		}

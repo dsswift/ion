@@ -230,7 +230,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 						"parent_id":       opts.ParentConversationID,
 					})
 				}
-				stampPrincipalAtMint(created, opts.Principal)
+				StampPrincipalAtMint(created, opts.Principal)
 				return created, nil
 			}
 			utils.LogWithFields(utils.LevelError, "backend.runloop", "failed to load conversation", map[string]any{
@@ -257,7 +257,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 		// is nil); an existing header's owner is never overwritten by a
 		// later session that attaches a different principal (see the
 		// "principal mismatch" WARN in session/start_session.go).
-		stampPrincipalAtMint(loaded, opts.Principal)
+		StampPrincipalAtMint(loaded, opts.Principal)
 		return loaded, nil
 	}
 	// Use the canonical conversation ID generator so two runs that begin
@@ -275,19 +275,21 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 			"parent_id": opts.ParentConversationID,
 		})
 	}
-	stampPrincipalAtMint(created, opts.Principal)
+	StampPrincipalAtMint(created, opts.Principal)
 	return created, nil
 }
 
-// stampPrincipalAtMint writes conv.Principal from principal when the header
-// carries no owner yet. A no-op when principal is nil (session attributed
+// StampPrincipalAtMint writes conv.Principal from principal when the header
+// carries no owner yet. Every path that creates a conversation record calls
+// it: a record saved without an owner is refused to that owner on resume once
+// partitioning is enforced. A no-op when principal is nil (session attributed
 // nothing) or the header already has an owner (never overwritten, matching
 // the manifest's "backfill by first touch only" contract). When the header
 // already has a DIFFERENT owner than the session's principal, the header
 // keeps its owner and the mismatch is logged at WARN -- the session's turns
 // still attribute to the session's own principal via RunOptions.Principal,
 // but the durable header is never silently reassigned.
-func stampPrincipalAtMint(conv *conversation.Conversation, principal *types.SessionPrincipal) {
+func StampPrincipalAtMint(conv *conversation.Conversation, principal *types.SessionPrincipal) {
 	if conv == nil || principal == nil {
 		return
 	}

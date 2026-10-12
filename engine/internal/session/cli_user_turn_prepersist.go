@@ -27,8 +27,11 @@ func (m *Manager) prePersistCliUserTurn(s *engineSession, key, requestID string,
 	}
 	var userEntryID string
 	err := conversation.UpdateOrCreateOnDisk(s.conversationID, "", func() *conversation.Conversation {
-		return conversation.CreateConversation(s.conversationID, "", opts.Model)
+		created := conversation.CreateConversation(s.conversationID, "", opts.Model)
+		backend.StampPrincipalAtMint(created, opts.Principal)
+		return created
 	}, func(conv *conversation.Conversation) (bool, error) {
+		backend.StampPrincipalAtMint(conv, opts.Principal)
 		conversation.SyncWorkingDirectory(conv, opts.ProjectPath, requestID)
 		if userEntry := backend.AppendInboundUserMessage(conv, &opts); userEntry != nil {
 			userEntryID = userEntry.ID

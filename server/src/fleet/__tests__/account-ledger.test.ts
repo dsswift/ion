@@ -106,6 +106,35 @@ describe('applyRateLimitReport', () => {
     expect(row.limits.find((l) => l.kind === 'weekly_model')).toMatchObject({ percent: 76, fetchedAt: T0 })
   })
 
+  describe('a login whose CLI read reports no limits', () => {
+    const token: ProviderAccountUsage = { backend: 'claude-code', account: { provider: 'anthropic', authMethod: 'oauth_token', label: 'Claude' }, limits: [], fetchedAt: '' }
+    const sessionResets = (T0 + 3 * 60 * 60 * 1000) / 1000
+    const weeklyResets = (T0 + 2 * DAY) / 1000
+    const report = { status: 'allowed', resetsAt: sessionResets, rateLimitType: 'five_hour', windows: { five_hour: { utilization: 0.22, resetsAt: sessionResets }, seven_day: { utilization: 0.51, resetsAt: weeklyResets } } }
+
+    it('keeps the limits a conversation reported through the next read', () => {
+      recordAccountPoll([token], T0)
+      applyRateLimitReport('claude-code', report, T0 + 1000)
+      const [row] = recordAccountPoll([token], T0 + 60_000)
+      expect(row.limits.map((l) => [l.kind, l.percent, l.fetchedAt])).toEqual([['session', 22, T0 + 1000], ['weekly', 51, T0 + 1000]])
+    })
+
+    it('drops a kept limit once its window has reset', () => {
+      recordAccountPoll([token], T0)
+      applyRateLimitReport('claude-code', report, T0 + 1000)
+      const [row] = recordAccountPoll([token], T0 + DAY)
+      expect(row.limits.map((l) => l.kind)).toEqual(['weekly'])
+    })
+  })
+
+  it('lets a read that names a limit replace what a conversation reported', () => {
+    recordAccountPoll([claude('a@example.com')], T0)
+    applyRateLimitReport('claude-code', { status: 'allowed', resetsAt: 0, rateLimitType: 'five_hour', windows: { five_hour: { utilization: 0.9, resetsAt: (T0 + DAY) / 1000 } } }, T0 + 1000)
+    const [row] = recordAccountPoll([claude('a@example.com', 30)], T0 + 2000)
+    expect(row.limits.filter((l) => l.kind === 'session')).toEqual([expect.objectContaining({ percent: 30, fetchedAt: T0 + 2000 })])
+    expect(row.limits.some((l) => l.source === 'run')).toBe(false)
+  })
+
   it('ignores a report when no account is signed in on the backend', () => {
     expect(applyRateLimitReport('claude-code', { status: 'allowed', resetsAt: 0, rateLimitType: 'five_hour', windows: { five_hour: { utilization: 0.5, resetsAt: 0 } } }, T0)).toBe(false)
     expect(listAccounts(T0)).toEqual([])

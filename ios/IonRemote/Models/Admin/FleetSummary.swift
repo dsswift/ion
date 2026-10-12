@@ -32,7 +32,7 @@ struct FleetAccountRow: Equatable, Sendable, Identifiable {
     /// Signed in on at least one server now.
     var signedIn: Bool
     /// Unix ms any server last saw the account signed in.
-    let lastSeen: Double
+    var lastSeen: Double
     /// Each limit, taken from whichever server read it most recently.
     var limits: [FleetAccount.Limit]
     var machines: [Machine]
@@ -110,34 +110,61 @@ struct FleetExpiringQuota: Equatable, Sendable {
 /// arithmetic as `packages/shared/src/fleet-view.ts`.
 enum FleetSummary {
 
+    /// Which row each login with no email belongs to. A login by long-lived
+    /// token reports its organization and nothing else. When exactly one
+    /// account with an email in the Fleet is of that organization, the login
+    /// is that account. Keyed by the login's own key; a login with no such
+    /// account is absent. The same rule as `fleetLoginOwners` in
+    /// `packages/shared/src/fleet-view.ts`.
+    static func loginOwners(_ servers: [FleetServer]) -> [String: String] {
+        let accounts = servers.flatMap { $0.report?.accounts ?? [] }
+        var named: [String: Set<String>] = [:]
+        for account in accounts {
+            guard !account.email.isEmpty, let orgId = account.orgId, !orgId.isEmpty else { continue }
+            named["\(account.provider)|\(orgId)", default: []].insert(account.key)
+        }
+        var owners: [String: String] = [:]
+        for account in accounts {
+            guard account.email.isEmpty, let orgId = account.orgId, !orgId.isEmpty else { continue }
+            if let keys = named["\(account.provider)|\(orgId)"], keys.count == 1, let owner = keys.first {
+                owners[account.key] = owner
+            }
+        }
+        return owners
+    }
+
     /// One row per account across every server's ledger. The same account on
     /// two servers is one row with two machines; each of its limits is the
-    /// newest read any server holds. Rows are ordered by provider name, then
-    /// by account email; an account with no email follows its provider's others.
+    /// newest read any server holds. A login with no email joins the row of
+    /// the account it belongs to (`loginOwners`), which keeps its own name and
+    /// plan. Rows are ordered by provider name, then by account email; an
+    /// account with no email follows its provider's others.
     static func accounts(_ servers: [FleetServer]) -> [FleetAccountRow] {
+        let owners = loginOwners(servers)
         var rows: [String: FleetAccountRow] = [:]
         var limits: [String: [String: FleetAccount.Limit]] = [:]
-        for server in servers {
-            for account in server.report?.accounts ?? [] {
-                let key = account.key
-                let machine = FleetAccountRow.Machine(serverId: server.id, label: server.label, signedIn: account.signedIn)
-                if let held = rows[key], held.lastSeen >= account.lastSeen {
-                    rows[key]?.signedIn = held.signedIn || account.signedIn
-                    rows[key]?.machines.append(machine)
-                } else {
-                    let held = rows[key]
-                    rows[key] = FleetAccountRow(
-                        key: key, provider: account.provider, email: account.email, orgName: account.orgName,
-                        planType: account.planType, label: account.label,
-                        signedIn: (held?.signedIn ?? false) || account.signedIn,
-                        lastSeen: account.lastSeen, limits: [], machines: (held?.machines ?? []) + [machine]
-                    )
-                }
-                for limit in account.limits {
-                    let id = "\(limit.kind)|\(limit.label ?? "")"
-                    if let held = limits[key]?[id], held.fetchedAt >= limit.fetchedAt { continue }
-                    limits[key, default: [:]][id] = limit
-                }
+        let reports = servers.flatMap { server in (server.report?.accounts ?? []).map { (server: server, account: $0, owner: owners[$0.key]) } }
+        // Each account's own reports first, so the row a login joins already exists.
+        for (server, account, owner) in reports.filter({ $0.owner == nil }) + reports.filter({ $0.owner != nil }) {
+            let key = owner ?? account.key
+            let machine = FleetAccountRow.Machine(serverId: server.id, label: server.label, signedIn: account.signedIn)
+            if let held = rows[key], owner != nil || held.lastSeen >= account.lastSeen {
+                rows[key]?.signedIn = held.signedIn || account.signedIn
+                rows[key]?.lastSeen = max(held.lastSeen, account.lastSeen)
+                rows[key]?.machines.append(machine)
+            } else {
+                let held = rows[key]
+                rows[key] = FleetAccountRow(
+                    key: key, provider: account.provider, email: account.email, orgName: account.orgName,
+                    planType: account.planType, label: account.label,
+                    signedIn: (held?.signedIn ?? false) || account.signedIn,
+                    lastSeen: account.lastSeen, limits: [], machines: (held?.machines ?? []) + [machine]
+                )
+            }
+            for limit in account.limits {
+                let id = "\(limit.kind)|\(limit.label ?? "")"
+                if let held = limits[key]?[id], held.fetchedAt >= limit.fetchedAt { continue }
+                limits[key, default: [:]][id] = limit
             }
         }
         return rows.values

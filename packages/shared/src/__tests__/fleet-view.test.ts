@@ -82,6 +82,40 @@ describe('mergeFleetAccounts', () => {
     expect(fleetLimit(rows[0], 'weekly')?.percent).toBe(60)
   })
 
+  describe('a login with no email that reports its organization', () => {
+    const token = (over: Partial<FleetAccount> = {}): FleetAccount => account('', { orgId: 'org-a@example.com', planType: undefined, authMethod: 'oauth_token', label: 'Claude', ...over })
+
+    it('joins the one account of that organization, which keeps its name and plan', () => {
+      const rows = mergeFleetAccounts([
+        server('container', [token({ lastSeen: T0 + 9000, limits: [{ kind: 'session', percent: 22, fetchedAt: T0 + 9000 }] })]),
+        server('laptop', [account('a@example.com', { label: 'Claude Max', limits: [{ kind: 'session', percent: 19, fetchedAt: T0 }, { kind: 'weekly', percent: 51, fetchedAt: T0 }] })]),
+      ])
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ email: 'a@example.com', planType: 'max', label: 'Claude Max', signedIn: true, lastSeen: T0 + 9000 })
+      expect(rows[0].machines.map((m) => m.serverId)).toEqual(['container', 'laptop'])
+      expect(fleetLimit(rows[0], 'session')?.percent).toBe(22)
+      expect(fleetLimit(rows[0], 'weekly')?.percent).toBe(51)
+    })
+
+    it('keeps the account signed in where only the login is', () => {
+      const rows = mergeFleetAccounts([
+        server('laptop', [account('a@example.com', { signedIn: false, lastSeen: T0 - 5000 })]),
+        server('container', [token()]),
+      ])
+      expect(rows.map((r) => [r.email, r.signedIn])).toEqual([['a@example.com', true]])
+    })
+
+    it('stays its own row when no account, or more than one, is of that organization', () => {
+      expect(mergeFleetAccounts([server('container', [token()])]).map((r) => r.email)).toEqual([''])
+      const shared = mergeFleetAccounts([
+        server('container', [token({ orgId: 'team' })]),
+        server('laptop', [account('a@example.com', { orgId: 'team' })]),
+        server('oscar', [account('b@example.com', { orgId: 'team' })]),
+      ])
+      expect(shared.map((r) => [r.email, r.machines.length])).toEqual([['a@example.com', 1], ['b@example.com', 1], ['', 1]])
+    })
+  })
+
   it('orders rows by provider name, then by email, with a missing email last', () => {
     const rows = mergeFleetAccounts([
       server('oscar', [

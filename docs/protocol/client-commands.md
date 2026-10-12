@@ -1296,6 +1296,8 @@ After an issuer-side revocation, request one cache-bypassing refresh:
 
 Read the account each delegated provider CLI is signed in to, and the usage limits that CLI reports for it. The engine asks the CLIs themselves (the Claude Code CLI's usage request, the Codex app-server's `account/rateLimits/read`); it never handles an account's credential. The CLIs that report usage are re-probed first, so the account named is the one signed in now.
 
+A Claude Code login by long-lived token (`authMethod: "oauth_token"`) names no email, organization, or plan. For it the engine has the CLI run one small model turn with its HTTP debug log on, and reports the organization the CLI logged as `orgId`. The CLI alone sends the credential. The answer is held for a day; a failed read is retried after an hour. [`providers.<id>.accountOrgRead`](../configuration/engine-json.md) turns the read off or names its model.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `cmd` | `"provider_account_usage"` | yes | Command discriminator |

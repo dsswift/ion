@@ -875,6 +875,21 @@ type ProviderConfig struct {
 	// scenario that scripts its streams (providers.MockScenario). Every other
 	// provider ignores it.
 	ScenarioFile string `json:"scenarioFile,omitempty"`
+	// AccountOrgRead governs how the engine learns the organization of a
+	// delegated CLI login whose auth status names none. Nil means the
+	// default: read it, on the default model.
+	AccountOrgRead *AccountOrgReadConfig `json:"accountOrgRead,omitempty"`
+}
+
+// AccountOrgReadConfig configures the organization read of a delegated CLI
+// login that reports no organization (a login by long-lived token). The read
+// has the CLI run one small model turn, so it spends a little of the
+// account's usage.
+type AccountOrgReadConfig struct {
+	// Enabled turns the read on or off. Nil means on.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Model is the model the turn runs on. Empty means the engine's default.
+	Model string `json:"model,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.

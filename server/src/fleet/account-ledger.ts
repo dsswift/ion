@@ -74,6 +74,31 @@ function stamp(limits: ProviderUsageLimit[], now: number): FleetAccountLimit[] {
   return limits.map((l) => ({ ...l, fetchedAt: now }))
 }
 
+function sameLimit(a: Pick<FleetAccountLimit, 'kind' | 'label'>, b: Pick<FleetAccountLimit, 'kind' | 'label'>): boolean {
+  return a.kind === b.kind && (a.label ?? '') === (b.label ?? '')
+}
+
+/**
+ * The limits a row holds after a read of its CLI. The read replaces every
+ * limit it names. A limit only a conversation reported stays until its
+ * window resets: some logins answer the read with no limits at all, yet
+ * report them with every run.
+ */
+function limitsAfterPoll(prev: FleetAccountLimit[], read: ProviderUsageLimit[], provider: string, backend: string, now: number): FleetAccountLimit[] {
+  const next = stamp(read, now)
+  for (const held of prev) {
+    if (held.source !== 'run' || next.some((l) => sameLimit(l, held))) continue
+    const resets = held.resetsAt ? Date.parse(held.resetsAt) : NaN
+    if (Number.isFinite(resets) && resets > now) {
+      next.push(held)
+      log('in-run limit kept: the cli read did not report it', { provider, backend, kind: held.kind })
+    } else {
+      log('in-run limit dropped: its window reset', { provider, backend, kind: held.kind })
+    }
+  }
+  return next
+}
+
 /**
  * Records one `provider_account_usage` answer. Every account in it is signed
  * in now; every other row is not. A read whose limits failed keeps the
@@ -103,7 +128,7 @@ export function recordAccountPoll(entries: ProviderAccountUsage[], now = Date.no
       firstSeen: prev?.firstSeen ?? now,
       lastSeen: now,
       signedIn: true,
-      limits: entry.error ? prev?.limits ?? [] : stamp(entry.limits ?? [], now),
+      limits: entry.error ? prev?.limits ?? [] : limitsAfterPoll(prev?.limits ?? [], entry.limits ?? [], account.provider, entry.backend, now),
       limitsError: entry.error || undefined,
     })
   }
@@ -143,6 +168,7 @@ export function applyRateLimitReport(backend: string, report: RateLimitPayload, 
       percent: window.utilization * 100,
       resetsAt: window.resetsAt > 0 ? new Date(window.resetsAt * 1000).toISOString() : undefined,
       fetchedAt: now,
+      source: 'run',
     }
     const at = row.limits.findIndex((l) => l.kind === kind)
     if (at >= 0) row.limits[at] = next

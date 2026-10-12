@@ -744,7 +744,7 @@ func TestStampPrincipalAtMint_NeverOverwritesExistingOwner(t *testing.T) {
 	conv := conversation.CreateConversation("mismatch-conv-id", "", "mock-model")
 	conv.Principal = &types.ConversationPrincipal{Subject: "local:alice"}
 
-	stampPrincipalAtMint(conv, &types.SessionPrincipal{Subject: "local:bob"})
+	StampPrincipalAtMint(conv, &types.SessionPrincipal{Subject: "local:bob"})
 
 	if conv.Principal.Subject != "local:alice" {
 		t.Errorf("header principal subject = %q, want unchanged local:alice", conv.Principal.Subject)
