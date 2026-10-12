@@ -55,6 +55,38 @@ export function usageLimitLabel(limitType: string): string {
   return limitType ? `${limitType.replace(/_/g, ' ')} limit` : 'usage limit'
 }
 
+/** A backend's usage report, as far as the transcript line about it needs. */
+export interface RateLimitReport {
+  status: string
+  rateLimitType: string
+  /** Unix second the window resets. */
+  resetsAt: number
+  utilization?: number
+  windows?: Record<string, { utilization: number }>
+}
+
+/** Fraction (0..1) used of the window a report is about, when the backend said. */
+export function rateLimitUtilization(report: RateLimitReport): number | null {
+  return report.utilization ?? report.windows?.[report.rateLimitType]?.utilization ?? null
+}
+
+/**
+ * The transcript line for a usage report, or null when the request was simply
+ * allowed. Only a refusal says the limit was reached; any other verdict that
+ * is not a plain allow is the backend warning that the limit is close.
+ */
+export function rateLimitNotice(report: RateLimitReport, now: number): string | null {
+  if (report.status === 'allowed') return null
+  const label = usageLimitLabel(report.rateLimitType)
+  const at = new Date(report.resetsAt * 1000)
+  const sameDay = report.resetsAt * 1000 - now < 24 * 3_600_000
+  const resets = at.toLocaleString(undefined, sameDay ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  if (report.status === RATE_LIMIT_REJECTED) return `${label.charAt(0).toUpperCase()}${label.slice(1)} reached. Resets at ${resets}.`
+  const used = rateLimitUtilization(report)
+  const percent = used === null ? '' : ` (${Math.round(used * 100)}% used)`
+  return `Approaching the ${label}${percent}. Requests are still allowed. Resets at ${resets}.`
+}
+
 /** How much unused quota counts as spare, and how close to its reset. */
 export interface SpareQuotaRule {
   /** A weekly window counts once it resets within this many hours. */

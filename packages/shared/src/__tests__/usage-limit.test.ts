@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FleetAccountLimit } from '../types-fleet'
-import { accountHasRoom, expiringQuota, hasSpareQuota, usageLimitLabel, usageLimitedUntil } from '../usage-limit'
+import { accountHasRoom, expiringQuota, hasSpareQuota, rateLimitNotice, rateLimitUtilization, usageLimitLabel, usageLimitedUntil } from '../usage-limit'
 import { effectiveSnoozed, inboxQuiet, type InboxTabView } from '../inbox-classify'
 
 const NOW = Date.parse('2026-10-03T12:00:00Z')
@@ -31,6 +31,37 @@ describe('usageLimitedUntil', () => {
     expect(usageLimitLabel('five_hour')).toBe('5-hour limit')
     expect(usageLimitLabel('seven_day')).toBe('7-day limit')
     expect(usageLimitLabel('seven_day_opus')).toBe('7-day limit')
+  })
+})
+
+describe('rateLimitNotice', () => {
+  const resetsAt = Math.floor((NOW + HOUR) / 1000)
+
+  it('says nothing about a request that was simply allowed', () => {
+    expect(rateLimitNotice({ status: 'allowed', rateLimitType: 'five_hour', resetsAt }, NOW)).toBeNull()
+  })
+
+  it('words a warning as a warning, never as a refusal', () => {
+    const notice = rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'seven_day_overage_included', resetsAt, utilization: 0.873 }, NOW)
+    expect(notice).toMatch(/^Approaching the 7-day limit \(87% used\)\. Requests are still allowed\. Resets at /)
+    expect(notice).not.toMatch(/reached|rate limited/i)
+  })
+
+  it('reads the percent from the matching window, and leaves it out when unknown', () => {
+    const fromWindow = rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt, windows: { five_hour: { utilization: 0.9 } } }, NOW)
+    expect(fromWindow).toContain('5-hour limit (90% used)')
+    expect(rateLimitUtilization({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt })).toBeNull()
+    expect(rateLimitNotice({ status: 'allowed_warning', rateLimitType: 'five_hour', resetsAt }, NOW)).toMatch(/^Approaching the 5-hour limit\. /)
+  })
+
+  it('says the limit was reached only on a refusal', () => {
+    expect(rateLimitNotice({ status: 'rejected', rateLimitType: 'seven_day', resetsAt }, NOW)).toMatch(/^7-day limit reached\. Resets at /)
+  })
+
+  it('names the day when the reset is more than a day out', () => {
+    const far = Math.floor((NOW + 72 * HOUR) / 1000)
+    const weekday = new Date(far * 1000).toLocaleString(undefined, { weekday: 'short' })
+    expect(rateLimitNotice({ status: 'rejected', rateLimitType: 'seven_day', resetsAt: far }, NOW)).toContain(weekday)
   })
 })
 

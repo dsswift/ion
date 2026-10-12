@@ -43,7 +43,7 @@ import { handleErrorAction } from "./event-slice-error";
 import { forceFlushTabs } from "../session-store-force-flush";
 import { isPendingUserCardDenial } from "@ion/shared/pending-card";
 import { rInfo, rTrace, rWarn } from "../rendererLogger";
-import { RATE_LIMIT_REJECTED } from "@ion/shared/usage-limit";
+import { RATE_LIMIT_REJECTED, rateLimitNotice } from "@ion/shared/usage-limit";
 import { setTabStatus } from "./tab-status-transition";
 import {
   sameTab,
@@ -837,16 +837,9 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 updated.usageLimit = null;
                 rInfo("usage-limit", "limit lifted by the backend", { tab_id: tabId.slice(0, 8), status: event.status });
               }
-              if (event.status !== "allowed") {
-                messages = [
-                  ...messages,
-                  {
-                    id: nextMsgId(),
-                    role: "system",
-                    content: `Rate limited (${event.rateLimitType}). Resets at ${new Date(event.resetsAt * 1000).toLocaleTimeString()}.`,
-                    timestamp: Date.now(),
-                  },
-                ];
+              {
+                const notice = rateLimitNotice(event, now);
+                if (notice) messages = [...messages, { id: nextMsgId(), role: "system", content: notice, timestamp: Date.now() }];
               }
               break;
 

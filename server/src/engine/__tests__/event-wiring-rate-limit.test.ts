@@ -65,6 +65,7 @@ vi.mock('../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), er
 vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 
 import { wireEngineBridgeEvents } from '../event-wiring'
+import { log } from '../../logger'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)
@@ -101,5 +102,29 @@ describe('wireEngineBridgeEvents — engine_rate_limit forwarding', () => {
     expect(events[0].status).toBe('allowed')
     expect(events[0].rateLimitType).toBe('five_hour')
     expect(events[0].windows.seven_day).toEqual({ utilization: 0.64, resetsAt: 1791234000 })
+  })
+
+  it('logs how much of each window is used', () => {
+    emit('tab1:inst1', {
+      type: 'engine_rate_limit',
+      rateLimit: {
+        status: 'allowed_warning',
+        resetsAt: 1791234000,
+        rateLimitType: 'seven_day',
+        windows: {
+          five_hour: { utilization: 0.24, resetsAt: 1791048000 },
+          seven_day: { utilization: 0.91, resetsAt: 1791234000 },
+        },
+      },
+    })
+
+    const line = vi.mocked(log).mock.calls.find((c) => c[1] === 'engine_rate_limit: forwarded')
+    expect(line?.[2]).toMatchObject({
+      status: 'allowed_warning',
+      rate_limit_type: 'seven_day',
+      resets_at: 1791234000,
+      utilization: 0.91,
+      windows: { five_hour: 0.24, seven_day: 0.91 },
+    })
   })
 })
