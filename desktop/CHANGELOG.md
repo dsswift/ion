@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.17.3](https://github.com/dsswift/ion/compare/desktop-v2.17.2...desktop-v2.17.3) (2026-10-12)
+
+### Bug Fixes
+
+* **server:** ring an expiring quota window once, name each limit ([f23f8e7](https://github.com/dsswift/ion/commit/f23f8e77c9cfdb49f5fd570bb1a3e30bda1b0c18))
+
 ## [2.17.2](https://github.com/dsswift/ion/compare/desktop-v2.17.1...desktop-v2.17.2) (2026-10-10)
 
 ### Bug Fixes

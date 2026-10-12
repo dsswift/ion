@@ -8,6 +8,13 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.17.4](https://github.com/dsswift/ion/compare/server-v1.17.3...server-v1.17.4) (2026-10-12)
+
+### Bug Fixes
+
+* **server:** word a usage warning as a warning, not a limit ([e102e63](https://github.com/dsswift/ion/commit/e102e63ba0325a020fc008519e422c4318b2170d))
+* **server:** ring an expiring quota window once, name each limit ([f23f8e7](https://github.com/dsswift/ion/commit/f23f8e77c9cfdb49f5fd570bb1a3e30bda1b0c18))
+
 ## [1.17.3](https://github.com/dsswift/ion/compare/server-v1.17.2...server-v1.17.3) (2026-10-12)
 
 ### Bug Fixes

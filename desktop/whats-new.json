@@ -1,4 +1,9 @@
 {
+  "2.17.3": [
+    "Fixed a problem where a usage warning in Fleet appeared as though your requests were blocked, even when they were still going through.",
+    "Fleet now shows the name of each individual limit that is running low before it resets each week.",
+    "Fixed a problem where the same alert about a limit running low could appear more than once."
+  ],
   "2.17.2": [
     "Fixed a problem where some items showed the wrong name the first time a list loaded.",
     "Fixed a problem where the app could sometimes stop responding when it was closing."
