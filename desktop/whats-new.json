@@ -1,4 +1,10 @@
 {
+  "2.18.0": [
+    "Photos are automatically resized before you attach them, so large images upload much faster.",
+    "When a file cannot be attached, you now see a message explaining why.",
+    "Fixed a problem where you were signed out after restarting.",
+    "You can now be signed back in automatically when possible, even if there is a brief interruption."
+  ],
   "2.17.3": [
     "Fixed a problem where a usage warning in Fleet appeared as though your requests were blocked, even when they were still going through.",
     "Fleet now shows the name of each individual limit that is running low before it resets each week.",

@@ -8,6 +8,17 @@ file is maintained by the release pipeline; do not edit by hand.
 Initial scaffold. Package, workspace membership, and CI lane created by the
 Ion Studio Server, Environments, and Overlay Removal program (child 04).
 
+## [1.18.0](https://github.com/dsswift/ion/compare/server-v1.17.4...server-v1.18.0) (2026-10-13)
+
+### Features
+
+* **server:** sign in silently and survive a provider outage ([5b3a8e0](https://github.com/dsswift/ion/commit/5b3a8e040a40d63d6c6df69d649f4fedfcdd64fa))
+
+### Bug Fixes
+
+* **server:** say why an attachment is refused ([177cc02](https://github.com/dsswift/ion/commit/177cc02e4ba3c92ebbae693ca0fe86e05f9ccd35))
+* **server:** keep the sign-in cookie across a browser restart ([c089df0](https://github.com/dsswift/ion/commit/c089df0a1a189f811133f07a124cf44294690ffd))
+
 ## [1.17.4](https://github.com/dsswift/ion/compare/server-v1.17.3...server-v1.17.4) (2026-10-12)
 
 ### Bug Fixes

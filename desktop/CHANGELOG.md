@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.18.0](https://github.com/dsswift/ion/compare/desktop-v2.17.3...desktop-v2.18.0) (2026-10-13)
+
+### Features
+
+* **desktop:** add a browser image shrinker for uploads ([dc77fac](https://github.com/dsswift/ion/commit/dc77facff56cd4c21331cd6f80d83e12fe1fc5ad))
+* **desktop:** check the session first when a tab wakes ([2dbc935](https://github.com/dsswift/ion/commit/2dbc9354a0f93b562b54f285263f877213676bcd))
+
+### Bug Fixes
+
+* **desktop:** shrink photos and explain refused files on attach ([7ccf68c](https://github.com/dsswift/ion/commit/7ccf68c29ae406c5bcca245c9e00cbe5098aadea))
+* **desktop:** stop the log uploader flooding on a 401 ([91fc5ab](https://github.com/dsswift/ion/commit/91fc5ab7c74440c8a90deafaa75b20033dabbf94))
+* **desktop:** bound queued frames and wake only a visible tab ([9855248](https://github.com/dsswift/ion/commit/98552488f7305e3faf11450230fab2e9c6e7a53d))
+
 ## [2.17.3](https://github.com/dsswift/ion/compare/desktop-v2.17.2...desktop-v2.17.3) (2026-10-12)
 
 ### Bug Fixes
