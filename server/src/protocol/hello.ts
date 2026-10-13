@@ -55,6 +55,9 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * keyed by subject and nowhere else, exactly because `principal` (which IS
  * echoed) must stay safe to hand back to the authenticating client itself.
  */
+/** The `AuthResult.reason` for a session the server could not refresh just now, through no fault of the person's. The client retries; it does not sign in again. */
+export const TEMPORARILY_UNAVAILABLE = 'temporarily_unavailable'
+
 export type AuthResult =
   | { ok: true; principal: StudioPrincipalSummary; scopes: Scope[]; expiresAt?: number; claims?: Record<string, unknown> }
   | { ok: false; reason?: string }
@@ -235,6 +238,12 @@ async function helloNow(conn: Connection, hello: Extract<StudioFrame, { type: 's
     auth = { ok: false }
   }
   if (!auth.ok) {
+    if (auth.reason === TEMPORARILY_UNAVAILABLE) {
+      // Not a sign-in problem: the client keeps its session and retries.
+      log('hello refused: sign-in service unavailable; client will retry', { connection_id: conn.id, client_id: hello.clientId })
+      conn.send({ type: 'studio_refused', reason: 'not_ready', detail: 'the sign-in service is unreachable; retrying' })
+      return false
+    }
     log('hello refused: unauthorized', { connection_id: conn.id, client_id: hello.clientId, credential_kind: hello.credential.kind, reason: auth.reason ?? 'unauthorized' })
     conn.send({ type: 'studio_refused', reason: 'unauthorized' })
     return false

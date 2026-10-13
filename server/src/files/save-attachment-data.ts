@@ -19,6 +19,7 @@ import { dataDir } from '../paths'
 import { log as _log, warn as _warn } from '../logger'
 import { describeFile, type DescribedFile } from './describe-file'
 import { MAX_FILE_DATA_BYTES } from '@ion/shared/file-link'
+import { attachmentRefusalMessage, type AttachmentRefusalCode } from '@ion/shared/attachment-refusal'
 
 const TAG = 'save-attachment-data'
 
@@ -36,6 +37,17 @@ export interface SaveAttachmentDataRequest {
 /** A stored attachment: the described file, always with the identity of its content. */
 export type SavedAttachment = DescribedFile & { contentHash: string }
 
+/** The request was refused, and why, in words the person who attached the file can read. */
+export interface AttachmentRefusal {
+  refused: AttachmentRefusalCode
+  message: string
+}
+
+function refuse(code: AttachmentRefusalCode, name: unknown, detail: Omit<Parameters<typeof attachmentRefusalMessage>[1], 'name'> = {}): AttachmentRefusal {
+  const shown = typeof name === 'string' && name.length > 0 && name.length <= MAX_NAME_LENGTH ? name : undefined
+  return { refused: code, message: attachmentRefusalMessage(code, { ...detail, ...(shown ? { name: shown } : {}) }) }
+}
+
 export function attachmentDataDir(): string {
   return join(dataDir(), 'user-attachments')
 }
@@ -52,8 +64,8 @@ function extensionForMime(mime: string): string {
   return /^[a-z0-9]{1,10}$/i.test(sub) ? `.${sub.toLowerCase()}` : ''
 }
 
-/** Returns `null` (after logging why) when the request is malformed, too large, or the write fails. */
-export function saveAttachmentData(request: unknown): SavedAttachment | null {
+/** Returns the refusal (after logging why) when the request is malformed, too large, or the write fails. */
+export function saveAttachmentData(request: unknown): SavedAttachment | AttachmentRefusal {
   const name = (request as SaveAttachmentDataRequest | null)?.name
   const dataUrl = (request as SaveAttachmentDataRequest | null)?.dataUrl
   let base64: unknown = (request as SaveAttachmentDataRequest | null)?.base64
@@ -62,7 +74,7 @@ export function saveAttachmentData(request: unknown): SavedAttachment | null {
     const match = dataUrl.match(/^data:([^;,]+);base64,(.*)$/s)
     if (!match) {
       _warn(TAG, 'rejected attachment data: not a base64 data URL', { name_length: typeof name === 'string' ? name.length : -1 })
-      return null
+      return refuse('attachment_malformed', name)
     }
     mimeExt = extensionForMime(match[1])
     base64 = match[2]
@@ -70,12 +82,12 @@ export function saveAttachmentData(request: unknown): SavedAttachment | null {
   if (typeof name !== 'string' || name.length === 0 || name.length > MAX_NAME_LENGTH
     || typeof base64 !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
     _warn(TAG, 'rejected malformed attachment data', { name_length: typeof name === 'string' ? name.length : -1 })
-    return null
+    return refuse('attachment_malformed', name)
   }
   const bytes = Buffer.from(base64, 'base64')
   if (bytes.length > MAX_FILE_DATA_BYTES) {
     _warn(TAG, 'rejected oversize attachment data', { bytes: bytes.length, limit: MAX_FILE_DATA_BYTES })
-    return null
+    return refuse('attachment_too_large', name, { bytes: bytes.length, limitBytes: MAX_FILE_DATA_BYTES })
   }
   try {
     const dir = attachmentDataDir()
@@ -89,9 +101,13 @@ export function saveAttachmentData(request: unknown): SavedAttachment | null {
     // The stored name is a hash; the row shows the name the operator knows.
     // The hash is returned for every file, not only an image, so a client can
     // key its own cache on the content it just sent.
-    return described ? { ...described, name, contentHash: hash } : null
+    if (!described) {
+      _warn(TAG, 'stored attachment could not be described', { path: filePath })
+      return refuse('attachment_write_failed', name)
+    }
+    return { ...described, name, contentHash: hash }
   } catch (err) {
     _warn(TAG, 'attachment data write failed', { error: String(err) })
-    return null
+    return refuse('attachment_write_failed', name)
   }
 }

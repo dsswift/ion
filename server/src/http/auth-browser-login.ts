@@ -8,9 +8,11 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { ServerOidcConfig } from '../config/server-config'
-import { beginLogin, completeLogin } from '../auth/browser-oidc'
+import { abandonedLogin, beginLogin, completeLogin } from '../auth/browser-oidc'
 import type { BrowserSessionStore } from '../auth/browser-session-store'
 import { newSessionId } from '../auth/browser-session-store'
+import { authenticateSession } from '../auth/session-auth'
+import { TEMPORARILY_UNAVAILABLE } from '../protocol/hello'
 import { isSecureRequest, originFor, parseCookie, setSessionCookie, clearSessionCookie, SESSION_COOKIE_NAME } from '../auth/session-cookie'
 import { log as _log, warn as _warn } from '../logger'
 
@@ -51,10 +53,13 @@ export function authLoginRoute(getOidc: () => ServerOidcConfig | null): (req: In
     const url = new URL(req.url ?? '/auth/login', 'http://placeholder')
     const returnTo = safeReturnTo(url.searchParams.get('returnTo'))
     const origin = originFor(req)
+    // `silent=1`: a page that lost its session asks the provider to sign the person back in without showing
+    // anything. Only the app sets it; the sign-in page a person lands on is always interactive.
+    const silent = url.searchParams.get('silent') === '1'
 
-    beginLogin(oidc, { origin, returnTo })
+    beginLogin(oidc, { origin, returnTo, silent })
       .then(({ authorizeUrl }) => {
-        log('login started', { origin })
+        log('login started', { origin, silent })
         redirect(res, authorizeUrl)
       })
       .catch((err: unknown) => {
@@ -76,6 +81,20 @@ export function authCallbackRoute(getOidc: () => ServerOidcConfig | null, sessio
     const url = new URL(req.url ?? '/auth/callback', 'http://placeholder')
     const code = url.searchParams.get('code')
     const state = url.searchParams.get('state')
+    const providerError = url.searchParams.get('error')
+    if (providerError) {
+      // A silent sign-in the provider could not finish on its own: the person's sign-in there has ended.
+      // Send them to the interactive sign-in, which shows the provider's own page, not a broken app.
+      const next = abandonedLogin(state, providerError)
+      if (next?.nextInteractive) {
+        log('silent sign-in needs the person; starting an interactive sign-in', { reason: providerError })
+        redirect(res, `/auth/login?returnTo=${encodeURIComponent(next.returnTo)}`)
+        return
+      }
+      warn('callback refused: the provider returned an error', { reason: providerError })
+      redirect(res, '/')
+      return
+    }
     if (!code || !state) {
       warn('callback refused: missing code or state')
       redirect(res, '/')
@@ -107,6 +126,42 @@ export function authCallbackRoute(getOidc: () => ServerOidcConfig | null, sessio
         warn('callback refused: unexpected error completing login', { error: String(err) })
         redirect(res, '/')
       })
+  }
+}
+
+/**
+ * Builds the `GET /auth/session` route handler: does this browser's session still work?
+ *
+ * A page that has been asleep asks this before anything else, so it learns the session is gone from one
+ * answer instead of from every request it would otherwise fire. 200 means the session is good (it has been
+ * refreshed if it was close to expiring, and its cookie lifetime is extended). 401 means it is unknown or
+ * can never refresh again: sign in. 503 means the sign-in service could not be reached just now: the
+ * session is kept, try again.
+ */
+export function authSessionRoute(getOidc: () => ServerOidcConfig | null, sessions: BrowserSessionStore): (req: IncomingMessage, res: ServerResponse) => void {
+  return (req, res) => {
+    if (req.method !== 'GET') {
+      writeJson(res, 405, { error: 'method_not_allowed' })
+      return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    const sessionId = parseCookie(req.headers.cookie, SESSION_COOKIE_NAME)
+    void authenticateSession(getOidc(), sessions, sessionId).then((auth) => {
+      if (auth.ok) {
+        // Sliding: a session in use keeps its cookie as long as the server keeps the session.
+        if (sessionId) setSessionCookie(res, sessionId, isSecureRequest(req))
+        writeJson(res, 200, { ok: true })
+        return
+      }
+      if (auth.reason === TEMPORARILY_UNAVAILABLE) {
+        writeJson(res, 503, { error: 'temporarily_unavailable' })
+        return
+      }
+      writeJson(res, 401, { error: 'unauthorized' })
+    }).catch((err: unknown) => {
+      warn('session check failed unexpectedly', { error: String(err) })
+      writeJson(res, 503, { error: 'temporarily_unavailable' })
+    })
   }
 }
 

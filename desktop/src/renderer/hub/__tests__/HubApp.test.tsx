@@ -65,7 +65,7 @@ afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(
 describe('HubApp', () => {
   it('sends a person who is not signed in to the hub\'s sign-in', async () => {
     await mount({ status: 401 })
-    expect(assign).toHaveBeenCalledWith('/auth/login?returnTo=%2F')
+    expect(assign).toHaveBeenCalledWith('/auth/login?silent=1&returnTo=%2F')
     expect(FakeEvents.last).toBeNull()
   })
 

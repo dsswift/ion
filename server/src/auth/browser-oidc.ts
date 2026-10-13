@@ -86,6 +86,8 @@ interface PendingLogin {
   verifier: string
   returnTo: string
   createdAt: number
+  /** True when this sign-in was asked to complete without showing the person anything. */
+  silent: boolean
 }
 
 const pendingLogins = new Map<string, PendingLogin>()
@@ -119,11 +121,12 @@ export function redirectUriFor(origin: string): string {
 }
 
 /** Starts a browser sign-in: generates PKCE + state, stashes the pending entry, and returns the URL to redirect the browser to. */
-export async function beginLogin(oidc: ServerOidcConfig, opts: { origin: string; returnTo: string }): Promise<BeginLoginResult> {
+export async function beginLogin(oidc: ServerOidcConfig, opts: { origin: string; returnTo: string; silent?: boolean }): Promise<BeginLoginResult> {
   sweepExpiredLogins()
   const { verifier, challengeS256 } = generatePkcePair()
   const state = base64url(randomBytes(24))
-  pendingLogins.set(state, { verifier, returnTo: opts.returnTo, createdAt: Date.now() })
+  const silent = opts.silent === true
+  pendingLogins.set(state, { verifier, returnTo: opts.returnTo, createdAt: Date.now(), silent })
 
   const doc = await discover(oidc.issuer)
   const params = new URLSearchParams({
@@ -134,8 +137,12 @@ export async function beginLogin(oidc: ServerOidcConfig, opts: { origin: string;
     code_challenge_method: 'S256',
     scope: `openid profile ${REFRESH_SCOPE_ADDITION} api://${oidc.audience}/${oidc.scope}`,
     state,
+    // `prompt=none` asks the provider to answer from the person's existing sign-in
+    // without showing anything. If there is none it answers `login_required`
+    // (see `abandonedSilentLogin`), and the caller starts an interactive sign-in.
+    ...(silent ? { prompt: 'none' } : {}),
   })
-  log('browser login started', { origin: opts.origin })
+  log('browser login started', { origin: opts.origin, silent })
   return { authorizeUrl: `${doc.authorization_endpoint}?${params.toString()}`, state }
 }
 
@@ -160,6 +167,25 @@ export async function beginLogin(oidc: ServerOidcConfig, opts: { origin: string;
 function withClientSecret(body: URLSearchParams, oidc: ServerOidcConfig): URLSearchParams {
   if (oidc.clientSecret) body.set('client_secret', oidc.clientSecret)
   return body
+}
+
+/** The `error` values a provider answers a `prompt=none` sign-in with when it needs the person to act. */
+const SILENT_NEEDS_PERSON = new Set(['login_required', 'interaction_required', 'consent_required', 'account_selection_required'])
+
+/**
+ * Settles a sign-in the provider answered with an `error` instead of a code.
+ * Returns where the browser should go next: an interactive sign-in for a silent
+ * attempt that needs the person (`login_required` and its siblings), or null
+ * for any other error, which is a real failure the caller reports. Consumes the
+ * pending login either way.
+ */
+export function abandonedLogin(state: string | null, error: string): { nextInteractive: boolean; returnTo: string } | null {
+  sweepExpiredLogins()
+  const pending = state ? pendingLogins.get(state) : undefined
+  if (!pending) return null
+  pendingLogins.delete(state!)
+  if (pending.silent && SILENT_NEEDS_PERSON.has(error)) return { nextInteractive: true, returnTo: pending.returnTo }
+  return null
 }
 
 export type CompleteLoginResult =
@@ -233,7 +259,13 @@ export async function completeLogin(oidc: ServerOidcConfig, opts: { origin: stri
 
 export type RefreshResult =
   | { ok: true; auth: Extract<AuthResult, { ok: true }>; accessToken: string; refreshToken: string | null }
-  | { ok: false }
+  /**
+   * `transient` is true when the refresh could not be tried or answered (the
+   * sign-in service was unreachable, or it answered 429 or 5xx). The refresh
+   * token may still be good, so the session must be kept. False means the
+   * provider refused this refresh token, and it can never work again.
+   */
+  | { ok: false; transient: boolean }
 
 /** Exchanges a stored refresh token for a new access token, transparent to the browser -- no client-side renewal machinery needed. */
 export async function refreshAccessToken(oidc: ServerOidcConfig, refreshToken: string): Promise<RefreshResult> {
@@ -242,7 +274,7 @@ export async function refreshAccessToken(oidc: ServerOidcConfig, refreshToken: s
     doc = await discover(oidc.issuer)
   } catch (err) {
     warn('refresh failed: discovery failed', { error: String(err) })
-    return { ok: false }
+    return { ok: false, transient: true }
   }
 
   // The refresh needs the secret for the same reason the exchange does: a
@@ -265,23 +297,25 @@ export async function refreshAccessToken(oidc: ServerOidcConfig, refreshToken: s
     })
   } catch (err) {
     warn('refresh failed: token endpoint request errored', { error: String(err) })
-    return { ok: false }
+    return { ok: false, transient: true }
   }
   if (!tokenRes.ok) {
-    warn('refresh failed: token endpoint returned an error', { status: tokenRes.status, body: await tokenErrorBody(tokenRes) })
-    return { ok: false }
+    const transient = tokenRes.status === 429 || tokenRes.status >= 500
+    warn('refresh failed: token endpoint returned an error', { status: tokenRes.status, transient, body: await tokenErrorBody(tokenRes) })
+    return { ok: false, transient }
   }
 
   const payload = (await tokenRes.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
   if (!payload.access_token) {
     warn('refresh failed: token endpoint response has no access_token')
-    return { ok: false }
+    return { ok: false, transient: false }
   }
 
   const auth = await verifyBearer({ kind: 'bearer', token: payload.access_token }, oidc)
   if (!auth.ok) {
     warn('refresh failed: refreshed access token failed verification', { reason: auth.reason })
-    return { ok: false }
+    // A signing-key fetch that failed is the provider being unreachable; anything else is a token this server will not accept.
+    return { ok: false, transient: auth.reason === 'jwks_unavailable' }
   }
 
   log('session token refreshed', { subject: auth.principal.subject })

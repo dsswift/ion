@@ -4,7 +4,7 @@
  * action. The stored access token is refreshed first when it is close to
  * expiry, so the browser never sees a token or a second sign-in.
  */
-import type { AuthResult } from '../protocol/hello'
+import { TEMPORARILY_UNAVAILABLE, type AuthResult } from '../protocol/hello'
 import type { ServerOidcConfig } from '../config/server-config'
 import type { BrowserSessionStore } from './browser-session-store'
 import { refreshAccessToken } from './browser-oidc'
@@ -66,6 +66,12 @@ async function refreshSession(oidc: ServerOidcConfig, sessions: BrowserSessionSt
 
   const refreshed = await refreshAccessToken(oidc, tokens.refreshToken)
   if (!refreshed.ok) {
+    if (refreshed.transient) {
+      // The sign-in service could not answer. The session may be perfectly good, so it stays, and the
+      // client is told to try again rather than to sign in.
+      warn('session refresh could not be tried; keeping the session', { subject })
+      return { ok: false, reason: TEMPORARILY_UNAVAILABLE }
+    }
     warn('session refresh failed; deleting session and refusing', { subject })
     sessions.delete(sessionCookie)
     return { ok: false, reason: 'unauthorized' }

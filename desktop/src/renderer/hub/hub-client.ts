@@ -19,7 +19,7 @@ export interface HubFleetState {
 }
 
 function signIn(): void {
-  window.location.assign(`/auth/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)
+  window.location.assign(`/auth/login?silent=1&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)
 }
 
 /** Reads the Fleet once. Null when the hub asked for a sign-in, which is then under way. */

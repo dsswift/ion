@@ -15,7 +15,11 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { host } from '../../host/host-instance'
 import { environmentOfTab, withTargetEnvironment } from '../../studio/connection/tab-environment'
 import { rDebug, rError, rInfo } from '../../rendererLogger'
+import { showTabNotice } from '../../lib/tab-notice'
+import { MAX_FILE_DATA_BYTES } from '@ion/shared/file-link'
+import { attachmentRefusalMessage, type AttachmentRefusalCode } from '@ion/shared/attachment-refusal'
 import { bytesToBase64 } from './composer-intake'
+import { browserImageCodec, prepareImageForUpload } from './attachment-image-prep'
 
 /** How a file reached the composer; it decides the name a nameless file gets. */
 export type StagingSource = 'drop' | 'paste' | 'pick' | 'capture'
@@ -44,6 +48,42 @@ export function tabStagingTarget(tabId: string): StagingTarget {
   return { tabId, environmentId: environmentOfTab(tabId) ?? LOCAL_ENVIRONMENT_ID }
 }
 
+/** A file that could not be staged, and why, in words the person can act on. */
+export class StagingRefusal extends Error {
+  readonly code: AttachmentRefusalCode | string
+  constructor(code: AttachmentRefusalCode | string, message: string) {
+    super(message)
+    this.name = 'StagingRefusal'
+    this.code = code
+  }
+}
+
+/** The reason a failed upload gives, when it gave one the person can read. */
+function refusalOf(err: unknown, name: string): StagingRefusal {
+  const code = (err as { code?: unknown } | null)?.code
+  const message = err instanceof Error ? err.message : String(err)
+  if (typeof code === 'string' && code.startsWith('attachment_')) return new StagingRefusal(code, message)
+  return new StagingRefusal('attachment_write_failed', attachmentRefusalMessage('attachment_write_failed', { name }))
+}
+
+/**
+ * The file to upload: an image is shrunk to what the model can use first, so
+ * a phone photo is not sent at full size. Anything else, and any image the
+ * browser cannot read, goes up as it is.
+ */
+async function fileToUpload(file: File): Promise<File> {
+  if (typeof createImageBitmap !== 'function') return file
+  try {
+    const prepared = await prepareImageForUpload(file, browserImageCodec)
+    if (prepared.resized) rInfo('composer', 'image shrunk before upload', { name: file.name, from_bytes: file.size, to_bytes: prepared.file.size })
+    else if (prepared.note === 'undecodable') rInfo('composer', 'image could not be decoded here; uploading the original', { name: file.name, bytes: file.size })
+    return prepared.file
+  } catch (err) {
+    rError('composer', 'preparing an image failed; uploading the original', { name: file.name, error: String(err) })
+    return file
+  }
+}
+
 export async function stageFile(file: File, source: StagingSource, target: StagingTarget): Promise<FileAttachment | null> {
   // Only a host with a native shell sees real filesystem paths; a browser's
   // File has none, so its bytes are uploaded instead. A path on this machine
@@ -51,16 +91,47 @@ export async function stageFile(file: File, source: StagingSource, target: Stagi
   // bytes too.
   const path = host.capabilities().includes('nativeShell') ? host.shell.getPathForFile(file) : ''
   if (path && target.environmentId === LOCAL_ENVIRONMENT_ID) return host.shell.attachFileByPath(target.tabId, path)
-  const bytes = new Uint8Array(await file.arrayBuffer())
   const name = stagedName(file, source)
-  return withTargetEnvironment(target.environmentId, () => host.shell.saveAttachmentData(target.tabId, name, bytesToBase64(bytes)))
+  const upload = await fileToUpload(file)
+  // The server's size cap, checked here so a file that cannot be accepted is
+  // not sent across the connection first.
+  if (upload.size > MAX_FILE_DATA_BYTES) {
+    const undecodableImage = upload === file && upload.type.startsWith('image/')
+    throw new StagingRefusal('attachment_too_large', attachmentRefusalMessage('attachment_too_large', { name, bytes: upload.size, limitBytes: MAX_FILE_DATA_BYTES, undecodableImage }))
+  }
+  let bytes: Uint8Array
+  try {
+    bytes = new Uint8Array(await upload.arrayBuffer())
+  } catch {
+    throw new StagingRefusal('attachment_unreadable', attachmentRefusalMessage('attachment_unreadable', { name }))
+  }
+  // A shrunk image keeps the name the person knows, with the extension of what is now being sent.
+  const uploadName = upload === file ? name : name.replace(/\.[^.]+$/, '') + upload.name.slice(upload.name.lastIndexOf('.'))
+  try {
+    const saved = await withTargetEnvironment(target.environmentId, () => host.shell.saveAttachmentData(target.tabId, uploadName, bytesToBase64(bytes)))
+    if (!saved) throw new StagingRefusal('attachment_write_failed', attachmentRefusalMessage('attachment_write_failed', { name }))
+    return saved
+  } catch (err) {
+    throw err instanceof StagingRefusal ? err : refusalOf(err, name)
+  }
 }
 
-/** Stage every file for `target`, dropping (and logging) any that fail. */
-export async function stageFilesFor(files: File[], source: StagingSource, target: StagingTarget): Promise<FileAttachment[]> {
+/**
+ * Stage every file for `target`. A file that fails is dropped from the result,
+ * logged, and reported through `onRefused` with the reason, so the caller can
+ * show it where the person is looking.
+ */
+export async function stageFilesFor(
+  files: File[],
+  source: StagingSource,
+  target: StagingTarget,
+  onRefused: (message: string, file: File) => void = (message) => showTabNotice(target.tabId, message, 'warning'),
+): Promise<FileAttachment[]> {
   const staged = (await Promise.all(files.map((file) =>
     stageFile(file, source, target).catch((err) => {
-      rError('composer', 'staging a file failed', { source, name: file.name, tab_id: target.tabId, error: String(err) })
+      const refusal = err instanceof StagingRefusal ? err : refusalOf(err, file.name || 'This file')
+      rError('composer', 'staging a file failed', { source, name: file.name, tab_id: target.tabId, code: refusal.code, error: String(err) })
+      onRefused(refusal.message, file)
       return null
     }),
   ))).filter((a): a is FileAttachment => a !== null)
@@ -100,9 +171,18 @@ export async function stageNativeCapture(shot: FileAttachment): Promise<void> {
     rError('composer', 'capture has no bytes to upload', { name: shot.name, tab_id: tabId, environment_id: target.environmentId })
     return
   }
-  const saved = await withTargetEnvironment(target.environmentId, () => host.shell.saveAttachmentData(tabId, shot.name, base64))
+  let saved: FileAttachment | null
+  try {
+    saved = await withTargetEnvironment(target.environmentId, () => host.shell.saveAttachmentData(tabId, shot.name, base64))
+  } catch (err) {
+    const refusal = refusalOf(err, shot.name)
+    rError('composer', 'capture upload was refused', { name: shot.name, tab_id: tabId, environment_id: target.environmentId, code: refusal.code, error: String(err) })
+    showTabNotice(tabId, refusal.message, 'warning')
+    return
+  }
   if (!saved) {
     rError('composer', 'capture upload was refused', { name: shot.name, tab_id: tabId, environment_id: target.environmentId })
+    showTabNotice(tabId, attachmentRefusalMessage('attachment_write_failed', { name: shot.name }), 'warning')
     return
   }
   rInfo('composer', 'capture uploaded to a remote conversation', { name: shot.name, tab_id: tabId, environment_id: target.environmentId })

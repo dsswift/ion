@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Paperclip, X } from '@phosphor-icons/react'
 import { rWarn } from '../../rendererLogger'
 import type { useColors } from '../../theme'
@@ -27,11 +27,19 @@ export function QuestionAttachmentRow({
   colors: ReturnType<typeof useColors>
 }): React.JSX.Element {
   const attachments = draft.attachments ?? []
+  // Why the last pick could not be attached. Shown beside the button, where the person is looking.
+  const [refusals, setRefusals] = useState<string[]>([])
 
   const pick = () => {
     const target = { tabId: workflow.sessionKey, environmentId: environmentOfWorkflow(workflow.workflowId) }
     void pickLocalFiles({ accept: 'image/*' })
-      .then((files) => stageFilesFor(files, 'pick', target))
+      .then((files) => {
+        const reasons: string[] = []
+        return stageFilesFor(files, 'pick', target, (message) => reasons.push(message)).then((staged) => {
+          setRefusals(reasons)
+          return staged
+        })
+      })
       .then((staged) => {
         if (staged.length === 0) return
         // De-duplicate by path; re-picking an attached file is a no-op.
@@ -64,6 +72,9 @@ export function QuestionAttachmentRow({
         <Paperclip size={11} />
         Attach image
       </button>
+      {refusals.map((message) => (
+        <span key={message} role="alert" className="text-[10px] basis-full" style={{ color: colors.statusError }}>{message}</span>
+      ))}
       {attachments.map((att) => (
         <span
           key={att.path}
