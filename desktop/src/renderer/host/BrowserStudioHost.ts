@@ -42,7 +42,6 @@
 import type { StudioFrame, StudioRefusalReason } from '@ion/shared/studio-wire/types'
 import { decodeFrame, encodeFrame, WireError } from '@ion/shared/studio-wire/codec'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
-import type { IonAPI } from '../../preload/ionapi'
 import type { ShellApi } from './shell-api'
 import type { ConnectionPhase, ConnectionPhaseSnapshot } from '../../shared/types-connections'
 import { LOCAL_ENVIRONMENT_ID, type EnvironmentTarget } from '@ion/shared/types-environments'
@@ -50,69 +49,16 @@ import type { Capability, StudioHost, FileDialogFilter } from './StudioHost'
 import { getDeviceSettings, getEnvCache, setDeviceSetting, setEnvCache } from './web-storage'
 import { rInfo, rWarn } from '../rendererLogger'
 import { promptForSavePath, promptForDirectory } from './save-path-prompt-state'
-import { BRIDGED_CAPABILITIES } from './browser-shell-bridge'
 import { createBridgedShell, refuseUnbridged } from './bridged-shell'
-import { BrowserLogForwarder } from './browser-log-forward'
 import { SessionGuard, TICK_MS, browserSessionGuardDeps } from './browser-session-guard'
 import { WIRE_PING_CAPABILITY } from '@ion/shared/studio-wire/types'
 import { ClientWireLatency } from '@ion/shared/client-wire-latency'
 import { tabClientId } from './browser-client-id'
+import {
+  CAPABILITIES, BACKOFF_LADDER_MS, MAX_PENDING_FRAMES, BACKOFF_WINDOW_MS, MAX_ATTEMPTS,
+  OFFLINE_RETRY_MS, BRIDGED_CALL_TIMEOUT_MS, logForwarder, BROWSER_OVERRIDES,
+} from './browser-host-config'
 import { BrowserUnsupported } from './BrowserUnsupported'
-
-const CAPABILITIES: Capability[] = [
-  'terminal', 'git', 'files', 'questions', 'graph',
-  // Earned by browser-shell-bridge.ts's table: every `host.shell` verb the
-  // AI & Models settings category and the model picker call is bridged, so
-  // the category is no longer filtered out of SettingsDialog's sidebar.
-  ...(BRIDGED_CAPABILITIES as Capability[]),
-]
-
-/** Attempt ladder for a failed connection — identical to `main/connections/broker.ts`'s, so a browser tab and the desktop app behave the same way under a flaky link. */
-const BACKOFF_LADDER_MS = [1000, 2000, 4000, 8000]
-/** Frames held while there is no open connection. Past this the oldest are dropped. */
-const MAX_PENDING_FRAMES = 100
-
-const BACKOFF_WINDOW_MS = 5 * 60_000
-const MAX_ATTEMPTS = 5
-/**
- * Once the ladder above is exhausted, retry forever at this slower, gentle
- * cadence instead of stopping. `phase: 'offline'` still fires at that point
- * (the UI reads it as "disconnected" exactly as before), but it is no
- * longer a dead end -- a tab left open across a server restart or a long
- * network outage recovers on its own instead of requiring a manual reload
- * or an explicit Reconnect action forever. Matches
- * `main/connections/broker.ts`'s identical constant for the same reason the
- * ladder above does.
- */
-const OFFLINE_RETRY_MS = 30_000
-
-/** Matches `host-actions.ts`'s ACTION_TIMEOUT_MS so both round trips fail the same way. */
-const BRIDGED_CALL_TIMEOUT_MS = 30_000
-
-/**
- * The browser's local answers, read before the bridge table.
- *
- * `platform` is not a function (`IonAPI` callers read it directly), and
- * `logWrite` is the one verb with a real browser transport of its own:
- * `POST /log`, which carries the `ion_session` cookie automatically.
- */
-/**
- * Holds lines the server will not take yet -- before sign-in, or over budget
- * -- and replays them once it will. Without it the lines describing a failing
- * sign-in were the exact ones thrown away.
- */
-const logForwarder = new BrowserLogForwarder()
-
-const BROWSER_OVERRIDES: Partial<IonAPI> = {
-  // No native window chrome exists in a browser tab. This value only matters
-  // through `useStudioWindowChrome`'s non-darwin branch, which reserves inset
-  // space for native min/max/close buttons a browser tab doesn't have.
-  platform: 'linux',
-  getPathForFile: () => '',
-  logWrite: (level, tag, msg, fields) => {
-    logForwarder.send({ level, tag, msg, fields })
-  },
-}
 
 export class BrowserStudioHost extends BrowserUnsupported implements StudioHost {
   /**
