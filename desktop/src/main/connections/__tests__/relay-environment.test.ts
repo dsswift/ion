@@ -15,7 +15,7 @@ import { WebSocketServer, type WebSocket as WsSocket } from 'ws'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { AddressInfo } from 'net'
+import { createServer, type AddressInfo, type Socket } from 'net'
 
 vi.mock('../../device-settings', () => ({ deviceId: () => 'device-test' }))
 // The TCP transport is stubbed: these cases are about which route and
@@ -326,6 +326,34 @@ describe('RelayStudioSocket: a join the relay refuses', () => {
   it('reports any other status bare', async () => {
     const err = await refusedWith(401)
     expect(err.message).toMatch(/refused the channel join: HTTP 401$/)
+  })
+
+  // A real relay answers the refusal and keeps the connection alive. A
+  // refused join that held on to it crashed the main process when the relay
+  // later reset it, because nothing was listening on that socket.
+  it('frees the refused connection at once and reports one error', async () => {
+    let held: Socket | undefined
+    let markFreed: () => void = () => {}
+    const freed = new Promise<boolean>((resolve) => {
+      markFreed = () => resolve(true)
+      setTimeout(() => resolve(false), 1000)
+    })
+    const relay = createServer((sock) => {
+      held = sock
+      sock.once('close', markFreed)
+      sock.once('data', () => sock.write('HTTP/1.1 403 Forbidden\r\nContent-Length: 9\r\nConnection: keep-alive\r\n\r\nforbidden'))
+    })
+    await new Promise<void>((resolve) => relay.listen(0, '127.0.0.1', resolve))
+    try {
+      const socket = new RelayStudioSocket(`ws://127.0.0.1:${(relay.address() as AddressInfo).port}`, 'ab'.repeat(16), Buffer.alloc(32, 7), 'token')
+      const errors: Error[] = []
+      socket.on('error', (err: Error) => errors.push(err))
+      expect(await freed).toBe(true)
+      expect(errors.map((e) => e.message)).toEqual([expect.stringMatching(/refused the channel join: HTTP 403/)])
+    } finally {
+      held?.destroy()
+      relay.close()
+    }
   })
 })
 

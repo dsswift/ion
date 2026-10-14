@@ -64,7 +64,7 @@ export class RelayStudioSocket extends SealedStudioSocket {
       const why = res.statusCode === 403
         ? ': the channel does not admit the account this desktop is signed in to. The server announces that account while it is on the relay, when this desktop was signed in as it at pairing; otherwise sign in to the server\'s tenant, or pair again'
         : ''
-      this.emit('error', new Error(`relay ${relayUrl} refused the channel join: HTTP ${res.statusCode}${why}`))
+      this.refuse(new Error(`relay ${relayUrl} refused the channel join: HTTP ${res.statusCode}${why}`))
     })
   }
 }

@@ -55,7 +55,8 @@ export interface SealedStudioSocketOptions {
 
 export class SealedStudioSocket extends EventEmitter implements StudioSocketLike {
   readonly OPEN = WebSocket.OPEN
-  private closedByCaller = false
+  /** Why this side ended the socket before it opened, so the handshake abort `ws` then reports is not taken for a failure. */
+  private endedHere: string | null = null
 
   constructor(private readonly ws: WebSocket, private readonly sharedSecret: Buffer, private readonly options: SealedStudioSocketOptions) {
     super()
@@ -69,12 +70,12 @@ export class SealedStudioSocket extends EventEmitter implements StudioSocketLike
     ws.on('message', (raw: Buffer | string) => this.onRaw(raw))
     ws.once('close', (code: number, reason: Buffer) => this.emit('close', code, reason))
     ws.once('error', (err: Error) => {
-      // Closing a socket that has not opened yet makes `ws` report the
-      // aborted handshake as an error. The caller asked for that close, so
-      // it is not a failure to report -- and with no listener left it would
+      // Ending a socket that has not opened yet makes `ws` report the
+      // aborted handshake as an error. This side asked for that, so it is
+      // not a failure to report -- and with no listener left it would
       // surface as an uncaught exception in the main process.
-      if (this.closedByCaller) {
-        log('sealed socket closed before it opened', { peer: options.label })
+      if (this.endedHere) {
+        log('sealed socket ended before it opened', { peer: options.label, why: this.endedHere })
         return
       }
       this.emit('error', err)
@@ -117,7 +118,20 @@ export class SealedStudioSocket extends EventEmitter implements StudioSocketLike
   }
 
   close(code?: number, reason?: string): void {
-    this.closedByCaller = true
+    this.endedHere = 'closed by caller'
     this.ws.close(code, reason)
+  }
+
+  /**
+   * Fails a handshake the far end answered with an HTTP status instead of an
+   * upgrade. A `ws` 'unexpected-response' listener owns that exchange: left
+   * alone, its TLS socket stays open with nothing listening, and the far
+   * end's later reset throws in the main process. This frees the socket now
+   * and reports `err` as the one error.
+   */
+  protected refuse(err: Error): void {
+    this.endedHere = 'upgrade refused'
+    this.ws.terminate()
+    this.emit('error', err)
   }
 }
