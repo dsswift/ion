@@ -1,4 +1,7 @@
 {
+  "2.18.1": [
+    "Fixed a problem where an unexpected error window could appear after a connection attempt was turned away."
+  ],
   "2.18.0": [
     "Photos are automatically resized before you attach them, so large images upload much faster.",
     "When a file cannot be attached, you now see a message explaining why.",

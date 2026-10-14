@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.18.1](https://github.com/dsswift/ion/compare/desktop-v2.18.0...desktop-v2.18.1) (2026-10-14)
+
+### Bug Fixes
+
+* **desktop:** free a refused relay join so its reset cannot crash ([a2757be](https://github.com/dsswift/ion/commit/a2757beda1628cd25876f55efb22980f677ff3a7))
+
 ## [2.18.0](https://github.com/dsswift/ion/compare/desktop-v2.17.3...desktop-v2.18.0) (2026-10-13)
 
 ### Features
