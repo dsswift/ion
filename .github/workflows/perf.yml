@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload the result
         if: always() && hashFiles(steps.run.outputs.out) != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-${{ env.SCENARIO }}-${{ steps.run.outputs.sha }}
           path: ${{ steps.run.outputs.out }}
