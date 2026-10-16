@@ -220,7 +220,7 @@ export function InboxRow({
           {status === 'Done' && <Check size={11} />}{status}
         </span> : null}
         {rightLabel && <span style={{ fontSize: 9, color: colors.textTertiary }}>{rightLabel}</span>}
-        {hover && !compact && tab.pinnedAt == null && <button onClick={(event) => { event.stopPropagation(); void useSessionStore.getState().settleTab(tab.id) }} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: 'none', borderRadius: 4, background: colors.surfacePrimary, color: colors.textSecondary, cursor: 'pointer', padding: '3px 5px', fontSize: 10, fontWeight: 600 }} aria-label="Settle conversation"><Check size={13} />Settle</button>}
+        {hover && !compact && <button onClick={(event) => { event.stopPropagation(); void useSessionStore.getState().settleTab(tab.id) }} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: 'none', borderRadius: 4, background: colors.surfacePrimary, color: colors.textSecondary, cursor: 'pointer', padding: '3px 5px', fontSize: 10, fontWeight: 600 }} aria-label="Settle conversation"><Check size={13} />Settle</button>}
         {hover && tab.pinnedAt != null && <button onClick={(event) => { event.stopPropagation(); void useSessionStore.getState().unpinTab(tab.id) }} style={{ border: 'none', background: 'transparent', color: colors.textTertiary, cursor: 'pointer' }} aria-label="Unpin conversation"><PushPinSlash size={14} /></button>}
         {hover && compact && variant === 'slim' && canRestore && <button onClick={(event) => {
           event.stopPropagation()
