@@ -31,4 +31,16 @@ struct BackgroundTaskState: Codable, Identifiable, Sendable, Equatable {
         startedAt = try container.decode(Int64.self, forKey: .startedAt)
         notifyOnComplete = try container.decodeIfPresent(Bool.self, forKey: .notifyOnComplete) ?? false
     }
+
+    /// Whole seconds this task has run at `now`. `startedAt` is epoch milliseconds.
+    func elapsedSeconds(at now: Date) -> Int {
+        max(0, Int((now.timeIntervalSince1970 * 1000 - Double(startedAt)) / 1000))
+    }
+
+    /// Compact running-time label: `45s`, `3m 12s`, `2h 5m`.
+    static func formatElapsed(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return "\(seconds / 60)m \(seconds % 60)s" }
+        return "\(seconds / 3600)h \(seconds % 3600 / 60)m"
+    }
 }

@@ -52,6 +52,27 @@ describe('BackgroundWorkGroup', () => {
     expect(container.textContent).toContain('1 active Bash operation')
   })
 
+  it('shows a live elapsed clock per task and the oldest task on the header', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(100_000)
+      const second = { ...task, taskId: 'task-2', startedAt: 100_000 - 5_000 }
+      const first = { ...task, startedAt: 100_000 - 75_000 }
+      act(() => root.render(<BackgroundWorkGroup tabId="tab-1" tools={[tool, { ...tool, id: 'tool-2', backgroundTaskId: 'task-2' }]} activeTasks={[first, second]} />))
+      const header = () => container.querySelector('[data-testid="background-work-elapsed"]')?.textContent
+      expect(header()).toBe('1m 15s')
+
+      act(() => (container.querySelector('[data-testid="background-work-toggle"]') as HTMLButtonElement).click())
+      expect(container.querySelector('[data-testid="background-task-elapsed-task-2"]')?.textContent).toBe('5s')
+
+      act(() => { vi.advanceTimersByTime(3_000) })
+      expect(header()).toBe('1m 18s')
+      expect(container.querySelector('[data-testid="background-task-elapsed-task-2"]')?.textContent).toBe('8s')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('stays mounted until the authoritative inventory removes the task', async () => {
     render()
     act(() => (container.querySelector('[data-testid="background-work-toggle"]') as HTMLButtonElement).click())
