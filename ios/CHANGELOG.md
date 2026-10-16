@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.18.0](https://github.com/dsswift/ion/compare/ios-v2.17.1...ios-v2.18.0) (2026-10-16)
+
+### Features
+
+* **desktop:** show elapsed time on running background bash tasks ([92ac4bc](https://github.com/dsswift/ion/commit/92ac4bc4cce23ef8af128ded54c301d513658218))
+
 ## [2.17.1](https://github.com/dsswift/ion/compare/ios-v2.17.0...ios-v2.17.1) (2026-10-12)
 
 ### Bug Fixes

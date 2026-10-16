@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.19.0](https://github.com/dsswift/ion/compare/desktop-v2.18.1...desktop-v2.19.0) (2026-10-16)
+
+### Features
+
+* **desktop:** show elapsed time on running background bash tasks ([92ac4bc](https://github.com/dsswift/ion/commit/92ac4bc4cce23ef8af128ded54c301d513658218))
+
+### Bug Fixes
+
+* **desktop:** show the hover settle button on pinned conversations ([1ba8245](https://github.com/dsswift/ion/commit/1ba8245893dca97a1dc466e8f2d986155b8aab18))
+
 ## [2.18.1](https://github.com/dsswift/ion/compare/desktop-v2.18.0...desktop-v2.18.1) (2026-10-14)
 
 ### Bug Fixes

@@ -1,4 +1,8 @@
 {
+  "2.19.0": [
+    "Fixed a problem where a button did not appear on pinned conversations.",
+    "You can now see a live timer on each background task showing how long it has been running."
+  ],
   "2.18.1": [
     "Fixed a problem where an unexpected error window could appear after a connection attempt was turned away."
   ],
