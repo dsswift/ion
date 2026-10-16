@@ -1,15 +1,21 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CaretDown, CaretRight, SpinnerGap, Square } from "@phosphor-icons/react";
 import { useColors } from "../../theme";
 import { useSessionStore } from "@ion/server/store/sessionStore";
 import type { BackgroundTaskState } from "@ion/shared/types-engine";
 import type { Message } from "@ion/shared/types-session";
 import { getToolDescription } from "@ion/server/conversation/tool-helpers";
+import { formatDuration } from "../../lib/agent-helpers";
 
 interface BackgroundWorkGroupProps {
   tabId?: string;
   tools: Message[];
   activeTasks: BackgroundTaskState[];
+}
+
+/** Seconds since a task's `startedAt` (epoch milliseconds), never negative. */
+function elapsedSeconds(startedAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - startedAt) / 1000));
 }
 
 /** Collapsible live inventory for background Bash operations in one tool group. */
@@ -18,6 +24,7 @@ export function BackgroundWorkGroup({ tabId, tools, activeTasks }: BackgroundWor
   const stopBackgroundTask = useSessionStore((state) => state.stopBackgroundTask);
   const [expanded, setExpanded] = useState(false);
   const [stopping, setStopping] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
   const toolByTaskId = useMemo(() => new Map(
     tools.filter((tool) => tool.backgroundTaskId).map((tool) => [tool.backgroundTaskId!, tool]),
   ), [tools]);
@@ -25,7 +32,15 @@ export function BackgroundWorkGroup({ tabId, tools, activeTasks }: BackgroundWor
   const matching = activeTasks.filter((task) =>
     toolByTaskId.has(task.taskId) || (!!task.toolId && toolByID.has(task.toolId)),
   );
-  if (matching.length === 0) return null;
+  const hasMatching = matching.length > 0;
+  useEffect(() => {
+    if (!hasMatching) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [hasMatching]);
+  if (!hasMatching) return null;
+  const oldestStartedAt = Math.min(...matching.map((task) => task.startedAt));
 
   const stop = (taskId: string) => {
     if (!tabId || stopping.has(taskId)) return;
@@ -54,6 +69,9 @@ export function BackgroundWorkGroup({ tabId, tools, activeTasks }: BackgroundWor
         <span className="text-[11px]">
           {matching.length} active Bash operation{matching.length === 1 ? "" : "s"}
         </span>
+        <span data-testid="background-work-elapsed" className="text-[11px] tabular-nums" style={{ color: colors.textSecondary }}>
+          {formatDuration(elapsedSeconds(oldestStartedAt, now))}
+        </span>
       </button>
       {expanded && (
         <div className="space-y-1 pl-4">
@@ -65,6 +83,9 @@ export function BackgroundWorkGroup({ tabId, tools, activeTasks }: BackgroundWor
               <div key={task.taskId} data-testid={`background-task-${task.taskId}`} className="flex items-center gap-2 py-0.5">
                 <SpinnerGap size={10} className="animate-spin flex-shrink-0" style={{ color: colors.statusAsync }} />
                 <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: colors.textSecondary }}>{label}</span>
+                <span data-testid={`background-task-elapsed-${task.taskId}`} className="flex-shrink-0 text-[10px] tabular-nums" style={{ color: colors.textSecondary }}>
+                  {formatDuration(elapsedSeconds(task.startedAt, now))}
+                </span>
                 <button
                   type="button"
                   data-ion-ui

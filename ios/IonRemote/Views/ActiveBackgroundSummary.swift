@@ -20,53 +20,66 @@ struct ActiveBackgroundSummary: View {
 
     var body: some View {
         if !tasks.isEmpty {
-            VStack(alignment: .leading, spacing: IonSpace.compactInset) {
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) { isExpanded.toggle() }
-                } label: {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 11, height: 11)
-                            .tint(theme.statusBash)
-                        Text(tasks.count == 1 ? "1 background task running" : "\(tasks.count) background tasks running")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(theme.statusBash)
-                        Spacer()
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(theme.textSecondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("active-background-summary")
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                content(now: context.date)
+            }
+        }
+    }
 
-                if isExpanded {
-                    ForEach(tasks) { task in
-                        HStack(spacing: IonSpace.compactGap) {
-                            ProgressView().controlSize(.mini)
-                            Text(task.command)
-                                .font(IonType.mono)
-                                .foregroundStyle(theme.textSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: IonSpace.compactGap)
-                            if let tabId {
-                                Button("Stop", role: .destructive) {
-                                    viewModel.stopBackgroundTask(tabId: tabId, taskId: task.taskId)
-                                }
-                                .font(.caption.weight(.semibold))
-                                .disabled(viewModel.stoppingBackgroundTaskIds.contains(task.taskId))
-                                .accessibilityIdentifier("stop-background-task-\(task.taskId)")
+    private func content(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: IonSpace.compactInset) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 11, height: 11)
+                        .tint(theme.statusBash)
+                    Text(tasks.count == 1 ? "1 background task running" : "\(tasks.count) background tasks running")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.statusBash)
+                    Text(BackgroundTaskState.formatElapsed(tasks[0].elapsedSeconds(at: now)))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(theme.textSecondary)
+                        .accessibilityIdentifier("active-background-elapsed")
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("active-background-summary")
+
+            if isExpanded {
+                ForEach(tasks) { task in
+                    HStack(spacing: IonSpace.compactGap) {
+                        ProgressView().controlSize(.mini)
+                        Text(task.command)
+                            .font(IonType.mono)
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: IonSpace.compactGap)
+                        Text(BackgroundTaskState.formatElapsed(task.elapsedSeconds(at: now)))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(theme.textSecondary)
+                        if let tabId {
+                            Button("Stop", role: .destructive) {
+                                viewModel.stopBackgroundTask(tabId: tabId, taskId: task.taskId)
                             }
+                            .font(.caption.weight(.semibold))
+                            .disabled(viewModel.stoppingBackgroundTaskIds.contains(task.taskId))
+                            .accessibilityIdentifier("stop-background-task-\(task.taskId)")
                         }
                     }
                 }
             }
-            .padding(.horizontal, IonSpace.compactGap)
-            .padding(.vertical, IonSpace.compactInset)
-            .background(theme.surfaceElevated.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
         }
+        .padding(.horizontal, IonSpace.compactGap)
+        .padding(.vertical, IonSpace.compactInset)
+        .background(theme.surfaceElevated.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
     }
 }

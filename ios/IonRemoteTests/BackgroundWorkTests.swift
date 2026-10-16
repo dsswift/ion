@@ -211,4 +211,13 @@ final class BackgroundWorkTests: XCTestCase {
         guard case .toolGroup = grouped[1] else { return XCTFail("expected toolGroup") }
         guard case .assistant = grouped[2] else { return XCTFail("expected assistant") }
     }
+
+    func testBackgroundTaskElapsedUsesMillisecondStartAndFormatsCompactly() {
+        let task = BackgroundTaskState(taskId: "task-1", command: "sleep 600", startedAt: 1_000_000, notifyOnComplete: false)
+        XCTAssertEqual(task.elapsedSeconds(at: Date(timeIntervalSince1970: 1_075.9)), 75)
+        XCTAssertEqual(task.elapsedSeconds(at: Date(timeIntervalSince1970: 999)), 0)
+        XCTAssertEqual(BackgroundTaskState.formatElapsed(45), "45s")
+        XCTAssertEqual(BackgroundTaskState.formatElapsed(75), "1m 15s")
+        XCTAssertEqual(BackgroundTaskState.formatElapsed(7_500), "2h 5m")
+    }
 }
