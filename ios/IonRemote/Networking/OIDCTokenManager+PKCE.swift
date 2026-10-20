@@ -31,9 +31,30 @@ extension OIDCTokenManager {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    nonisolated static func validateCallbackState(_ callbackState: String?, expected: String) throws {
-        guard let callbackState else { throw OIDCTokenError.tokenEndpointFailed("no state in callback URL") }
-        guard callbackState == expected else { throw OIDCTokenError.callbackStateMismatch }
+    /// The authorization code in a redirect callback, bound to this request.
+    ///
+    /// A callback carrying another request's state is refused: accepting it
+    /// defeats OAuth's CSRF binding. A callback carrying an OAuth `error`
+    /// (RFC 6749 4.1.2.1) is the provider refusing the sign-in, so its own
+    /// reason is surfaced rather than a generic failure.
+    nonisolated static func authorizationCode(from callbackURL: URL, expectedState: String) throws -> String {
+        let items = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? { items.first(where: { $0.name == name })?.value }
+
+        guard let callbackState = value("state") else {
+            throw OIDCTokenError.tokenEndpointFailed("no state in callback URL")
+        }
+        guard callbackState == expectedState else { throw OIDCTokenError.callbackStateMismatch }
+        if let error = value("error") {
+            let description = value("error_description")?
+                .split(maxSplits: 1, whereSeparator: \.isNewline).first
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+            throw OIDCTokenError.authorizationRejected(error: error, description: description)
+        }
+        guard let code = value("code"), !code.isEmpty else {
+            throw OIDCTokenError.tokenEndpointFailed("no code in callback URL")
+        }
+        return code
     }
 
     @MainActor
@@ -105,16 +126,23 @@ extension OIDCTokenManager {
             session.start()
         }
 
-        // Extract authorization code only for THIS request's callback. Accepting
-        // a code with another request's state defeats OAuth's CSRF binding.
-        guard let callbackComponents = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-              callbackComponents.queryItems?.first(where: { $0.name == "state" })?.value == state,
-              let code = callbackComponents.queryItems?.first(where: { $0.name == "code" })?.value else {
-            if let callbackComponents = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-               callbackComponents.queryItems?.contains(where: { $0.name == "state" }) == true {
-                throw OIDCTokenError.callbackStateMismatch
-            }
-            throw OIDCTokenError.tokenEndpointFailed("no code or state in callback URL")
+        let code: String
+        do {
+            code = try Self.authorizationCode(from: callbackURL, expectedState: state)
+        } catch let OIDCTokenError.authorizationRejected(error, description) {
+            DiagnosticLog.log("oidc: authorization rejected by provider", tag: "oidc.token", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)),
+                "issuer": issuer,
+                "error": error,
+                "description": description
+            ])
+            throw OIDCTokenError.authorizationRejected(error: error, description: description)
+        } catch {
+            DiagnosticLog.log("oidc: authorization callback refused", tag: "oidc.token", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)),
+                "error": error.localizedDescription
+            ])
+            throw error
         }
 
         // Exchange code for tokens
