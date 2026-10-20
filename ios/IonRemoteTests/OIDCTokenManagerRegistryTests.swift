@@ -47,6 +47,29 @@ final class OIDCTokenManagerRegistryTests: XCTestCase {
         return device
     }
 
+    // MARK: - Scope
+
+    func testShortScopeIsQualifiedWithAudience() {
+        var device = makeDevice(
+            id: personalId,
+            issuer: "https://login.microsoftonline.com/personal-tenant/v2.0",
+            clientId: "server-app",
+            scope: "Studio.Access"
+        )
+        device.relayOidcAudience = "server-app"
+        XCTAssertEqual(OIDCTokenManagerRegistry().manager(for: device)?.scope, "api://server-app/Studio.Access")
+    }
+
+    func testQualifiedScopeIsUnchanged() {
+        var device = makeDevice(
+            id: personalId,
+            issuer: "https://login.microsoftonline.com/personal-tenant/v2.0",
+            clientId: "relay"
+        )
+        device.relayOidcAudience = "relay"
+        XCTAssertEqual(OIDCTokenManagerRegistry().manager(for: device)?.scope, "api://relay/Relay.Access")
+    }
+
     // MARK: - The reported bug
 
     func testTwoTenantsGetSeparateManagers() {
