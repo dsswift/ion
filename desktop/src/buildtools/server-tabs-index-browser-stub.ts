@@ -23,6 +23,11 @@ export function loadSnapshotTabs(): any[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function loadSnapshotSettledHistory(): any[] {
+  return [];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function tabVisibleTo(_tab: any, _principal: any): boolean {
   return true;
 }
