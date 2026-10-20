@@ -119,7 +119,7 @@ While developing, run the scoped set once the change is stable:
 3. `make check-file-sizes`, and `make check-contracts` when a shared type changed.
 4. TS and Swift mirrors updated if a shared type changed.
 
-The full race suite, integration tests, and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Never `git push`.
+The full race suite, integration tests, and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Land finished work with `make land`.
 
 ## 9. File and package discipline
 
@@ -139,7 +139,7 @@ The full race suite, integration tests, and `govulncheck` are PR-time gates (roo
 - An engine change needs an engine reason, and a real gap gets a generic primitive, never a consumer workaround.
 - Settings belong to the scope that owns them.
 - Log everything, success and failure, with identifiers.
-- Never `--no-verify`. Never `git push`.
+- Never `--no-verify`. Land with `make land`; never push by hand.
 
 ---
 
