@@ -31,6 +31,11 @@ on:
         required: false
         type: boolean
         default: false
+      since:
+        description: 'Release every commit after this SHA (the last release commit, to catch commits an earlier push missed)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -88,6 +93,9 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           dry-run: ${{ inputs.dry_run || 'false' }}
           create-releases: 'true'
+          # Every commit in the push, not just the tip: a landing from main
+          # pushes plain commits, and each one versions the package it touched.
+          since: ${{ inputs.since || github.event.before }}
 
       # Plain-language "What's new" notes for the desktop's Build Notice, keyed
       # by the new desktop version in desktop/whats-new.json and committed with
