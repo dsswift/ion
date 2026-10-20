@@ -7,8 +7,6 @@
 # CI's test lane on main (quality.yml) beside the release build, never ahead
 # of it; a failure there is filed as an issue, not a blocked push.
 #
-# Bypass: `git push --no-verify` (use sparingly).
-#
 # Husky is the single hook system for this repo: root `package.json` has
 # `"prepare": "husky"`, so `npm install` points core.hooksPath at `.husky/_`
 # on every clone with no manual step.
@@ -33,18 +31,16 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 1
 cd "$REPO_ROOT" || exit 1
 
-# Git hands the refs being pushed on stdin, and the remote as $1. Two checks
-# on a push to main run first, before any gate, so a push that cannot land is
-# refused in a second: main only ever moves to a merge commit
-# (scripts/check-main-merge-node.sh), and main has not moved on the remote
-# since this push was built (scripts/check-main-current.sh). stdin is read
-# once and handed to both; a run from a terminal has no refs to check.
+# Git hands the refs being pushed on stdin, and the remote as $1. One check
+# on a push to main runs first, before any gate, so a push that cannot land is
+# refused in a second: main has not moved on the remote since this push was
+# built (scripts/check-main-current.sh). A run from a terminal has no refs to
+# check.
 PUSH_REFS=""
 if [ ! -t 0 ]; then
   PUSH_REFS="$(cat)"
 fi
 if [ -n "$PUSH_REFS" ]; then
-  printf '%s\n' "$PUSH_REFS" | bash scripts/check-main-merge-node.sh || exit 1
   printf '%s\n' "$PUSH_REFS" | bash scripts/check-main-current.sh "${1:-origin}" || exit 1
 fi
 
@@ -105,8 +101,7 @@ run "no tracked binaries" bash scripts/check-no-binaries.sh
 run "Go toolchain alignment" bash scripts/check-go-toolchains.sh
 run "Go toolchain regression checks" bash scripts/check-go-toolchains.test.sh
 run "Linux parity gate receipt semantics" bash scripts/gate-cache.test.sh
-run "main merge-node rule" bash scripts/check-main-merge-node.test.sh
-run "make land and the main-moved check" bash scripts/land.test.sh
+run "main-moved check" bash scripts/check-main-current.test.sh
 
 # Vocabulary uses Node built-ins with zero install and always runs because registry path and symbol references can be invalidated by any tree change.
 run "vocabulary registry + drift" make check-vocabulary
@@ -185,7 +180,7 @@ if [ ${#failures[@]} -gt 0 ]; then
   echo "pre-push BLOCKED. Failed gates:"
   for f in "${failures[@]}"; do echo "  - $f"; done
   echo
-  echo "Fix locally and re-push, or bypass with: git push --no-verify"
+  echo "Fix locally and land again."
   exit 1
 fi
 

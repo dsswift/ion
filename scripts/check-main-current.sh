@@ -32,8 +32,8 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
   [ -n "$actual" ] || continue
   if [ "$actual" != "$remote_sha" ]; then
     echo "pre-push: $MAIN_REF moved on $REMOTE (it is at ${actual:0:9}, this push was built on ${remote_sha:0:9})." >&2
-    echo "  The pipeline pushes a version commit after every landing. Land again:" >&2
-    echo "    make land <branch>" >&2
+    echo "  The pipeline pushes a version commit after every landing. Land with" >&2
+    echo "  make land (release-damnit land), which rebases and retries on its own." >&2
     status=1
   fi
 done
