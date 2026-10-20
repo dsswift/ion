@@ -113,6 +113,13 @@ export interface StudioEngineStatusSnapshot {
 export interface StudioSnapshot {
   tabs: StudioSnapshotTab[]
   /**
+   * The settled (closed, recoverable) conversations, same record shape as
+   * `tabs`. `studio:tabs-sync` carries `settledHistory` only when it changed,
+   * so a connecting client takes its first copy from here. Absent on a thin
+   * snapshot.
+   */
+  settledHistory?: StudioSnapshotTab[]
+  /**
    * The model each conversation runs on: tab id → instance id → model id.
    * The server decides it (one resolver, the owner's Account settings) and a
    * client renders it, never a default of its own. `tabs` carries no

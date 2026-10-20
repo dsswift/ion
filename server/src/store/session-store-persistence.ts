@@ -1,11 +1,13 @@
-import type { PersistedTabState } from '@ion/shared/types'
+import type { PersistedTab, PersistedTabState } from '@ion/shared/types'
+import type { TabState } from '@ion/shared/types-session'
+import { TabsChangeGate } from './tabs-persist-gate'
 import { serializeConversationPane, collectExternalInstanceMessages, isExtensionErrorMessage, resolvePersistedLastKnownSessionId } from './serialize-conversation-pane'
 import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
 import { activeInstance } from './conversation-instance'
 import { EXTERNALIZE_SCHEMA_VERSION } from '@ion/shared/types-persistence'
 import { persistableAttachments } from '@ion/shared/staged-attachments'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
-import { rError } from './rendererLogger'
+import { rDebug, rError } from './rendererLogger'
 import { projectResolvedModels } from './resolved-model-projection'
 import { loadSessionChains, saveSessionChains, saveTabContent, saveTabs, studioPublishTabsSync } from './host-api'
 import { tabForStudioSync } from '@ion/shared/tabs-sync-projection'
@@ -55,8 +57,53 @@ function persistExternalContent(useSessionStore: Store): void {
   }
 }
 
-function persistTabs(useSessionStore: Store): void {
+/** The persisted form of the settled history. */
+function projectSettledHistory(settledHistory: readonly TabState[]): PersistedTab[] {
+  return settledHistory.map((tab) => ({
+    id: tab.id,
+    ...(tab.principalSubject ? { principalSubject: tab.principalSubject } : {}),
+    ...(tab.conversationPreferences ? { conversationPreferences: tab.conversationPreferences } : {}),
+    conversationId: tab.conversationId,
+    title: tab.customTitle || tab.title,
+    customTitle: tab.customTitle,
+    workingDirectory: tab.workingDirectory,
+    hasChosenDirectory: tab.hasChosenDirectory,
+    additionalDirs: tab.additionalDirs,
+    ...(tab.historicalSessionIds.length > 0 ? { historicalSessionIds: tab.historicalSessionIds } : {}),
+    ...(tab.lastKnownSessionId ? { lastKnownSessionId: tab.lastKnownSessionId } : {}),
+    ...(tab.worktree ? { worktree: tab.worktree } : {}),
+    ...(tab.executionHost ? { executionHost: tab.executionHost } : {}),
+    ...(tab.executionMachineId ? { executionMachineId: tab.executionMachineId } : {}),
+    ...(tab.engineProfileId ? { hasEngineExtension: true, engineProfileId: tab.engineProfileId } : {}),
+    ...(tab.lastMessagePreview ? { lastMessagePreview: tab.lastMessagePreview } : {}),
+    ...(tab.lastMessageAt ? { lastMessageAt: tab.lastMessageAt } : {}),
+    ...(tab.settledAt ? { settledAt: tab.settledAt } : {}),
+    settledOverride: tab.settledOverride === 'auto' ? 'auto' : 'settled', inputLocked: true, inputLockReason: 'settled',
+  }))
+}
+
+/**
+ * One persistence pipeline's change gates. Each tick builds the manifest and
+ * the Studio push in full, and these decide whether either actually goes out.
+ */
+interface PersistGates {
+  save: TabsChangeGate
+  publish: TabsChangeGate
+  /** The settled history projection, rebuilt only when the store replaces the array. */
+  settled: { source: readonly TabState[] | null; projected: PersistedTab[] }
+  /** The tab chains last handed to {@link persistSessionChains}. */
+  chainsKey: string | null
+}
+
+function newPersistGates(): PersistGates {
+  return { save: new TabsChangeGate(), publish: new TabsChangeGate(), settled: { source: null, projected: [] }, chainsKey: null }
+}
+
+function persistTabs(useSessionStore: Store, gates: PersistGates): void {
   const { tabs, activeTabId, settledHistory } = useSessionStore.getState()
+  if (gates.settled.source !== settledHistory) {
+    gates.settled = { source: settledHistory, projected: projectSettledHistory(settledHistory) }
+  }
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const dirsWithEditorState = new Set<string>()
   for (const [dir, dirState] of useSessionStore.getState().fileEditorStates) {
@@ -214,27 +261,7 @@ function persistTabs(useSessionStore: Store): void {
     activeSessionId: activeTab?.conversationId || null,
     activeTabIndex,
     tabs: persistedTabs,
-    settledHistory: settledHistory.map((tab) => ({
-      id: tab.id,
-      ...(tab.principalSubject ? { principalSubject: tab.principalSubject } : {}),
-      ...(tab.conversationPreferences ? { conversationPreferences: tab.conversationPreferences } : {}),
-      conversationId: tab.conversationId,
-      title: tab.customTitle || tab.title,
-      customTitle: tab.customTitle,
-      workingDirectory: tab.workingDirectory,
-      hasChosenDirectory: tab.hasChosenDirectory,
-      additionalDirs: tab.additionalDirs,
-      ...(tab.historicalSessionIds.length > 0 ? { historicalSessionIds: tab.historicalSessionIds } : {}),
-      ...(tab.lastKnownSessionId ? { lastKnownSessionId: tab.lastKnownSessionId } : {}),
-      ...(tab.worktree ? { worktree: tab.worktree } : {}),
-      ...(tab.executionHost ? { executionHost: tab.executionHost } : {}),
-      ...(tab.executionMachineId ? { executionMachineId: tab.executionMachineId } : {}),
-      ...(tab.engineProfileId ? { hasEngineExtension: true, engineProfileId: tab.engineProfileId } : {}),
-      ...(tab.lastMessagePreview ? { lastMessagePreview: tab.lastMessagePreview } : {}),
-      ...(tab.lastMessageAt ? { lastMessageAt: tab.lastMessageAt } : {}),
-      ...(tab.settledAt ? { settledAt: tab.settledAt } : {}),
-      settledOverride: tab.settledOverride === 'auto' ? 'auto' : 'settled', inputLocked: true, inputLockReason: 'settled',
-    })),
+    settledHistory: gates.settled.projected,
     editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
     isExpanded,
     editorOpenDirs: fileEditorOpenDirs.size > 0 ? [...fileEditorOpenDirs] : undefined,
@@ -242,9 +269,12 @@ function persistTabs(useSessionStore: Store): void {
     planGeometry,
     agentDetailGeometry,
   }
-  if (typeof saveTabs !== 'function') {
+  const { settledHistory: _settled, ...manifestBody } = data
+  const save = gates.save.offer(JSON.stringify(manifestBody), settledHistory)
+  if (save.changed && typeof saveTabs !== 'function') {
     rError('session.persist', 'saveTabs bridge unavailable; restored session may be lost')
-  } else {
+  } else if (save.changed) {
+    rDebug('session.persist', 'tab manifest changed; saving', { tab_count: tabs.length, settled_changed: save.settledChanged, unchanged_ticks_skipped: save.skipped })
     void Promise.resolve(saveTabs(data)).catch((err) =>
       rError('session.persist', 'saveTabs failed; restored session may be lost', { error: String(err) }),
     )
@@ -255,24 +285,41 @@ function persistTabs(useSessionStore: Store): void {
   // never drift by more than one debounce window.
   persistExternalContent(useSessionStore)
 
-  // Owner sync push (mirror-store architecture): tab metadata does not ride
-  // normalized events, so the owner publishes the same persisted snapshot to
-  // the main process, which caches it and forwards it to the Studio mirror.
-  // Live statuses ride ALONGSIDE (they are runtime state, not persisted to
-  // disk) — without them the mirror would hydrate every tab as idle and the
-  // workspace indicator would miss running conversations. isCompacting is the
-  // same category: without liveIsCompacting, this same debounced push (fired
-  // by nothing more than the lastEventAt stamp on every normalized event)
-  // resets a live "Compacting…" indicator to false moments after it opened.
-  // Queued attachments are deliberately transient: copying their data URLs into
-  // tabs.json would retain arbitrary user content after send. Studio still needs
-  // them before send, so project the live queue only into the owner→mirror push.
-  // Empty arrays are kept to clear a previously staged mirror rail immediately.
-  const queuedAttachments = Object.fromEntries(tabs.map((t) => [t.id, t.attachments]))
-  studioPublishTabsSync?.({
-    ...data,
-    tabs: data.tabs.map(tabForStudioSync),
-    revision: Date.now(),
+  publishTabsSync(useSessionStore, gates, manifestBody)
+
+  const chainsKey = JSON.stringify(tabs.filter((t) => t.historicalSessionIds.length > 0 && t.conversationId).map((t) => [t.historicalSessionIds, t.conversationId]))
+  if (chainsKey !== gates.chainsKey) {
+    gates.chainsKey = chainsKey
+    void persistSessionChains(useSessionStore)
+  }
+}
+
+/**
+ * Owner sync push (mirror-store architecture): tab metadata does not ride
+ * normalized events, so the owner publishes the persisted snapshot to every
+ * Studio connection on `studio:tabs-sync`.
+ *
+ * Live statuses ride ALONGSIDE (they are runtime state, not persisted to
+ * disk): without them the mirror would hydrate every tab as idle and the
+ * workspace indicator would miss running conversations. isCompacting is the
+ * same category: without liveIsCompacting, a push for any other change resets
+ * a live "Compacting…" indicator to false moments after it opened. Queued
+ * attachments are deliberately transient: copying their data URLs into
+ * tabs.json would retain arbitrary user content after send. Studio still needs
+ * them before send, so the live queue is projected only into this push. Empty
+ * arrays are kept to clear a previously staged mirror rail immediately.
+ *
+ * A push goes out only when its content differs from the last one, and it
+ * carries `settledHistory` only when the settled history changed since then.
+ * A push without the field leaves the client's copy as it is; a connecting
+ * client gets the current settled history on its welcome snapshot.
+ */
+function publishTabsSync(useSessionStore: Store, gates: PersistGates, manifestBody: Omit<PersistedTabState, 'settledHistory'>): void {
+  if (!studioPublishTabsSync) return
+  const { tabs, conversationPanes, settledHistory } = useSessionStore.getState()
+  const sync = {
+    ...manifestBody,
+    tabs: manifestBody.tabs.map(tabForStudioSync),
     liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),
     liveIsCompacting: Object.fromEntries(tabs.map((t) => [t.id, t.isCompacting])),
     // The model each conversation runs on, decided here and rendered by every
@@ -280,10 +327,16 @@ function persistTabs(useSessionStore: Store): void {
     // depends on the owner's Account settings, so a stored copy would go
     // stale the moment those change.
     liveResolvedModel: projectResolvedModels(tabs, conversationPanes),
-    queuedAttachments,
+    queuedAttachments: Object.fromEntries(tabs.map((t) => [t.id, t.attachments])),
+  }
+  const publish = gates.publish.offer(JSON.stringify(sync), settledHistory)
+  if (!publish.changed) return
+  rDebug('session.persist', 'tabs sync changed; publishing', { tab_count: tabs.length, settled_included: publish.settledChanged, unchanged_ticks_skipped: publish.skipped })
+  studioPublishTabsSync({
+    ...sync,
+    ...(publish.settledChanged ? { settledHistory: gates.settled.projected } : {}),
+    revision: Date.now(),
   })
-
-  void persistSessionChains(useSessionStore)
 }
 
 async function persistSessionChains(useSessionStore: Store): Promise<void> {
@@ -312,6 +365,7 @@ async function persistSessionChains(useSessionStore: Store): Promise<void> {
 }
 
 export function setupPersistence(useSessionStore: Store): void {
+  const gates = newPersistGates()
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   useSessionStore.subscribe((state, prev) => {
     // Skip all saves while the tab-restoration loop is running. Each per-tab
@@ -322,7 +376,7 @@ export function setupPersistence(useSessionStore: Store): void {
     // rehydrating is cleared alongside tabsReady=true after the loop completes.
     if (state.rehydrating) return
 
-    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes || state.worktreeInventory !== prev.worktreeInventory || state.benchWorkspaces !== prev.benchWorkspaces || state.benchSourceTips !== prev.benchSourceTips || state.benchRetired !== prev.benchRetired || state.gitConflictAlerts !== prev.gitConflictAlerts || state.worktreePipeline !== prev.worktreePipeline || state.workspaceOperationLedger !== prev.workspaceOperationLedger) {
+    if (state.tabs !== prev.tabs || state.settledHistory !== prev.settledHistory || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes || state.worktreeInventory !== prev.worktreeInventory || state.benchWorkspaces !== prev.benchWorkspaces || state.benchSourceTips !== prev.benchSourceTips || state.benchRetired !== prev.benchRetired || state.gitConflictAlerts !== prev.gitConflictAlerts || state.worktreePipeline !== prev.worktreePipeline || state.workspaceOperationLedger !== prev.workspaceOperationLedger) {
       // Flush immediately when permissionDenied changes on any tab — this
       // state must survive a crash or force-quit (e.g. the desktop is killed
       // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
@@ -369,7 +423,7 @@ export function setupPersistence(useSessionStore: Store): void {
 
       if (permissionDeniedChanged || conversationIdCaptured) {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-        persistTabs(useSessionStore)
+        persistTabs(useSessionStore, gates)
         return
       }
       // A pending save is left to fire, not pushed back. Restarting the timer
@@ -379,13 +433,13 @@ export function setupPersistence(useSessionStore: Store): void {
       // conversation color) reached no client for tens of seconds. The save
       // reads the store when it fires, so changes inside the window ride it.
       if (saveTimer) return
-      saveTimer = setTimeout(() => { saveTimer = null; persistTabs(useSessionStore) }, 100)
+      saveTimer = setTimeout(() => { saveTimer = null; persistTabs(useSessionStore, gates) }, 100)
     }
   })
 
   registerForceFlushTabs(() => {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-    persistTabs(useSessionStore)
+    persistTabs(useSessionStore, gates)
   })
 
   // Publish one tabs snapshot as soon as restoration completes, so a Studio window
@@ -393,7 +447,7 @@ export function setupPersistence(useSessionStore: Store): void {
   // (view readiness: the mirror's boot pull must find a snapshot).
   const unsubReady = useSessionStore.subscribe((state, prev) => {
     if (state.tabsReady && !prev.tabsReady) {
-      persistTabs(useSessionStore)
+      persistTabs(useSessionStore, gates)
       unsubReady()
     }
   })

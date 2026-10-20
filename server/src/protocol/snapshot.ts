@@ -19,7 +19,7 @@ import { withSpan } from '../tracing/op-span'
 import { projectResolvedModels } from '../store/resolved-model-projection'
 import { engineBridge } from '../state'
 import { log as _log, warn as _warn } from '../logger'
-import { loadSnapshotTabs, tabVisibleTo } from './tabs-index'
+import { loadSnapshotSettledHistory, loadSnapshotTabs, tabVisibleTo } from './tabs-index'
 import { fullPresenceSnapshot } from './presence'
 import { systemMetricsPublisher } from '../system-metrics/runtime'
 import { telemetryHealthState } from '../engine/telemetry-health'
@@ -108,8 +108,10 @@ function buildSnapshotNow(principal: StudioPrincipalSummary, view: StudioView): 
   const tabs = loadSnapshotTabs().filter((tab) => tabVisibleTo(tab, principal))
   const visible = new Set(tabs.map((tab) => tab.id))
   const live = useSessionStore.getState()
+  const settledHistory = loadSnapshotSettledHistory().filter((tab) => tabVisibleTo(tab, principal))
   const snapshot: StudioSnapshot = {
     tabs,
+    settledHistory,
     resolvedModels: projectResolvedModels(live.tabs.filter((tab) => visible.has(tab.id)), live.conversationPanes),
     settings: buildSettingsSnapshot(principal.subject),
     worktrees: buildWorktreeSnapshot(),
@@ -119,6 +121,6 @@ function buildSnapshotNow(principal: StudioPrincipalSummary, view: StudioView): 
     presence: fullPresenceSnapshot(),
     ...environmentHealthSnapshot(),
   }
-  log('snapshot built', { subject: principal.subject, tab_count: tabs.length, connected: engineBridge.connected })
+  log('snapshot built', { subject: principal.subject, tab_count: tabs.length, settled_count: settledHistory.length, connected: engineBridge.connected })
   return snapshot
 }

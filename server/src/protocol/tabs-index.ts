@@ -79,10 +79,11 @@ export function loadSnapshotTabs(): StudioSnapshotTab[] {
  * missing/corrupt tolerance as {@link loadSnapshotTabs}. Kept separate rather
  * than folded into `loadSnapshotTabs` because every existing caller of that
  * function wants live tabs only; `principalSubjectForConversation` below is
- * the one caller that needs both arrays (a deleted/settled conversation is
- * exactly what `session.deleteStored` targets).
+ * one caller that needs both arrays (a deleted/settled conversation is
+ * exactly what `session.deleteStored` targets), and the welcome snapshot
+ * carries it beside the tabs.
  */
-function loadSnapshotSettledHistory(): StudioSnapshotTab[] {
+export function loadSnapshotSettledHistory(): StudioSnapshotTab[] {
   const tabsFile = tabsFilePath()
   if (!existsSync(tabsFile)) return []
   try {

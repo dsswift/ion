@@ -3,7 +3,9 @@
  * after a store change. While a conversation streams, the store changes
  * faster than that. A timer restarted on every change never fired then, so a
  * change made meanwhile (clearing a conversation's color) reached Studio only
- * once every stream went quiet, tens of seconds later.
+ * once every stream went quiet, tens of seconds later. A timer that fires on
+ * every window but sends regardless rewrote tabs.json and pushed the whole
+ * tab list several times a second for nothing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -82,6 +84,7 @@ describe('studio:tabs-sync cadence', () => {
     const s = store()
     setupPersistence(s as never)
     s.setState({ tabs: [tab('conv-1', '#4caf50')] })
+    vi.advanceTimersByTime(100)
     mockPublish.mockClear()
 
     s.setState({ tabs: [tab('conv-1', null)] })
@@ -94,8 +97,49 @@ describe('studio:tabs-sync cadence', () => {
         expect(mockPublish.mock.calls.at(-1)?.[0].tabs[0]).not.toHaveProperty('pillColor')
       }
     }
-    // One save per window, not one per change.
-    expect(mockPublish.mock.calls.length).toBeGreaterThanOrEqual(15)
-    expect(mockPublish.mock.calls.length).toBeLessThanOrEqual(21)
+    // The stream changed nothing the push carries, so the color change is
+    // the only push it caused.
+    expect(mockPublish).toHaveBeenCalledTimes(1)
+  })
+
+  it('neither saves nor publishes a tick whose content is unchanged', () => {
+    const s = store()
+    setupPersistence(s as never)
+    s.setState({ tabs: [tab('conv-1')] })
+    vi.advanceTimersByTime(100)
+    expect(mockSaveTabs).toHaveBeenCalledTimes(1)
+    expect(mockPublish).toHaveBeenCalledTimes(1)
+
+    for (let i = 0; i < 10; i++) {
+      s.setState({ tabs: [tab('conv-1')] })
+      vi.advanceTimersByTime(100)
+    }
+    expect(mockSaveTabs).toHaveBeenCalledTimes(1)
+    expect(mockPublish).toHaveBeenCalledTimes(1)
+
+    s.setState({ tabs: [tab('conv-1', '#4caf50')] })
+    vi.advanceTimersByTime(100)
+    expect(mockSaveTabs).toHaveBeenCalledTimes(2)
+    expect(mockPublish).toHaveBeenCalledTimes(2)
+  })
+
+  it('carries the settled history on a push only when it changed', () => {
+    const s = store()
+    setupPersistence(s as never)
+    const settled = { ...tab('conv-old'), id: 'old' }
+    s.setState({ tabs: [tab('conv-1')], settledHistory: [settled] })
+    vi.advanceTimersByTime(100)
+    expect(mockPublish.mock.calls.at(-1)?.[0].settledHistory.map((t: { id: string }) => t.id)).toEqual(['old'])
+
+    s.setState({ tabs: [tab('conv-1', '#4caf50')] })
+    vi.advanceTimersByTime(100)
+    expect(mockPublish).toHaveBeenCalledTimes(2)
+    expect(mockPublish.mock.calls.at(-1)?.[0]).not.toHaveProperty('settledHistory')
+    // The manifest on disk always holds it.
+    expect(mockSaveTabs.mock.calls.at(-1)?.[0].settledHistory.map((t: { id: string }) => t.id)).toEqual(['old'])
+
+    s.setState({ settledHistory: [] })
+    vi.advanceTimersByTime(100)
+    expect(mockPublish.mock.calls.at(-1)?.[0].settledHistory).toEqual([])
   })
 })
