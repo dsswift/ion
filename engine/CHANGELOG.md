@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.102.2](https://github.com/dsswift/ion/compare/engine-v1.102.1...engine-v1.102.2) (2026-10-20)
+
+### Bug Fixes
+
+* **engine:** keep boot provider probe in startup trace ([f59df21](https://github.com/dsswift/ion/commit/f59df211f167349d954312b8305256f933c77cb5))
+
 ## [1.102.1](https://github.com/dsswift/ion/compare/engine-v1.102.0...engine-v1.102.1) (2026-10-20)
 
 ### Bug Fixes
