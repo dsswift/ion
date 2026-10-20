@@ -93,7 +93,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 ## Branch workflow
 
-`main` is the integration branch; the operator lands work by direct push, and every push is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Pull requests are optional. Read the active branch with `git branch --show-current`; never hardcode one. Never `git push`.
+`main` is the integration branch; the operator lands work by direct push, and every push is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Pull requests are optional. Read the active branch with `git branch --show-current`; never hardcode one. Land finished work yourself, once the whole request is done: `git fetch origin main`, rebase the active branch onto `origin/main`, then `make land <branch>`. In a worktree the operator created, commit only; the operator lands it.
 
 ## Commits
 
@@ -102,7 +102,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 - Path→scope mapping: `.commit.json`. Legal scopes: `commitlint.config.js`. `ci`/`deps` are legal but never auto-resolved.
 - Work from a GitHub issue: subject ends ` (#N)` **and** a commit or PR body carries `Fixes #N` / `Closes #N`. `make check-issue-closure` fails the PR otherwise.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
-- Commit finished work before reporting. Never `--no-verify`. Never push.
+- Commit finished work before reporting. Never `--no-verify`. Land it as the branch workflow says.
 - End with a clean tree: commit or revert every change, whoever made it. `package-lock.json` changes are always committed.
 
 ## Layered architecture
