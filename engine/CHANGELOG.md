@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.102.1](https://github.com/dsswift/ion/compare/engine-v1.102.0...engine-v1.102.1) (2026-10-20)
+
+### Bug Fixes
+
+* **engine:** pass engine mcp servers to delegated clis ([3e2269e](https://github.com/dsswift/ion/commit/3e2269e2caaa4417c983ee6163522aac46aaa8a8))
+
 ## [1.102.0](https://github.com/dsswift/ion/compare/engine-v1.101.1...engine-v1.102.0) (2026-10-12)
 
 ### Features
