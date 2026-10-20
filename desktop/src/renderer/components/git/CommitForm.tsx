@@ -2,8 +2,8 @@
  * Commit form — single compact row:
  *   [cc: ▾] [Commit message…] [char count] [✓ ▾]
  *
- * The cc: dropdown reads `.commit.json` from the repo root to respect
- * per-repo whitelist/blacklist of conventional-commit types.
+ * The cc: dropdown offers the repo's conventional-commit types (see
+ * `commitPrefixes`).
  *
  * The commit button is a combo button with a dropdown containing:
  * Commit/Push toggle, Amend, Sign-off, GPG toggles, and AI commit action.
@@ -16,6 +16,7 @@ import { Check, Robot, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/
 import { useColors } from '../../theme'
 import { rError, rDebug } from '../../rendererLogger'
 import { host } from '../../host/host-instance'
+import { commitPrefixes, DEFAULT_PREFIXES } from './commitPrefixes'
 
 interface CommitFormProps {
   directory: string
@@ -29,7 +30,6 @@ interface CommitFormProps {
 type PrimaryAction = 'commit' | 'commit-push'
 
 const PRIMARY_KEY = 'ion:commit-primary-action'
-const DEFAULT_PREFIXES = ['feat', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf']
 
 function draftKey(dir: string, branch: string) { return `ion:commit-draft:${dir}:${branch}` }
 
@@ -50,25 +50,15 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
   const prefixRef = useRef<HTMLDivElement>(null)
   const prefixDirRef = useRef<string | null>(null)
 
-  // Load .commit.json for CC prefix config
+  // Load the repo's commit types for the cc: prefixes
   useEffect(() => {
     if (prefixDirRef.current === directory) return
     prefixDirRef.current = directory
-    host.shell.fsReadFile(directory + '/.commit.json').then(({ content }) => {
-      if (!content) { setPrefixes(DEFAULT_PREFIXES); return }
-      try {
-        const cfg = JSON.parse(content)
-        const ct = cfg?.commitTypes
-        if (!ct?.types || !Array.isArray(ct.types)) { setPrefixes(DEFAULT_PREFIXES); return }
-        if (ct.mode === 'whitelist') {
-          setPrefixes(ct.types.filter((t: string) => typeof t === 'string'))
-        } else if (ct.mode === 'blacklist') {
-          setPrefixes(DEFAULT_PREFIXES.filter(p => !ct.types.includes(p)))
-        } else {
-          setPrefixes(DEFAULT_PREFIXES)
-        }
-      } catch { setPrefixes(DEFAULT_PREFIXES) }
-    }).catch(() => setPrefixes(DEFAULT_PREFIXES))
+    const read = (name: string) => host.shell.fsReadFile(`${directory}/${name}`)
+      .then(({ content }) => content)
+      .catch((err: unknown) => { rDebug('git', 'commit types file unreadable', { file: name, error: String(err) }); return null })
+    void Promise.all([read('release-please-config.json'), read('.commit.json')])
+      .then(([releaseConfig, commitJson]) => setPrefixes(commitPrefixes(releaseConfig, commitJson)))
   }, [directory])
 
   // Load draft on directory/branch change

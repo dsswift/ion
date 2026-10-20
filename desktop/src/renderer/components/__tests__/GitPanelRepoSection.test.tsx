@@ -26,7 +26,7 @@ beforeEach(() => {
     gitRefresh: vi.fn().mockResolvedValue(undefined),
     gitDiff: vi.fn().mockResolvedValue({ diff: '', fileName: '' }),
     onGitEvent: vi.fn(() => () => undefined),
-    // CommitForm reads .commit.json prefixes; persistence flushes tabs.
+    // CommitForm reads the repo's commit types; persistence flushes tabs.
     fsReadFile: vi.fn().mockResolvedValue({ content: null }),
     saveTabs: vi.fn().mockResolvedValue(undefined),
     saveTabContent: vi.fn().mockResolvedValue(undefined),
