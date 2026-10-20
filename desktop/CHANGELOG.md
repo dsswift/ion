@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.20.0](https://github.com/dsswift/ion/compare/desktop-v2.19.0...desktop-v2.20.0) (2026-10-20)
+
+### Features
+
+* **desktop:** read commit types from the release config ([67904fb](https://github.com/dsswift/ion/commit/67904fbc5419a9e50d95b51701663719a331ad1b))
+
 ## [2.19.0](https://github.com/dsswift/ion/compare/desktop-v2.18.1...desktop-v2.19.0) (2026-10-16)
 
 ### Features
