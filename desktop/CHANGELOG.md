@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.20.2](https://github.com/dsswift/ion/compare/desktop-v2.20.1...desktop-v2.20.2) (2026-10-20)
+
+### Bug Fixes
+
+* **desktop:** stub settled history loader in browser tabs index ([bc5c04e](https://github.com/dsswift/ion/commit/bc5c04e077e44e60d9b0099bd0cb6c7d75ed7640))
+
 ## [2.20.1](https://github.com/dsswift/ion/compare/desktop-v2.20.0...desktop-v2.20.1) (2026-10-20)
 
 ### Bug Fixes
