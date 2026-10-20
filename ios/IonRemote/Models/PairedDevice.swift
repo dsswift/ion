@@ -30,7 +30,9 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     var relayOidcIssuer: String?
     /// OIDC audience (app registration client ID).
     var relayOidcAudience: String?
-    /// Full OIDC scope string (e.g. `"api://<id>/Relay.Access"`).
+    /// The scope the relay requires: short (`"Studio.Access"`) or qualified
+    /// (`"api://<id>/Relay.Access"`). Tokens are minted for it qualified with
+    /// `relayOidcAudience`.
     var relayOidcRequiredScope: String?
     /// OAuth2 client ID used by iOS to acquire OIDC tokens independently
     /// (ASWebAuthenticationSession PKCE flow). Nil for PSK-mode and

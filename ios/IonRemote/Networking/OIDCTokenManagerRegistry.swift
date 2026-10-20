@@ -79,8 +79,8 @@ final class OIDCTokenManagerRegistry: Sendable {
         guard device.relayAuthMode == "oidc",
               let clientId = device.relayOidcClientId,
               let issuer = device.relayOidcIssuer,
-              let scope = device.relayOidcRequiredScope,
-              !clientId.isEmpty, !issuer.isEmpty, !scope.isEmpty else {
+              let requiredScope = device.relayOidcRequiredScope,
+              !clientId.isEmpty, !issuer.isEmpty, !requiredScope.isEmpty else {
             DiagnosticLog.log("oidc registry: device is not OIDC-configured, no manager", tag: "oidc.registry", fields: [
                 "device": String(device.id.prefix(8)),
                 "auth_mode": device.relayAuthMode ?? "psk",
@@ -90,6 +90,12 @@ final class OIDCTokenManagerRegistry: Sendable {
             ])
             return nil
         }
+
+        // A server advertises its short scope name (`Studio.Access`). Sent bare,
+        // Entra resolves it against Microsoft Graph and refuses it, so qualify
+        // it with the API it belongs to. Already-qualified scopes pass through.
+        let audience = device.relayOidcAudience ?? ""
+        let scope = audience.isEmpty ? requiredScope : OIDCScope.compose(audience: audience, requiredScope: requiredScope)
 
         let (manager, resolution) = managers.withLock { store -> (OIDCTokenManager, Resolution) in
             if let existing = store[device.id] {

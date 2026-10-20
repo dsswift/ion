@@ -74,16 +74,29 @@ final class OIDCTokenManagerTests: XCTestCase {
         }
     }
 
-    func testCallbackStateRejectsMismatch() {
-        XCTAssertThrowsError(try OIDCTokenManager.validateCallbackState("other-request", expected: "current-request")) { error in
+    func testCallbackRejectsOtherRequestsState() {
+        let url = URL(string: "ionremote://auth?code=abc&state=other-request")!
+        XCTAssertThrowsError(try OIDCTokenManager.authorizationCode(from: url, expectedState: "current-request")) { error in
             guard case OIDCTokenError.callbackStateMismatch = error else {
                 return XCTFail("expected callbackStateMismatch, got \(error)")
             }
         }
     }
 
-    func testCallbackStateAcceptsExactMatch() throws {
-        XCTAssertNoThrow(try OIDCTokenManager.validateCallbackState("current-request", expected: "current-request"))
+    func testCallbackReturnsCodeForMatchingState() throws {
+        let url = URL(string: "ionremote://auth?code=abc&state=current-request")!
+        XCTAssertEqual(try OIDCTokenManager.authorizationCode(from: url, expectedState: "current-request"), "abc")
+    }
+
+    func testCallbackSurfacesProviderError() {
+        let url = URL(string: "ionremote://auth?error=access_denied&error_description=AADSTS50105%3A%20Not%20assigned.%0D%0ATrace%20ID%3A%201&state=current-request")!
+        XCTAssertThrowsError(try OIDCTokenManager.authorizationCode(from: url, expectedState: "current-request")) { error in
+            guard case OIDCTokenError.authorizationRejected(let code, let description) = error else {
+                return XCTFail("expected authorizationRejected, got \(error)")
+            }
+            XCTAssertEqual(code, "access_denied")
+            XCTAssertEqual(description, "AADSTS50105: Not assigned.")
+        }
     }
 
     // MARK: - Cache tier (seeded)

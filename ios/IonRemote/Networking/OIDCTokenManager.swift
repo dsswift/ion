@@ -12,6 +12,9 @@ enum OIDCTokenError: Error, LocalizedError {
     case missingTokenInResponse
     case randomGenerationFailed
     case callbackStateMismatch
+    /// The identity provider answered the authorization request with an OAuth
+    /// `error` instead of a code: the sign-in itself was refused or abandoned.
+    case authorizationRejected(error: String, description: String)
     /// Token endpoint rejected the durable authorization grant. Retrying the
     /// same refresh token cannot succeed; caller must request interaction.
     case refreshGrantRejected(String)
@@ -27,6 +30,8 @@ enum OIDCTokenError: Error, LocalizedError {
         case .missingTokenInResponse:    return "Token endpoint response missing access_token"
         case .randomGenerationFailed:    return "Could not generate secure PKCE verifier"
         case .callbackStateMismatch:     return "Authorization callback did not match request"
+        case .authorizationRejected(let error, let description):
+            return description.isEmpty ? "Sign-in was refused: \(error)" : "Sign-in was refused: \(description)"
         case .refreshGrantRejected(let m): return "Refresh token was rejected: \(m)"
         case .interactionRequired:       return "Interactive sign-in is required"
         }
