@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.20.1](https://github.com/dsswift/ion/compare/desktop-v2.20.0...desktop-v2.20.1) (2026-10-20)
+
+### Bug Fixes
+
+* **desktop:** stop studio snapping back while tabs sync drains ([33c7426](https://github.com/dsswift/ion/commit/33c742697e2093fabb3d1a27122a123c9bf3929f))
+
 ## [2.20.0](https://github.com/dsswift/ion/compare/desktop-v2.19.0...desktop-v2.20.0) (2026-10-20)
 
 ### Features

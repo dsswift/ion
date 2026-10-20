@@ -1,4 +1,7 @@
 {
+  "2.20.1": [
+    "Fixed a problem where switching conversations caused the window to jump back to the previous one for a moment before settling."
+  ],
   "2.19.0": [
     "Fixed a problem where a button did not appear on pinned conversations.",
     "You can now see a live timer on each background task showing how long it has been running."
