@@ -35,6 +35,16 @@ type ToolServer struct {
 	running    bool
 	configPath string
 
+	// name is the MCP server name the delegated CLI sees: McpServerName for a
+	// session's own server, the engine MCP server's name for a proxied one.
+	name string
+	// parent is set on a proxied server. Its plan policy and lifecycle are the
+	// parent's.
+	parent *ToolServer
+	// proxied holds one server per engine MCP connection exposed to the CLI,
+	// keyed by server name (see tool_server_proxied.go).
+	proxied map[string]*ToolServer
+
 	server *mcp.Server
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -93,12 +103,18 @@ func socketToken(sessionID string) string {
 
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
+	return newNamedToolServer(sessionID, McpServerName, socketToken(sessionID))
+}
+
+// newNamedToolServer creates a tool server that the delegated CLI knows as
+// name, listening on the socket derived from token.
+func newNamedToolServer(sessionID, name, token string) *ToolServer {
 	sockDir := filepath.Join(utils.IonDir(), "mcp")
 	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
 	srv := mcp.NewServer(
 		&mcp.Implementation{
-			Name:    McpServerName,
+			Name:    name,
 			Version: "1.0.0",
 		},
 		&mcp.ServerOptions{
@@ -111,7 +127,8 @@ func NewToolServer(sessionID string) *ToolServer {
 	return &ToolServer{
 		tools:    make(map[string]toolEntry),
 		key:      sessionID,
-		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", socketToken(sessionID))),
+		name:     name,
+		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", token)),
 		server:   srv,
 	}
 }
@@ -241,8 +258,14 @@ func (ts *ToolServer) Start() error {
 	}()
 	utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "started for at", map[string]any{
 		"key":       ts.key,
+		"server":    ts.name,
 		"sock_path": ts.sockPath,
 	})
+	for _, child := range ts.proxied {
+		if err := child.Start(); err != nil {
+			return fmt.Errorf("proxied MCP server %q: %w", child.name, err)
+		}
+	}
 	return nil
 }
 
@@ -261,9 +284,13 @@ func (ts *ToolServer) Stop() {
 	toolCount := len(ts.tools)
 	cleanups := ts.onStop
 	ts.onStop = nil
+	children := ts.proxiedServers()
 	ts.mu.Unlock()
 	for _, cleanup := range cleanups {
 		cleanup()
+	}
+	for _, child := range children {
+		child.Stop()
 	}
 
 	// Silent-failure backstop: if this server carried tools but no delegated-CLI
@@ -274,6 +301,7 @@ func (ts *ToolServer) Stop() {
 	if toolCount > 0 && ts.connections.Load() == 0 {
 		utils.LogWithFields(utils.LevelError, "backend.tool_server", "MCP bridge never connected; delegated-CLI ion tools were unavailable this session", map[string]any{
 			"key":        ts.key,
+			"server":     ts.name,
 			"tool_count": toolCount,
 			"sock_path":  ts.sockPath,
 		})
@@ -315,9 +343,13 @@ func (ts *ToolServer) ResetTools() {
 		names = append(names, name)
 	}
 	ts.tools = make(map[string]toolEntry)
+	children := ts.proxiedServers()
 	ts.mu.Unlock()
 	if len(names) > 0 {
 		ts.server.RemoveTools(names...)
+	}
+	for _, child := range children {
+		child.ResetTools()
 	}
 	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools reset for a new prompt", map[string]any{"key": ts.key, "removed": len(names)})
 }
@@ -335,9 +367,13 @@ func (ts *ToolServer) SetPlanPolicySource(source PlanPolicySource) {
 // planRefusal returns the model-facing refusal for a call the plan policy
 // denies, or "" when the call may run.
 func (ts *ToolServer) planRefusal(name string, input map[string]interface{}) string {
-	ts.mu.Lock()
-	source := ts.planPolicy
-	ts.mu.Unlock()
+	owner := ts
+	if ts.parent != nil {
+		owner = ts.parent
+	}
+	owner.mu.Lock()
+	source := owner.planPolicy
+	owner.mu.Unlock()
 	if source == nil {
 		return ""
 	}
@@ -345,7 +381,12 @@ func (ts *ToolServer) planRefusal(name string, input map[string]interface{}) str
 	if !planning {
 		return ""
 	}
-	decision := policy.DecideBridged(name, input)
+	var decision PlanDecision
+	if ts.parent != nil {
+		decision = policy.DecideMcpTool("mcp__" + ts.name + "__" + name)
+	} else {
+		decision = policy.DecideBridged(name, input)
+	}
 	if !decision.Denied() {
 		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "plan policy allowed bridged tool", map[string]any{"key": ts.key, "name": name, "rule": decision.Rule})
 		return ""
@@ -414,16 +455,16 @@ func mcpBridgeInvocation(sockPath string) (command string, args []string) {
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 	configDir := filepath.Join(utils.IonDir(), "mcp")
 
-	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)
-	config := map[string]interface{}{
-		"mcpServers": map[string]interface{}{
-			McpServerName: map[string]interface{}{
-				"type":    "stdio",
-				"command": bridgeCmd,
-				"args":    bridgeArgs,
-			},
-		},
+	servers := map[string]interface{}{}
+	for _, server := range ts.bridgedServers() {
+		bridgeCmd, bridgeArgs := mcpBridgeInvocation(server.sockPath)
+		servers[server.name] = map[string]interface{}{
+			"type":    "stdio",
+			"command": bridgeCmd,
+			"args":    bridgeArgs,
+		}
 	}
+	config := map[string]interface{}{"mcpServers": servers}
 
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -440,6 +481,17 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 	return configPath, nil
 }
 
+// McpServerSpecs returns McpServerSpec for this server and every proxied
+// server that carries tools.
+func (ts *ToolServer) McpServerSpecs() []map[string]interface{} {
+	servers := ts.bridgedServers()
+	specs := make([]map[string]interface{}, 0, len(servers))
+	for _, server := range servers {
+		specs = append(specs, server.McpServerSpec())
+	}
+	return specs
+}
+
 // McpServerSpec returns the tool server as a single structured MCP-server
 // entry, for delegated CLIs that take per-session MCP servers as inline params
 // rather than a config-file path. The ACP backends (grok, cursor) pass this on
@@ -449,7 +501,7 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 func (ts *ToolServer) McpServerSpec() map[string]interface{} {
 	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)
 	return map[string]interface{}{
-		"name":    McpServerName,
+		"name":    ts.name,
 		"command": bridgeCmd,
 		"args":    bridgeArgs,
 		"env":     []interface{}{},

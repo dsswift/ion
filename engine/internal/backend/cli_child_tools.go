@@ -39,7 +39,7 @@ func McpCapableCli(b RunBackend) (kind string, ok bool) {
 // list never accumulates duplicate entries. kind comes from McpCapableCli.
 func AttachToolServerToRunOptions(opts *types.RunOptions, ts *ToolServer, sessionID, kind string) error {
 	if kind == "acp" {
-		opts.CliMcpServers = append(opts.CliMcpServers, ts.McpServerSpec())
+		opts.CliMcpServers = append(opts.CliMcpServers, ts.McpServerSpecs()...)
 		return nil
 	}
 	mcpPath, err := ts.McpConfigPath(sessionID)

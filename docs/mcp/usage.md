@@ -13,6 +13,7 @@ When MCP servers are configured, their tools and resources become available to t
 1. **First prompt**: The engine connects to all configured MCP servers lazily, at a session's first prompt dispatch — not at session start. A client rehydrating many sessions at launch therefore pays no MCP network cost; only sessions that actually run a prompt connect. stdio servers are spawned as subprocesses; network servers receive an HTTP connection.
 2. **Discovery**: The engine queries each server for its available tools and resources.
 3. **Registration**: MCP tools are added to the LLM's tool set. Resources are made available through the built-in `ListMcpResources` and `ReadMcpResource` tools.
+   On a delegated CLI (Claude Code, Grok, Cursor), the engine keeps the connection and proxies each server to the CLI under the server's own name, so the model sees the same `mcp__<server>__<tool>` names an API run does. Calls run over the engine's connection and its authorization. When the CLI's own config has a server of the same name, the engine's server is the one the CLI uses. Codex is not supported.
 4. **Session end**: stdio servers are terminated. Network connections are closed according to their negotiated MCP transport semantics.
 
 If an MCP server fails to start or connect, the engine logs the error and continues without that server. Other MCP servers and built-in tools are unaffected.

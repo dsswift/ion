@@ -1,9 +1,13 @@
 package session
 
 import (
+	"encoding/json"
+	"os"
+	"sort"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -99,5 +103,68 @@ func TestAttachToolServerMcp_AcpSingleEntry(t *testing.T) {
 	_ = mgr.attachToolServerMcp(opts, ts, "k-once", "acp")
 	if len(opts.CliMcpServers) != 1 {
 		t.Fatalf("want 1 entry after single attach, got %d", len(opts.CliMcpServers))
+	}
+}
+
+// configuredServers returns the MCP server names in a claude-code MCP config
+// file, sorted.
+func configuredServers(t *testing.T, configPath string) []string {
+	t.Helper()
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read MCP config: %v", err)
+	}
+	var cfg struct {
+		McpServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal MCP config: %v", err)
+	}
+	names := make([]string, 0, len(cfg.McpServers))
+	for name := range cfg.McpServers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// A claude-code run must be pointed at every MCP server the engine connected
+// for the session, on the prompt that creates the ToolServer and on every
+// prompt that reuses it. Before this, the CLI's config named only the engine's
+// own server, so a connected server's tools never reached the model.
+func TestWireMcpToolServer_ClaudeCodeConfigCarriesEngineServers(t *testing.T) {
+	conn, err := mcp.Connect("mobbin", types.McpServerConfig{Type: "http", URL: mcpTestServer(t, "search_screens").URL})
+	if err != nil {
+		t.Fatalf("connect fixture MCP server: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() }) //nolint:errcheck // test teardown
+	conns := []*mcp.Connection{conn}
+
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	key := "mcp-proxy"
+	s := newCliSession(key)
+	mgr.mu.Lock()
+	mgr.sessions[key] = s
+	mgr.mu.Unlock()
+	t.Cleanup(func() {
+		if s.toolServer != nil {
+			s.toolServer.Stop()
+		}
+	})
+
+	want := []string{backend.McpServerName, "mobbin"}
+	for prompt := 1; prompt <= 2; prompt++ {
+		opts := types.RunOptions{}
+		mgr.resetCliToolServer(s, &opts)
+		mgr.wireAgentToolServer(s, key, &opts)
+		mgr.wireMcpToolServer(s, key, &opts, conns)
+		mgr.ensureCliToolServerAttached(s, key, &opts)
+
+		if opts.McpConfig == "" {
+			t.Fatalf("prompt %d: no MCP config attached", prompt)
+		}
+		if got := configuredServers(t, opts.McpConfig); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+			t.Fatalf("prompt %d: MCP config servers = %v, want %v", prompt, got, want)
+		}
 	}
 }

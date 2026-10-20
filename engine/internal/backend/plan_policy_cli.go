@@ -80,6 +80,16 @@ func (p PlanPolicy) DecideBridged(bareName string, input map[string]any) PlanDec
 	return PlanDecision{Verdict: planDeny, Rule: "not_plan_tool", Reason: p.denyReason(bareName)}
 }
 
+// DecideMcpTool returns the verdict for a tool of an engine MCP server the
+// ToolServer proxies to a delegated CLI. fullName is mcp__<server>__<tool>,
+// the name an API run checks against the same allowlist.
+func (p PlanPolicy) DecideMcpTool(fullName string) PlanDecision {
+	if mcpToolAllowed(fullName, p.McpAllowlist) {
+		return PlanDecision{Verdict: planAllow, Rule: "mcp_allowlist"}
+	}
+	return PlanDecision{Verdict: planDeny, Rule: "not_plan_tool", Reason: p.denyReason(fullName)}
+}
+
 // DecideNativeCli returns the verdict for one of the delegated CLI's own
 // tools, as its PreToolUse hook reports it.
 //

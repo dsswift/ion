@@ -691,15 +691,7 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 			toolName := parts[2]
 			for _, conn := range mcpConns {
 				if conn.Name() == serverName {
-					mcpTimeout := m.mcpCallTimeout()
-					callCtx, callCancel := context.WithTimeout(parent, mcpTimeout)
-					mcpResult, err := conn.CallToolSpan(callCtx, toolName, input, s.telemetry, mcp.SpanCorrelation(parent, key, s.conversationID))
-					callCancel()
-					if err != nil {
-						utils.LogWithFields(utils.LevelError, "session", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key, "error": utils.ErrStr(err)})
-						return nil, err
-					}
-					return mcpResult, nil
+					return m.callMcpTool(parent, s, key, conn, toolName, input)
 				}
 			}
 			utils.LogWithFields(utils.LevelWarn, "session", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key})

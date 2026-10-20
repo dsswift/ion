@@ -620,6 +620,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		m.wireClientTools(key, &opts, runCfg)
 	}
 	m.wireClientToolServer(s, key, &opts)
+	m.wireMcpToolServer(s, key, &opts, mcpConns)
 	// Guarantee the reused session ToolServer's MCP config rides this turn's
 	// RunOptions. The wire* helpers only attach when they CREATE the server
 	// (needsStart), so a session reusing its ToolServer across turns lost the
