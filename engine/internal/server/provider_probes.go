@@ -121,12 +121,15 @@ func (s *Server) RefreshProviderProbes() {
 		kindList = append(kindList, k)
 	}
 
+	// provider.probe: one span per CLI probe pass, under the daemon's start-up
+	// trace when this is the boot refresh (nil ctx otherwise). Read here, not
+	// in the goroutine: start-up may end before the goroutine runs, and the
+	// boot refresh must still join the start-up trace.
+	spanCtx := s.startupSpanCtx()
 	go func() {
-		// provider.probe: one span per CLI probe pass, under the daemon's
-		// start-up trace when this is the boot refresh (nil ctx otherwise).
 		var span *telemetry.SpanHandle
 		if telem := s.Telemetry(); telem != nil {
-			span = telem.StartSpanCtx(telemetry.ProviderProbe, map[string]any{"probe": "cli", "kinds": kindList}, s.startupSpanCtx())
+			span = telem.StartSpanCtx(telemetry.ProviderProbe, map[string]any{"probe": "cli", "kinds": kindList}, spanCtx)
 		}
 		s.probes.Refresh(kindList)
 		if span != nil {
