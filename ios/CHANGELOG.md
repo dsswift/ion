@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.18.1](https://github.com/dsswift/ion/compare/ios-v2.18.0...ios-v2.18.1) (2026-10-20)
+
+### Bug Fixes
+
+* **ios:** show the provider's reason when sign-in is refused ([1bea887](https://github.com/dsswift/ion/commit/1bea8873fd1cde5d5c248b2252b0a992c41040f6))
+* **ios:** qualify a server's short scope before sign-in ([340970c](https://github.com/dsswift/ion/commit/340970c8cdec594e2c267906aa79a0fdb16809bd))
+
 ## [2.18.0](https://github.com/dsswift/ion/compare/ios-v2.17.1...ios-v2.18.0) (2026-10-16)
 
 ### Features
