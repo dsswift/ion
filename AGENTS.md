@@ -93,16 +93,17 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 ## Branch workflow
 
-`main` is the integration branch; the operator lands work by direct push, and every push is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Pull requests are optional. Read the active branch with `git branch --show-current`; never hardcode one. Land finished work yourself, once the whole request is done: `git fetch origin main`, rebase the active branch onto `origin/main`, then `make land <branch>`. In a worktree the operator created, commit only; the operator lands it.
+Work happens on `main`. Never create or switch branches unless the task is branch work. Every push to `main` is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Land finished work yourself, once the whole request is done and every gate is green: `make land` (`release-damnit land`). It rebases your commits onto the remote `main`, checks every commit, pushes, and retries when the pipeline's version commit moved `main`. Never force push. In a worktree the operator created, commit only; the operator lands it with `release-damnit land <branch>`.
 
 ## Commits
 
 - `type(scope): subject`. Types: `feat`, `fix`, `chore`, `docs`, `feat!`. Subject lowercase, imperative, no period, ≤ 65 chars.
-- Scopes: `engine` (`engine/`, incl. the TS SDK), `sdk` (`sdk/`, Go SDK), `desktop`, `server`, `relay`, `ios`, `docs`, `repo` (root, cross-cutting, `packages/`, `scripts/`, `.github/`), `ci`, `deps`. Use the scope of the primary change.
-- Path→scope mapping: `.commit.json`. Legal scopes: `commitlint.config.js`. `ci`/`deps` are legal but never auto-resolved.
+- One package per commit. The packages are in `release-please-config.json`: `engine` (`engine/`, incl. the TS SDK), `desktop`, `server`, `relay`, `ios`, and `sdk/go` (scope `sdk`). The scope is the package's `commit-scope`, else its `component`. Files outside every package may ride along.
+- A commit that touches no package uses a repo-level scope from `release-please-config.json` `scopes`: `repo` (root, `packages/`, `scripts/`, cross-cutting), `docs`, `ci` (`.github/`), `deps`.
+- The `commit-msg` hook (`release-damnit check-commit`) enforces all of this and names which files belong to which package. Stage one package at a time; `git diff --cached --name-only` shows what a commit carries.
 - Work from a GitHub issue: subject ends ` (#N)` **and** a commit or PR body carries `Fixes #N` / `Closes #N`. `make check-issue-closure` fails the PR otherwise.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
-- Commit finished work before reporting. Never `--no-verify`. Land it as the branch workflow says.
+- Commit finished work, then land it as the branch workflow says. Never `--no-verify`.
 - End with a clean tree: commit or revert every change, whoever made it. `package-lock.json` changes are always committed.
 
 ## Layered architecture

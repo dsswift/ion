@@ -63,7 +63,7 @@ For each open Dependabot PR `{n}`, collect:
   ```bash
   gh pr diff {n} --name-only
   ```
-  Map the touched directories to a scope using the Dependabot config (`.github/dependabot.yml`) and the path map in `.commit.json`:
+  Map the touched directories to a scope using the Dependabot config (`.github/dependabot.yml`) and the packages in `release-please-config.json` (a package's scope is its `commit-scope`, else its `component`; paths outside every package take a repo-level scope from `scopes`):
 
   | Touched path | Ecosystem (from dependabot.yml) | Scope | Code it can break |
   |--------------|----------------------------------|-------|-------------------|
@@ -71,7 +71,7 @@ For each open Dependabot PR `{n}`, collect:
   | `relay/` (`go.mod`/`go.sum` or `Dockerfile`) | gomod / docker | `relay` | relay |
   | `desktop/` (`package.json`/`package-lock.json`) | npm (dev-deps / prod-deps) | `desktop` | desktop |
   | root `package.json` / `package-lock.json` | npm (`all-npm-deps`) | `repo` | `server/` and `packages/`, which install from the root lockfile as npm workspaces |
-  | `.github/workflows/` | github-actions (`all-actions`) | `repo` | CI |
+  | `.github/workflows/` | github-actions (`all-actions`) | `ci` | CI |
 
 - **Bump type** — parse the PR title for ecosystem + version change (patch / minor / major) and whether it's a grouped update (titles like "Bump the all-go-deps group" / "Bump the prod-deps group").
 - **Mergeability / conflict state**:
@@ -141,7 +141,7 @@ The plan's steps ARE the executable resolution sequence, in the order decided in
    ```bash
    gh pr merge {n} --merge
    ```
-3. **If** the PR was flagged known-issue: create a branch off updated `main`, commit the correction (conventional commit, correct scope, per root `AGENTS.md` "Commits"), open the follow-up PR, wait for CI, then merge it.
+3. **If** the PR was flagged known-issue: on `main`, pull the merge, commit the correction (one package per commit, scope per root `AGENTS.md` "Commits"), and land it with `make land`.
 4. **Resume** the chain with the next PR — re-rebase the remaining Dependabot PRs onto the updated `main` as needed before each merge (this is where same-lockfile collisions from Step 4 are resolved).
 5. For **High** PRs: close instead of merging —
    ```bash

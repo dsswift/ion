@@ -1,13 +1,14 @@
 ---
-description: Rebuild a feature branch into clean conventional commits while preserving its exact final tracked tree.
+description: Rebuild unlanded commits on main or a worktree branch into clean conventional commits while preserving the exact final tracked tree.
 model: standard
 clears-conversation: true
 ---
 
 # /squash
 
-Rebuild current feature branch into clean conventional commits without changing
-tracked content. This command is **history-only** and **fully autonomous**.
+Rebuild the current branch's unlanded commits (on `main`, the commits above
+`origin/main`; in a worktree, the commits above its source branch) into clean
+conventional commits without changing tracked content. This command is **history-only** and **fully autonomous**.
 
 ## No human interaction
 
@@ -28,8 +29,9 @@ Two, both mandatory. Neither is ever traded for the other.
 > **I1 — Content.** Final `HEAD^{tree}` must equal starting `HEAD^{tree}`
 > byte-for-byte.
 >
-> **I2 — Scope.** Every result commit must resolve to exactly one scope under
-> `.commit.json`, and its `type(scope):` tag must be that scope.
+> **I2 — Scope.** Every result commit must touch at most one package in
+> `release-please-config.json`, and its `type(scope):` tag must be that
+> package's scope (or a repo-level scope when it touches no package).
 
 I2 is not cosmetic. The release tool (release-damnit, configured by
 `release-please-config.json`) versions each component by the **paths** a commit
@@ -39,57 +41,59 @@ units bumps **both** and files the same subject under both changelogs — one of
 them a lie. A commit whose tag disagrees with its paths ships a correct version
 under a misleading entry. Both are defects equal in severity to losing content.
 
-`.commit.json` keeps the tag and the paths in agreement, which is why scope is
-always resolved from paths and never taken from the plan's subject line. There
-is no "report the mismatch and move on" path: a scope violation is prevented
-before commit (§7c) and repaired after commit (§8a).
+`release-please-config.json` keeps the tag and the paths in agreement, which is
+why scope is always resolved from paths and never taken from the plan's subject
+line. There is no "report the mismatch and move on" path: a scope violation is
+prevented before commit (§7c) and repaired after commit (§8a).
 
 Commit count, subjects, and grouping are all negotiable to satisfy I1 and I2.
 Splitting a feature into more commits, or merging features into fewer, is always
 permitted and preferred over shipping a wrong scope.
 
-### Scope resolution — `.commit.json` is the only source of truth
+### Scope resolution — `release-please-config.json` is the only source of truth
 
 **Never hardcode a scope list or a path mapping in this command.** The
-repository already owns one at `<repo-root>/.commit.json`; a second copy here
-would drift the moment a scope is added, and a stale map produces exactly the
-mis-scoped commits I2 exists to prevent.
+repository already owns one at `<repo-root>/release-please-config.json`; a
+second copy here would drift the moment a package is added, and a stale map
+produces exactly the mis-scoped commits I2 exists to prevent.
 
 Load it once, at the start of Phase A, and use it for every scope decision:
 
 ```bash
-SCOPE_MAP=$(cat "$ROOT/.commit.json")
+SCOPE_MAP=$(cat "$ROOT/release-please-config.json")
 ```
 
-Resolve a path to its scope by the file's own rules:
+Resolve a path by the file's own rules:
 
-- Match the path against each `scopes[].path` prefix; the **longest** matching
-  prefix wins, so a more specific entry always overrides a broader one.
-- No prefix matches → `defaultScope`.
-- Commit types come from `commitTypes.types`; use no type outside that list.
+- A path belongs to the package whose key is the **longest** prefix of the
+  path. Its scope is that package's `commit-scope`, else its `component`.
+- A path no package key matches belongs to no package. It rides along with
+  whichever package the commit touches.
+- A commit that touches no package takes a repo-level scope from `scopes`:
+  `docs` when every path is under `docs/`, `ci` when every path is under
+  `.github/`, else `repo`.
+- Commit types come from `types`; use no type outside that list. The subject
+  is at most `subject-max-length` characters.
 
-The set of valid scopes is exactly the `scope` values present in the file plus
-`defaultScope`. If `.commit.json` is missing or unparseable, stop before the
-soft reset with that exact reason — never fall back to a guessed map.
+The resolved scope of a set of paths is its one package's scope, or the
+repo-level scope when it touches no package. A set that touches two packages
+has no single scope and must be split. "Scope order" below means the order of
+`packages` in the file, then the repo-level scopes.
 
-`.commit.json` maps paths to scopes; `commitlint.config.js` enumerates which
-scopes are legal in a commit message. A scope resolved from the map that is
-absent from the commitlint enum is a repository configuration defect: stop and
-report it rather than committing a message the hook will reject.
+If `release-please-config.json` is missing or unparseable, stop before the soft
+reset with that exact reason — never fall back to a guessed map.
 
-A path that falls through to `defaultScope` while belonging to a component with
-its own entry in `release-please-config.json` means `.commit.json` is missing a
-mapping. `/squash` cannot edit files, so report it precisely — the resolved
-path, the release unit it belongs to, and the `scopes[]` entry that would fix
-it — and continue using `defaultScope` for this run.
+The `commit-msg` hook runs `release-damnit check-commit` on the same file, so a
+commit that passes this resolution passes the hook. When the hook rejects a
+commit anyway, trust its output: it names each file's package.
 
-### One scope per commit
+### One package per commit
 
-Every result commit carries exactly one resolved scope. A commit whose staged
-paths resolve to two different scopes is a violation regardless of which two —
-there is no privileged pairing, and documentation does not ride along with the
-code it documents. Docs paths resolve to their own scope and get their own
-commit.
+Every result commit touches at most one package. A commit whose staged paths
+fall in two different packages is a violation regardless of which two — there
+is no privileged pairing. Paths outside every package, such as `docs/`, may
+ride along with the package they document; give them their own commit only
+when no package commit carries them.
 
 Never edit source. Never fix defects. Never resume prior implementation.
 Never run builds, tests, formatters, generators, package managers, background
@@ -120,6 +124,10 @@ branch from backup. Do not investigate or fix it in `/squash`.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" = main ]; then
+BASE=origin/main
+else
 BASE=$(python3 -c "
 import json, os
 reg = os.path.expanduser('~/.ion/worktree-registry.json')
@@ -132,6 +140,7 @@ for e in entries:
         break
 ")
 [ -n "$BASE" ] || BASE=main
+fi
 git rev-parse --verify "$BASE"
 ```
 
@@ -140,8 +149,7 @@ Never substitute `main` when registry returned a missing named branch. Stop.
 ### 2. Guards
 
 ```bash
-BRANCH=$(git branch --show-current)
-[ "$BRANCH" != main ]
+[ -n "$BRANCH" ]
 [ "$BRANCH" != "$BASE" ]
 [ -z "$(git status --porcelain)" ]
 COUNT=$(git rev-list --count "$BASE"..HEAD)
@@ -304,18 +312,18 @@ of I2 — cheaper and safer than repairing after the fact.
 git diff --cached --name-only
 ```
 
-Resolve every staged path to a scope through `SCOPE_MAP`. Then:
+Resolve every staged path through `SCOPE_MAP`. Then:
 
-1. **Count the distinct resolved scopes.**
-   - Exactly one → continue.
-   - Two or more → **do not commit.** Unstage every path outside the first
-     scope in `scopes[]` declaration order, commit that scope, then repeat the
-     gate for each remaining scope with the same subject and its own tag.
-     Record a `Plan revision:` line.
+1. **Count the distinct packages touched.**
+   - Zero or one → continue.
+   - Two or more → **do not commit.** Unstage every path of every package but
+     the first in scope order, commit that package, then repeat the gate for
+     each remaining package with the same subject and its own tag. Record a
+     `Plan revision:` line.
 2. **Confirm the tag equals the resolved scope.** If the planned subject says
    `fix(desktop)` and the paths resolve to `engine`, the *tag* is wrong, not the
    content — commit with the resolved scope. The map wins over the plan, always.
-3. **Confirm the type is in `commitTypes.types`.** Substitute the nearest
+3. **Confirm the type is in `types`.** Substitute the nearest
    allowed type if not; never invent one.
 
 Only after all three pass:
@@ -342,7 +350,7 @@ continue. The revised plan becomes `FINAL_PLAN` for §8.
 
 | Condition | Rule |
 |---|---|
-| Staged set for one planned commit spans multiple resolved scopes | Split it: one commit per scope in `scopes[]` declaration order, each keeping the feature's subject with its own resolved tag. Do not ask; I2 requires it. |
+| Staged set for one planned commit spans multiple packages | Split it: one commit per package in scope order, each keeping the feature's subject with its own resolved tag. Do not ask; I2 requires it. |
 | A file must move to a different scope's commit than planned | Move it to the commit owning its scope. If none exists, append a commit for that scope at the feature's position. |
 | A planned commit stages empty | Drop it from `FINAL_PLAN`. |
 | Files remain unstaged after the last planned commit | Attribute each to the last feature touching it, grouped by scope, as trailing commits in scope order. |
@@ -367,7 +375,7 @@ When no §7a rule fits, descend this ladder until something works, printing a
 2. Drop hunk splitting for the problem file; assign the whole file to one commit.
 3. Merge the affected features into a single commit per scope.
 4. **Terminal fallback, always available:** stage everything remaining and emit
-   one commit per resolved scope in `scopes[]` declaration order, subject taken
+   one commit per resolved scope in scope order, subject taken
    from the dominant feature for that scope. Repeat until `git status --porcelain` is empty.
 
 Every step routes through the §7c gate, so **no ladder step may merge two
@@ -424,8 +432,9 @@ done
 ```
 
 For each commit, resolve its paths through `SCOPE_MAP` and compare against its
-tag. Any commit spanning two resolved scopes, or carrying a tag that does not
-equal its resolved scope, goes to §8a.
+tag, or run `release-damnit check-commits "$BASE"..HEAD`. Any commit spanning
+two packages, or carrying a tag that does not equal its resolved scope, goes to
+§8a.
 
 ### 8a. Scope repair by rewind and rebuild
 

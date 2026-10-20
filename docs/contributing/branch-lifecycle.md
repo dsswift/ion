@@ -1,54 +1,50 @@
 ---
 title: Branch Lifecycle
-description: The expected flow from feature work to a push on main, the commands at each stage, and the automation that runs without being asked.
+description: The expected flow from feature work to a landing on main, the commands at each stage, and the automation that runs without being asked.
 sidebar_position: 5
 ---
 
 # Branch Lifecycle
 
-This page describes how work moves from a branch to `main` in this repository: which commands run at which stage, who initiates each one, and what happens automatically in the background. What happens after the push, from version to published release, is the [delivery pipeline](delivery-pipeline.md).
+This page describes how work reaches the remote `main` in this repository: which commands run at which stage, who initiates each one, and what happens automatically in the background. What happens after the push, from version to published release, is the [delivery pipeline](delivery-pipeline.md).
 
 It is written for two audiences. **Operators** use it as a refresher on the expected sequence. **Agents** use it to understand where their responsibility ends and the operator's begins.
 
 ## The stages
 
+Work happens on `main`. A worktree is the only other branch: it starts from `main` and lands back on `main`.
+
 | Stage | Who initiates | What it does | Pushes? |
 |-------|---------------|--------------|---------|
-| Feature work | Operator asks; agent implements | Code, tests, docs. Committed at clean scope seams — one commit per scope per feature. | No |
+| Feature work | Operator asks; agent implements | Code, tests, docs. Committed one package at a time; the `commit-msg` hook rejects a commit that spans packages. | No |
 | `/align` | Operator | Reviews the work against Ion's quality gates and architectural principles, then authors a fix plan. In plan mode it audits the plan instead. | No |
-| `/squash` | Operator | Rebuilds the branch from a soft reset into one commit per scope per feature. Creates a backup branch first. | No |
-| Land | Operator | `make land <branch>`: merges the branch into `main` as one merge node and pushes, retrying on its own if the pipeline's version commit moves `main` mid-push. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
+| `/squash` | Operator, optionally | Rebuilds unlanded commits from a soft reset into one commit per package per feature. Creates a backup branch first. | No |
+| Land | Agent on `main`; operator for a worktree | `make land` (`release-damnit land`): rebases the local commits onto the remote `main`, checks every commit, and pushes, retrying on its own if the pipeline's version commit moved `main`. `make land <branch>` lands a branch or worktree as one merge. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
 | `/create-pr` | Operator, optionally | Runs the Linux parity gate, pushes the branch, opens a pull request for review or preview. Its checks are advisory; nothing requires a PR. | Yes |
 
-The agent's job ends at the commit. Squashing, pushing, and whether to open a pull request belong to the operator — see root `AGENTS.md` § "Operator gitops are not yours to narrate or prescribe". An agent should commit verified work and report what is ready, not narrate or prescribe what the operator does next.
+An agent on `main` lands its own work once the whole request is done and every gate is green. An agent in a worktree the operator created commits only; the operator lands the worktree with `make land <branch>` or from Ion.
 
-## The sequence runs once, before the push
+## The sequence runs once, before the landing
 
-`/align` → `/squash` → push is a **pre-publication** flow.
+`/align` → `/squash` → land is a **pre-publication** flow.
 
-`/squash` rewrites local history: it soft-resets to `main` and carves the (already correct) working tree into clean commits moving forward. That is safe precisely because nothing has been pushed yet. It never runs `git push` — it reports that the branch is ready and stops.
+`/squash` rewrites local history: it soft-resets to `origin/main` and carves the (already correct) working tree into clean commits. That is safe precisely because nothing has been pushed yet. It never pushes: it reports that the commits are ready and stops.
 
-## After the push, history is append-only
+## After the landing, history is append-only
 
-`main` refuses force-pushes (its ruleset), and the version-bump commit the pipeline pushes lands on top of yours. So a fix after a push is an ordinary conventional commit pushed on top, which gets its own version and its own release. There is nothing to re-squash.
+`main` refuses force-pushes (its ruleset), and the version-bump commit the pipeline pushes lands on top of yours. So a fix after a landing is an ordinary conventional commit landed on top, which gets its own version and its own release. There is nothing to re-squash.
 
-**A test failed on `main`. Do I re-align and re-squash?** No. Read the issue the test lane filed, fix forward, push. The release for the failing push stays a draft and never reaches users; the fix ships as the next one. If the test was flaky, rerun it instead, and the held release goes public when it passes.
+**A test failed on `main`. Do I re-align and re-squash?** No. Read the issue the test lane filed, fix forward, land. The release for the failing push stays a draft and never reaches users; the fix ships as the next one. If the test was flaky, rerun it instead, and the held release goes public when it passes.
 
-**Do not re-run `/squash` on a published branch**, including a branch that has a pull request open. Rebuilding history that has been pushed requires a force-push, which breaks review threads and severs the mapping between review comments and the code they describe. Fix commits land on top as ordinary conventional commits.
+**Do not re-run `/squash` on pushed commits**, including a branch that has a pull request open. Rebuilding history that has been pushed requires a force-push, which breaks review threads and severs the mapping between review comments and the code they describe. Fix commits land on top as ordinary conventional commits.
 
-## Landing through an integration branch
+## Landing a worktree
 
-The common shape is two tiers: a long-lived integration branch per operator, and a worktree per piece of work under it. Worktrees land on the integration branch (the Land verb, [worktrees and benches](../architecture/worktrees-and-benches.md)); the integration branch merges into `main`. Call the integration branch `<int>` here.
+A worktree is for something big. It starts from `main` and lands back on `main`.
 
-1. On `<int>`, create the worktree. Do the work there.
-2. Before landing: on `<int>`, `git rebase main`. Everything on `<int>` is usually already in `main` through the last merge node, and `main` has one newer commit, the pipeline's version bump, so this is a fast-forward and nothing is rewritten. Only commits on `<int>` that never reached `main` are replayed; then push `<int>` with `--force-with-lease`, which is fine for a branch only you push to.
-3. In the worktree, rebase onto `<int>` and resolve conflicts there, where the work is.
-4. Land the worktree onto `<int>`.
-5. Land it: `make land <int>`. This fetches `main`, merges `<int>` as one merge node, runs the hook, and pushes. If the pipeline's version commit for an earlier landing moved `main` meanwhile, it merges again on top and pushes again, without being asked. It leaves you on the branch you started from.
-
-6. Push `<int>` too. `origin/main` is what the pre-push hook scopes its gates against, and a current `origin/<int>` is where the next worktree starts.
-
-Step 5 is what a pull request used to be. The merge node carries the same fact: this work landed, from that branch.
+1. Create the worktree from `main`. Do the work there, one package per commit.
+2. Before landing, rebase the worktree onto `origin/main` and resolve conflicts there, where the work is.
+3. Land it: `make land <branch>` (`release-damnit land <branch>`), or the Land verb in Ion ([worktrees and benches](../architecture/worktrees-and-benches.md)). It merges the branch into the remote `main` as one merge commit in a temporary worktree, checks every commit, and pushes. It never touches your checkouts, and it moves local `main` up afterwards.
 
 ## What runs automatically
 
@@ -57,14 +53,14 @@ Git hooks, managed by husky. They install themselves: root `package.json` has `"
 | Hook | When | What |
 |------|------|------|
 | `pre-commit` | Every commit | `actionlint` on workflow files, when any are staged |
-| `commit-msg` | Every commit | `commitlint` — enforces `type(scope): subject` against the allowed scope list |
+| `commit-msg` | Every commit | `release-damnit check-commit`: enforces `type(scope): subject`, the types, scopes and subject length in `release-please-config.json`, and one package per commit. Needs `release-damnit` on `PATH` (`go install github.com/dsswift/release-damnit/cmd/release-damnit@latest`) |
 | `pre-push` | Every push | The one gate in front of `main`: file-size cap, drift audits, and change-scoped lint / typecheck / build / cross-build. No test suite; tests run in CI's test lane after the push. Husky runs hooks with `sh -e`, so `.husky/pre-push` is a dash-safe delegator that execs bash on `scripts/pre-push.sh` — the gate body needs bash, and the shebang is not consulted |
 | `post-commit` | Commits touching code | Rebuilds the graphify knowledge graph incrementally (AST-only, detached) |
 | `post-checkout` | Branch switches | Same graph rebuild |
 | `post-merge` | `git pull` / merge | Graph refresh via `scripts/graphify-rebuild.sh` — a fast-forward moves the branch pointer without a checkout, so `post-checkout` never fires |
 | `post-rewrite` | `git rebase` / amend | Same refresh; `post-commit` and `post-checkout` both bail during a rebase, so this is their counterpart |
 
-`pre-push` is the gate that catches compile and lint problems before they reach `main`. Bypass with `git push --no-verify` only when you mean it.
+`pre-push` is the gate that catches compile and lint problems before they reach `main`. Never bypass it with `--no-verify`; fix what it names and land again.
 
 ## The graph is a local cache (and optional)
 
@@ -72,7 +68,7 @@ Git hooks, managed by husky. They install themselves: root `package.json` has `"
 
 **It is entirely optional.** Graphify is not a project requirement. No build, test, CI job, or quality gate reads the graph. If you do not have graphify installed — or cannot install it in your environment — `make bootstrap` prints a skip notice and completes normally, you get every quality gate, and nothing else about contributing changes. Agents are instructed to fall back to ordinary file search when no graph is present.
 
-**Run `make bootstrap` regardless.** It is the entry point for every contributor, not just graphify users, because it is what activates the git hooks (commitlint on every commit, the pre-push gate suite). Skipping it to avoid graphify would forfeit those gates and gain nothing.
+**Run `make bootstrap` regardless.** It is the entry point for every contributor, not just graphify users, because it is what activates the git hooks (the commit check on every commit, the pre-push gate suite). Skipping it to avoid graphify would forfeit those gates and gain nothing.
 
 If you *do* use graphify, understanding one thing prevents all confusion: **it is a gitignored build cache and there is nothing for you to do about it, ever.**
 

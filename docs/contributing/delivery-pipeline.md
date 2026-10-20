@@ -6,7 +6,7 @@ sidebar_position: 7
 
 # Delivery Pipeline
 
-Code lands on `main` by direct push. Every push is versioned and built without waiting on a review, a test run, or a scan. A built release goes public only once its tests pass for that commit. Test failures and scan findings arrive as issues; neither ever blocks a push.
+Code lands on `main` by direct push, through `make land`. Every push is versioned and built without waiting on a review, a test run, or a scan. A built release goes public only once its tests pass for that commit. Test failures and scan findings arrive as issues; neither ever blocks a push.
 
 The rule in one line: **if it is on `main`, every service that changed gets a version and a binary; users get the binary once its tests pass.**
 
@@ -23,7 +23,7 @@ Three lanes start at once. None waits for another.
 
 ### The version lane
 
-`release-damnit` reads the conventional commits since each service's last release. The commit scope (`engine`, `desktop`, `server`, ...) picks the service; the type (`feat`, `fix`, `feat!`) picks the bump. It writes `VERSION`, `CHANGELOG.md`, and `release-please-manifest.json`, pushes them as `chore: release versions [skip ci]`, and creates one GitHub release per service that changed. The scope map is `.commit.json`; the per-service release config is `release-please-config.json`.
+`release-damnit` reads every commit in the push (`since` is the push's before SHA). The files a commit touches pick the package (`engine`, `desktop`, `server`, ...), and the commit-msg hook has already made its scope match; the type (`feat`, `fix`, `feat!`) picks the bump. It writes `VERSION`, `CHANGELOG.md`, and `release-please-manifest.json`, pushes them as `chore: release versions [skip ci]`, and creates one GitHub release per service that changed. The packages, commit types and repo-level scopes are all in `release-please-config.json`. To release commits an earlier push missed, run **Release** by hand with `since` set to the last release's commit.
 
 Nothing is manual. A commit with a `docs` scope, or under a path `release.yml` does not list, releases nothing.
 
@@ -75,21 +75,19 @@ The engine tests reuse Go's test cache between runs (`actions/cache` keyed on th
 
 Dependency advisories and vulnerability scans read a feed that changes every day, so their result is not a property of the commit. `security.yml` runs `govulncheck` and `npm audit` nightly and on demand, never on a push, and files each finding under the `security` label. A new advisory never turns a push red and never holds a release.
 
-## `main` is made of merge nodes
+## Landing
 
-Every push to `main` moves it to a merge commit: one node per piece of work, carrying the branch it came from. `release-damnit` reads the commit graph through those nodes.
+**Land with `make land`** (`release-damnit land`). On `main` it fetches, rebases the local commits onto the remote `main`, checks every commit message, and pushes. The pipeline pushes a version-bump commit to `main` after every landing, so a second landing within a minute or two can find `main` moved mid-push; the remote refuses that push, and `make land` rebases onto the new commit and pushes again, on its own. It never force-pushes, never skips hooks, and refuses a tree with uncommitted changes to tracked files. A conflict stops it: resolve it in a normal `git rebase origin/main`, then land again.
 
-**Land with `make land <branch>`.** It fetches `main`, sets local `main` to it, merges the branch with `--no-ff`, and pushes. The pipeline pushes a version-bump commit to `main` after every landing, so a second landing within a minute or two can find `main` moved mid-push; the remote refuses that push, and `make land` merges again on top of the new commit and pushes again, on its own. It refuses rather than resets when local `main` holds a commit that is neither on the remote nor a copy of one on the branch, stops on a merge conflict (rebase the branch onto `main`, resolve there, land again), and always returns to the branch it started on. Script: `scripts/land.sh`.
+**`make land <branch>`** lands a branch or worktree as one `--no-ff` merge. It builds the merge in a temporary worktree, so none of your checkouts is touched, pushes, and moves local `main` to the merge. It refuses when local `main` holds commits that are neither on the remote nor copies of the branch's commits.
 
-By hand it is `git merge <branch>` then `git push`, standing on `main`. `make bootstrap` sets two things so that stays safe: `branch.main.mergeoptions --no-ff`, so the merge always makes a node, and `branch.main.rebase merges`, so a `git pull` after a lost race replays the merge instead of flattening it.
-
-The hook enforces the shape before any gate runs. `scripts/check-main-merge-node.sh` refuses a push that would move `main` to a non-merge tip: a fast-forward of a branch and a commit made straight on `main` are both refused. `scripts/check-main-current.sh` asks the remote where `main` is and refuses, in a second, a push built on an older `main`, instead of letting it run the gates and then be rejected. The pipeline's own version-bump commit is not affected; it is pushed from CI, where no local hook runs.
+The hook checks one thing before any gate runs: `scripts/check-main-current.sh` asks the remote where `main` is and refuses, in a second, a push built on an older `main`, instead of letting it run the gates and then be rejected. `make land` sees that refusal as `main` moving and starts over. The pipeline's own version-bump commit is not affected; it is pushed from CI, where no local hook runs.
 
 ## The gate in front of `main`
 
 There is one: the local `pre-push` hook (`scripts/pre-push.sh`). It runs only what is static or a compile, scoped to the components the branch touched, so a push waits about a minute: file-size caps, tracked-binary check, toolchain alignment, vocabulary drift, engine lint and build plus the Windows cross-build, relay lint, desktop typecheck, server typecheck and lint, the renderer bundle, and SwiftLint. No test suite runs in the hook.
 
-`git push --no-verify` bypasses it. Use that when you mean it.
+Never bypass it with `--no-verify`. Fix what it names and land again.
 
 ## Pull requests are optional
 

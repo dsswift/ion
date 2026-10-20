@@ -213,7 +213,7 @@ List what the plan assumes and does not say: that one client is the only consume
 
 ### 11. Commit messages (Mode B)
 
-Check each commit message against root `AGENTS.md` § "Commits". Legal scopes are the `scope-enum` in `commitlint.config.js`. Work from an issue needs the ` (#N)` subject suffix and a `Fixes #N` or `Closes #N` line.
+Check each commit message against root `AGENTS.md` § "Commits": run `release-damnit check-commits {base}..HEAD` and report each line it prints. It checks the types, scopes, and subject length in `release-please-config.json` and one package per commit. Work from an issue needs the ` (#N)` subject suffix and a `Fixes #N` or `Closes #N` line.
 
 ## Report
 
@@ -239,7 +239,7 @@ Selected by: <argument "<arg>" | conversation attachment | mtime-fallback + topi
 Title: <first heading of the plan>
 Branch: <git branch --show-current>
 Uncommitted work for this plan: yes/no
-Scopes the plan touches: <scopes per .commit.json>
+Scopes the plan touches: <scopes per release-please-config.json>
 ```
 
 Mode B, Local and Branch:
@@ -249,7 +249,7 @@ Mode: local | branch
 Branch: <name>
 Range: {base}..<HEAD or branch> (<N> commits)
 Files changed: <N>
-Scopes touched: <scopes per .commit.json>
+Scopes touched: <scopes per release-please-config.json>
 Uncommitted changes: yes/no        (Local mode only)
 Focus: <quoted instruction or "none">
 ```
