@@ -8,7 +8,7 @@
  * using the real hydrateTabsFromSync (not mocked) the same way
  * user-message-echo.test.ts does for the Electron path.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
@@ -33,10 +33,15 @@ beforeEach(() => {
   useSessionStore.setState({ tabs: [], settledHistory: [], activeTabId: undefined, conversationPanes: new Map(), tabsReady: false })
   onFrame.mockClear()
   manageOnly.clear()
+  vi.useFakeTimers()
   onFrame.mockImplementation((cb: typeof frameHandler) => {
     frameHandler = cb
     return vi.fn()
   })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('initTabsSyncFromWire', () => {
@@ -53,9 +58,11 @@ describe('initTabsSyncFromWire', () => {
     expect(useSessionStore.getState().tabs.map((t) => [t.id, t.environmentId])).toEqual([['a', LOCAL_ENVIRONMENT_ID], ['z', 'devbox']])
     // A later local re-publish touches only the local slice.
     frameHandler?.(LOCAL_ENVIRONMENT_ID, { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [tab('a'), tab('b')] } })
+    vi.runOnlyPendingTimers()
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'b', 'z'])
     // And devbox closing its tab removes only that one.
     frameHandler?.('devbox', { type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [] } })
+    vi.runOnlyPendingTimers()
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['a', 'b'])
   })
 
@@ -101,6 +108,7 @@ describe('initTabsSyncFromWire', () => {
     frameHandler?.(LOCAL_ENVIRONMENT_ID, {
       type: 'studio_event', channel: 'studio:tabs-sync', payload: { tabs: [tab('c')] },
     })
+    vi.runOnlyPendingTimers()
     expect(useSessionStore.getState().tabs.map((t) => t.id)).toEqual(['c'])
   })
 

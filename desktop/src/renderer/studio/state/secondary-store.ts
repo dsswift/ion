@@ -42,6 +42,8 @@ import { policyStore } from '../connection/policy-store'
 import { declareMirrorWindow } from '@ion/server/lib/window-role'
 import { host, action } from '../../host/host-instance'
 import { isManageOnlyEnvironment } from '../connection/catalog'
+import { createTabsSyncCoalescer } from './tabs-sync-coalesce'
+import { answerPendingSelection, beginPendingSelection, dropPendingSelection, holdsSelectionAgainst, noteLocalTabsRevisionReceived } from './pending-selection'
 import { reconcileAttachmentTabs, reconcileForwardedAttachments, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft } from './secondary-store-reconcile'
 
 export { reconcileAttachmentTabs, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft }
@@ -163,15 +165,20 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
   // The welcome snapshot names it `resolvedModels`; the tabs sync, `liveResolvedModel`.
   const resolvedModels = (snapshot as { liveResolvedModel?: ResolvedModelMap; resolvedModels?: ResolvedModelMap }).liveResolvedModel
     ?? (snapshot as { resolvedModels?: ResolvedModelMap }).resolvedModels
+  // A push carries the settled history only when it changed; without it the
+  // Environment's settled conversations stay as the last push left them.
+  const carriesSettled = Array.isArray(typed.settledHistory)
   const before = useSessionStore.getState()
   const { tabs: envTabs, settledHistory: envSettled, activeTabId: ownerActiveTabId } = tabsFromSnapshot(typed, liveTabStatus, before.tabs, queuedAttachments, liveIsCompacting, environmentId)
+  const holdSelection = environmentId === LOCAL_ENVIRONMENT_ID && holdsSelectionAgainst(ownerActiveTabId ?? null, revision)
   useSessionStore.setState((s) => {
     const otherTabs = s.tabs.filter((t) => tabEnvironmentId(t) !== environmentId)
     const otherSettled = s.settledHistory.filter((t) => tabEnvironmentId(t) !== environmentId)
     // Local first, then each remote Environment in the order it arrived, so
     // the Inbox does not reshuffle when one server re-publishes.
     const tabs = environmentId === LOCAL_ENVIRONMENT_ID ? [...envTabs, ...otherTabs] : [...otherTabs, ...envTabs]
-    const settledHistory = environmentId === LOCAL_ENVIRONMENT_ID ? [...envSettled, ...otherSettled] : [...otherSettled, ...envSettled]
+    const settledHistory = !carriesSettled ? s.settledHistory
+      : environmentId === LOCAL_ENVIRONMENT_ID ? [...envSettled, ...otherSettled] : [...otherSettled, ...envSettled]
     const envPanes = mergePanes(s.conversationPanes, typed, envTabs, resolvedModels)
     const conversationPanes = new Map<string, ConversationPane>()
     for (const t of otherTabs) {
@@ -180,7 +187,7 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
     }
     for (const [id, pane] of envPanes) conversationPanes.set(id, pane)
     const current = tabs.find((t) => t.id === s.activeTabId)
-    const activeTabId = nextActiveTabId({
+    const activeTabId = holdSelection && current ? s.activeTabId : nextActiveTabId({
       environmentId,
       ownerActiveTabId: ownerActiveTabId ?? null,
       ownerChanged: environmentId === LOCAL_ENVIRONMENT_ID && (ownerActiveTabId ?? null) !== lastLocalOwnerActiveTabId,
@@ -194,7 +201,7 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
   drainHistoryReplacements()
   drainUserMessageEchoes()
   endStoreHydrate({ environmentId, tabCount: envTabs.length })
-  rDebug('studio.mirror', 'tabs hydrated from owner sync', { environment_id: environmentId, tab_count: envTabs.length, union_tab_count: useSessionStore.getState().tabs.length })
+  rDebug('studio.mirror', 'tabs hydrated from owner sync', { environment_id: environmentId, tab_count: envTabs.length, union_tab_count: useSessionStore.getState().tabs.length, settled_included: carriesSettled, selection_held: holdSelection })
 }
 
 /**
@@ -212,8 +219,12 @@ export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = L
  * the same call sites IPC.STUDIO_TABS_SYNC used to reach). Missing
  * terminalBuffers/conversationPane fields are tolerated by tabsFromSnapshot
  * the same way a fresh hydration with no prior pane state already is.
+ * `settledHistory` rides the welcome every time and a push only when it
+ * changed. Of the pushes waiting for one Environment, only the newest is
+ * applied (`tabs-sync-coalesce.ts`).
  */
 export function initTabsSyncFromWire(): () => void {
+  const coalescer = createTabsSyncCoalescer(hydrateTabsFromSync)
   return host.onFrame((environmentId, frame) => {
     const tabsFrame = frame.type === 'studio_welcome' || frame.type === 'studio_snapshot'
       || (frame.type === 'studio_event' && frame.channel === 'studio:tabs-sync')
@@ -230,17 +241,22 @@ export function initTabsSyncFromWire(): () => void {
       tab_count: Array.isArray(carried?.tabs) ? carried.tabs.length : -1,
       active_tab_index: typeof carried?.activeTabIndex === 'number' ? carried.activeTabIndex : -1,
     })
+    if (environmentId === LOCAL_ENVIRONMENT_ID) noteLocalTabsRevisionReceived(carried?.revision)
+    // A handshake frame replaces the Environment's tabs, so whatever push
+    // waits ahead of it applies first, in arrival order.
+    if (frame.type !== 'studio_event') coalescer.flush(environmentId)
     // A welcome starts a fresh session with that server, whose revision
     // counters may have restarted below the ones we applied last time.
     if (frame.type === 'studio_welcome') clearEnvironmentSyncCursors(environmentId)
     if (isManageOnlyEnvironment(environmentId)) {
       // A Manage-Only Server's conversations stay out of this window: its
       // share of the union is empty, whatever it publishes.
-      hydrateTabsFromSync({ tabs: [] }, environmentId)
+      coalescer.flush(environmentId)
+      hydrateTabsFromSync({ tabs: [], settledHistory: [] }, environmentId)
     } else if (frame.type === 'studio_event') {
-      hydrateTabsFromSync(frame.payload, environmentId)
+      coalescer.push(environmentId, frame.payload)
     } else {
-      hydrateTabsFromSync({ tabs: frame.snapshot.tabs, resolvedModels: frame.snapshot.resolvedModels }, environmentId)
+      hydrateTabsFromSync({ tabs: frame.snapshot.tabs, settledHistory: frame.snapshot.settledHistory, resolvedModels: frame.snapshot.resolvedModels }, environmentId)
     }
   })
 }
@@ -509,7 +525,10 @@ export function applyMirrorOverrides(): string[] {
       // tabs-sync push converges successful selections.
       const optimisticTabId = name === 'selectTab' && typeof args[0] === 'string' ? args[0] : null
       const previousTabId = optimisticTabId ? useSessionStore.getState().activeTabId : undefined
-      if (optimisticTabId && hasMirrorTab(optimisticTabId)) useSessionStore.setState({ activeTabId: optimisticTabId })
+      if (optimisticTabId && hasMirrorTab(optimisticTabId)) {
+        useSessionStore.setState({ activeTabId: optimisticTabId })
+        if (environmentId === LOCAL_ENVIRONMENT_ID) beginPendingSelection(optimisticTabId)
+      }
       // The composer reads the draft back out of this store on the next tab
       // switch, which can happen before the round trip lands.
       applyOptimisticDraft(name, args)
@@ -517,6 +536,7 @@ export function applyMirrorOverrides(): string[] {
       try {
         value = await action(environmentId, name, args, activeTabId ? { activeTabId } : {})
       } catch (err) {
+        if (optimisticTabId) dropPendingSelection(optimisticTabId)
         if (optimisticTabId && useSessionStore.getState().activeTabId === optimisticTabId) {
           useSessionStore.setState({ activeTabId: previousTabId })
         }
@@ -531,6 +551,7 @@ export function applyMirrorOverrides(): string[] {
         })
         return undefined
       }
+      if (optimisticTabId) answerPendingSelection(optimisticTabId)
       reconcileForwardedAttachments(name, args)
       reconcileForwardedRewind(name, args, value)
       reconcileForwardedCloseIntent(name, value)
