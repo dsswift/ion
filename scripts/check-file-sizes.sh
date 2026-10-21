@@ -39,11 +39,10 @@ has_exception() {
 # Drop paths git ignores.
 #
 # The `find` prunes below name specific build directories, which is a list
-# that cannot keep up: `server/web/` (the browser Studio bundle) is
-# gitignored build output whose minified chunks are thousands of lines, so
-# any contributor who had run `npm run build:web` failed this gate on files
-# that are not source and are never committed. Anything git ignores is by
-# definition not part of the repository, so it is not this gate's business.
+# that cannot keep up: a gitignored bundle with minified chunks thousands of
+# lines long would fail this gate on files that are not source and are never
+# committed. Anything git ignores is by definition not part of the
+# repository, so it is not this gate's business.
 #
 # One `git check-ignore` invocation for the whole list, not one per file.
 # Falls through unchanged outside a git work tree so the script still runs
@@ -102,13 +101,6 @@ while IFS= read -r f; do check "$f" "$GO_TEST_CAP"; done < <(
   find . \
     -type d \( -name node_modules -o -name dist -o -name out -o -name .git -o -name vendor \) -prune -false \
     -o -type f -name '*_test.go' -print | not_ignored
-)
-
-# Swift
-while IFS= read -r f; do check "$f" "$SWIFT_CAP"; done < <(
-  find . \
-    -type d \( -name DerivedData -o -name build -o -name node_modules -o -name .git \) -prune -false \
-    -o -type f -name '*.swift' -print | not_ignored
 )
 
 if [ "$violations" -gt 0 ]; then

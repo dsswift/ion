@@ -321,7 +321,7 @@ Resolve every staged path through `SCOPE_MAP`. Then:
      each remaining package with the same subject and its own tag. Record a
      `Plan revision:` line.
 2. **Confirm the tag equals the resolved scope.** If the planned subject says
-   `fix(desktop)` and the paths resolve to `engine`, the *tag* is wrong, not the
+   `fix(sdk)` and the paths resolve to `engine`, the *tag* is wrong, not the
    content — commit with the resolved scope. The map wins over the plan, always.
 3. **Confirm the type is in `types`.** Substitute the nearest
    allowed type if not; never invent one.

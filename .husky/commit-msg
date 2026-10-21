@@ -1,1 +1,2 @@
+#!/bin/sh
 release-damnit check-commit "$1"

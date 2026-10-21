@@ -50,7 +50,7 @@ Mode B enters plan mode itself in B-Step 5. That happens after detection and doe
 
 Read the root `AGENTS.md` on every run. Its § "Engine consumers" governs every engine finding.
 
-Read the `AGENTS.md` of each component in scope: `engine/`, `server/`, `desktop/`, `ios/`. The relay and the shared packages have none; the root file governs them.
+Read `engine/AGENTS.md` when `engine/` is in scope. The SDKs and the sample have none; the root file governs them.
 
 Read each doc below when its trigger matches the plan or the diff. Read it on this run, even if an earlier session read it.
 
@@ -59,12 +59,8 @@ Read each doc below when its trigger matches the plan or the diff. Read it on th
 | `engine/` is in scope | `docs/engine-grounding.md` |
 | Engine or extension surface | `docs/architecture/adr/001-engine-vs-harness.md` |
 | Events, agent lifecycle, snapshot semantics | `docs/architecture/agent-state.md`, `docs/protocol/normalized-events.md` |
-| `server/`, Environments, the desktop as a client | `docs/architecture/adr/033-ion-studio-server-and-environments.md` |
 | Auth, tenancy, per-principal visibility | `docs/architecture/adr/034-principal-isolation-and-tenancy.md` |
-| Studio wire members or fixtures | `docs/architecture/adr/035-one-wire.md`, `docs/protocol/studio-wire.md` |
-| Transcripts, iOS or thin-view rendering | `docs/architecture/adr/036-thin-clients-render-the-server-transcript.md` |
 | Wire or event naming | `docs/architecture/adr/008-wire-event-naming-and-ownership.md` |
-| Studio extension points | `docs/extensions/studio-sdk.md` |
 | Hooks or the extension SDK | `docs/hooks/reference.md` |
 | Tool instructions or tool definitions | `docs/architecture/adr/017-opinionless-tool-instructions.md` |
 | Provider routing or backend selection | `docs/architecture/hybrid-backend.md` |
@@ -96,11 +92,11 @@ Tag each finding **BLOCKER**, **CONCERN**, or **NIT**. Every finding carries a c
 
 ### 1. Layer choice
 
-Every change belongs to one layer: engine, server, harness, or client (root `AGENTS.md` § "Layered architecture").
+Every change belongs to one layer: engine, harness, or client (root `AGENTS.md` § "Layered architecture").
 
-For each engine change, write one sentence that answers: why is this in the engine and not in the server, the harness, or a client? In Mode B, an engine commit with no answer in its diff is a BLOCKER.
+For each engine change, write one sentence that answers: why is this in the engine and not in the harness or a client? In Mode B, an engine commit with no answer in its diff is a BLOCKER.
 
-Judge engine surface by the question "would a plausible external consumer want this?" New engine surface with no caller in this repo is the expected state (root `AGENTS.md` § "Engine consumers"). Remove any finding that rests on whether the desktop, the server, or iOS uses it.
+Judge engine surface by the question "would a plausible external consumer want this?" New engine surface with no caller in this repo is the expected state (root `AGENTS.md` § "Engine consumers"). Remove any finding that rests on whether any particular client uses it.
 
 Flag:
 
@@ -112,11 +108,7 @@ Flag:
 - An engine feature with one fixed behavior, no config field, and no hook or SDK seam (§ "Opinionless mechanics, extensible opinions").
 - A signal surfaced twice: a typed `NormalizedEvent` plus stream content, a synthetic system message, or a log line (§ "The typed-event corollary").
 - An engine change that only covers for a gap the consumer could close.
-- Session, store, or orchestration logic in `desktop/src/main`. It belongs in `server/`.
-- A store action that reaches outside the store without going through `server/src/store/host-api-*.ts`, or an Electron import under `server/src/store/`.
-- A multi-step flow written as a component handler. It is one store action (`desktop/AGENTS.md` § "Studio shell rules").
-- A Studio extension point added to the engine SDK. It belongs in `packages/studio-sdk/`, and a Studio capability changes no file under `engine/`.
-- A setting with no scope in `packages/shared/src/settings-registry.ts`, or a remote server that narrows a visiting desktop's own UI (§ "Two enterprise policies").
+- A client's extension point (a menu row, a panel, a button) added to the engine SDK. The engine SDK carries engine vocabulary only.
 
 ### 2. Contract impact
 
@@ -129,9 +121,7 @@ The engine wire is scrutinized. Its surfaces are `engine/internal/protocol/`, `e
 - A change to framing or envelope structure.
 - A change to event semantics with the shape unchanged, such as snapshot to incremental.
 - A shared type changed without the regenerated manifest in the same commit: `cd engine && go test ./internal/types/ -run TestContractManifest -update`.
-- A new wire member without its owner's prefix: `engine_`, `desktop_`, or `ion-studio.` (ADR-008).
-
-The Studio wire is lockstep. A rename there is conforming when one change updates every side: `packages/shared/src/studio-wire/`, `server/src/remote/protocol.ts`, the iOS `RemoteCommand.swift` and `NormalizedEvent.swift` TypeKeys, `StudioTransportCommandMapping.swift`, and each handler that switches on the string. The only finding available there is a side left behind. A changed golden fixture under `packages/shared/src/studio-wire/__fixtures__` needs its version note in `docs/protocol/studio-wire.md` (`make check-studio-wire`).
+- A new wire member without its owner's prefix: `engine_` (ADR-008).
 
 ### 3. Cross-platform and cross-surface completeness
 
@@ -139,15 +129,9 @@ Name the exact companion paths that are missing.
 
 | Change | Companions |
 |---|---|
-| Shared Go type | `packages/shared/src/types-engine.ts`, `types-events.ts`, or `types-engine-event.ts`; `packages/shared/src/__tests__/contract-sync.test.ts`; the Swift model in `ios/IonRemote/Models/` and `ContractSyncTests.swift` |
-| New store action | Classified in `packages/shared/src/studio-wire/actions.ts`, or `mirror-parity.test.ts` fails |
-| New main-process event push | Sent through `broadcast()`, or `make check-server-parity` fails |
-| New phone command | A row in `packages/shared/src/studio-wire/phone-command-map.json` |
-| New setting | `SETTINGS_DEFAULTS`, the key allowlist, `StudioSettings`, and its scope (`server/AGENTS.md` § "Studio wire rules") |
-| Feature on both clients | The iOS side in the same change, or a stated reason it does not apply |
-| Anything visible in Studio | Present in the snapshot iOS receives, or derivable from it |
-| New SDK hook or type | `docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`, and `docs/hooks/reference.md` |
-| New event variant or field | `docs/protocol/normalized-events.md` or `docs/protocol/server-events.md` |
+| Shared Go type | The regenerated `engine/internal/types/testdata/contracts.json` (`TestContractManifest -update`) |
+| New SDK hook or type | `docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`, and `docs/hooks/reference.md`; the Go and TypeScript SDKs in the same change (`make sdk-test` pins their parity) |
+| New event variant or field | `docs/protocol/normalized-events.md` |
 | New shared concept | An entry in `docs/vocabulary/terms.json`, then `make generate-vocabulary` and `make check-vocabulary` |
 | Log, span, or metric schema change | The schema version bump and every consumer under `docs/observability/` (§ "Telemetry schema moves forward") |
 
@@ -185,7 +169,7 @@ In Mode A, a plan for non-trivial behavior that names no logging is a CONCERN.
 | Agent lifecycle | `manager_agent_lifecycle_test.go` extended |
 | New hook wiring | A test that the hook fires |
 | Contract change | `TestContractManifest` rerun. With no test at all, a BLOCKER. |
-| Server, desktop, or shared logic | The matching `*.test.ts` |
+| TypeScript SDK logic | The matching test under `engine/extensions/sdk/__tests__/` |
 | Bug fix | A test that fails with the fix reverted |
 | New behavior | A test that pins the value: the field at the changed path, or the serialized shape of a cross-boundary field |
 | Field that reaches one client through the snapshot | A test that it reaches the other, or a recorded decision that it does not apply |
@@ -590,15 +574,11 @@ PR mode, per PR:
    | Touched | Gates |
    |---|---|
    | `engine/` | Scoped `go test` and `golangci-lint` for the packages |
-   | `server/` | `npm -w server run typecheck`, `npm -w server run lint`, scoped `npm -w server run test -- <pattern>` |
-   | `desktop/` | `npm run typecheck`, scoped `npm test -- <pattern>` |
-   | `packages/shared/` | `npm -w @ion/shared run typecheck`, scoped `npm -w @ion/shared test -- <pattern>` |
+   | `engine/extensions/sdk/` | `cd engine/extensions/sdk && npm run typecheck && npm test` |
+   | `sdk/go/` | `cd sdk/go && go test ./...` |
    | Any code | `make check-file-sizes` |
    | A shared type | `make check-contracts` |
    | Logging | `make check-logging` |
-   | A main-process event push, or desktop main's imports | `make check-server-parity` |
-   | A Studio wire fixture | `make check-studio-wire` |
-   | `engine_status` or `engine_session_status` emitters | `make check-status-writers` |
    | The vocabulary registry | `make check-vocabulary` |
 
    The heavy gates in root `AGENTS.md` § "Heavy gates" stay with `/create-pr`.

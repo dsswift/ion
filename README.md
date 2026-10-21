@@ -167,7 +167,6 @@ Full technical documentation lives in [`docs/`](docs/index.md). Start here based
 |----------|-----------|
 | **Harness engineer** building extensions | [Quick Start](docs/getting-started/quickstart.md), [Extension Guide](docs/extensions/getting-started.md), [Hooks Reference](docs/hooks/reference.md) |
 | **IT admin** deploying Ion | [Configuration](docs/configuration/index.md), [Security](docs/security/index.md), [Enterprise](docs/enterprise/index.md) |
-| **Contributor** working on the desktop | [Desktop Architecture](docs/architecture/desktop.md), [Embedded Browser Surface](docs/architecture/adr/030-embedded-browser-surface.md) |
 | **Contributor** working on the engine | [Architecture](docs/architecture/engine.md), [Contributing](docs/contributing/index.md) |
 
 Key references: [Socket Protocol](docs/protocol/index.md) | [CLI Reference](docs/cli/reference.md) | [Tools Reference](docs/tools/reference.md) | [Provider Setup](docs/providers/index.md) | [MCP Integration](docs/mcp/index.md)
@@ -1013,24 +1012,15 @@ For non-socket integrations, `ion rpc` reads commands from stdin and writes even
 
 Read, Write, Edit, Bash, Grep, Glob, Agent, AgentStatus, WebFetch, WebSearch, NotebookEdit, LSP, Skill, ListMcpResources, ReadMcpResource, and SearchHistory. Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are opt-in via harness configuration. Extensions can register additional tools or replace the built-ins entirely.
 
-## Reference Clients
+## Clients
 
-This repo includes example applications built on the engine. They show what you can build on the engine, but the engine itself is the product.
-
-- **[Desktop](desktop/)**: Electron overlay that connects to the engine over Unix socket.
-- **[iOS Remote](ios/)**: iPhone companion for remote session monitoring.
-- **[Relay](relay/)**: WebSocket relay for bridging clients across networks.
+The engine is the product; a client is any program that speaks its wire protocol. Ion Studio (a desktop app, a headless Studio server, an iOS companion, and a relay) was the reference client set and is archived with its full history at [dsswift/ion-studio](https://github.com/dsswift/ion-studio). Any ACP or MCP-capable client, a CLI, or a container sidecar drives the engine the same way.
 
 ## Build from Source
 
 ```bash
-make install    # build and install engine to ~/.ion/bin/ion
-```
-
-```bash
-make desktop    # build and install desktop app
-make relay      # docker build relay server
-make ios        # xcodebuild iOS app
+make engine     # build and install engine to ~/.ion/bin/ion
+make sdk-test   # Go and TypeScript SDK suites
 ```
 
 ## License

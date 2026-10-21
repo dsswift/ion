@@ -1,3 +1,4 @@
+#!/bin/sh
 STAGED=$(git diff --cached --name-only)
 if echo "$STAGED" | grep -q '\.github/workflows/'; then
   if command -v actionlint >/dev/null 2>&1; then

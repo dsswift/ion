@@ -1,9 +1,9 @@
-.PHONY: land sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: land default demo engine generate-dashboards engine-test sdk-test sdk-ts-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary clean check-file-sizes check-no-binaries check-contracts check-logging check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks log-level-debug
 
-# Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
-# Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
-# so node/npm are not found unless we add the Homebrew prefix here.
-# The export propagates to every recipe in this Makefile.
+# Homebrew installs node under /opt/homebrew/bin on Apple Silicon. Make runs
+# recipes with /bin/sh which only has /usr/bin:/bin in PATH, so node is not
+# found unless we add the Homebrew prefix here. The export propagates to every
+# recipe in this Makefile.
 export PATH := /opt/homebrew/bin:$(PATH)
 
 default: engine
@@ -32,73 +32,6 @@ generate-dashboards:
 		&& echo "✅ dashboards: regenerated provisioned JSON into docs/observability/grafana/provisioning/dashboards/" \
 		|| echo "⚠️  dashboards: generation failed — continuing engine build (make check-dashboards still gates drift in CI)"
 
-desktop:
-	@cd desktop && bash commands/install-bg.command
-
-# Build the macOS installer .pkg for MDM (Intune) deployment (D-003). Chains
-# the electron-builder --dir build (produces release/mac*/Ion.app) into
-# pkgbuild via scripts/build-pkg.sh. Does NOT install or relaunch — unlike
-# `make desktop`, this only produces the artifact under desktop/release/.
-#
-# The engine is staged first, by the same script `make desktop` uses. Without
-# it the app is built around whatever binary an earlier build left in
-# desktop/resources/engine/, which is how an installer once shipped an engine
-# older than the branch it was built from.
-desktop-pkg:
-	@bash scripts/stage-engine-resources.sh
-	@cd desktop && npm run dist && npm run pkg
-
-# Push this checkout's tracked source to a Windows test VM.
-#
-# Only relevant while a Windows VM is open for testing; ordinary macOS work
-# never needs it. Ships every tracked file under engine/, desktop/, packaging/
-# and scripts/ as one archive rather than a hand-picked diff, because a
-# per-file copy left the VM's tree missing files and produced two false
-# "still broken" retests against a stale binary.
-#
-# Override the target with ION_WIN_VM_HOST / ION_WIN_VM_PATH.
-sync-windows-vm:
-	@bash scripts/sync-windows-vm.sh
-
-# The Windows release smoke test on the local Windows VM, from a clean machine
-# (scripts/windows/Reset-IonTestState.ps1). Publishes nothing.
-.PHONY: smoke-windows-vm
-smoke-windows-vm:
-	@bash scripts/smoke-windows-vm.sh
-
-# Build the Windows NSIS installer for local testing (windows-mvp program).
-# Produces desktop/release/Ion-Setup-<version>-x64.exe. Windows-only —
-# electron-builder's NSIS target requires the win32 host toolchain.
-desktop-win:
-	@cd desktop && npm run dist:win
-
-relay:
-	@cd relay && docker build --platform linux/amd64 -t ion-relay:latest .
-
-relay-local:
-	@cd relay && go run .
-
-ios:
-	@cd ios && bash commands/install.command
-
-ios-check:
-	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
-		-destination 'generic/platform=iOS' build 2>&1 | grep -E "error:|BUILD"
-
-# Required iOS PR gate. Device-target compilation catches Swift, link, and
-# packaging errors without booting a simulator. Full IonRemoteTests belongs to
-# the scheduled/manual CI lane because hosted simulator startup is costly.
-ios-pr-check:
-	@cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
-		-destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
-
-# Run the IonRemoteTests unit-test bundle on a real iOS Simulator. Picks the
-# newest available simulator automatically; override with the
-# IOS_TEST_DESTINATION env var (see scripts/run-ios-tests.sh for format).
-ios-test:
-	@bash scripts/ios-test-retry.test.sh
-	@bash scripts/run-ios-tests.sh
-
 # Per-component test convenience wrappers. The CI workflows already exercise
 # each surface in isolation; these mirror what they do so contributors can
 # run a focused check locally without remembering each toolchain's command.
@@ -107,141 +40,69 @@ engine-test:
 
 # The Go SDK module. Its parity tests read the engine's generated contract
 # manifest and its own surface manifest, so they run from a full checkout —
-# this is the target that fails when the two SDKs drift apart.
-sdk-test:
+# this is the target that fails when the two SDKs drift apart. The
+# TypeScript SDK's tests run beside them; they read the same goldens.
+sdk-test: sdk-ts-test
 	@cd sdk/go && go test -race ./...
 
-desktop-test:
-	@cd desktop && npm test
-
-lint-desktop:
-	@cd desktop && npm run lint
-
-# @ion/shared and @ion/server have no standalone lockfile: both install from
-# the workspace root (npm ci at the repo root), then run by workspace name.
-shared-test:
-	@npm -w @ion/shared run typecheck && npm -w @ion/shared test -- --run
-
-server-test:
-	@npm -w server run typecheck && npm -w server run lint && npm -w server test -- --run
+# The TypeScript SDK (engine/extensions/sdk/ion-sdk) ships as source and
+# needs no install to run; its tests live in a small vitest project beside it.
+sdk-ts-test:
+	@cd engine/extensions/sdk && npm ci --silent && npm run typecheck && npm test
 
 test:
 	@cd engine && go test ./...
-	@cd desktop && npm test 2>/dev/null || true
 
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-swiftlint check-dashboards check-vocabulary engine-test sdk-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-logging check-dashboards check-vocabulary engine-test sdk-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
-# Linux parity gate (run before opening a PR for engine/ or desktop/ changes)
+# Linux parity gate (run before landing engine changes)
 # ---------------------------------------------------------------------------
 #
-# CI runs `engine-test` (unit race + contract manifest + integration race) and
-# `desktop-lint` / `desktop-test` (ESLint, typecheck, npm test) on
+# CI runs `engine-test` (unit race + contract manifest + integration race) on
 # ubuntu-latest. macOS-only local runs miss OS-sensitive failures: path
 # semantics, file-watcher timing, locale, and goroutine starvation under the
-# Linux race detector. These targets run the SAME commands CI runs, in Linux
-# containers, so a contributor on macOS can catch a Linux-only failure before
-# it reaches the PR.
+# Linux race detector. This target runs the SAME commands CI runs, in a Linux
+# container, so a contributor on macOS can catch a Linux-only failure before
+# it reaches main.
 #
-# Requirements: Docker (or Colima) running. If Docker is absent these targets
-# fail with a clear message rather than silently passing.
+# Requirements: Docker (or Colima) running. If Docker is absent the target
+# fails with a clear message rather than silently passing.
 #
 # Implementation notes (learned the hard way):
 #   - Mount the FULL repo (-v "$(PWD)":/src), not a subdirectory. Mounting only
-#     engine/ or desktop/ strips the repo-root .git (breaks gitcontext tests)
-#     and breaks cross-tree imports (desktop SDK tests import ../../engine/...,
-#     contract-sync reads engine/internal/types/testdata/contracts.json).
+#     engine/ strips the repo-root .git (breaks gitcontext tests) and the
+#     sdk/go module the parity tests read.
 #   - Pin the Go image to the version in engine/go.mod (single source of truth).
 #   - `safe.directory` is required because the mounted tree is owned by the host
-#     user, not the container user. The npm gates set it `--system`, since root
-#     writes it and ionci runs the build that reads git.
-#   - Desktop uses `npm ci --ignore-scripts`, exactly as CI does — this is what
-#     surfaces eager-`require('electron')` import failures.
+#     user, not the container user.
 #   - Integration tests need `-tags integration`. They are behind a build tag,
 #     so `go test ./...` silently skips them: the files never compile and a
 #     stale assertion in tests/integration/ passes the gate and fails CI.
-#   - Desktop lint must run here too. `npm run typecheck` does NOT catch unused
-#     imports or react-hooks violations — those are ESLint rules, and CI runs
-#     them as a separate blocking job. Typecheck alone is not a substitute.
-#   - The engine/desktop images are prebaked (scripts/docker/*.Dockerfile) and
-#     Go module/build + npm caches ride named Docker volumes, so a repeat run
-#     skips both the `apt-get install nodejs`/`useradd` setup and a from-zero
-#     module download + full `-race` recompile. See the comment above
-#     ENGINE_IMAGE/DESKTOP_IMAGE below for the full rationale.
+#   - The image is prebaked (scripts/docker/test-linux-engine.Dockerfile) and
+#     the Go module/build caches ride named Docker volumes, so a repeat run
+#     skips a from-zero module download + full `-race` recompile.
 #
-# When a job is added to .github/workflows/quality.yml that runs engine or
-# desktop tests, mirror it here. A gate that claims CI parity while running a
-# subset is worse than no gate: it green-lights the exact failures it is
-# supposed to catch.
+# When a job is added to .github/workflows/quality.yml that runs engine tests,
+# mirror it here. A gate that claims CI parity while running a subset is worse
+# than no gate: it green-lights the exact failures it is supposed to catch.
 
 # Match actions/setup-go's go-version-file behavior: prefer the exact toolchain
 # directive used by CI and release builds, with the language version as fallback.
 GO_VERSION := $(shell awk '/^toolchain go/ {sub(/^toolchain go/, ""); print; found=1; exit} /^go / && !fallback {fallback=$$2} END {if (!found) print fallback}' engine/go.mod)
 
-# Prebaked-image + named-volume plumbing for the Linux parity gate.
-#
-# Two independent, compounding speedups over a stock `golang:$(GO_VERSION)` /
-# `node:22` container:
-#
-#  1. Prebaked images (scripts/docker/*.Dockerfile) bake in `nodejs` /
-#     `useradd ionci`, which previously ran fresh on every single invocation.
-#     `docker build` is called before every run, pointed at a source-free
-#     build context (scripts/docker/ only — no repo COPY), so Docker's own
-#     layer cache makes a rebuild an instant no-op except when the Dockerfile
-#     or base image tag actually changes.
-#  2. Named volumes (ion-golang-mod-cache, ion-golang-build-cache,
-#     ion-npm-cache) persist the Go module cache, Go build cache, and npm
-#     download cache across runs, instead of starting from zero inside a
-#     fresh `--rm` container every time. `node_modules` itself stays an
-#     anonymous per-run volume deliberately: a *named* volume there would
-#     persist a stale/incompatible install across dependency changes, where
-#     only the npm download cache benefits from persistence.
-#
-# Both are pure execution-speed changes — `make test-linux-engine` /
-# `make test-linux-desktop` / `make test-linux` keep their existing names and
-# pass/fail semantics, so no other caller needs to change.
-# Platform selection. The engine gate stays pinned to linux/amd64: CI runs on
-# ubuntu-latest, and Go race detection, memory ordering, and any assembly or
-# cgo path are genuinely architecture-sensitive, so matching CI's arch is part
-# of what that gate buys.
-#
-# The desktop gate is not. Its whole command (see test-linux-desktop-run) is
-# `npm ci --ignore-scripts && eslint && tsc && vitest` — with scripts ignored
-# nothing native is ever built, so it is Node executing JavaScript. What the
-# gate exists to catch is Linux-versus-macOS (path semantics, inotify timing,
-# locale, eager electron requires under --ignore-scripts), and every one of
-# those is a property of the kernel and libc rather than the instruction set.
-# Emulating amd64 for it on an ARM host taxed every instruction to re-verify
-# something the host arch already proves, so the desktop gate runs native.
-#
-# --platform is still passed explicitly rather than left to Docker's default,
-# because DOCKER_DEFAULT_PLATFORM in the environment would otherwise silently
-# put the emulation back.
-HOST_ARCH := $(shell uname -m)
-ifeq ($(filter $(HOST_ARCH),arm64 aarch64),)
-DESKTOP_ARCH := amd64
-else
-DESKTOP_ARCH := arm64
-endif
+# The engine gate stays pinned to linux/amd64: CI runs on ubuntu-latest, and
+# Go race detection, memory ordering, and any assembly or cgo path are
+# genuinely architecture-sensitive, so matching CI's arch is part of what
+# that gate buys. --platform is passed explicitly rather than left to
+# Docker's default, because DOCKER_DEFAULT_PLATFORM in the environment would
+# otherwise silently change it.
 ENGINE_PLATFORM := linux/amd64
-DESKTOP_PLATFORM := linux/$(DESKTOP_ARCH)
-
-# Every npm workspace installs into the root lockfile's tree, so an `npm ci`
-# run from any member rewrites all of these. Each gets its own anonymous
-# volume so the container never replaces the host's macOS install.
-NPM_WORKSPACE_MODULES := /src/node_modules /src/desktop/node_modules /src/server/node_modules \
-	/src/packages/shared/node_modules /src/packages/studio-sdk/node_modules
-NPM_WORKSPACE_VOLUMES := $(foreach d,$(NPM_WORKSPACE_MODULES),-v $(d))
-
-# The desktop tag carries its arch so a native image can never be confused
-# with an emulated one left behind by an earlier run.
 ENGINE_IMAGE := ion-test-linux-engine:$(GO_VERSION)
-DESKTOP_IMAGE := ion-test-linux-desktop:22-$(DESKTOP_ARCH)
-SERVER_IMAGE := ion-test-linux-server:22-$(DESKTOP_ARCH)
 
 # Linked-worktree support: a git worktree's .git is a *file* pointing at an
 # absolute host path under the base repo's .git/worktrees/<name>, which lives
@@ -264,8 +125,8 @@ else
 GIT_WORKTREE_MOUNT := -v "$(GIT_COMMON_DIR)":"$(GIT_COMMON_DIR)"
 endif
 
-test-linux: test-linux-engine test-linux-desktop test-linux-server
-	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test, server lint+typecheck+test green on Linux (CI parity)"
+test-linux: test-linux-engine
+	@echo "✅ test-linux: engine unit+integration race green on Linux (CI parity)"
 
 test-linux-engine:
 	@bash scripts/gate-cache.sh check engine $(ENGINE_PLATFORM) || $(MAKE) --no-print-directory test-linux-engine-run
@@ -320,49 +181,8 @@ test-linux-engine-summary:
 		                      go test -race ./... 2>&1 | grep -E \"^(ok|FAIL|--- FAIL|--- PASS)\"; \
 		                      exit \$${PIPESTATUS[0]}'"
 
-test-linux-desktop:
-	@bash scripts/gate-cache.sh check desktop $(DESKTOP_PLATFORM) || $(MAKE) --no-print-directory test-linux-desktop-run
-
-test-linux-desktop-run:
-	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ desktop: building prebaked Linux parity image ($(DESKTOP_IMAGE))"
-	@docker build --platform $(DESKTOP_PLATFORM) -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
-	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web on linux ($(DESKTOP_IMAGE))"
-	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src $(NPM_WORKSPACE_VOLUMES) $(GIT_WORKTREE_MOUNT) \
-		-v ion-npm-cache:/home/ionci/.npm \
-		-w /src/desktop $(DESKTOP_IMAGE) \
-		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
-		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
-		         git config --system --add safe.directory /src && \
-		         git config --system --add safe.directory \"$(GIT_COMMON_DIR)\" && \
-		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web'"
-	@bash scripts/gate-cache.sh save desktop $(DESKTOP_PLATFORM)
-
-# @ion/server and @ion/shared have no standalone lockfile — both install from
-# the workspace root, unlike test-linux-desktop-run's per-package npm ci.
-test-linux-server:
-	@bash scripts/gate-cache.sh check server $(DESKTOP_PLATFORM) || $(MAKE) --no-print-directory test-linux-server-run
-
-test-linux-server-run:
-	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ server: building prebaked Linux parity image ($(SERVER_IMAGE))"
-	@docker build --platform $(DESKTOP_PLATFORM) -t $(SERVER_IMAGE) -f scripts/docker/test-linux-server.Dockerfile scripts/docker
-	@echo "▶ server: npm ci --ignore-scripts (root) && server/shared lint+typecheck+test on linux ($(SERVER_IMAGE))"
-	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src $(NPM_WORKSPACE_VOLUMES) $(GIT_WORKTREE_MOUNT) \
-		-v ion-npm-cache:/home/ionci/.npm \
-		-w /src $(SERVER_IMAGE) \
-		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
-		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
-		         git config --system --add safe.directory /src && \
-		         git config --system --add safe.directory \"$(GIT_COMMON_DIR)\" && \
-		         su ionci -c 'cd /src && npm ci --ignore-scripts && \
-		                      npm -w @ion/shared run typecheck && npm -w @ion/shared test -- --run && \
-		                      npm -w server run typecheck && npm -w server run lint && npm -w server test -- --run'"
-	@bash scripts/gate-cache.sh save server $(DESKTOP_PLATFORM)
-
 clean:
 	@cd engine && rm -rf bin/ dist/
-	@cd desktop && rm -rf dist/ out/
 
 # The local conversation pipeline sample (samples/conversation-pipeline).
 # Build targets stay pure at this level; the sample's operations live one
@@ -396,14 +216,8 @@ check-file-sizes:
 
 # Compiled executables must never be tracked. An ignore rule only covers paths
 # someone anticipated; this checks what is actually in the index.
-.PHONY: check-no-binaries
 check-no-binaries:
 	@bash scripts/check-no-binaries.sh
-
-# Every registry package in the root lockfile must carry resolved and integrity.
-.PHONY: check-lockfile-integrity
-check-lockfile-integrity:
-	@node scripts/check-lockfile-integrity.mjs package-lock.json
 
 # Dashboards-as-code drift + structural-overcount gate. Regenerates every
 # provisioned Grafana dashboard JSON and queries.md from the canonical query
@@ -425,9 +239,7 @@ generate-vocabulary:
 	@node scripts/vocabulary.mjs generate
 
 # Fails on a relative markdown link (in any tracked *.md file) whose target
-# does not exist on disk. Added alongside the ADR-025/026 renumber (Ion
-# Studio Server program, child 04) that this gate exists to protect against
-# recurring.
+# does not exist on disk.
 check-doc-links:
 	@bash scripts/check-doc-links.sh
 
@@ -437,74 +249,20 @@ check-doc-links:
 check-issue-closure:
 	@bash scripts/check-issue-closure.sh $(PR)
 
-# Phase 4 of the state-management overhaul. Prohibits new direct writes
-# to tab.status / inst.statusFields outside the dispatcher chokepoints
-# whitelisted in scripts/check-status-writers.sh.
-check-status-writers:
-	@bash scripts/check-status-writers.sh
-
-# Spec 17: "server owns the store, Studio renders" — a direct webContents.send
-# from Electron main is suspect (conversation/session state should ride the
-# server's studio-wire instead) unless the file is on the main-process-only
-# allowlist in scripts/check-server-parity.sh. Also gates the executeJavaScript
-# elimination, the single-UI exclusivity key deletion, and deleted-path imports.
-check-server-parity:
-	@bash scripts/check-server-parity.sh
-
-# Studio wire protocol version gate: a changed/added golden fixture under
-# packages/shared/src/studio-wire/__fixtures__ must ship with a matching
-# '## v<N>' note in docs/protocol/studio-wire.md in the same change.
-check-studio-wire:
-	@bash scripts/check-studio-wire.sh
-
-# Cross-language contract drift detection.
-# Asserts the Go-generated contracts.json is up to date; TS and Swift tests
-# validate against it via their own test suites (npm test / xcodebuild test).
+# Cross-language contract drift detection. Asserts the Go-generated
+# contracts.json and the SDK contract manifest are up to date; the SDKs'
+# parity tests validate against them (`make sdk-test`).
 check-contracts:
 	@cd engine && go test ./internal/types/ -run TestContractManifest
 	@cd engine && go test ./internal/extension/ -run TestSDKContractManifest
 
-# Windows Group Policy template gate.
-# Cross-checks desktop/packaging-windows/policy/IonEngine.admx against its en-US ADML
-# (every $(string.*)/$(presentation.*) reference resolves, every element has a
-# presentation control) and against docs/enterprise/mdm.md (every registry
-# value name the template writes is documented). Runs the validator's own
-# regression suite too, so a broken validator cannot pass silently.
-# The Windows entry points (bootstrap.ps1, make.ps1) have no Makefile to guard
-# them, and a PowerShell syntax error only surfaces when the script runs -- on
-# Windows, usually on someone else's machine.
-check-windows-scripts:
-	@bash scripts/ci/validate-powershell.sh
-
-check-admx:
-	@python3 scripts/ci/validate-admx.py
-	@bash scripts/ci/validate-admx.test.sh
-
-# ADR-019 logging-standards enforcement gate.
-# Scans emitter call sites for interpolated messages, console.* in the renderer,
-# relay slog package-level calls that bypass relayHandler, and non-canonical
-# field keys. See scripts/check-logging.sh for the full check catalog.
+# ADR-019 logging-standards enforcement gate. Scans engine emitter call sites
+# for interpolated messages and non-canonical field keys. See
+# scripts/check-logging.sh for the full check catalog.
 check-logging:
 	@bash scripts/check-logging.sh
 	@bash scripts/check-logging-reserved-keys.test.sh
 	@bash scripts/check-logging-non-canon.test.sh
-
-# Silent-failure gate for the iOS app (mirrors check-logging's "no silent
-# failures" goal). Custom SwiftLint rules flag empty `catch {}` blocks
-# (error — swallows the error) and silent `try?` statements (warning). Only
-# the empty-catch error fails the build; the try? warnings are advisory. We
-# deliberately do NOT pass --strict: --strict escalates every warning to an
-# error, which would fail the build on the 100+ legitimate try? sites this
-# gate intentionally leaves as warnings. Plain `swiftlint lint` exits non-zero
-# only on error-severity violations, which is exactly the gate we want.
-# No-ops gracefully (exit 0) when swiftlint is not installed so contributors
-# without it are not blocked locally; CI has it pinned.
-check-swiftlint:
-	@if ! command -v swiftlint >/dev/null 2>&1; then \
-		echo "check-swiftlint: swiftlint not installed — skipping (CI enforces this gate). Install: brew install swiftlint"; \
-		exit 0; \
-	fi
-	@swiftlint lint --config ios/.swiftlint.yml ios/IonRemote
 
 # Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
 # CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.
@@ -515,18 +273,18 @@ claude-symlinks:
 #
 # Two things a clone cannot carry:
 #
-#  1. core.hooksPath. `npm install` runs the root `prepare` script, which runs
-#     husky: it generates .husky/_ and points core.hooksPath at it, activating
-#     the tracked pre-push, commit-msg, and graphify rebuild hooks. That config
-#     is per-clone git state, never cloned, which is why this step exists.
+#  1. core.hooksPath. The tracked hooks live in .husky/ (the directory name
+#     is historical; nothing installs husky). `make hooks` points git at it,
+#     activating the pre-push, commit-msg, and graphify rebuild hooks. That
+#     config is per-clone git state, never cloned, which is why this step
+#     exists.
 #  2. graphify-out/. The knowledge graph is a gitignored local build cache, so
 #     a fresh clone has none and builds it once here.
 #
 # The graphify skill (.ion/skills/) and the project engine.json (.ion/) ARE
 # tracked, so they arrive with the clone and need nothing.
 bootstrap:
-	@echo "▶ npm install (husky hooks)"
-	@npm install --silent
+	@$(MAKE) --no-print-directory hooks
 	@$(MAKE) --no-print-directory claude-symlinks
 	@$(MAKE) --no-print-directory log-level-debug
 	@$(MAKE) --no-print-directory graph-ensure
@@ -676,13 +434,11 @@ graph:
 		fi; \
 	fi
 
-# Repair this clone's git hooks when core.hooksPath has drifted. Husky owns
-# the hook system: root `package.json` has `"prepare": "husky"`, so a plain
-# `npm install` already points core.hooksPath at `.husky/_`. This target only
-# exists to fix a clone where that config was manually overridden.
+# Point this clone's git at the tracked hooks. The directory keeps its
+# historical husky name; nothing installs husky, git runs the files directly.
 hooks:
-	@git config core.hooksPath .husky/_
-	@echo "core.hooksPath -> .husky/_"
+	@git config core.hooksPath .husky
+	@echo "core.hooksPath -> .husky"
 
 # Land finished work on main and push it. On main this rebases the local
 # commits onto the remote, checks every commit, and pushes, retrying on its
@@ -710,77 +466,7 @@ test-pipeline-engine:
 		-j build-engine \
 		--input release_report="$$(cat .act/release-report.json)"
 
-test-pipeline-relay:
-	act workflow_dispatch -W .github/workflows/build.yml \
-		-j build-relay \
-		--input release_report="$$(cat .act/release-report.json)"
-
-# Package the Ion Studio Server bundle (engine + node runtime + server) for
-# one platform -- the release asset install-studio-server.sh downloads.
-#   make package-studio-server                      # this machine's platform
-#   make package-studio-server GOOS=darwin GOARCH=amd64
-.PHONY: package-studio-server
-package-studio-server:
-	@scripts/package-studio-server.sh $(or $(GOOS),$(shell uname -s | tr '[:upper:]' '[:lower:]')) $(or $(GOARCH),$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')) build/deploy
-
-# Install a DEV BUILD of the Studio server from this checkout on a remote
-# host over SSH: packages the bundle, ships it, runs the same installer a
-# consumer runs. Repeatable: rerun after every fix. `ion fleet deploy --to`
-# does the work (ion fleet deploy --help lists ARGS).
-#   make deploy-studio-server HOST=devbox.local
-#   make deploy-studio-server HOST=devbox.local ARGS="--no-build --pair laptop"
-.PHONY: deploy-studio-server
-deploy-studio-server:
-	@[ -n "$(HOST)" ] || { echo "usage: make deploy-studio-server HOST=<[user@]host> [ARGS=...]"; exit 2; }
-	@cd engine && go run ./cmd/ion fleet deploy --to $(HOST) --kind server --source $(CURDIR) $(ARGS)
-
-# Install the Ion desktop on a remote Mac or Windows host over SSH: builds
-# the installer, copies it, installs it, verifies what landed. The last
-# stdout line is a JSON receipt, so a playbook can run it per host. A desktop
-# install carries its own Studio Server, so the host is a pairable
-# Environment once Ion runs there. `ion fleet deploy --to` does the work.
-#   make deploy-studio-desktop HOST=user@mac.local
-#   make deploy-studio-desktop HOST=user@mac.local ARGS="--no-build --pair"
-.PHONY: deploy-studio-desktop
-deploy-studio-desktop:
-	@[ -n "$(HOST)" ] || { echo "usage: make deploy-studio-desktop HOST=<[user@]host> [ARGS=...]"; exit 2; }
-	@cd engine && go run ./cmd/ion fleet deploy --to $(HOST) --kind desktop --source $(CURDIR) $(ARGS)
-
-# Installer regression test (no network, stub ion). The packaging test
-# (scripts/package-studio-server.test.sh) builds a real bundle and is run by
-# the release job, or by hand after touching the packager. The deploys
-# themselves are tested in engine/internal/fleet.
-.PHONY: test-studio-installer
-test-studio-installer:
-	@bash scripts/install-studio-server.test.sh
-
-# ---------------------------------------------------------------------------
-# Performance harness (docs/contributing/performance.md). Runs nightly in
-# .github/workflows/perf.yml, outside quality.yml and every release gate.
-# Report only: nothing here is wired into test-linux or test-all.
-# ---------------------------------------------------------------------------
-.PHONY: perf-build perf perf-test perf-compare bench bench-compare
-
-# The engine binary and the headless server bundle the runner starts as children.
-perf-build:
-	@cd engine && go build -ldflags "-s -w -X main.version=perf-$$(git rev-parse --short HEAD)" -o bin/ion ./cmd/ion
-	@npm -w server run build
-
-# One scenario against an isolated Environment under /tmp. SCENARIO=smoke|soak;
-# ALLOY=http://localhost:4318 ships spans to the local observability stack.
-#   make perf SCENARIO=smoke ALLOY=http://localhost:4318
-perf:
-	@scripts/perf/run.sh --scenario $(or $(SCENARIO),smoke) $(if $(ALLOY),--alloy $(ALLOY)) $(if $(OUT),--out $(OUT)) $(if $(MAX_MINUTES),--max-minutes $(MAX_MINUTES)) $(PERF_ARGS)
-
-# Unit tests of the statistics and the compare rule (node:test, no build step).
-perf-test:
-	@node --experimental-strip-types --no-warnings --test scripts/perf/__tests__/stats.test.mts scripts/perf/__tests__/compare.test.mts
-
-# Two result files -> a markdown table; FAIL=1 exits 1 on a regression.
-#   make perf-compare A=perf/results/smoke/<old>.json B=perf/results/smoke/<new>.json
-perf-compare:
-	@test -n "$(A)" -a -n "$(B)" || { echo "usage: make perf-compare A=<result.json> B=<result.json> [THRESHOLD=0.10] [FAIL=1]"; exit 2; }
-	@node --experimental-strip-types --no-warnings scripts/perf/compare.mts $(A) $(B) $(if $(THRESHOLD),--threshold $(THRESHOLD)) $(if $(FAIL),--fail) $(if $(SUMMARY),--summary $(SUMMARY))
+.PHONY: bench bench-compare
 
 # Go micro-benchmarks across the engine, six runs each for benchstat.
 bench:

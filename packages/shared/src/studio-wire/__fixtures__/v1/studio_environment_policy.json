@@ -1,7 +1,0 @@
-{
-  "type": "studio_environment_policy",
-  "enterprisePolicy": null,
-  "settingsHiddenGroups": [],
-  "developerSurfaces": { "sourceControl": true, "commitGraph": true, "repositoryStatus": true, "worktrees": true, "profiling": true },
-  "policyHash": "sha256:deadbeef"
-}

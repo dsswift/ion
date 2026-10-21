@@ -3,11 +3,6 @@
   "worktree": {
     "seed": [
       {
-        "path": "node_modules",
-        "build": "npm ci",
-        "staleWhen": ["package-lock.json"]
-      },
-      {
         "path": "graphify-out/graph.json",
         "link": true
       }
@@ -18,6 +13,6 @@
     "setup": "make bootstrap"
   },
   "bench": {
-    "verify": "cd engine && go build ./... && cd ../desktop && npm run typecheck"
+    "verify": "cd engine && go build ./..."
   }
 }

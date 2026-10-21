@@ -21,13 +21,13 @@ git init -q .
 git config user.email "test@example.com"
 git config user.name "Gate Cache Test"
 
-printf 'FROM node:22\n' > scripts/docker/test-linux-desktop.Dockerfile
-printf 'test-linux-desktop:\n\t@true\n' > Makefile
+printf 'FROM golang:1.0\n' > scripts/docker/test-linux-engine.Dockerfile
+printf 'test-linux-engine:\n\t@true\n' > Makefile
 git add -A
 git commit -q -m "seed"
 
-check() { ION_GATE_CACHE_ROOT="$TMP_ROOT" bash "$SCRIPT" check desktop "$1" >/dev/null 2>&1; }
-save()  { ION_GATE_CACHE_ROOT="$TMP_ROOT" bash "$SCRIPT" save  desktop "$1" >/dev/null 2>&1; }
+check() { ION_GATE_CACHE_ROOT="$TMP_ROOT" bash "$SCRIPT" check engine "$1" >/dev/null 2>&1; }
+save()  { ION_GATE_CACHE_ROOT="$TMP_ROOT" bash "$SCRIPT" save  engine "$1" >/dev/null 2>&1; }
 
 fail() { echo "gate-cache regression: $1" >&2; exit 1; }
 expect_miss() { check "${2:-linux/arm64}" && fail "$1 unexpectedly hit the cache"; return 0; }
@@ -48,13 +48,13 @@ expect_hit "the tree returning to clean"
 expect_miss "a different platform" linux/amd64
 
 # Any change to the gate's own definition invalidates the receipt.
-printf 'FROM node:22\nRUN echo changed\n' > scripts/docker/test-linux-desktop.Dockerfile
+printf 'FROM golang:1.0\nRUN echo changed\n' > scripts/docker/test-linux-engine.Dockerfile
 git add -A && git commit -q -m "change dockerfile"
 expect_miss "a changed Dockerfile"
 save linux/arm64
 expect_hit "a recorded pass on the new Dockerfile"
 
-printf 'test-linux-desktop:\n\t@echo changed\n' > Makefile
+printf 'test-linux-engine:\n\t@echo changed\n' > Makefile
 git add -A && git commit -q -m "change makefile"
 expect_miss "a changed gate command in the Makefile"
 save linux/arm64
@@ -68,11 +68,11 @@ expect_miss "a new commit"
 # The force escape hatch always runs the gate.
 save linux/arm64
 expect_hit "a recorded pass before testing the force flag"
-ION_GATE_CACHE_ROOT="$TMP_ROOT" ION_GATE_FORCE=1 bash "$SCRIPT" check desktop linux/arm64 >/dev/null 2>&1 \
+ION_GATE_CACHE_ROOT="$TMP_ROOT" ION_GATE_FORCE=1 bash "$SCRIPT" check engine linux/arm64 >/dev/null 2>&1 \
   && fail "ION_GATE_FORCE=1 did not force a run"
 
 # Saving from a dirty tree must not record anything.
-RECEIPT="$TMP_ROOT/.git/ion-test-linux-desktop-success"
+RECEIPT="$TMP_ROOT/.git/ion-test-linux-engine-success"
 rm -f "$RECEIPT"
 printf 'dirty\n' > stray.txt
 save linux/arm64

@@ -128,43 +128,6 @@ if touched "^engine/"; then
     "cd engine && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./..."
 fi
 
-# Relay: same.
-if touched "^relay/"; then
-  run "relay lint (new vs origin/main)" bash -c \
-    "cd relay && golangci-lint run --new-from-merge-base=origin/main"
-fi
-
-# Desktop: typecheck. The unit suites run in CI's test lane.
-if touched "^desktop/"; then
-  run "desktop typecheck" bash -c "cd desktop && npm run typecheck"
-fi
-
-# Server and the shared package: typecheck and lint. The renderer bundle
-# below is what catches a Node-only import; these catch the rest.
-if touched "^server/|^packages/shared/"; then
-  run "server typecheck" bash -c "npm -w server run typecheck"
-  run "server lint"      bash -c "npm -w server run lint"
-fi
-
-# The renderer bundles the server's session store and packages/shared, so a
-# Node-only import added under server/ or packages/shared/ breaks this build
-# while every server check passes.
-if touched "^desktop/|^server/|^packages/shared/"; then
-  run "desktop build"     bash -c "cd desktop && npm run build"
-fi
-
-# iOS: lint only. The device build runs in CI on every iOS change (ios-build)
-# and the full simulator suite runs nightly (ios-full-test); an xcodebuild
-# here is minutes, and the point of this gate is to be seconds.
-if touched "^ios/"; then
-  if command -v swiftlint >/dev/null 2>&1; then
-    run "iOS silent-failure lint" swiftlint lint --quiet --config ios/.swiftlint.yml ios/IonRemote
-  else
-    echo
-    echo "▶ iOS silent-failure lint (skipped — install with: brew install swiftlint)"
-  fi
-fi
-
 # Workflow YAML changes: actionlint mirrors CI.
 if touched "^\.github/workflows/"; then
   if command -v actionlint >/dev/null 2>&1; then

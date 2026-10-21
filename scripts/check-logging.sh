@@ -60,10 +60,6 @@
 # Usage:
 #   bash scripts/check-logging.sh           # full tree
 #   bash scripts/check-logging.sh engine    # engine Go only
-#   bash scripts/check-logging.sh relay     # relay Go only
-#   bash scripts/check-logging.sh renderer  # desktop renderer only
-#   bash scripts/check-logging.sh ts        # desktop TS (main+renderer)
-#   bash scripts/check-logging.sh swift     # iOS Swift only
 
 set -euo pipefail
 
@@ -380,64 +376,6 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "engine" ]]; then
   check_go_interp engine ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
   check_non_canon ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
   check_reserved_key ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
-fi
-
-# Relay Go
-if [[ "$SCOPE" == "all" || "$SCOPE" == "relay" ]]; then
-  RELAY_GO=()
-  while IFS= read -r f; do RELAY_GO+=("$f"); done < <(find_go relay/)
-
-  RELAY_NON_LOGGER=()
-  while IFS= read -r f; do RELAY_NON_LOGGER+=("$f"); done < <(
-    find relay/ \
-      -type d \( -name vendor -o -name .git \) -prune -false \
-      -o -type f -name '*.go' ! -name '*_test.go' ! -name 'logger.go' -print
-  )
-
-  check_relay_go_interp ${RELAY_GO[@]+"${RELAY_GO[@]}"}
-  check_relay_flat ${RELAY_NON_LOGGER[@]+"${RELAY_NON_LOGGER[@]}"}
-  check_non_canon ${RELAY_GO[@]+"${RELAY_GO[@]}"}
-fi
-
-# Desktop renderer console.*
-if [[ "$SCOPE" == "all" || "$SCOPE" == "renderer" ]]; then
-  RENDERER_TS=()
-  while IFS= read -r f; do RENDERER_TS+=("$f"); done < <(find_ts desktop/src/renderer/)
-  check_renderer_console ${RENDERER_TS[@]+"${RENDERER_TS[@]}"}
-fi
-
-# Desktop TS interpolated msg (main + renderer). Also covers packages/shared
-# and server, both split out of desktop/src/shared and desktop/src/main by the
-# Ion Studio Server program's repo-restructure child: the same canonical-field
-# and silent-catch discipline applies wherever main-process logic now lives.
-if [[ "$SCOPE" == "all" || "$SCOPE" == "ts" ]]; then
-  DESKTOP_TS=()
-  while IFS= read -r f; do DESKTOP_TS+=("$f"); done < <(find_ts desktop/src/ packages/shared/src/ server/src/)
-  check_ts_interp ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
-  check_non_canon ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
-  check_reserved_key ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
-  check_silent_catch_ts ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
-
-  # console.* outside the renderer. The CLI is excluded: `server/src/cli/`
-  # talks to a person on a terminal, where stdout IS the interface.
-  NODE_TS=()
-  while IFS= read -r f; do
-    case "$f" in
-      server/src/cli/*) continue ;;
-    esac
-    NODE_TS+=("$f")
-  done < <(find_ts desktop/src/main/ packages/shared/src/ server/src/)
-  check_node_console ${NODE_TS[@]+"${NODE_TS[@]}"}
-fi
-
-# iOS Swift interpolation
-if [[ "$SCOPE" == "all" || "$SCOPE" == "swift" ]]; then
-  IOS_SWIFT=()
-  while IFS= read -r f; do IOS_SWIFT+=("$f"); done < <(find_swift ios/)
-  check_swift_interp ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
-  check_non_canon ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
-  check_silent_catch_swift ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
-  check_os_logger_swift ${IOS_SWIFT[@]+"${IOS_SWIFT[@]}"}
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

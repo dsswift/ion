@@ -309,7 +309,7 @@ services:
 # =============================================================================
 # GRAPH
 # =============================================================================
-# Log-flow: engine/server/desktop/ios JSONL -> alloy -> loki -> grafana
+# Log-flow: engine JSONL -> alloy -> loki -> grafana
 #           telemetry JSONL -> telemetry-forwarder -> alloy API
 #           tempo <- otlp (from alloy); tempo -> prometheus (span metrics)
 #           engine OTLP metrics -> prometheus -> grafana
@@ -318,12 +318,6 @@ graph:
   host:
     - name: engine-logs
       label: "engine.jsonl"
-    - name: server-logs
-      label: "server.jsonl"
-    - name: desktop-logs
-      label: "desktop.jsonl"
-    - name: ios-logs
-      label: "ios-diagnostic-logs.jsonl"
     - name: otlp-metrics
       label: "engine OTLP metrics"
   edges:
@@ -337,15 +331,6 @@ graph:
       to: grafana
       label: "query"
     - from: engine-logs
-      to: alloy
-      label: "tail (ro)"
-    - from: server-logs
-      to: alloy
-      label: "tail (ro)"
-    - from: desktop-logs
-      to: alloy
-      label: "tail (ro)"
-    - from: ios-logs
       to: alloy
       label: "tail (ro)"
     - from: telemetry-forwarder
@@ -453,17 +438,11 @@ utilities:
   clear-logs:
     command: |
       : > ~/.ion/engine.jsonl && \
-      : > ~/.ion/server.jsonl && \
-      : > ~/.ion/desktop.jsonl && \
       : > ~/.ion/telemetry.jsonl && \
-      : > ~/.ion/ios-diagnostic-logs.jsonl && \
       rm -f ~/.ion/engine.jsonl.[1-9] \
-             ~/.ion/server.jsonl.[1-9] \
-             ~/.ion/desktop.jsonl.[1-9] \
-             ~/.ion/ios-diagnostic-logs.jsonl.[1-9] \
              ~/.ion/telemetry.jsonl.[1-9] && \
       echo "Log files cleared:" && \
-      echo "  Cleared live files:     engine.jsonl, server.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
+      echo "  Cleared live files:     engine.jsonl, telemetry.jsonl" && \
       echo "  Removed archives:       *.jsonl.1 through *.jsonl.9"
     description: "Clear live logs and remove .1 through .9 archives"
 
@@ -473,9 +452,6 @@ utilities:
       echo ""
       echo "Will re-ingest on next observability-profile deploy:"
       echo "  ~/.ion/engine.jsonl              (engine + extension logs)"
-      echo "  ~/.ion/server.jsonl              (Studio server logs, and browser-client logs it records)"
-      echo "  ~/.ion/desktop.jsonl             (desktop logs)"
-      echo "  ~/.ion/ios-diagnostic-logs.jsonl (iOS client logs)"
       echo "  ~/.ion/telemetry.jsonl           (telemetry events, if present)"
       echo ""
       echo "Will NOT re-ingest (outside Alloy's targets):"

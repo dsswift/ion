@@ -1,9 +1,9 @@
 # Contributing to Ion
 
-Thanks for the interest. This repository is a monorepo that releases each
-package independently from a single `main` branch. The release pipeline is
-automated, and it reads your commit messages to decide what to release.
-Please read this whole document before your first change.
+Thanks for the interest. This repository releases each package independently
+from a single `main` branch. The release pipeline is automated, and it reads
+your commit messages to decide what to release. Please read this whole
+document before your first change.
 
 ## Repository Layout
 
@@ -12,15 +12,14 @@ Please read this whole document before your first change.
 
 | Directory  | Commit scope | Released as                      |
 |------------|--------------|----------------------------------|
-| `engine/`  | `engine`     | binary archives + checksums      |
-| `desktop/` | `desktop`    | installers                       |
-| `server/`  | `server`     | Studio Server archives + checksums |
-| `relay/`   | `relay`      | container image (GHCR)           |
-| `ios/`     | `ios`        | (artifacts via release pipeline) |
+| `engine/`  | `engine`     | binary archives + checksums, container image (GHCR) |
 | `sdk/go/`  | `sdk`        | Go module tag `sdk/go/v<version>` |
 
 Each package has its own `VERSION` file and `CHANGELOG.md`. Both are
 maintained automatically by the release workflow. Do not edit them by hand.
+
+Ion Studio (desktop, Studio server, iOS, relay) is archived with its history
+at https://github.com/dsswift/ion-studio and is not developed here.
 
 ## How Work Lands
 
@@ -49,10 +48,11 @@ Format:
 <type>(<scope>): <description>
 ```
 
-- **type**: `feat`, `feat!`, `fix`, `chore`, or `docs`.
+- **type**: `feat`, `fix`, `chore`, or `docs`; a breaking change is
+  `feat(<scope>)!`.
 - **scope**: the package the commit touches (see the table above). A
   commit that touches no package uses a repo-level scope: `repo` (root
-  files, `packages/`, `scripts/`), `docs`, `ci` (`.github/`), or `deps`.
+  files, `scripts/`, `samples/`), `docs`, `ci` (`.github/`), or `deps`.
 - **description**: lowercase, imperative mood, no trailing period, 65
   characters or fewer.
 
@@ -77,10 +77,10 @@ Good:
 
 ```
 feat(engine): add JSON-RPC retry policy
-fix(desktop): prevent crash on empty session list
+fix(sdk): decode an empty dispatch result
 chore(repo): bump go version in the makefile
 docs(engine): document the new retry policy
-feat(ios)!: replace credential keychain layout
+feat(engine)!: replace the credential store layout
 ```
 
 Bad:
@@ -102,10 +102,11 @@ push. For each package a `feat`, `fix`, or `feat!` commit touched, it:
 - Pushes a `chore: release versions [skip ci]` commit back to `main`.
 - Creates a GitHub release tagged `<component>-v<version>`.
 
-Each release that has artifacts is held as a draft while the build
-workflow uploads them. It goes public once its artifacts are attached and
-its tests in the Quality workflow pass. A release whose tests fail stays a
-draft and never reaches users.
+The engine release is held as a draft while the build workflow uploads its
+binaries and pushes its image. It goes public once its artifacts are attached
+and its tests in the Quality workflow pass. A release whose tests fail stays a
+draft and never reaches users. The Go SDK has nothing to build and publishes
+at once.
 
 Do not edit any `VERSION`, `CHANGELOG.md`, or `release-please-manifest.json`
 by hand. They are owned by the release pipeline. If a release came out
@@ -119,10 +120,8 @@ Before landing, run the relevant target from the root `Makefile`:
 | Component | Quick check                       |
 |-----------|-----------------------------------|
 | engine    | `make engine` (builds and installs) |
-| desktop   | `make desktop`                     |
-| relay     | `make relay` (builds container)    |
-| ios       | `make ios-pr-check` (device build plus targeted contract/parity tests) |
-| All Go tests | `make test`                     |
+| SDKs      | `make sdk-test`                   |
+| All Go tests | `make test`                    |
 
 To see what the release workflow would version, run a dry analysis:
 
@@ -137,7 +136,7 @@ from your local git history, without modifying anything.
 
 Open issues at https://github.com/dsswift/ion/issues. Include:
 
-- Package (`engine`, `desktop`, `server`, `relay`, `ios`, `sdk`).
+- Package (`engine`, `sdk`).
 - Version (`<component>/VERSION` content or release tag).
 - Steps to reproduce.
 - Expected vs actual behavior.
@@ -146,7 +145,7 @@ Open issues at https://github.com/dsswift/ion/issues. Include:
 ## Reference
 
 - `.github/workflows/release.yml` — release detection and tagging.
-- `.github/workflows/build.yml` — artifact build and upload. Dispatch it with `dry_run` and a `ref` to build and verify a branch (signing, the Windows smoke test) without publishing anything.
+- `.github/workflows/build.yml` — artifact build and upload. Dispatch it with `dry_run` and a `ref` to build and verify a branch without publishing anything.
 - `.github/workflows/publish.yml` and `.github/scripts/publish-tested-releases.mjs` — publish each held release once it is built and its tests pass. See `docs/contributing/delivery-pipeline.md`.
 - `release-please-config.json` — component definitions.
 - `release-please-manifest.json` — current version of each component (read-only for contributors).

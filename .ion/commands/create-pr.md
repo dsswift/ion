@@ -60,7 +60,7 @@ Check the whole diff against what the commits say they do. Debug output, stray f
 
 ## Step 3: Linux parity gate
 
-CI runs the engine, desktop, and server suites on `ubuntu-latest`. Development is on macOS, so path semantics, file-watcher timing, locale, and race-detector scheduling can pass locally and fail in CI. This step runs the same commands in Linux containers.
+CI runs the engine suite on `ubuntu-latest`. Development is on macOS, so path semantics, file-watcher timing, locale, and race-detector scheduling can pass locally and fail in CI. This step runs the same commands in a Linux container.
 
 ### 3a. Determine the gates
 
@@ -70,14 +70,9 @@ git diff origin/main...HEAD --name-only
 
 | A changed path under | Gates |
 |---|---|
-| `engine/` | `make test-linux-engine` |
-| `desktop/` | `make test-linux-desktop` |
-| `server/` | `make test-linux-server`, `make test-linux-desktop` |
-| `packages/` | `make test-linux-server`, `make test-linux-desktop` |
+| `engine/` or `sdk/go/` | `make test-linux-engine` |
 
-The server gate runs the shared-package and server suites. The desktop gate builds both renderer bundles, which bundle server and shared code.
-
-With no path in the table, skip to Step 3e.
+With no path in the table, skip to Step 4.
 
 ### 3b. Docker preflight
 
@@ -105,17 +100,6 @@ If a call reports that background execution is unavailable, run that gate in the
 | Every dispatched gate passed | Continue to Step 3e |
 | A gate failed | Fix every failure it surfaced, dispatch the same gate again, and wait for the result |
 | A failure needs a product decision | Stop and put the decision to the operator |
-
-### 3e. iOS gate
-
-Run this when a changed path is under `ios/`, or is `scripts/run-ios-tests.sh`, `Makefile`, or `.github/workflows/quality.yml`.
-
-```bash
-make ios-pr-check
-make ios-test
-```
-
-On a failure, fix it and run both again.
 
 ---
 
@@ -173,7 +157,7 @@ Present the result:
 
 ```
 Issues this PR closes:
-  #397  [desktop] Add a configurable metadata-driven graph view   (matched: Graph View commits)
+  #397  [engine] Add a configurable metadata-driven graph view   (matched: Graph View commits)
   #380  [sdk] Carry child conversation identifier on dispatch     (explicit: Closes #380 in commit body)
 
 Add any I missed, or reply "none" to confirm.
@@ -220,7 +204,7 @@ Open with the problem in plain words, as a user saw it, taken from the issues an
 ```markdown
 {The problem, as a user saw it. One to three sentences.}
 
-{How this fixes it. A few sentences. Name the components when several are touched: engine, server, desktop, ios, relay.}
+{How this fixes it. A few sentences. Name the components when several are touched: engine, sdk.}
 
 Fixes #N
 ```
@@ -257,7 +241,7 @@ gh pr create --base main --title "{title}" --body "{body}"
 ✅ PR #{number} created: {URL}
    {title}
    {N} commits, scopes: {list}
-   Linux parity gate: passed (background) | passed (foreground) | skipped (Docker down, operator chose to proceed) | n/a (no engine, server, desktop, or packages changes)
+   Linux parity gate: passed (background) | passed (foreground) | skipped (Docker down, operator chose to proceed) | n/a (no engine or sdk changes)
 
 Next step: Wait for CI. When it passes, the PR is ready to merge.
 ```

@@ -1,4 +1,0 @@
-{
-  "type": "studio_reauth",
-  "credential": { "kind": "bearer", "token": "opaque-refreshed-token" }
-}

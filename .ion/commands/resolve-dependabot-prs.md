@@ -68,9 +68,7 @@ For each open Dependabot PR `{n}`, collect:
   | Touched path | Ecosystem (from dependabot.yml) | Scope | Code it can break |
   |--------------|----------------------------------|-------|-------------------|
   | `engine/` (`go.mod`/`go.sum` or `Dockerfile`) | gomod / docker | `engine` | engine |
-  | `relay/` (`go.mod`/`go.sum` or `Dockerfile`) | gomod / docker | `relay` | relay |
-  | `desktop/` (`package.json`/`package-lock.json`) | npm (dev-deps / prod-deps) | `desktop` | desktop |
-  | root `package.json` / `package-lock.json` | npm (`all-npm-deps`) | `repo` | `server/` and `packages/`, which install from the root lockfile as npm workspaces |
+  | `engine/extensions/sdk/` (`package.json`/`package-lock.json`) | npm (`all-npm-deps`) | `engine` | the TypeScript SDK test project |
   | `.github/workflows/` | github-actions (`all-actions`) | `ci` | CI |
 
 - **Bump type** — parse the PR title for ecosystem + version change (patch / minor / major) and whether it's a grouped update (titles like "Bump the all-go-deps group" / "Bump the prod-deps group").
@@ -86,8 +84,8 @@ For each open Dependabot PR `{n}`, collect:
 
 Keep it simple. Assign each PR exactly one tier:
 
-- **Low** — lockfile-only / patch bumps / desktop `dev-deps` / `github-actions` / `docker` base-image bumps, with **CI green**.
-- **Medium** — minor bumps to production/runtime deps (engine gomod, relay gomod, desktop `prod-deps`, root npm) with **CI green**, OR any bump that needs a known follow-up correction.
+- **Low** — lockfile-only / patch bumps / `github-actions` / `docker` base-image bumps, with **CI green**.
+- **Medium** — minor bumps to production/runtime deps (engine gomod, the SDK test project's npm) with **CI green**, OR any bump that needs a known follow-up correction.
 - **High / close** — CI failing, conflicts that won't resolve cleanly, a major version bump that slipped through, or a dependency with breaking changes that needs focused, separate work. Recommend **close** (not merge), with a one-line reason.
 
 ---
@@ -96,8 +94,8 @@ Keep it simple. Assign each PR exactly one tier:
 
 Decide the rebase → merge → resume order:
 
-- Merge the **lowest-risk, smallest-surface, CI-green** PRs first (`github-actions`, `docker`, desktop `dev-deps`, patch `gomod`).
-- Group by ecosystem so lockfile churn collides minimally. Two PRs that touch the **same lockfile** (`package-lock.json` at root, `engine/go.sum`, `relay/go.sum`) need a rebase between them, and the plan sequences it.
+- Merge the **lowest-risk, smallest-surface, CI-green** PRs first (`github-actions`, `docker`, patch `gomod`).
+- Group by ecosystem so lockfile churn collides minimally. Two PRs that touch the **same lockfile** (`engine/extensions/sdk/package-lock.json`, `engine/go.sum`, `sdk/go/go.sum`) need a rebase between them, and the plan sequences it.
 - For any **known-issue** PR, schedule its follow-up immediately after its merge: a new branch, the correction commit, a follow-up PR opened and merged, before resuming the Dependabot chain.
 - For **High** PRs, the resolution is **close** (`gh pr close` with the reason), not merge.
 
@@ -152,9 +150,7 @@ The plan's steps ARE the executable resolution sequence, in the order decided in
 The plan must reference the relevant **quality gates** from the root `AGENTS.md` gate table that each merged scope needs to pass before its merge, e.g.:
 
 - engine `gomod` bump → `cd engine && go test -race ./...`, `govulncheck ./...`, `golangci-lint run`
-- relay `gomod` bump → `cd relay && go test -race ./...`
-- desktop `npm` bump → `cd desktop && npm run typecheck`, `npm test`, `npm audit --audit-level=high --omit=dev`
-- root `npm` bump → `make shared-test`, `make server-test`, and `cd desktop && npm run build` (the renderer bundles server and shared code)
+- SDK test project `npm` bump → `make sdk-ts-test`
 - `github-actions` / `docker` → the corresponding gate(s) for the touched surface
 
 The plan is built **per the analysis recommendations** — order, follow-ups, and closes all flow from Steps 3–4. After entering planning mode and authoring the plan, stop. Execution happens only after the user approves the plan.

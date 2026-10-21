@@ -1,6 +1,6 @@
 # Changelog
 
-Notable user-facing and contract-affecting changes to Ion. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning is per-component; the engine, desktop, relay, and iOS app ship independently. Entries here cover whichever component(s) the change touched.
+Notable user-facing and contract-affecting changes to Ion. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning is per-component; the engine and the Go SDK ship independently. Entries here cover whichever component(s) the change touched. Entries that name the desktop, the Studio server, iOS, or the relay predate the split of Ion Studio into its archived repository, [dsswift/ion-studio](https://github.com/dsswift/ion-studio).
 
 ## Unreleased
 
@@ -16,7 +16,7 @@ These changes are shipped as `feat(engine)` rather than `feat!(engine)` per the 
   - **claude-code runs are spawned the same in every mode.** The engine no longer passes `--disallowedTools` or a plan prompt in `--append-system-prompt`; the read-only boundary is the `PreToolUse` hook and the MCP tool server. The hook command is `ion hook-relay`, which refuses the call when the engine cannot be reached.
 - **Dispatched agents are bound by the session's permission rules.** A dispatched child run was given no permission engine, so no rule applied to its tool calls, and a child served by claude-code had no `PreToolUse` hook at all. A child now carries the dispatching session's rules on every backend. A claude-code child gets its own fail-closed hook, and one dispatched in plan mode is read-only, is given the plan-mode instructions, and can write and present its plan through `WritePlan`, `EditPlan`, and `ExitPlanMode`. A harness with a `deny`-mode policy will see its dispatched agents refused calls they previously made. A child whose rail cannot be set up fails the dispatch instead of starting.
 - **Early-stop continuation is now opt-in.** The engine previously shipped with `earlyStopContinue.enabled = true` and a baked Claude-Code-style continuation prompt. It now ships with `enabled = false` and supplies no default text. To restore the old behavior:
-  - **Desktop users:** toggle "Early-stop continuation nudge" on in the General settings tab. The desktop bundles a reference policy implementation in [`desktop/src/main/early-stop-policy.ts`](desktop/src/main/early-stop-policy.ts) that the toggle controls.
+  - **Desktop users:** toggle "Early-stop continuation nudge" on in the General settings tab. The desktop bundled a reference policy implementation (`desktop/src/main/early-stop-policy.ts` in the archived Studio repository) that the toggle controls.
   - **Third-party harnesses:** wire `before_early_stop_decision` (subprocess) or respond to `engine_early_stop_decision_request` (socket) and supply your own `ContinueMessage`.
   - **Operators running the engine bare:** add a minimal extension that registers `before_early_stop_decision`, or accept that early-stop continuation will not fire.
 

@@ -1,5 +1,0 @@
-{
-  "type": "studio_close",
-  "reason": "slow_client",
-  "detail": "send buffer exceeded 8388608 bytes"
-}

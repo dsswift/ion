@@ -6,7 +6,7 @@ Report suspected vulnerabilities privately through
 [GitHub Security Advisories](https://github.com/dsswift/ion/security/advisories/new).
 Do not open a public issue for a security report.
 
-Include what you can: the affected component (engine, desktop, iOS, relay, or an SDK surface), a
+Include what you can: the affected component (the engine or an SDK surface), a
 reproduction path, and the impact you believe it has. Reports are triaged as they arrive, and you
 will get a response in the advisory thread. If a report is accepted, the fix ships in a regular
 release and the advisory is published once the fix is available.
@@ -22,7 +22,8 @@ Ion runs on your machines. There is no hosted service behind it: no account syst
 no collection endpoint. Reports about Ion-operated infrastructure are therefore out of scope,
 because there is none. In scope is everything in this repository: the engine and its wire protocol,
 the credential resolver and identity broker, the permission engine, the sandbox integration, secret
-redaction, the desktop and iOS clients, the relay, and the extension SDK.
+redaction, and the extension SDKs. The archived Ion Studio clients
+(https://github.com/dsswift/ion-studio) are no longer maintained and are out of scope.
 
 ## Security model
 

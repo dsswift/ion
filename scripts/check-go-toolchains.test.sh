@@ -8,12 +8,10 @@ CHECK="$REPO_ROOT/scripts/check-go-toolchains.sh"
 TMP_ROOT="$(mktemp -d -t go-toolchain-check.XXXXXX)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
-mkdir -p "$TMP_ROOT/engine" "$TMP_ROOT/relay"
+mkdir -p "$TMP_ROOT/engine"
 cp "$REPO_ROOT/Makefile" "$TMP_ROOT/Makefile"
 cp "$REPO_ROOT/engine/go.mod" "$TMP_ROOT/engine/go.mod"
 cp "$REPO_ROOT/engine/Dockerfile" "$TMP_ROOT/engine/Dockerfile"
-cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-cp "$REPO_ROOT/relay/Dockerfile" "$TMP_ROOT/relay/Dockerfile"
 
 run_check() {
   ION_TOOLCHAIN_CHECK_ROOT="$TMP_ROOT" bash "$CHECK" >/dev/null 2>&1
@@ -50,17 +48,16 @@ make_stale() {
   rm -f "$file.bak"
 }
 
-cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-make_stale "stale relay module" "$TMP_ROOT/relay/go.mod" \
+make_stale "stale engine module" "$TMP_ROOT/engine/go.mod" \
   "s/^toolchain go${CURRENT_RE}\$/toolchain go${STALE}/"
-expect_failure "stale relay module"
+expect_failure "stale engine module"
 
-cp "$REPO_ROOT/relay/go.mod" "$TMP_ROOT/relay/go.mod"
-make_stale "stale relay Docker builder" "$TMP_ROOT/relay/Dockerfile" \
+cp "$REPO_ROOT/engine/go.mod" "$TMP_ROOT/engine/go.mod"
+make_stale "stale engine Docker builder" "$TMP_ROOT/engine/Dockerfile" \
   "s/golang:${CURRENT_RE}-alpine/golang:${STALE}-alpine/"
-expect_failure "stale relay Docker builder"
+expect_failure "stale engine Docker builder"
 
-cp "$REPO_ROOT/relay/Dockerfile" "$TMP_ROOT/relay/Dockerfile"
+cp "$REPO_ROOT/engine/Dockerfile" "$TMP_ROOT/engine/Dockerfile"
 make_stale "stale Linux parity image" "$TMP_ROOT/Makefile" \
   "s|^GO_VERSION := .*|GO_VERSION := ${STALE}|"
 expect_failure "stale Linux parity image"

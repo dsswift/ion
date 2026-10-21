@@ -26,7 +26,6 @@
 !/.ion/skills/
 !/.ion/engine.json
 !/.ion/worktree.json
-!/.ion/studio.json
 
 # Build output
 node_modules/
@@ -35,15 +34,6 @@ out/
 build/
 release/
 *.tsbuildinfo
-# Stray Vite/electron-vite bundles emitted to the desktop root (hashed name).
-# The normal output goes to out/; this guards against an accidental loose
-# bundle being committed again (see the orphaned index-*.js removed in history).
-desktop/index-*.js
-
-# Browser Studio client build output (spec 18: `npm -w desktop run build:web`,
-# desktop/vite.web.config.ts). Served by server/src/http/static.ts at
-# runtime; never a source file, never committed.
-server/web/
 
 # Go binaries. The bare names are what `go build` drops in the package
 # directory; the .exe forms are the Windows cross-builds. Enforced by
@@ -55,9 +45,6 @@ engine/ion
 engine/ion.exe
 engine/ion-engine-host
 engine/ion-engine-host.exe
-relay/relay
-relay/relay.exe
-desktop/resources/engine/
 
 # Gap analysis working files
 engine/.gap-analysis/
@@ -101,14 +88,7 @@ logs/
 
 # Specs (untracked)
 specs/
-desktop/specs/
 engine/specs
-ios/specs
-relay/specs
-
-# iOS build artifacts
-ios/DerivedData/
-ios/build/
 
 # Analysis
 .analysis/
@@ -138,12 +118,6 @@ docs/retros/
 # post-commit hook keeps it current from then on.
 graphify-out/
 
-# Generated audit output. A point-in-time classification of the host
-# surface, derived entirely from tracked source by scripts/host-surface-audit.mjs.
-# Committing it would put a snapshot that goes stale on the next commit where
-# durable documentation belongs.
-audit-out/
-
 # Editor/tool-local settings dropped by AI coding tools (e.g. grok CLI).
 .grok/
 
@@ -156,23 +130,9 @@ audit-out/
 # Conversation pipeline sample: compiled function output.
 samples/conversation-pipeline/function/dist/
 
-# Python bytecode from repo scripts (scripts/ci/*.py)
+# Python bytecode from repo scripts
 __pycache__/
 *.pyc
-.ion-sync-stamp.json
-
-# This repo's workspaces live under packages/. A .NET-style global ignore
-# (`**/[Pp]ackages/*`, for NuGet restore output) otherwise hides every NEW
-# file there: existing ones stay tracked, so the loss is silent until a new
-# module is missing from a commit. Un-ignore the workspace tree explicitly.
-!packages/
-!packages/**
-# ...but not the dependency trees the negation would otherwise expose.
-packages/**/node_modules/
-packages/**/dist/
-
-# A server test run without ION_DATA_DIR logs into the package directory.
-server/server.jsonl*
 
 # Built by go build inside the canary module; the parity suite builds its own copy.
 engine/extensions/go-canary/go-canary

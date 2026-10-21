@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Result receipt for the Linux parity gates (`make test-linux-engine`,
-# `make test-linux-desktop`).
+# Result receipt for the Linux parity gate (`make test-linux-engine`).
 #
 # The gates already cache their *inputs*: prebaked images plus named volumes
 # holding the Go module cache, the Go build cache, and the npm download cache.

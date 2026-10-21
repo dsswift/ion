@@ -47,7 +47,7 @@ If the conversation does not identify a specific gap, stop: "I cannot identify a
 | Class | Means | Examples |
 |---|---|---|
 | **Bug** | Ion does something wrong | An event carries the wrong fields. A hook does not fire when it should. A config field is parsed and not applied. Behavior contradicts the documented contract. |
-| **Enhancement** | Ion lacks a capability | A hook, event variant, config field, protocol command, SDK method, or Studio extension point that does not exist. |
+| **Enhancement** | Ion lacks a capability | A hook, event variant, config field, protocol command, or SDK method that does not exist. |
 
 When the class is unclear, use **enhancement**.
 
@@ -67,10 +67,7 @@ When the class is unclear, use **enhancement**.
 | `permissions` | Permission evaluation, sandbox (`engine/internal/permissions/`, `engine/internal/sandbox/`) |
 | `conversation` | Persistence, branching, compaction (`engine/internal/conversation/`) |
 | `mcp` | MCP client and bridge (`engine/internal/mcp/`) |
-| `transport` | Engine socket and relay transport (`engine/internal/transport/`) |
-| `server` | Ion Studio Server: store, auth doors, orchestration, HTTP (`server/src/`) |
-| `studio-wire` | The Studio wire: actions, channels, scopes (`packages/shared/src/studio-wire/`, `server/src/protocol/`) |
-| `studio-sdk` | Studio extension points (`packages/studio-sdk/`) |
+| `transport` | Engine socket transport (`engine/internal/transport/`) |
 
 Use the subsystem in the title prefix and the body.
 
