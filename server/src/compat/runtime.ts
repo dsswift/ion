@@ -28,6 +28,8 @@ interface EngineHealth {
 
 interface EngineSession {
   hasActiveRun?: boolean
+  /** True for a session the engine minted for an engine host's fire; nobody is in it. */
+  headless?: boolean
 }
 
 export interface EngineRuntime {
@@ -64,7 +66,9 @@ export async function readEngineRuntime(engine: EngineRequester): Promise<Engine
   ])
   if (!health.ok || !health.data) warn('engine health unavailable for the version report', { error: health.error ?? 'no data' })
   if (!sessions.ok || !Array.isArray(sessions.data)) warn('engine session list unavailable for the version report', { error: sessions.error ?? 'no data' })
-  const running = Array.isArray(sessions.data) ? sessions.data.filter((s) => s.hasActiveRun === true).length : null
+  // A headless session is the engine's own work (a schedule or webhook fire),
+  // not a conversation a person is in, so it never counts as one.
+  const running = Array.isArray(sessions.data) ? sessions.data.filter((s) => s.hasActiveRun === true && s.headless !== true).length : null
   return {
     version: health.ok && typeof health.data?.version === 'string' ? health.data.version : null,
     formats: health.ok && Array.isArray(health.data?.compat) ? health.data.compat : [],

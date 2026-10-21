@@ -19,6 +19,14 @@ describe('compat runtime', () => {
     expect(rt).toEqual({ version: '1.2.3', formats: [engineFormat], runningConversations: 1 })
   })
 
+  it('does not count a headless session as a running conversation', async () => {
+    const rt = await readEngineRuntime(engine({
+      health: { ok: true, data: { version: '1.2.3', compat: [engineFormat] } },
+      list_sessions: { ok: true, data: [{ hasActiveRun: true, headless: true }, { hasActiveRun: true }] },
+    }))
+    expect(rt.runningConversations).toBe(1)
+  })
+
   it('reports an unreachable engine as null, never zero', async () => {
     const rejecting: EngineRequester = { request: async () => { throw new Error('socket closed') } }
     expect(await readEngineRuntime(rejecting)).toEqual({ version: null, formats: [], runningConversations: null })
