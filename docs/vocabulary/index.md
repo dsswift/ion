@@ -41,6 +41,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 
 ## Alphabetical index
 
+- [ACP Agent](#term-acp-agent)
 - [Abort Marker](#term-abort-marker)
 - [Account Policy](#term-account-policy)
 - [Active path](#term-active-path)
@@ -289,6 +290,20 @@ The conversation tree entry that records a cancelled run. It names the run, whet
 - **Implementations:**
   - `engine` / `code` / `go`: `EntryAborted` in `engine/internal/conversation/conversation.go`
   - `engine` / `code` / `go`: `func AppendAbortMarker` in `engine/internal/conversation/abort_marker.go`
+
+#### ACP Agent {#term-acp-agent}
+
+The engine served to an Agent Client Protocol client: `ion acp` speaks ACP over its stdio and translates each call into engine socket commands and each engine event into a session update. Every ACP session is an ordinary engine session keyed acp-<id>; the client picks the engine profile and model through ACP config options. Distinct from the ACP backend, where the engine is the client of another agent.
+
+- **ID:** `acp-agent`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `ion acp`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func New` in `engine/internal/acpagent/agent.go`
+  - `engine` / `doc` / `markdown`: `ion acp` in `docs/deployment/acp-agent.md`
 
 #### Backend {#term-backend}
 
@@ -1342,6 +1357,7 @@ The published library that an extension imports to reach the engine. It exposes 
 - Alias: `inbound webhook` → [Webhook](#term-webhook)
 - Alias: `injected turn kind` → [Injection Kind](#term-injection-kind)
 - Alias: `intelligent poll` → [Poll](#term-poll)
+- Alias: `ion acp` → [ACP Agent](#term-acp-agent)
 - Alias: `ion context` → [Extension context](#term-extension-context)
 - Alias: `ion serve` → [Engine server](#term-engine-server)
 - Alias: `lifecycle hook` → [Hook](#term-hook)

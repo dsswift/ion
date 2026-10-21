@@ -1,0 +1,55 @@
+---
+title: ACP Agent
+description: Serve the engine to any Agent Client Protocol client with `ion acp`, and set it up as a T3 Code provider.
+sidebar_position: 5
+---
+
+# ACP Agent
+
+`ion acp` serves a running Ion engine to an [Agent Client Protocol](https://agentclientprotocol.com) client over the process's stdin and stdout. An ACP client (T3 Code, Zed, any editor that spawns ACP agents) runs it as an agent; every session it opens is an ordinary session in the engine daemon, beside every other session and the [engine-scoped extension hosts](../configuration/extension-hosts.md). The engine does not know ACP exists: `ion acp` is a client of the engine socket, the same way `ion prompt` is.
+
+```bash
+ion acp [--profile <name|id>] [--model <id>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--profile` | The [engine profile](../configuration/settings-json.md) every session loads: its extensions run as the session's harness. Omitted, or `none`, loads no extensions. The client can switch it per session. |
+| `--model` | The model sessions start on. Omitted, the engine's `defaultModel` applies, else the first model the engine lists. |
+
+The daemon is started when it is not already running, as `ion prompt` does. Diagnostics go to `~/.ion/engine.jsonl` under `tag=acp`; stdout carries only the protocol.
+
+## What the client sees
+
+| ACP surface | Engine behavior |
+|---|---|
+| `session/new` | `start_session` with the client's `cwd` as the working directory, the profile's extensions, and a new conversation. `mcpServers` in the request are ignored: the engine's own MCP configuration governs. |
+| `session/load` | The same key resumes its conversation; the transcript is replayed as user and agent chunks and completed tool calls. Only sessions `ion acp` opened (keys starting `acp-`) load. |
+| `session/prompt` | `send_prompt`, or `command` when the text starts with a slash that names a command an extension registered. Text blocks are joined; image blocks become attachments; embedded text resources are appended as attached context. The turn ends on the run's idle status: `end_turn`, `max_turn_requests`, or `cancelled`. An engine error ends it as a JSON-RPC error. |
+| `session/cancel` | `abort`. |
+| Modes | `build` (the default) and `plan`, mapped to `set_plan_mode`. A plan-mode change the engine makes itself (the model calling `EnterPlanMode`) reaches the client as `current_mode_update`. |
+| Config options | `profile` (every row of `engineProfiles` plus `none`; changing it restarts the engine session on the same key, so the conversation continues under the new harness) and `model` (category `model`, from `list_models`). |
+| Streaming | Text and thinking deltas, tool calls with their input and result (kind derived from the tool name), harness messages, usage with cumulative cost, extension slash commands as `available_commands_update`. |
+| Permissions | An engine `ask` decision becomes `session/request_permission`; the client's answer becomes `permission_response`. A client that answers by its own permission mode (T3 Code's Auto modes approve automatically) needs no engine-side mode. |
+| Elicitation | `ion.elicit` forms and extension dialogs become `elicitation/create` in form mode when the client advertised form elicitation; otherwise the request is cancelled and the client gets a notice. |
+| Notices | `engine_notify` becomes a `notice` when the client advertised notices, else an agent message chunk. |
+
+Not carried: resources (briefing and report cards), Studio SDK panels and composer actions, worktree and bench surfaces. Those were Ion Studio's; a harness that relied on them emits plain messages instead.
+
+## T3 Code
+
+T3 Code's **Local ACP command** provider runs any ACP agent from an executable and literal arguments. One provider instance is one agent; add one per profile you want in the picker.
+
+1. Install the engine ([Engine Standalone](engine-standalone.md)) and configure it: providers, auth, and a `defaultModel` in `~/.ion/engine.json`.
+2. In T3 Code open **Settings → Providers → Add provider → Local ACP command**.
+3. Executable: `ion` (or its full path). Arguments, one per row: `acp`, `--profile`, `cos2`. Display name: the harness, for example `Chief of Staff`.
+4. Add a second instance with the arguments `acp` alone, named `Ion`, for conversations that load no extensions.
+5. Per project, **Settings → Providers** with the project selected switches an instance on or off for that project only. Keep only the harness instance on in the folder where you want it to be the default; keep only the plain instance on elsewhere.
+
+Models and the profile appear in the composer's model options menu, from the config options the agent reports. T3 Code's Plan and Build toggle drives the engine's plan mode. Permission prompts follow the thread's permission mode.
+
+Scheduled work does not depend on T3 Code: an extension with `scope: engine` runs its schedules in the daemon whether or not a client is connected.
+
+## Other clients
+
+Any ACP v1 client works the same way: spawn `ion acp` and speak JSON-RPC over its stdio. The agent advertises `loadSession`, image prompts, and embedded context; it reads the client's `session.notices` and `elicitation.form` capabilities to decide how to surface notices and forms.

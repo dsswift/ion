@@ -45,6 +45,34 @@
       ]
     },
     {
+      "id": "acp-agent",
+      "term": "ACP Agent",
+      "definition": "The engine served to an Agent Client Protocol client: `ion acp` speaks ACP over its stdio and translates each call into engine socket commands and each engine event into a session update. Every ACP session is an ordinary engine session keyed acp-<id>; the client picks the engine profile and model through ACP config options. Distinct from the ACP backend, where the engine is the client of another agent.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "ion acp"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func New",
+          "path": "engine/internal/acpagent/agent.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "ion acp",
+          "path": "docs/deployment/acp-agent.md"
+        }
+      ]
+    },
+    {
       "id": "active-path",
       "term": "Active path",
       "definition": "The branch of a conversation tree the model context is built from: the entries from the root to the current leaf. The next prompt continues it. Switching branches moves it to another leaf and rebuilds the context from that path alone.",

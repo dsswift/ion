@@ -15,6 +15,7 @@ Ion is engine-first. The engine is a single static binary with zero runtime depe
 | [Engine](engine-standalone.md) | Go agent runtime. Single binary, Unix socket daemon. | Any Linux/macOS host, container, or VM |
 | [Engine containers](engine-container.md) | Container patterns for the engine. | Docker, Kubernetes, sidecar |
 | [Machine identity](machine-identity.md) | A workload identity for an engine nobody signs in to. | Containers and pipelines |
+| [ACP agent](acp-agent.md) | `ion acp`: the engine served to an Agent Client Protocol client such as T3 Code. | Any host running the engine |
 
 ## Architecture at deploy time
 

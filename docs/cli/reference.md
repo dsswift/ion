@@ -281,6 +281,23 @@ Diagnostic output goes to stderr. The process exits when the socket connection c
 
 ---
 
+### `ion acp`
+
+Serve the engine as an Agent Client Protocol agent over stdin and stdout.
+
+```bash
+ion acp [--profile <name|id>] [--model <id>]
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--profile` | No | none | Engine profile whose extensions every session loads |
+| `--model` | No | engine default | Model sessions start on |
+
+An ACP client (T3 Code, Zed) spawns this command as an agent. Every session it opens is an ordinary session in the daemon, which is started when it is not running. Diagnostics go to `engine.jsonl` under `tag=acp`. See [ACP Agent](../deployment/acp-agent.md).
+
+---
+
 ### `ion mcp`
 
 Manage MCP (Model Context Protocol) servers. Subcommands: `add`, `list`,

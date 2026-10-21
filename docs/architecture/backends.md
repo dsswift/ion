@@ -42,7 +42,9 @@ OpenAI" is `codex login`, not an OAuth flow the engine implements: owning the
 vendor's private surface would mean chasing its internal changes forever.
 
 Shared transport lives in `internal/rpcstdio` — a symmetric JSON-RPC 2.0
-endpoint over a stdio pair. `internal/codexrpc` and `internal/acp` are the typed
+endpoint over a stdio pair. The engine is also an ACP *agent*: `ion acp`
+(`internal/acpagent`) serves a daemon to an ACP client such as T3 Code; see
+[ACP Agent](../deployment/acp-agent.md). `internal/codexrpc` and `internal/acp` are the typed
 protocol clients layered on top; the backends translate their notifications into
 engine events.
 
