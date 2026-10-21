@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/dsswift/ion/engine/internal/acp"
+	"github.com/dsswift/ion/engine/internal/acpagent"
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -97,6 +98,11 @@ func Formats() []Format {
 			ID: "acp", Owner: OwnerEngine, Rule: RuleExternal,
 			Version: strconv.Itoa(acp.ProtocolVersion), Constant: "acp.ProtocolVersion",
 			Meaning: "ACP wire version the engine negotiates with agents",
+		},
+		{
+			ID: "acp-agent", Owner: OwnerEngine, Rule: RuleExternal,
+			Version: strconv.Itoa(acpagent.ProtocolVersion), Constant: "acpagent.ProtocolVersion",
+			Meaning: "ACP wire version ion acp serves to clients",
 		},
 		{
 			ID: "subscription-lookup", Owner: OwnerEngine, Rule: RuleExternal,
