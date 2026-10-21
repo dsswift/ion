@@ -36,7 +36,7 @@ func main() {
 
 	// Startup log. The parity suite reads it to confirm the log notification
 	// path works identically from both SDKs.
-	sdk.Log().Info("canary started", map[string]any{"language": "go"})
+	sdk.Log().Info("canary started", map[string]any{"language": "go", "scope": string(sdk.Scope())})
 
 	if err := sdk.Run(); err != nil {
 		// Nothing has a working protocol channel at this point, so stderr is
@@ -69,7 +69,7 @@ func registerTools(sdk *ion.SDK) {
 				}
 			}
 			return ion.ToolResult{
-				Content: "echo:" + args.Text + ":session:" + ctx.SessionKey,
+				Content: "echo:" + args.Text + ":session:" + ctx.SessionKey + ":scope:" + string(sdk.Scope()),
 			}, nil
 		},
 	})

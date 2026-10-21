@@ -46,12 +46,26 @@ export interface SessionPrincipal {
   claims?: Record<string, JSONValue>;
 }
 
+/**
+ * The role of an extension process. An extension whose manifest declares
+ * scope "engine" or "both" runs as session hosts (one per conversation) and
+ * one engine host that belongs to the engine itself. Hooks, tools, and
+ * commands register on session hosts; schedules, webhooks, and resource
+ * producers register on the engine host, whose fires run in headless sessions.
+ */
+export type ExtensionScope = "session" | "engine";
+
+/** Environment variable the engine sets before init, so `ion.scope` is known at module scope. */
+export const SCOPE_ENV = "ION_EXTENSION_SCOPE";
+
 export interface ExtensionConfig {
   extensionDir: string;
   model: string;
   workingDirectory: string;
   mcpConfigPath?: string;
   buildIdentity?: string;
+  /** Role of this process. Absent means a session host. */
+  scope?: ExtensionScope;
 }
 
 export interface ProcessInfo {
@@ -3741,6 +3755,14 @@ export type HookHandler<P> = (
 ) => unknown | Promise<unknown>;
 
 export interface IonSDK {
+  /**
+   * Role of this process: "session" for a host bound to one conversation,
+   * "engine" for the engine-scoped host. Known from `createIon()` onward, so
+   * registrations at module scope can branch on it before the init handshake.
+   */
+  readonly scope: ExtensionScope;
+  /** True when this process is the engine-scoped host. */
+  isEngineScope(): boolean;
   /**
    * Register a hook handler. The `payload` parameter type is inferred from
    * the hook name when you pass a string literal.

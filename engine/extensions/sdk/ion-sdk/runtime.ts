@@ -33,6 +33,7 @@ import {
   type LogLevel as SharedLogLevel,
 } from "./runtime-log";
 import { createToolRegistry } from "./runtime-tools";
+import { SCOPE_ENV } from "./types";
 import type {
   AgentSpec,
   CommandDef,
@@ -51,6 +52,7 @@ import type {
   ElicitResult,
   EngineEvent,
   ExtensionConfig,
+  ExtensionScope,
   HistoryMatch,
   IonContext,
   IonHttpRequestOptions,
@@ -1162,7 +1164,18 @@ async function handleRequest(
   try {
     // -- Init handshake -----------------------------------------------------
     if (method === "init") {
-      initConfig = params || emptyConfig;
+      const config: ExtensionConfig = params || emptyConfig;
+      initConfig = config;
+      const initScope = config.scope ?? "session";
+      if (initScope !== scopeFromEnv()) {
+        // The environment drove registrations before this handshake; the
+        // init payload is the engine's record. Disagreement is an engine bug
+        // worth seeing, never silently reconciled.
+        log.warn("init scope disagrees with the environment scope", {
+          envScope: scopeFromEnv(),
+          initScope,
+        });
+      }
       // Drain any module-scope webhook / schedule registrations into
       // the init payload so the engine sees them in the same response.
       // After this call, subsequent registrations route through the
@@ -1414,7 +1427,16 @@ function startListening(): void {
  * The SDK begins listening for engine requests on the next tick, giving your
  * registration code time to run synchronously first.
  */
+/**
+ * Reads the scope the engine exported at spawn. An engine that predates
+ * scopes exports nothing, which is a session host.
+ */
+export function scopeFromEnv(): ExtensionScope {
+  return process.env[SCOPE_ENV] === "engine" ? "engine" : "session";
+}
+
 export function createIon(): IonSDK {
+  const scope = scopeFromEnv();
   // Guardrail: catch any stray console.* calls (from extension code or
   // transitive node_modules) before they reach raw stdout and corrupt the
   // JSON-RPC frame stream. The redirect routes them through the same
@@ -1459,5 +1481,9 @@ export function createIon(): IonSDK {
     webhooks: webhooksApi,
     schedule: scheduleApi,
     resources: buildResourcesAPI(),
+    scope,
+    isEngineScope() {
+      return scope === "engine";
+    },
   };
 }

@@ -30,7 +30,7 @@ ion.registerTool({
     required: ['text'],
   },
   execute: async (params: any, ctx) => ({
-    content: `echo:${params?.text ?? ''}:session:${ctx.sessionKey}`,
+    content: `echo:${params?.text ?? ''}:session:${ctx.sessionKey}:scope:${ion.scope}`,
   }),
 })
 
@@ -128,4 +128,4 @@ ion.resources.onQuery('canary_note', () => [
 
 // Startup log. The parity suite reads it to confirm the log notification path
 // works identically from both SDKs.
-log.info('canary started', { language: 'typescript' })
+log.info('canary started', { language: 'typescript', scope: ion.scope })

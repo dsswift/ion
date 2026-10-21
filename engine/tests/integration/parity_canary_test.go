@@ -189,6 +189,11 @@ func TestParity_SessionKeyReachesTool(t *testing.T) {
 		if !strings.Contains(result.Content, "session:sk-parity") {
 			t.Errorf("content = %q, want the session key from _ctx", result.Content)
 		}
+		// A host loaded without a scope is a session host; both SDKs must read
+		// the same ION_EXTENSION_SCOPE the engine exported at spawn.
+		if !strings.Contains(result.Content, "scope:session") {
+			t.Errorf("content = %q, want the session scope from the environment", result.Content)
+		}
 		return sessionKeyObservation{EchoedContent: result.Content}
 	})
 }
