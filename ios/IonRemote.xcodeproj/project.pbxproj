@@ -44,6 +44,7 @@
 		A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */; };
 		DAUTHCONTEXT000000002 /* OIDCAuthenticationContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAUTHCONTEXT000000001 /* OIDCAuthenticationContextView.swift */; };
 		MTOIDCVMST0000000002 /* SessionViewModelOidcSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */; };
+		CFBGFOCUS00000000002 /* ComposerFocusAcrossBackgroundTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFBGFOCUS00000000001 /* ComposerFocusAcrossBackgroundTests.swift */; };
 		MTOIDCPDCT0000000002 /* PairedDeviceCodableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */; };
 		MTOIDCIDNT0000000002 /* OIDCAccountIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */; };
 		MTOIDCREGT0000000002 /* OIDCTokenManagerRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */; };
@@ -1067,6 +1068,7 @@
 		A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManager.swift; sourceTree = "<group>"; };
 		DAUTHCONTEXT000000001 /* OIDCAuthenticationContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCAuthenticationContextView.swift; sourceTree = "<group>"; };
 		MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelOidcSwitchTests.swift; sourceTree = "<group>"; };
+		CFBGFOCUS00000000001 /* ComposerFocusAcrossBackgroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerFocusAcrossBackgroundTests.swift; sourceTree = "<group>"; };
 		MTOIDCPDCT0000000001 /* PairedDeviceCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDeviceCodableTests.swift; sourceTree = "<group>"; };
 		MTOIDCIDNT0000000001 /* OIDCAccountIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCAccountIdentityTests.swift; sourceTree = "<group>"; };
 		MTOIDCREGT0000000001 /* OIDCTokenManagerRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerRegistryTests.swift; sourceTree = "<group>"; };
@@ -2720,6 +2722,7 @@
 			children = (
 				5D11948670EE58AC7780EC08 /* SessionViewModelStudioRejectionTests.swift */,
 				MTOIDCVMST0000000001 /* SessionViewModelOidcSwitchTests.swift */,
+				CFBGFOCUS00000000001 /* ComposerFocusAcrossBackgroundTests.swift */,
 				LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */,
 			);
 			path = ViewModels;
@@ -4497,6 +4500,7 @@
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */,
 				MTOIDCVMST0000000002 /* SessionViewModelOidcSwitchTests.swift in Sources */,
+				CFBGFOCUS00000000002 /* ComposerFocusAcrossBackgroundTests.swift in Sources */,
 				MTOIDCPDCT0000000002 /* PairedDeviceCodableTests.swift in Sources */,
 				MTOIDCIDNT0000000002 /* OIDCAccountIdentityTests.swift in Sources */,
 				MTOIDCREGT0000000002 /* OIDCTokenManagerRegistryTests.swift in Sources */,

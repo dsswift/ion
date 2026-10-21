@@ -85,8 +85,9 @@ struct IonRemoteApp: App {
                             }
                             // Re-send the current focus state so the desktop's
                             // deviceFocusMap is fresh after any suspension gap.
-                            // Uses the locally-tracked focusedTabId (may be nil
-                            // if the user hasn't opened a tab yet this session).
+                            // focusedTabId survives backgrounding, so this is
+                            // the conversation still on screen (nil when the
+                            // user is at the list).
                             viewModel.sendReportFocus(tabId: viewModel.focusedTabId)
                         }
                     case .background:
@@ -100,15 +101,15 @@ struct IonRemoteApp: App {
                         // Stop the Environment load summary; the phone only
                         // shows it while in the foreground.
                         viewModel.stopSystemMetricsWatch()
-                        // Stop transport but preserve all state (tabs, messages,
-                        // navigation, typed input) so the user returns to the
-                        // same view when the app foregrounds.
-                        viewModel.suspendTransport()
                         // Tell the desktop this device is no longer focused on
                         // any tab so redirect-level intercepts are not sent to
                         // a backgrounded device. Send before suspending the
                         // transport so the message can be flushed.
-                        viewModel.sendReportFocus(tabId: nil)
+                        viewModel.reportBackgroundFocus()
+                        // Stop transport but preserve all state (tabs, messages,
+                        // navigation, typed input) so the user returns to the
+                        // same view when the app foregrounds.
+                        viewModel.suspendTransport()
                     default:
                         break
                     }

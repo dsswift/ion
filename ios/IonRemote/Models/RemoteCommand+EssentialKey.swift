@@ -63,9 +63,10 @@ extension RemoteCommand {
         // supersedes the one queued before it.
         case .registerPush:
             return "registerPush"
-        case .reportFocus(let tabId, _):
-            // Keyed by tabId (nil = backgrounded). Each focus state is distinct.
-            return "reportFocus:\(tabId ?? "nil")"
+        case .reportFocus:
+            // Bare kind: focus is one current state, so only the newest report
+            // means anything. A queued older one must never land after it.
+            return "reportFocus"
         case .diagnosticLogsResponse:
             // Bare kind — last-write-wins is correct here: a newer export
             // supersedes a queued older one (each response carries all lines

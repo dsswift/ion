@@ -398,10 +398,11 @@ extension SessionViewModel {
     /// and uses it to decide whether this device's active tab is a valid
     /// target for redirect-level intercepts.
     ///
-    /// `tabId: nil` signals that the app is backgrounded (no active tab).
-    /// `interceptEnabled` reads the iOS-local UserDefaults preference,
-    /// defaulting to `true` so new installs participate in intercepts
-    /// without any configuration step.
+    /// `tabId` is the conversation now on screen, `nil` when the user is back
+    /// at the list. It becomes `focusedTabId`, which also decides whose
+    /// composer owns its draft. `interceptEnabled` reads the iOS-local
+    /// UserDefaults preference, defaulting to `true` so new installs
+    /// participate in intercepts without any configuration step.
     func sendReportFocus(tabId: String?) {
         // Leaving a conversation ends this device's ownership of its draft, so
         // the queued write goes out now rather than on a timer. Without this,
@@ -410,14 +411,35 @@ extension SessionViewModel {
         if let leaving = focusedTabId, leaving != tabId {
             flushDraftSend(leaving)
         }
-        let interceptEnabled = UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
-        DiagnosticLog.log("report focus", tag: "session.commands", fields: [
-            "tab_id": tabId?.prefix(8).description ?? "nil",
-            "status": String(interceptEnabled)
-        ])
         Task { @MainActor [weak self] in
             self?.focusedTabId = tabId
         }
+        reportFocusToHost(tabId: tabId)
+    }
+
+    /// Tell the host this device is backgrounded, so it stops routing
+    /// redirect-level intercepts here.
+    ///
+    /// The conversation on screen has not changed, so `focusedTabId` keeps
+    /// it. The foreground re-report sends it again, and its composer goes on
+    /// owning its draft. Clearing it here left the open conversation looking
+    /// unfocused after every resume, and a snapshot then replaced the text
+    /// being typed with the host's older copy.
+    func reportBackgroundFocus() {
+        reportFocusToHost(tabId: nil)
+    }
+
+    private func reportFocusToHost(tabId: String?) {
+        let interceptEnabled = UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
+        DiagnosticLog.log("report focus", tag: "session.commands", fields: [
+            "tab_id": tabId?.prefix(8).description ?? "nil",
+            "status": String(interceptEnabled),
+            "reason": focusedTabId?.prefix(8).description ?? "nil"
+        ])
+        // A report queued while the transport was down is older than this one.
+        // The reconnect flush runs after the resume re-report, so leaving it
+        // queued would overwrite the fresh focus with the stale one.
+        removeEssential(key: "reportFocus")
         send(.reportFocus(tabId: tabId, interceptEnabled: interceptEnabled), intent: .automaticEssential)
     }
 
