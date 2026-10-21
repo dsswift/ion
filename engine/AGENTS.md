@@ -81,7 +81,7 @@ Reference: [`docs/hooks/reference.md`](../docs/hooks/reference.md). Never keep a
 
 ## Async delivery
 
-Schedules and webhooks are not hooks; they arrive through `engine/fire_async`. References: [`docs/extensions/scheduling.md`](../docs/extensions/scheduling.md), [`docs/extensions/webhooks.md`](../docs/extensions/webhooks.md). Background bash completion and async `Agent` dispatch: [ADR-023](../docs/architecture/adr/023-root-session-park-and-wake.md), [ADR-026](../docs/architecture/adr/026-async-agent-dispatch.md), [`docs/tools/task-tools.md`](../docs/tools/task-tools.md).
+Schedules and webhooks are not hooks; they arrive through `engine/fire_async`. A session host's fire runs in its conversation; an engine host's (manifest `scope: engine|both`, `extensionHosts` in `engine.json`) runs in a headless session the resolver mints per fire (`internal/session/engine_hosts.go`, `headless_session.go`). References: [`docs/extensions/scheduling.md`](../docs/extensions/scheduling.md), [`docs/extensions/webhooks.md`](../docs/extensions/webhooks.md). Background bash completion and async `Agent` dispatch: [ADR-023](../docs/architecture/adr/023-root-session-park-and-wake.md), [ADR-026](../docs/architecture/adr/026-async-agent-dispatch.md), [`docs/tools/task-tools.md`](../docs/tools/task-tools.md).
 
 ## Engine-specific logging rules
 
