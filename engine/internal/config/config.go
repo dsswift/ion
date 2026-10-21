@@ -62,6 +62,15 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// resetting any invalid value to the default rule with an ERROR log.
 	validateProviderBackends(merged)
 
+	// An unusable extensionHosts block is dropped with an ERROR so the engine
+	// still serves conversations; engine hosts stay off until it is fixed.
+	if err := merged.ExtensionHosts.Validate(); err != nil {
+		utils.LogWithFields(utils.LevelError, "config", "extensionhosts block rejected; engine hosts disabled", map[string]any{"error": err.Error()})
+		merged.ExtensionHosts = nil
+	} else if merged.ExtensionHosts != nil {
+		utils.LogWithFields(utils.LevelInfo, "config", "extensionhosts block accepted", map[string]any{"count": len(merged.ExtensionHosts.Extensions), "working_directory": merged.ExtensionHosts.Session.WorkingDirectory, "run_as": merged.ExtensionHosts.RunAs != nil})
+	}
+
 	// Apply log level from config
 	if merged.LogLevel != "" {
 		utils.SetLevelFromString(merged.LogLevel)

@@ -24,7 +24,9 @@ type SessionPrincipal struct {
 	// other issuer tag a server assigns. Opaque to the engine.
 	Provider string `json:"provider"`
 	// Kind is "operator" (a verified human/service identity from an
-	// identity provider) or "local" (the local-machine fallback principal).
+	// identity provider), "local" (the local-machine fallback principal), or
+	// "workload" (the engine's own machine identity, acting on nobody's
+	// behalf: the run-as principal of a headless session).
 	Kind string `json:"kind"`
 	// Username is the principal's short account name, when known.
 	Username string `json:"username,omitempty"`

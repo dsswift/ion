@@ -35,6 +35,7 @@ export interface BackgroundTaskState {
 export interface SessionPrincipal {
   subject: string
   provider: string
+  /** "operator", "local", or "workload" (a headless session's run-as machine identity). */
   kind: string
   username?: string
   displayName?: string

@@ -490,6 +490,10 @@ type EngineRuntimeConfig struct {
 	// omit the block; the scheduler is OFF by default and auto-starts
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
+	// ExtensionHosts lists the engine-scoped extension hosts and the headless
+	// session template their fires run in. Pointer so engine.json can omit
+	// the block; no block means no engine hosts. See types.ExtensionHostsConfig.
+	ExtensionHosts *ExtensionHostsConfig `json:"extensionHosts,omitempty"`
 	// BackgroundTasks configures delivery of background bash command
 	// completions (Bash run_in_background + notify_on_complete). Pointer so
 	// engine.json can omit the block and inherit the compiled defaults. See

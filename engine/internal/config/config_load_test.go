@@ -601,3 +601,34 @@ func TestReadJSONFile_InvalidJSON(t *testing.T) {
 // ---------------------------------------------------------------------------
 // contains helper
 // ---------------------------------------------------------------------------
+
+func TestLoadConfig_ExtensionHostsRejectedBlockIsDropped(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	projectDir := t.TempDir()
+	ionDir := filepath.Join(projectDir, ".ion")
+	if err := os.MkdirAll(ionDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No working directory: the block cannot mint a session, so it is dropped.
+	bad := map[string]any{"extensionHosts": map[string]any{"extensions": []string{"/ext/a"}}}
+	data, _ := json.Marshal(bad)
+	if err := os.WriteFile(filepath.Join(ionDir, "engine.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := LoadConfig(projectDir); cfg.ExtensionHosts != nil {
+		t.Fatalf("invalid extensionHosts kept: %+v", cfg.ExtensionHosts)
+	}
+	good := map[string]any{"extensionHosts": map[string]any{
+		"extensions": []string{"/ext/a"},
+		"runAs":      map[string]any{"mode": "principal", "principal": map[string]any{"subject": "local:a", "provider": "os", "kind": "local"}},
+		"session":    map[string]any{"workingDirectory": "/work", "idleReleaseMs": 5000},
+	}}
+	data, _ = json.Marshal(good)
+	if err := os.WriteFile(filepath.Join(ionDir, "engine.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := LoadConfig(projectDir)
+	if cfg.ExtensionHosts == nil || cfg.ExtensionHosts.Session.WorkingDirectory != "/work" || cfg.ExtensionHosts.RunAs.Principal.Subject != "local:a" {
+		t.Fatalf("valid extensionHosts not loaded: %+v", cfg.ExtensionHosts)
+	}
+}
