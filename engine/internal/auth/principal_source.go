@@ -51,9 +51,9 @@ func (s CredentialScope) normalized() CredentialScope {
 
 // PrincipalCredentialSource is the single registrable interface serving both
 // credential axes (R-26). Implementations are consulted in registration
-// order, sequentially and never raced -- matching
-// server/src/git/identity/resolver.ts:27-43, which this seam generalizes to
-// the engine side of the process boundary.
+// order, sequentially and never raced, the same discipline a server fronting
+// the engine applies to its own credential sources on its side of the
+// process boundary.
 type PrincipalCredentialSource interface {
 	Name() string
 	// Resolve returns an authenticator for the scope, or (nil, nil) when this
@@ -71,8 +71,7 @@ var (
 
 // RegisterPrincipalSource adds a source, or replaces one already registered
 // under the same Name() in place -- idempotent by name, preserving precedence
-// position, matching the same discipline server/src/git/identity/resolver.ts
-// applies on its side of the boundary.
+// position.
 func RegisterPrincipalSource(s PrincipalCredentialSource) {
 	principalSourceMu.Lock()
 	defer principalSourceMu.Unlock()

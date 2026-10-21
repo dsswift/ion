@@ -18,8 +18,8 @@ const (
 // Deterministic so the address needs no coordination, no file and no registry
 // state: the same identifier always yields the same port, and the desktop
 // computes it independently rather than being told. Kept platform-neutral so
-// its vectors are testable on every OS, and mirrored by userScopedPort() in
-// desktop/src/main/engine-address.ts.
+// its vectors are testable on every OS; a client that must dial the engine
+// derives the same port from the same identity by the same rule.
 func derivePort(id string) int {
 	sum := sha256.Sum256([]byte(id))
 	return portRangeStart + int(binary.BigEndian.Uint32(sum[:4])%portRangeSize)

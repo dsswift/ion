@@ -28,10 +28,9 @@ import (
 
 // updateFixture gates rewriting testdata/dispatch_architecture_events.json.
 //
-// The fixture is tracked and transcribed by two downstream consumers
-// (desktop/src/main/__tests__/fixtures/dispatch-architecture.fixture.ts and
-// ios/IonRemoteTests/DispatchArchitectureE2ETests.swift), which copy its values
-// verbatim so all three layers assert the same reality. It is therefore a
+// The fixture is tracked and transcribed by downstream client test suites,
+// which copy its values verbatim so every layer asserts the same reality. It
+// is therefore a
 // cross-language contract, not scratch output: an unannounced rewrite silently
 // desynchronises those consumers from the engine.
 //
@@ -783,9 +782,7 @@ func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 	if string(data) != normalizedWant {
 		t.Errorf("dispatch event fixture has drifted from %s\n"+
 			"Run: cd engine && go test -tags integration ./tests/integration/ -run TestDispatchArchitecture -update\n"+
-			"Then review the diff and re-transcribe the desktop and iOS fixtures:\n"+
-			"  desktop/src/main/__tests__/fixtures/dispatch-architecture.fixture.ts\n"+
-			"  ios/IonRemoteTests/DispatchArchitectureE2ETests.swift",
+			"Then review the diff and re-transcribe every client fixture that copies it.",
 			path)
 		t.Logf("got:\n%s", data)
 	}

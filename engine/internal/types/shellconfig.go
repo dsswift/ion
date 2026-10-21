@@ -139,7 +139,8 @@ func ShellConfigFrom(ctx context.Context) *ShellConfig {
 }
 
 // hydrationTimeout is the bounded deadline for the login-shell PATH discovery
-// command. Matches the 3 s timeout used in desktop/src/main/cli-env.ts.
+// command: three seconds, long enough for a slow login shell and short enough
+// that a hung one never stalls a session start.
 const hydrationTimeout = 3 * time.Second
 
 // HydrationLogLevel classifies a PATH hydration diagnostic without coupling
@@ -198,8 +199,7 @@ func (s *ShellConfig) buildHydrationProbes() []hydrationProbe {
 
 // mergePathEntries builds a merged, order-preserving, deduplicated PATH string.
 // Current process entries come first (they are trusted and already working),
-// then any discovered entries not already in the set are appended. This mirrors
-// the appendPathEntries shape in desktop/src/main/cli-env.ts:5-13.
+// then any discovered entries not already in the set are appended.
 func mergePathEntries(current, discovered string) string {
 	ordered := make([]string, 0, 32)
 	seen := make(map[string]struct{})

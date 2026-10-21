@@ -13,9 +13,9 @@ package utils
 // The attribute set follows the OpenTelemetry resource semantic conventions.
 // Application Insights derives RoleName (cloud_RoleName) from
 // service.namespace and service.name, and RoleInstance from
-// service.instance.id; Tempo and Loki read service.name. The TypeScript
-// exporter (packages/shared/src/log-egress-resource.ts) derives the same set
-// by the same rule. See docs/observability/log-schema.md § Correlation model.
+// service.instance.id; Tempo and Loki read service.name. Any other exporter
+// of Ion logs derives the same set by the same rule. See
+// docs/observability/log-schema.md § Correlation model.
 
 import (
 	"sort"

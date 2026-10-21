@@ -71,9 +71,9 @@ func parityInputs() ([]parityCase, []parityCase) {
 }
 
 // TestFrameParityFixture asserts the Go decoder against the shared fixture, and
-// regenerates it under -update. The desktop decoder asserts against the same
-// file (desktop/src/main/__tests__/telemetry-frame-parity.test.ts), so a change
-// to either implementation that is not mirrored in the other fails one of them.
+// regenerates it under -update. Any other decoder of the frame format asserts
+// against the same file, so a change to one implementation that is not
+// mirrored in the other fails one of them.
 func TestFrameParityFixture(t *testing.T) {
 	expand, reject := parityInputs()
 

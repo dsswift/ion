@@ -11,9 +11,8 @@ package utils
 // Nothing is dropped.
 //
 // The typing convention (native scalar; whole-valued floats promoted to
-// intValue) is shared byte-for-byte with the desktop exporter
-// (packages/shared/src/log-egress.ts). The TypeScript mirror test asserts the same
-// canonical record produces the same attribute keys/types.
+// intValue) is the one every Ion log exporter follows, so the same canonical
+// record produces the same attribute keys/types everywhere.
 
 import (
 	"encoding/json"
@@ -305,10 +304,9 @@ func TestEgressOtel_ErrorBodyInMessage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry-event OTLP fidelity (engine↔desktop parity; dashboard strip fix)
+// Telemetry-event OTLP fidelity (dashboard strip fix)
 //
-// These mirror desktop/src/main/__tests__/log-egress-otel.test.ts
-// "telemetry event OTLP fidelity". A telemetry event shipped via the engine
+// A telemetry event shipped via the engine
 // egress tailer must map to the file-tail attribute set (kind/service/payload/
 // context) with the verbatim event JSON as the body — NOT an operational
 // wrapper whose msg holds the escaped telemetry JSON. Reverting the telemetry

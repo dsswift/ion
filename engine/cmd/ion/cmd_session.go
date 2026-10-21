@@ -168,3 +168,11 @@ func cmdHealth() {
 		os.Exit(1)
 	}
 }
+
+// orDash renders an empty table cell as "-" so columns stay readable.
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}

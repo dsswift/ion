@@ -66,9 +66,8 @@ const defaultEgressBufferMaxRecords = 50_000
 
 // egressRecord is the structured payload shipped to downstream egress targets.
 // It mirrors the canonical log schema (docs/observability/log-schema.md) so
-// the egress stream is parseable by the same tooling as the local JSONL file,
-// and mirrors the TypeScript EgressRecord (packages/shared/src/log-egress.ts) so
-// engine and desktop egress are byte-shape identical for the same record.
+// the egress stream is parseable by the same tooling as the local JSONL file;
+// any other Ion log exporter ships the same record shape.
 //
 // Correlation-ID placement follows the operational log schema exactly:
 //   - session_id / conversation_id / trace_id are top-level (schema top-level).
@@ -106,8 +105,7 @@ type egressRecord struct {
 	// of stuffing the raw JSON into Msg — which the remote ion_otlp_unwrap
 	// pipeline cannot recognize as telemetry. All omitempty so operational
 	// records serialize unchanged and the fields survive the spool JSON
-	// round-trip. Mirrors the TypeScript EgressRecord index-signature carrying the
-	// parsed telemetry event (packages/shared/src/log-egress-otel.ts).
+	// round-trip.
 	Name      string         `json:"name,omitempty"`
 	Payload   map[string]any `json:"payload,omitempty"`
 	Context   map[string]any `json:"context,omitempty"`

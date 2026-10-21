@@ -4,8 +4,7 @@ package utils
 // lines. Split from log_egress.go (which owns the buffer/spool machinery and
 // the HTTP target) to keep each file under the file-size cap. The OTLP wire
 // types, the native-scalar attribute-value convention, and flushEgressToOtel
-// live here; they are shared byte-for-byte with the desktop exporter
-// (packages/shared/src/log-egress.ts).
+// live here; every Ion log exporter follows the same convention.
 
 import (
 	"bytes"
@@ -125,8 +124,7 @@ type otlpLogAttr struct {
 // otlpLogAttrVal is the OTLP AnyValue subset the egress exporter emits. Exactly
 // one field is non-nil per value (pointer fields so a zero scalar — false, 0 —
 // still serializes rather than being dropped by omitempty). The typing
-// convention is native-scalar and is shared byte-for-byte with the desktop
-// exporter (packages/shared/src/log-egress.ts):
+// convention is native-scalar:
 //   - string           -> stringValue
 //   - bool             -> boolValue
 //   - integer          -> intValue (int64 rendered as a decimal string, per the
@@ -278,8 +276,7 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 // resource (egressResourceAttrs) and its trace is the LogRecord's traceId, so
 // none of those is an attribute. The payload and context names mirror the
 // local stack's telemetry pipeline (docs/observability/alloy-config.alloy,
-// `loki.process "ion_telemetry"`) and are byte-identical with the desktop
-// exporter (packages/shared/src/log-egress-otel.ts).
+// `loki.process "ion_telemetry"`).
 // ---------------------------------------------------------------------------
 
 // EventNameAttr is the OTel attribute naming a telemetry event

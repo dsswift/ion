@@ -6,9 +6,8 @@ package workspaces
 // tests load the shared fixture (testdata/worktree-registry.fixture.json, the
 // server writer's current output shape) through the real Registry read path
 // and assert every field the engine consumes decodes to its expected value.
-// The server asserts the same fixture against its live writer
-// (server/src/integration/__tests__/workspace-record-parity.test.ts), so the
-// fixture is the single source of truth and drift on either side goes red.
+// The writer of the record asserts the same fixture against its live output,
+// so the fixture is the single source of truth and drift on either side goes red.
 
 import (
 	"os"

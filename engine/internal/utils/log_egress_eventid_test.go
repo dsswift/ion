@@ -61,7 +61,7 @@ func TestOTLPAttrsIncludeEventID(t *testing.T) {
 // record's own attributes never becomes a second attribute with that key. A
 // line logging the OS account as fields.user used to ship two "user"
 // attributes, and the collector kept the field's value over the signed-in
-// user's. Mirrored in packages/shared log-egress-otel.test.ts.
+// user's.
 func TestOTLPAttrsRecordKeysWinOverFields(t *testing.T) {
 	attrs := otlpAttrsFromRecord(egressRecord{
 		Component: "engine", Tag: "test", User: "user@example.com", SessionID: "s-1",

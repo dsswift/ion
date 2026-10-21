@@ -1,10 +1,10 @@
 FROM golang:1.27.2-alpine AS build
 # Defaults to a parseable-but-obviously-synthetic semver rather than the Go
-# source default ("dev", set in cmd/ion/main.go): `internal/config`'s and
-# `@ion/server`'s `version-check.ts`'s `parseVersion` both require
+# source default ("dev", set in cmd/ion/main.go): `internal/config`'s
+# `parseVersion`, and any consumer that pins an engine minimum, require
 # `major.minor.patch` and REFUSE (not "pass open") an unparseable version --
-# a client fronting this engine over `server.json`'s `engine.minVersion`
-# never reaches ready with the old hardcoded "dev". Real releases (CI's
+# a consumer fronting this engine never reaches ready with the old hardcoded
+# "dev". Real releases (CI's
 # `build-engine-image` job) override this with the actual semver via
 # `--build-arg VERSION=X.Y.Z`; `make docker` and any other unparameterized
 # caller of this Dockerfile now get a parseable placeholder instead of a

@@ -32,7 +32,7 @@ var updateSDKContract = flag.Bool("update", false, "update golden testdata/sdk_c
 //	cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update
 //
 // Consumers: sdk/go/parity_test.go (Go SDK) and
-// packages/shared/src/__tests__/sdk-surface-sync.test.ts (TypeScript SDK).
+// extensions/sdk/__tests__/sdk-surface-sync.test.ts (TypeScript SDK).
 
 // sdkContractManifest is the on-disk JSON shape.
 type sdkContractManifest struct {

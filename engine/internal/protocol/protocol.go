@@ -250,9 +250,8 @@ type ClientCommand struct {
 	// auto-mode runs. When non-empty, the engine forwards this string
 	// verbatim as the tool's description to the model. When empty (or
 	// omitted), the engine falls back to a one-line neutral default.
-	// Per ADR-004, the prose belongs in the harness — the Ion desktop
-	// client is the reference implementation and supplies its prose
-	// from desktop/src/main/prompt-pipeline.ts; any harness supplies
+	// Per ADR-004, the prose belongs in the harness: a client supplies
+	// its prose from its own prompt pipeline, and any harness supplies
 	// its own. Mirrors RunOptions.EnterPlanModeDescription one-for-one.
 	EnterPlanModeDescription string `json:"enterPlanModeDescription,omitempty"`
 

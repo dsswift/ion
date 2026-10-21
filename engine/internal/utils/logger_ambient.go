@@ -126,8 +126,7 @@ func resolvedEgressUser() string {
 }
 
 // egressAuthProviderV holds the flush-time auth-header provider for the
-// egress forwarder. Mirrors the desktop's AuthHeaderProvider seam
-// (packages/shared/src/log-egress.ts): called at every flush so shipped
+// egress forwarder: called at every flush so shipped
 // batches always carry a fresh operator token. Injected from serve startup
 // (a closure over the engine's identity manager minting the configured
 // egressTokenScope) because utils cannot import internal/auth — auth

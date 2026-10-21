@@ -7,10 +7,9 @@
 // into `msg` and ship it as an ordinary log line, discarding every cost, kind,
 // and attribution field the remote dashboards query.
 //
-// So the tailer expands a frame into one record per event before shipping,
-// exactly as the desktop tailer does (desktop/src/main/telemetry-frame.ts).
-// Both decoders are pinned against the same fixture — see
-// testdata/frame_fixture.json and the desktop's telemetry-frame.test.ts.
+// So the tailer expands a frame into one record per event before shipping.
+// Every decoder of the frame format is pinned against the same fixture — see
+// testdata/frame_fixture.json.
 package utils
 
 import (

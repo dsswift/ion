@@ -2,10 +2,10 @@
 // data format, stored schema, and wire protocol the engine reads or writes,
 // with the rule that decides whether two builds can work together over it.
 //
-// The Studio server keeps the matching registry for its own formats in
-// packages/shared/src/compat-registry.ts. Both use the same entry shape and
-// rule names, so a consumer (`ion fleet`) can merge them and judge a pair of
-// hosts without knowing any one format.
+// A consumer that keeps its own formats (a client, a server fronting the
+// engine) publishes them in the same entry shape and rule names, so a tool
+// can merge the two registries and judge a pair of hosts without knowing any
+// one format.
 package compat
 
 import (
@@ -60,10 +60,6 @@ type Format struct {
 	Constant string `json:"-"`
 }
 
-// StatusReportVersion is the shape of `ion studio status --json`
-// (engine/internal/studiostatus), which `ion fleet` reads from other hosts.
-const StatusReportVersion = 1
-
 // Formats returns the engine's registry, in a stable order.
 func Formats() []Format {
 	return []Format{
@@ -91,11 +87,6 @@ func Formats() []Format {
 			ID: "telemetry-frame", Owner: OwnerEngine, Rule: RuleReaderAtLeast,
 			Version: strconv.Itoa(telemetryformat.FrameVersion), Constant: "telemetryformat.FrameVersion",
 			Meaning: "Format of one compact telemetry frame",
-		},
-		{
-			ID: "status-report", Owner: OwnerEngine, Rule: RuleReaderAtLeast,
-			Version: strconv.Itoa(StatusReportVersion), Constant: "compat.StatusReportVersion",
-			Meaning: "Shape of the host status report `ion fleet` reads from each host",
 		},
 		{
 			ID: "mcp-discovery", Owner: OwnerEngine, Rule: RuleExternal,

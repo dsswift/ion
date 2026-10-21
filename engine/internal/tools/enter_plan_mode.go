@@ -12,9 +12,8 @@
 // the harness string verbatim as the tool description if non-empty,
 // falling back to the one-liner here when the harness has no opinion.
 //
-// The Ion desktop client is the reference harness implementation and
-// ships its prose as the ENTER_PLAN_MODE_DESCRIPTION constant in
-// desktop/src/main/prompt-pipeline.ts; it has no special status — any
+// A client or harness ships its own prose for this description; no one
+// implementation has special status — any
 // harness supplies its own (TUIs may prefer minimal framing;
 // domain-specific harnesses may want JSON plans, "design doc" language,
 // etc.).

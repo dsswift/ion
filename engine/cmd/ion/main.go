@@ -80,10 +80,6 @@ func main() {
 		cmdTelemetry(positional, flags)
 	case "debug":
 		cmdDebug(positional, flags)
-	case "studio":
-		cmdStudio(positional, flags)
-	case "fleet":
-		cmdFleet(positional, flags)
 	case "version":
 		printVersion(os.Stdout, flags["json"] == "true")
 	case "help":
@@ -128,9 +124,6 @@ func printUsageTo(w io.Writer) {
 	b.WriteString("    --extension FILE       Load extension (can be repeated)" + "\n")
 	b.WriteString("    --attach               Stream output until idle (keyed sessions)" + "\n")
 	b.WriteString("    --timeout DURATION      Wall-clock deadline (e.g. 60s, 5m, 2h); exit 124 on timeout" + "\n")
-	b.WriteString("  studio <install|status|restart|update|uninstall|pair>" + "\n")
-	b.WriteString("                           Run engine + Studio server as a host service (ion studio help)" + "\n")
-	b.WriteString("  fleet [command]          Manage many Studio hosts from this Mac (ion fleet help)" + "\n")
 	b.WriteString("  attach                   Stream events (NDJSON)" + "\n")
 	b.WriteString("  status [--json]          List sessions" + "\n")
 	b.WriteString("  stop --key               Stop session" + "\n")

@@ -781,9 +781,8 @@ type LoggingConfig struct {
 	// by assigning the sources to the other surface's config).
 	//
 	// Unset (nil) preserves legacy behavior: the engine ships ["engine"]
-	// unless EgressManagedByClient is true (then nothing). The desktop's
-	// counterpart lives in its own settings and defaults to everything —
-	// see packages/shared/src/log-egress.ts.
+	// unless EgressManagedByClient is true (then nothing). A client that
+	// ships logs itself keeps the counterpart in its own settings.
 	EgressShipSources []string `json:"egressShipSources,omitempty"`
 
 	// EgressClientShipSources is the managing client's share of the

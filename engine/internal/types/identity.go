@@ -46,9 +46,8 @@ type SessionPrincipal struct {
 	// doc comment above. Wire and hook consumption only.
 	Claims map[string]any `json:"claims,omitempty"`
 	// MultiTenant is true when the server fronting this session can attribute
-	// sessions to more than one distinct person at once (server/src/config/
-	// current.ts's isSharedTenancy() returning false -- an "isolated" install
-	// where paired devices are NOT folded to one host identity). False (the
+	// sessions to more than one distinct person at once (an "isolated"
+	// install, where paired devices are NOT folded to one host identity). False (the
 	// zero value) covers both "unknown" -- a caller with no server tenancy
 	// concept at all, e.g. a raw CLI-driven engine -- and a confirmed
 	// single-person install (isSharedTenancy() true: a personal desktop, or a

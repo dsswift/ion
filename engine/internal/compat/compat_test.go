@@ -26,10 +26,6 @@ var notFormats = map[string]string{
 	"mcp.clientImplementationVersion": "self-identification",
 	// The Go relay client's copies of the Studio server's formats. They are
 	// the server's versions, not the engine's, and
-	// studioclient/vectors_test.go pins each to the server's value.
-	"studioclient.E2EKeyDerivationVersion": "copy of a server format, pinned by vectors_test.go",
-	"studioclient.RelayEnvelopeVersion":    "copy of a server format, pinned by vectors_test.go",
-	"studioclient.studioProtocolVersion":   "copy of a server format, pinned by vectors_test.go",
 }
 
 var versionConst = regexp.MustCompile(`(?i)version$`)
