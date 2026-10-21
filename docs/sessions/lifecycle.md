@@ -118,6 +118,8 @@ Before either release the engine fires `session_before_release` with the reason 
 
 The conversation is durable. A client that prompts a released key gets `session_not_found` and starts the session again; the conversation and its dispatch history rehydrate from disk.
 
+A [headless session](../vocabulary/index.md#headless-session), minted by the engine for an engine host's schedule or webhook fire, follows the same quiescence rules with two differences: its window is `extensionHosts.session.idleReleaseMs` (default one minute) instead of the workspace value, and `session_before_release` is not asked, because no harness owns it.
+
 ## Plan Mode
 
 ### Plan ID lifetime

@@ -66,6 +66,19 @@ declares a `webhooks` block:
 Non-loopback bind interfaces log a loud `WARN` so accidental network
 exposure is visible in the engine log.
 
+## Where a fire runs
+
+A route registered by a session host fires into that host's conversation. A
+route that should answer whether or not a conversation is open belongs on an
+engine host: declare `"scope": "engine"` or `"both"` in
+[`extension.json`](extension-json.md#scope-optional-session--engine--both) and
+list the extension under [`extensionHosts`](../configuration/extension-hosts.md).
+Each request then runs in a headless session the engine mints for it, under the
+run-as principal, exactly as a scheduled fire does; see
+[Scheduling: where a fire runs](scheduling.md#where-a-fire-runs-session-hosts-and-engine-hosts).
+The session half of a `both` extension may not register routes; the engine
+refuses them with `scope_mismatch`.
+
 ## Auth strategies
 
 Every webhook route declares an authentication strategy. All comparison

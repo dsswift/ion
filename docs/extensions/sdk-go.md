@@ -519,6 +519,20 @@ type ModelRef struct {
 
 `Config` is an `ion.ExtensionConfig` value. It always carries the init-handshake defaults, with per-invocation `_ctx.config` values replacing it when the engine supplies them.
 
+`Config.Scope` is the role of this process: `ion.ScopeSession` for a host bound to one conversation, `ion.ScopeEngine` for the engine-scoped host. The same value is known from construction as `sdk.Scope()` (read from `ION_EXTENSION_SCOPE`, which the engine exports before init), so an extension declaring `"scope": "both"` branches its registrations before `sdk.Run()`:
+
+```go
+sdk := ion.New(ion.WithName("chief-of-staff"))
+if sdk.IsEngineScope() {
+	registerSchedules(sdk)
+} else {
+	registerHooks(sdk)
+	registerTools(sdk)
+}
+```
+
+See [`extension.json` scope](extension-json.md#scope-optional-session--engine--both).
+
 ## Graceful degradation
 
 There is no version negotiation, by design: adding one would make every engine and every extension carry a compatibility matrix. The contract is additive instead — new methods appear, existing ones never change shape — and a client discovers what an engine supports by calling and handling the refusal.

@@ -77,6 +77,8 @@ Extensions can declare build/load configuration in an `extension.json` file next
 
 See [`extension.json` Reference](../extensions/extension-json.md) for the schema, when you need it, and worked examples.
 
+An extension whose schedules and webhooks must run with no conversation open is listed under [`extensionHosts`](extension-hosts.md), which runs it as an engine-scoped host and gives each fire a headless session.
+
 ## Quick example
 
 User config (`~/.ion/engine.json`):

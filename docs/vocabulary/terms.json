@@ -1674,6 +1674,35 @@
       "notes": "Published wire contract. See ADR-008 for prefix ownership."
     },
     {
+      "id": "engine-extension-host",
+      "term": "Engine host",
+      "definition": "An extension process owned by the engine rather than by a conversation. Spawned at boot from the extensionHosts block for an extension whose manifest scope is engine or both, stopped at shutdown. It carries the extension's schedules, webhooks, and resource producers; its fires run in headless sessions. Tools, commands, and session hooks belong to the extension's session hosts.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "engine-scoped extension host",
+        "engine-scoped host"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (m *Manager) StartEngineHosts",
+          "path": "engine/internal/session/engine_hosts.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "extensionHosts",
+          "path": "docs/configuration/extension-hosts.md"
+        }
+      ]
+    },
+    {
       "id": "engine-host-launcher",
       "term": "Engine Host Launcher",
       "definition": "The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal. Has no pod counterpart: a containerized engine's stdout/stderr go to the container runtime's own log capture, not to redirected files a launcher would need to create.",
@@ -2649,6 +2678,34 @@
           "language": "markdown",
           "symbol": "Harness",
           "path": "docs/getting-started/concepts.md"
+        }
+      ]
+    },
+    {
+      "id": "headless-session",
+      "term": "Headless session",
+      "definition": "A session the engine mints for an engine host's schedule or webhook fire. A real session with its own conversation, the session-scoped extensions loaded, and the run-as principal stamped, keyed with the headless: prefix and reported by list_sessions with headless true. No client subscribes to it; idle release stops it after the headless window without asking session_before_release.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "headless run"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (m *Manager) mintHeadlessSession",
+          "path": "engine/internal/session/headless_session.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "What a fire looks like",
+          "path": "docs/configuration/extension-hosts.md"
         }
       ]
     },
@@ -4744,6 +4801,34 @@
         }
       ],
       "notes": "The engine stores nothing. The producing extension persists its own items."
+    },
+    {
+      "id": "run-as-principal",
+      "term": "Run-as principal",
+      "definition": "The session principal every headless session acts as, resolved once at boot from extensionHosts.runAs: a literal principal, or the engine's own verified workload identity with kind workload. A headless session never borrows a connected person's principal. Unset means the sessions are unattributed.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "run-as identity"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func resolveRunAsPrincipal",
+          "path": "engine/internal/session/run_as_principal.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "`runAs` (optional, object)",
+          "path": "docs/configuration/extension-hosts.md"
+        }
+      ]
     },
     {
       "id": "schedule",

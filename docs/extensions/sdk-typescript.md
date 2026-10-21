@@ -806,8 +806,11 @@ interface ExtensionConfig {
   extensionDir: string
   workingDirectory: string
   mcpConfigPath?: string
+  scope?: ExtensionScope // "session" | "engine"; absent means session
 }
 ```
+
+`ion.scope` carries the same value from `createIon()` onward (read from `ION_EXTENSION_SCOPE`, which the engine exports before init), and `ion.isEngineScope()` is its shorthand, so an extension declaring `"scope": "both"` branches its module-scope registrations. See [`extension.json` scope](extension-json.md#scope-optional-session--engine--both).
 
 ## Workspace Context
 

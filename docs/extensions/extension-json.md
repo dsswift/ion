@@ -18,6 +18,7 @@ sidebar_position: 6
 | Extension that wants a non-default display name in logs | Optional |
 | Extension that wants cost telemetry attributed by version in Grafana dashboards | Optional -- add `version` |
 | Pin a minimum engine version | Optional (reserved; not yet enforced) |
+| Extension whose schedules or webhooks must run with no conversation open | **Yes**, declare `scope` (`engine` or `both`). |
 
 ## File location
 
@@ -40,7 +41,8 @@ my-extension/
   "name": "jarvis",
   "version": "1.2.0",
   "external": ["keytar"],
-  "engineVersion": ">=0.5.0"
+  "engineVersion": ">=0.5.0",
+  "scope": "both"
 }
 ```
 
@@ -88,6 +90,39 @@ The engine sets `NODE_PATH=<extDir>/node_modules` on the extension subprocess an
 #### `engineVersion` (optional, string)
 
 Reserved for future use. Will support a semver range (e.g. `">=0.5.0"`) that the engine compares against its own version on load. Currently parsed but not enforced.
+
+#### `scope` (optional, `"session"` | `"engine"` | `"both"`)
+
+Where the extension's process runs. The default, `session`, is one host per conversation: the engine spawns the extension when a session starts and stops it with the session, and every schedule or webhook it registers fires into that conversation.
+
+`engine` is one host for the engine process, owned by no conversation. The engine spawns it at boot from the [`extensionHosts`](../configuration/extension-hosts.md) block and stops it at shutdown. Its schedules and webhooks fire into a [headless session](../vocabulary/index.md#headless-session) the engine mints per fire, under the configured run-as principal. An engine-only extension never loads into a conversation.
+
+`both` is one engine host plus one host per conversation. Each half registers what belongs to it, and the engine refuses the rest with `scope_mismatch`:
+
+| Registration | Session host of a `session` extension | Session host of a `both` extension | Engine host |
+|---|---|---|---|
+| hooks, tools, commands | accepted | accepted | dropped at init (logged) |
+| schedules, webhooks | accepted | refused: `scope_mismatch` | accepted |
+| resource producers | accepted | accepted | accepted |
+
+An engine host keeps only the hooks the engine can fire on it: `identity_changed`, the schedule and webhook lifecycle hooks, `schedule_missed`, `dispatch_lost`, and the respawn hooks.
+
+The process learns its half before the init handshake: the engine exports `ION_EXTENSION_SCOPE` (`session` or `engine`) at spawn and repeats it as `scope` in the init config. The Go SDK reads it as `sdk.Scope()`, the TypeScript SDK as `ion.scope`, so module-scope registrations can branch:
+
+```ts
+const ion = createIon()
+if (ion.isEngineScope()) {
+  ion.schedule.daily({ id: 'briefing', time: '07:00', handler: writeBriefing })
+} else {
+  ion.registerTool(dashboardTool)
+}
+```
+
+```json
+{ "name": "chief-of-staff", "scope": "both" }
+```
+
+**Old engines:** engines that pre-date this field reject a manifest carrying `scope` (`DisallowUnknownFields`). Add it once every engine that loads the extension has engine-scoped hosts.
 
 ## Worked examples
 

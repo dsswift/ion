@@ -110,6 +110,42 @@ extension registered a `schedule_missed` handler, which receives the decision
 instead. The engine's own transport forwarders do not count as a registered
 handler. `catchUp` applies only to daily and weekly jobs.
 
+## Where a fire runs: session hosts and engine hosts
+
+A job registered by a session host fires into the conversation the host is
+bound to: the handler's `ctx` is that session's, and the session stays
+resident while the job exists (it is never idle-released). That is right for
+a job that belongs to one conversation, and wrong for one that should run
+whether or not anyone has a conversation open: a daily briefing, an inbox
+triage, a repository sync.
+
+For those, declare `"scope": "engine"` or `"both"` in
+[`extension.json`](extension-json.md#scope-optional-session--engine--both) and
+list the extension under [`extensionHosts`](../configuration/extension-hosts.md).
+The engine then spawns one engine host at boot, owned by no conversation, and
+every job it registers fires into a **headless session** the engine mints for
+that fire:
+
+- a real session with its own conversation on disk, the session-scoped
+  extensions loaded, hooks and tools working, and a trace of its own;
+- attributed to the configured run-as principal (a named person's subject, or
+  the engine's own workload identity), so partitioning, tool policy, telemetry
+  attribution, and git author all apply;
+- subscribed to by no client, and released by [idle release](../sessions/lifecycle.md#idle-release)
+  once the fire's work (including any detached dispatch) is done, after the
+  short `extensionHosts.session.idleReleaseMs` window.
+
+Inside the handler, `ctx` is the headless session's: `ctx.sessionKey` starts
+with `headless:`, and `dispatchAgent`, `sendPrompt`, `emit`, and the rest work
+as they do in any session. A notification raised after the fire context is
+gone (an `onComplete` callback, a deferred `schedule_missed` batch) reaches
+every connected session; a resource published then lands on the engine host's
+own producer, which every client's workspace view can query.
+
+The session half of a `both` extension may not register schedules or webhooks;
+the engine refuses them with `scope_mismatch`. Register them only when
+`ion.isEngineScope()` is true.
+
 ## Job shapes
 
 ### Daily

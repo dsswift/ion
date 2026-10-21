@@ -788,6 +788,10 @@ Context window compaction controls how the engine manages conversation length. T
 }
 ```
 
+## extensionHosts
+
+Runs the listed extensions as engine-scoped hosts, alive from boot to shutdown, whose schedules and webhooks fire into headless sessions under a configured run-as principal. Full reference: [`extensionHosts`](extension-hosts.md).
+
 ## security
 
 | Field | Type | Default | Description |

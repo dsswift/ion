@@ -103,6 +103,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Engine Host Launcher](#term-engine-host-launcher)
 - [Engine Supervisor](#term-engine-supervisor)
 - [Engine event](#term-engine-event)
+- [Engine host](#term-engine-extension-host)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
 - [Environment](#term-environment)
@@ -134,6 +135,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Graph View Minimap](#term-graph-view-minimap)
 - [Guided Questions](#term-guided-questions)
 - [Harness](#term-harness)
+- [Headless session](#term-headless-session)
 - [Held Prompt](#term-held-prompt)
 - [Hook](#term-hook)
 - [Idle release](#term-session-idle-release)
@@ -206,6 +208,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Relay-backed Environment](#term-relay-environment)
 - [Request Principal](#term-request-principal)
 - [Resource](#term-resource)
+- [Run-as principal](#term-run-as-principal)
 - [SSH Door](#term-ssh-door)
 - [Schedule](#term-schedule)
 - [Schedule catch-up group](#term-schedule-catch-up-group)
@@ -601,6 +604,20 @@ The bounded record of dispatches that have ended, kept by a session's dispatch r
   - `engine` / `code` / `go`: `func (r *DispatchRegistry) OwnedHistory` in `engine/internal/session/extcontext/dispatch_registry_history.go`
   - `sdk` / `code` / `go`: `func (c *Context) ListDispatchHistory` in `sdk/go/context_dispatch_methods.go`
 
+#### Engine host {#term-engine-extension-host}
+
+An extension process owned by the engine rather than by a conversation. Spawned at boot from the extensionHosts block for an extension whose manifest scope is engine or both, stopped at shutdown. It carries the extension's schedules, webhooks, and resource producers; its fires run in headless sessions. Tools, commands, and session hooks belong to the extension's session hosts.
+
+- **ID:** `engine-extension-host`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `engine-scoped extension host`, `engine-scoped host`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (m *Manager) StartEngineHosts` in `engine/internal/session/engine_hosts.go`
+  - `engine` / `doc` / `markdown`: `extensionHosts` in `docs/configuration/extension-hosts.md`
+
 #### Engine server {#term-engine-server}
 
 The headless process that accepts consumer connections, owns session lifecycle, and broadcasts events. It speaks NDJSON over a socket.
@@ -627,6 +644,20 @@ One of the parts a conversation event is delivered as when its size exceeds the 
 - **Implementations:**
   - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
   - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
+
+#### Headless session {#term-headless-session}
+
+A session the engine mints for an engine host's schedule or webhook fire. A real session with its own conversation, the session-scoped extensions loaded, and the run-as principal stamped, keyed with the headless: prefix and reported by list_sessions with headless true. No client subscribes to it; idle release stops it after the headless window without asking session_before_release.
+
+- **ID:** `headless-session`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `headless run`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (m *Manager) mintHeadlessSession` in `engine/internal/session/headless_session.go`
+  - `engine` / `doc` / `markdown`: `What a fire looks like` in `docs/configuration/extension-hosts.md`
 
 #### Link Integrity Scan {#term-link-integrity-scan}
 
@@ -850,6 +881,20 @@ The provider key the engine resolves from a configured subscription lookup endpo
   - `desktop` / `wire` / `typescript`: `export interface ProviderSubscriptionStatus` in `packages/shared/src/types-engine-event-model.ts`
   - `studio` / `ui` / `typescript`: `ProviderSubscriptionGroup` in `desktop/src/renderer/components/settings/pages/integrations/ProviderSubscriptionGroup.tsx`
   - `ios` / `wire` / `swift`: `struct ProviderSubscriptionStatus` in `ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift`
+
+#### Run-as principal {#term-run-as-principal}
+
+The session principal every headless session acts as, resolved once at boot from extensionHosts.runAs: a literal principal, or the engine's own verified workload identity with kind workload. A headless session never borrows a connected person's principal. Unset means the sessions are unattributed.
+
+- **ID:** `run-as-principal`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `run-as identity`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func resolveRunAsPrincipal` in `engine/internal/session/run_as_principal.go`
+  - `engine` / `doc` / `markdown`: ``runAs` (optional, object)` in `docs/configuration/extension-hosts.md`
 
 #### Schedule {#term-schedule}
 
@@ -3748,6 +3793,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `engine configuration` → [Configuration](#term-configuration)
 - Alias: `engine session` → [Session](#term-session)
 - Alias: `engine tool` → [Tool](#term-tool)
+- Alias: `engine-scoped extension host` → [Engine host](#term-engine-extension-host)
+- Alias: `engine-scoped host` → [Engine host](#term-engine-extension-host)
 - Alias: `extension subprocess` → [Extension](#term-extension)
 - Alias: `find in conversation` → [Pane Find](#term-pane-find)
 - Alias: `find in files` → [Workspace Search](#term-workspace-search)
@@ -3758,6 +3805,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `grep` → [Workspace Search](#term-workspace-search)
 - Alias: `grouped catch-up` → [Schedule catch-up group](#term-schedule-catch-up-group)
 - Alias: `harness layer` → [Harness](#term-harness)
+- Alias: `headless run` → [Headless session](#term-headless-session)
 - Alias: `hub` → [Relay hub](#term-relay-hub)
 - Alias: `iOS client` → [iOS](#term-ios-client)
 - Alias: `inbound webhook` → [Webhook](#term-webhook)
@@ -3802,6 +3850,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `right surface` → [Studio Surface](#term-studio-surface)
 - Alias: `role` → [Peer role](#term-peer-role)
 - Alias: `run backend` → [Backend](#term-backend)
+- Alias: `run-as identity` → [Run-as principal](#term-run-as-principal)
 - Alias: `scheduled job` → [Schedule](#term-schedule)
 - Alias: `scratch file` → [Scratch Document](#term-scratch-document)
 - Alias: `search in files` → [Workspace Search](#term-workspace-search)

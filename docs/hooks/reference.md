@@ -54,9 +54,11 @@ type IdentityChangedInfo struct {
 }
 ```
 
-`Identity` is absent when no verified identity is available. `Reason` is one of `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, `workload_ready`, or `session_principal`. Replace extension-local identity state with each payload. Do not merge values from an earlier payload.
+`Identity` is absent when no verified identity is available. `Reason` is one of `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, `workload_ready`, `session_principal`, or `run_as`. Replace extension-local identity state with each payload. Do not merge values from an earlier payload.
 
 The engine fires `initial` once per host load or respawn after init and session wiring, before `session_start` and all other extension lifecycle hooks. Later verified transitions fire after sign-in, sign-out, verified claim changes, verification loss, or workload readiness. Equal later snapshots are deduplicated. `SessionKey` is empty for all of these process-level firings.
+
+An [engine host](../configuration/extension-hosts.md) receives one firing at boot and after each respawn with `Reason: "run_as"`, `SessionKey` empty, and `Identity` projected from the configured run-as principal (absent when `extensionHosts.runAs` is unset): the identity every headless session it fires into will carry.
 
 A separate, per-session firing (`Reason: "session_principal"`, `SessionKey` set to the session's key) happens when `start_session.principal` (manifest C1/C2) is set for the first time or replaced with a principal carrying a different `subject` on an idempotent re-`start_session`. `ctx.identity` for THIS firing (and for every subsequent hook fired in that session) resolves the session's own stamped principal first, falling back to the process-level operator identity only when the session carries none.
 
