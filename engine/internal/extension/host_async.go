@@ -167,7 +167,7 @@ func (h *Host) RegisterWebhookDecl(route WebhookRoute, origin asyncreg.Origin) e
 	if route.Path == "" || route.Path[0] != '/' {
 		return fmt.Errorf("webhook path must start with '/', got %q", route.Path)
 	}
-	if err := h.checkAsyncScope("webhook", route.Path); err != nil {
+	if err := h.checkAsyncScope("webhook", route.Path, origin); err != nil {
 		return err
 	}
 	veto := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) error {
@@ -209,7 +209,7 @@ func (h *Host) RegisterScheduleDecl(job ScheduleJob, origin asyncreg.Origin) err
 	if err := job.Validate(); err != nil {
 		return err
 	}
-	if err := h.checkAsyncScope("schedule", job.JobID); err != nil {
+	if err := h.checkAsyncScope("schedule", job.JobID, origin); err != nil {
 		return err
 	}
 	veto := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) error {

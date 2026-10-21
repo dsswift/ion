@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/asyncreg"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -91,16 +92,20 @@ func (h *Host) ManifestScope() ManifestScope {
 // IsEngineHost reports whether this host is the engine-scoped half.
 func (h *Host) IsEngineHost() bool { return h.Scope() == HostScopeEngine }
 
-// checkAsyncScope refuses a schedule or webhook registration on a session
-// host whose extension also has an engine host: the trigger belongs there.
-// A plain session-scoped extension keeps today's behavior.
-func (h *Host) checkAsyncScope(kind, id string) error {
+// checkAsyncScope refuses an init-time schedule or webhook declaration on a
+// session host whose extension also has an engine host: a declaration made
+// at module scope without branching on the process scope is one the author
+// meant for the engine host, and accepting it would bind a copy to every
+// conversation. A registration made at runtime, from a hook, is per-session
+// by nature (a one-shot armed for this conversation) and is accepted on any
+// host. A plain session-scoped extension keeps today's behavior throughout.
+func (h *Host) checkAsyncScope(kind, id string, origin asyncreg.Origin) error {
 	role, manifest := h.Scope(), h.ManifestScope()
-	if role == HostScopeSession && manifest != ManifestScopeSession {
+	if role == HostScopeSession && manifest != ManifestScopeSession && origin == asyncreg.OriginInit {
 		utils.LogWithFields(utils.LevelWarn, "extension", "async registration refused: scope mismatch", map[string]any{
-			"model": h.name_(), "scope": role, "manifest_scope": manifest, "kind": kind, "id": id,
+			"model": h.name_(), "scope": role, "manifest_scope": manifest, "kind": kind, "id": id, "origin": origin,
 		})
-		return fmt.Errorf("%w: %s %q belongs on the engine host of a %s-scoped extension", ErrScopeMismatch, kind, id, manifest)
+		return fmt.Errorf("%w: init-time %s %q belongs on the engine host of a %s-scoped extension", ErrScopeMismatch, kind, id, manifest)
 	}
 	return nil
 }

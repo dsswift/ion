@@ -33,15 +33,15 @@ func TestSessionHostOfSessionExtensionAcceptsAsync(t *testing.T) {
 	}
 }
 
-func TestSessionHostOfScopedExtensionRefusesAsync(t *testing.T) {
+func TestSessionHostOfScopedExtensionRefusesInitAsync(t *testing.T) {
 	for _, scope := range []ManifestScope{ManifestScopeBoth, ManifestScopeEngine} {
 		h := NewHost()
 		h.SetScope(HostScopeSession, scope)
-		err := h.RegisterScheduleDecl(intervalJob("tick"), asyncreg.OriginRuntime)
+		err := h.RegisterScheduleDecl(intervalJob("tick"), asyncreg.OriginInit)
 		if !errors.Is(err, ErrScopeMismatch) {
 			t.Fatalf("manifest %s: schedule error = %v, want ErrScopeMismatch", scope, err)
 		}
-		err = h.RegisterWebhookDecl(WebhookRoute{Path: "/hook", Auth: WebhookAuth{Kind: AuthNone}}, asyncreg.OriginRuntime)
+		err = h.RegisterWebhookDecl(WebhookRoute{Path: "/hook", Auth: WebhookAuth{Kind: AuthNone}}, asyncreg.OriginInit)
 		if !errors.Is(err, ErrScopeMismatch) {
 			t.Fatalf("manifest %s: webhook error = %v, want ErrScopeMismatch", scope, err)
 		}
@@ -51,6 +51,19 @@ func TestSessionHostOfScopedExtensionRefusesAsync(t *testing.T) {
 		if asyncRPCErrorCode(err) != -32000 {
 			t.Fatal("scope mismatch is a registration-declined RPC error")
 		}
+	}
+}
+
+func TestSessionHostOfScopedExtensionAcceptsRuntimeAsync(t *testing.T) {
+	// A one-shot armed from a session hook belongs to that conversation, so
+	// the session half of a both-scoped extension may register it.
+	h := NewHost()
+	h.SetScope(HostScopeSession, ManifestScopeBoth)
+	if err := h.RegisterScheduleDecl(ScheduleJob{JobID: "checkin", Kind: ScheduleOnce, DelayMs: 60_000}, asyncreg.OriginRuntime); err != nil {
+		t.Fatalf("runtime once job refused on a both-scoped session host: %v", err)
+	}
+	if err := h.RegisterWebhookDecl(WebhookRoute{Path: "/hook", Auth: WebhookAuth{Kind: AuthNone}}, asyncreg.OriginRuntime); err != nil {
+		t.Fatalf("runtime webhook refused on a both-scoped session host: %v", err)
 	}
 }
 
