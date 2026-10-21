@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.103.1](https://github.com/dsswift/ion/compare/engine-v1.103.0...engine-v1.103.1) (2026-10-21)
+
+### Bug Fixes
+
+* **engine:** accept runtime async registrations on a scoped session host ([ee089d8](https://github.com/dsswift/ion/commit/ee089d8aa3a39d83d0e54b8a7e4ee5deb15c5185))
+
 ## [1.103.0](https://github.com/dsswift/ion/compare/engine-v1.102.2...engine-v1.103.0) (2026-10-21)
 
 ### Features
