@@ -24,6 +24,11 @@ type ExtensionConfig struct {
 	// McpConfigPath points at the session's MCP server configuration, when
 	// one is configured.
 	McpConfigPath string `json:"mcpConfigPath,omitempty"`
+	// Scope is the role of this process: [ScopeSession] for a host bound to
+	// one conversation, [ScopeEngine] for the engine-scoped host whose
+	// schedules and webhooks fire into headless sessions. Empty means session.
+	// The same value is in the environment before init; see [SDK.Scope].
+	Scope Scope `json:"scope,omitempty"`
 }
 
 // EngineEvent is an event emitted onto the session's event stream via

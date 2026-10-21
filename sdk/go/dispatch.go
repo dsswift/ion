@@ -125,9 +125,20 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 				map[string]any{"error": err.Error()})
 		}
 	}
+	if cfg.Scope == "" {
+		cfg.Scope = ScopeSession
+	}
 	s.cfgMu.Lock()
 	s.cfg = cfg
 	s.cfgMu.Unlock()
+	if cfg.Scope != s.scope {
+		// The environment is read at New and already drove registrations; the
+		// init payload is the engine's record. Disagreement is an engine bug
+		// worth seeing, never silently reconciled.
+		s.logger.Warn("init scope disagrees with the environment scope", map[string]any{
+			"env_scope": string(s.scope), "init_scope": string(cfg.Scope),
+		})
+	}
 
 	s.mu.RLock()
 	tools := make([]wireToolDecl, 0, len(s.tools))

@@ -111,6 +111,10 @@ type SDK struct {
 	// construction to fill in defaults the per-invocation _ctx omits.
 	cfgMu sync.RWMutex
 	cfg   ExtensionConfig
+
+	// scope is the process role, read from the environment at New so it is
+	// known before the init handshake (scope.go).
+	scope Scope
 }
 
 // hookEntry is a registered hook handler plus the reflection metadata the
@@ -152,6 +156,7 @@ func New(opts ...Option) *SDK {
 		commands:  make(map[string]CommandDef),
 		transport: newTransport(os.Stdin, os.Stdout),
 		initDone:  make(chan struct{}),
+		scope:     ScopeFromEnv(),
 	}
 	s.logger = &Logger{emit: s.transport.notify}
 	s.async = newAsyncRegistry(s)

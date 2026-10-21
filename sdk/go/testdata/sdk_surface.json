@@ -74,6 +74,7 @@
     "Config",
     "DeregisterTool",
     "Hooks",
+    "IsEngineScope",
     "Log",
     "On",
     "RegisterAgentTools",
@@ -82,6 +83,7 @@
     "Resources",
     "Run",
     "Schedule",
+    "Scope",
     "Shutdown",
     "SyncTools",
     "Webhooks"

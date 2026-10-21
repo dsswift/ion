@@ -21,7 +21,7 @@ func TestNewContextDecodesModelEnvelope(t *testing.T) {
 		"cwd":"/work",
 		"model":{"id":"opus","contextWindow":200000},
 		"identity":{"kind":"operator","provider":"oidc","claims":{"roles":["admin"],"metadata":{"active":true},"empty":null}},
-		"config":{"extensionDir":"/extension","model":"opus","workingDirectory":"/work","mcpConfigPath":"/work/mcp.json"}
+		"config":{"extensionDir":"/extension","model":"opus","workingDirectory":"/work","mcpConfigPath":"/work/mcp.json","scope":"session"}
 	}`)
 
 	ctx := sdk.newContext(meta)
