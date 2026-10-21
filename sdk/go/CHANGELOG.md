@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.25](https://github.com/dsswift/ion/compare/sdk/go/v0.1.24...sdk/go/v0.1.25) (2026-10-21)
+
+### Features
+
+* **sdk:** expose extension scope ([c141427](https://github.com/dsswift/ion/commit/c14142761a397b30bd331975fae89a7de006c974))
+
 ## [0.1.24](https://github.com/dsswift/ion/compare/sdk/go-v0.1.23...sdk/go-v0.1.24) (2026-10-10)
 
 ### Features

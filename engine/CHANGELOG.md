@@ -18,6 +18,15 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.103.0](https://github.com/dsswift/ion/compare/engine-v1.102.2...engine-v1.103.0) (2026-10-21)
+
+### Features
+
+* **engine:** extension manifest scope and scoped registration rules ([9611145](https://github.com/dsswift/ion/commit/961114578337d02c75731e7893b2e79b5b1c275c))
+* **engine:** extension scope in the typescript sdk and canaries ([16900fc](https://github.com/dsswift/ion/commit/16900fc45666d35bc859f71e7ab32dc86ea9688e))
+* **engine:** extension hosts config and run-as principal ([6d2d6af](https://github.com/dsswift/ion/commit/6d2d6af4935c659c164414724a7a18d5199e3798))
+* **engine:** engine-scoped hosts and headless sessions per fire ([4729146](https://github.com/dsswift/ion/commit/4729146e2b9208a147c526870406e81f79a0054e))
+
 ## [1.102.2](https://github.com/dsswift/ion/compare/engine-v1.102.1...engine-v1.102.2) (2026-10-20)
 
 ### Bug Fixes
