@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.0](https://github.com/dsswift/ion/compare/engine-v2.0.0...engine-v2.1.0) (2026-10-21)
+
+### Features
+
+* **engine:** ion acp serves the engine over the agent client protocol ([253005f](https://github.com/dsswift/ion/commit/253005faf36150aa7c5c1ee9b23d3eb43454ccc9))
+
 ## [2.0.0](https://github.com/dsswift/ion/compare/engine-v1.103.1...engine-v2.0.0) (2026-10-21)
 
 ### ⚠ BREAKING CHANGES
