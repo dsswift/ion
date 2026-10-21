@@ -24,17 +24,13 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 export RELEASE_REPORT='{"releases":[
   {"component":"engine","tag_name":"engine-v1.2.3"},
-  {"component":"desktop","tag_name":"desktop-v2.0.0"},
-  {"component":"sdk/go","tag_name":"sdk/go/v0.1.9"},
-  {"component":"ios","tag_name":"ios-v2.0.0"}
+  {"component":"sdk/go","tag_name":"sdk/go/v0.1.9"}
 ]}'
 bash "$SCRIPT" >/dev/null
 
 grep -qx 'release edit engine-v1.2.3 --draft=true' "$CALLS" || fail "engine not drafted"
-grep -qx 'release edit desktop-v2.0.0 --draft=true' "$CALLS" || fail "desktop not drafted"
 grep -qx 'release edit sdk/go/v0.1.9 --draft=false --latest=false' "$CALLS" || fail "sdk not published with its own tag form"
-grep -qx 'release edit ios-v2.0.0 --draft=false --latest=false' "$CALLS" || fail "ios not published"
-[ "$(wc -l < "$CALLS")" -eq 4 ] || fail "unexpected gh calls: $(cat "$CALLS")"
+[ "$(wc -l < "$CALLS")" -eq 2 ] || fail "unexpected gh calls: $(cat "$CALLS")"
 
 # An empty report is a no-op, not an error.
 : > "$CALLS"

@@ -37,37 +37,24 @@ import os from 'node:os';
 import path from 'node:path';
 
 // The Quality jobs whose pass a component's release waits for: the tests,
-// lints, and builds of the code that ships inside it. A component that bundles
-// another one's source (desktop builds the engine and the server from the
-// same commit) waits for that code's jobs too.
+// lints, and builds of the code that ships inside it. The engine ships both
+// SDKs' source, so it waits for their suites too.
 export const GATES = {
-  engine: ['engine-test', 'engine-lint', 'engine-crossbuild', 'sdk-test', 'docker-build'],
-  relay: ['relay-test', 'engine-lint'],
-  server: [
-    'server-test', 'server-typecheck', 'server-lint', 'shared-test', 'studio-wire',
-    'status-writers', 'desktop-build', 'server-compose-smoke',
-  ],
-  desktop: [
-    'desktop-test', 'desktop-test-windows', 'desktop-lint', 'desktop-build', 'server-parity',
-    'studio-wire', 'status-writers', 'shared-test', 'server-test', 'server-typecheck',
-    'server-lint', 'engine-test', 'engine-lint', 'engine-crossbuild', 'sdk-test',
-  ],
+  engine: ['engine-test', 'engine-lint', 'engine-crossbuild', 'sdk-test', 'sdk-ts-test', 'docker-build'],
 };
 
-// Publish order. The server bundle downloads a released engine binary, so a
-// server release also waits for that engine release to be public; sweeping the
-// engine first lets both go out in one sweep.
-const ORDER = ['engine', 'relay', 'server', 'desktop'];
+// Publish order, for when more than one built component exists in a push.
+const ORDER = ['engine'];
 
 // The ghcr.io image each component pushes under ghcr.io/<repo>/<image>.
-export const IMAGES = { engine: 'engine', relay: 'relay', server: 'studio-server' };
+export const IMAGES = { engine: 'engine' };
 
 const QUALITY_EVENTS = new Set(['push', 'schedule', 'workflow_dispatch']);
 const FAILED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure', 'stale']);
 const LOOKBACK_COMMITS = 2000;
 const QUALITY_RUN_PAGES = 3;
 
-const TAG_RE = /^(engine|server|desktop|relay)-v(\d+\.\d+\.\d+)$/;
+const TAG_RE = /^(engine)-v(\d+\.\d+\.\d+)$/;
 
 export function parseTag(tag) {
   const m = TAG_RE.exec(tag);

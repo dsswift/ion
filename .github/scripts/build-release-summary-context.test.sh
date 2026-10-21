@@ -9,15 +9,15 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 export RELEASE_REPORT='{
   "releases": [
     {
-      "component": "desktop",
+      "component": "sdk/go",
       "new_version": "1.86.0",
-      "release_url": "https://example.org/releases/desktop-v1.86.0",
+      "release_url": "https://example.org/releases/sdk/go/v1.86.0",
       "commits": [
         {
           "sha": "07556c5e15443e8f36ef16271206942a4e3bbb95",
           "type": "feat",
-          "scope": "desktop",
-          "description": "improve Studio workflows"
+          "scope": "sdk",
+          "description": "decode dispatch results"
         }
       ]
     },
@@ -34,10 +34,10 @@ OUTPUT="$TMP_DIR/context.md"
 bash "$FORMATTER" "$OUTPUT"
 
 cat > "$TMP_DIR/expected.md" <<'EXPECTED'
-## desktop v1.86.0
-Release: https://example.org/releases/desktop-v1.86.0
+## sdk/go v1.86.0
+Release: https://example.org/releases/sdk/go/v1.86.0
 Commits:
-- feat(desktop): improve Studio workflows (07556c5)
+- feat(sdk): decode dispatch results (07556c5)
 
 ## engine v1.74.0
 Release: not available

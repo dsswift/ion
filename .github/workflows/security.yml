@@ -28,16 +28,12 @@ jobs:
       - name: govulncheck (engine)
         run: govulncheck ./...
         working-directory: engine
-      - name: govulncheck (relay)
-        if: always()
-        run: govulncheck ./...
-        working-directory: relay
       - name: govulncheck (sdk)
         if: always()
         run: govulncheck ./...
         working-directory: sdk/go
 
-  desktop-audit:
+  sdk-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,14 +41,14 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - name: Lockfile integrity
-        run: bash scripts/check-lockfile-integrity.test.sh && node scripts/check-lockfile-integrity.mjs package-lock.json
-      - name: npm audit (high+ only, prod deps)
-        working-directory: desktop
-        run: npm audit --audit-level=high --omit=dev
+      - name: npm audit (high+ only)
+        # The TypeScript SDK's test project is the only npm dependency tree
+        # left in the repository; it is dev-only, so nothing is omitted.
+        working-directory: engine/extensions/sdk
+        run: npm audit --audit-level=high
 
   report:
-    needs: [engine-vuln, desktop-audit]
+    needs: [engine-vuln, sdk-audit]
     if: always()
     runs-on: ubuntu-latest
     steps:

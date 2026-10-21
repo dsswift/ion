@@ -30,20 +30,14 @@ for line in path.read_text(encoding="utf-8").splitlines():
         filters[current].append(line[4:].strip("'\""))
 
 cases = {
-    "docs-only": ("docs/design/theme-packs.md", set()),
+    "docs-only": ("docs/architecture/engine.md", set()),
     "workflow-only": (".github/workflows/quality.yml", {"workflows"}),
     "workflow-script": (".github/scripts/build-release-summary-context.sh", {"workflows"}),
     "engine": ("engine/internal/session/manager.go", {"engine", "logging"}),
-    "relay": ("relay/main.go", {"relay", "logging"}),
     "sdk": ("sdk/go/context.go", {"sdk", "logging"}),
     "engine-sdk": ("engine/extensions/sdk/ion-sdk/types.ts", {"engine", "sdk", "logging"}),
-    "desktop-source": ("desktop/src/main/local-server.ts", {"desktop", "logging"}),
-    "desktop-dependency": ("package-lock.json", set()),
-    "shared": ("packages/shared/src/types.ts", {"shared", "logging"}),
-    "server": ("server/src/main.ts", {"server", "logging"}),
-    "ios": ("ios/IonRemote/Models/RemoteTabState.swift", {"ios", "logging"}),
-    "ios-docs": ("ios/AGENTS.md", {"logging"}),
-    "ios-version": ("ios/VERSION", {"logging"}),
+    "engine-sdk-tests": ("engine/extensions/sdk/__tests__/sdk-surface-sync.test.ts", {"engine", "sdk", "logging"}),
+    "sdk-lockfile": ("engine/extensions/sdk/package-lock.json", {"engine", "sdk", "logging"}),
     "dashboard": ("docs/observability/dashboards/src/quality.ts", {"dashboards"}),
 }
 
@@ -54,31 +48,20 @@ for name, (changed, want) in cases.items():
 
 job_scopes = {
     "actionlint": "workflows",
-    "status-writers": "desktop",
-    "server-parity": "desktop",
     "check-logging": "logging",
-    "check-swiftlint": "ios",
     "dashboards": "dashboards",
     "engine-crossbuild": "engine",
     "engine-test": "engine",
     "sdk-test": "sdk",
-    "relay-test": "relay",
-    "desktop-test": "desktop",
-    "desktop-lint": "desktop",
-    "desktop-build": "server",
-    "shared-test": "shared",
-    "server-lint": "server",
-    "server-typecheck": "server",
-    "server-test": "server",
+    "sdk-ts-test": "sdk",
     "docker-build": "engine",
-    "ios-build": "ios",
 }
 for job, scope in job_scopes.items():
     needle = f"needs.changes.outputs.{scope} == 'true'"
     if needle not in workflow:
         raise SystemExit(f"{job}: missing path-scope condition for {scope}")
 
-for scope in ("engine", "relay", "sdk"):
+for scope in ("engine", "sdk"):
     needle = f"needs.changes.outputs.{scope} == 'true'"
     if workflow.count(needle) < 3:
         raise SystemExit(f"{scope}: composite lint steps are not fully scoped")

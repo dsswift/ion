@@ -3,10 +3,10 @@
 # turn every release that has a build job back into a draft, and publish the
 # ones that have nothing to build.
 #
-# A draft is invisible to the desktop update feed, to /releases/latest, and to
-# `ion studio update`. publish-tested-releases.mjs flips it public once every
-# asset is attached and its Quality jobs passed. So a half-built or untested
-# release can never be seen.
+# A draft is invisible to /releases/latest and to `ion upgrade`.
+# publish-tested-releases.mjs flips it public once every asset is attached
+# and its Quality jobs passed. So a half-built or untested release can never
+# be seen.
 #
 # Usage:
 #   RELEASE_REPORT='<release-damnit json>' hold-built-releases.sh
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-BUILT_COMPONENTS="${BUILT_COMPONENTS:-engine server desktop relay}"
+BUILT_COMPONENTS="${BUILT_COMPONENTS:-engine}"
 
 is_built() {
   local c

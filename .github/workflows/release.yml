@@ -6,23 +6,7 @@ on:
       - main
     paths:
       - 'engine/**'
-      - 'desktop/**'
-      - 'relay/**'
-      - 'ios/**'
       - 'sdk/**'
-      # `server` is its own release unit -- release-please-config.json gives it
-      # a component, a CHANGELOG and a VERSION, its commits carry the `server`
-      # scope, and build.yml's build-server job is gated only on the release
-      # report listing it. It was missing here, which meant a server-only
-      # change produced no release, so no release report, so no image: the one
-      # component that can build entirely on its own was the one that could
-      # never trigger its own build.
-      - 'server/**'
-      # `packages/` is a workspace member that the server image (server's
-      # Dockerfile COPYs it) and the browser Studio client both build against.
-      # A change confined to it alters both shipped artifacts and, before this,
-      # released neither.
-      - 'packages/**'
       - 'release-please-*.json'
   workflow_dispatch:
     inputs:
@@ -97,32 +81,6 @@ jobs:
           # pushes plain commits, and each one versions the package it touched.
           since: ${{ inputs.since || github.event.before }}
 
-      # Plain-language "What's new" notes for the desktop's Build Notice, keyed
-      # by the new desktop version in desktop/whats-new.json and committed with
-      # the version bump, so the build of that version bakes them in. Notes are
-      # a nicety: the script turns every failure into a warning, and these
-      # steps never fail the release.
-      - name: Login to GHCR for the notes agent
-        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
-        continue-on-error: true
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Write the desktop's What's new notes
-        if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
-        continue-on-error: true
-        # Two agent runs, the writer and the reviewer, each bounded at 4 minutes.
-        timeout-minutes: 10
-        env:
-          RELEASE_REPORT: ${{ steps.release.outputs.release_report }}
-          ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
-        run: |
-          node .github/scripts/write-whats-new.mjs \
-            bash .github/scripts/run-ion-prompt.sh ghcr.io/${{ github.repository }}/engine:latest
-
       - name: Commit version updates
         if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
         env:
@@ -131,7 +89,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add '*/VERSION' '*/CHANGELOG.md' 'release-please-manifest.json' 'desktop/whats-new.json'
+          git add '*/VERSION' '*/CHANGELOG.md' 'release-please-manifest.json'
 
           if ! git diff --staged --quiet; then
             git commit -m "chore: release versions [skip ci]"
@@ -140,12 +98,12 @@ jobs:
 
       # release-damnit publishes each release the moment it creates it, before
       # a single binary exists. Held as a draft here, a release is invisible
-      # to the desktop's update feed, the README install link, and `latest`
-      # until every asset is attached and this push's Quality jobs for it have
-      # passed (publish-tested-releases.mjs). A build or test that fails leaves
-      # a draft, never a published release that is missing files or failed its
-      # tests. Components with no build job (ios, sdk) have nothing to wait
-      # for and publish now.
+      # to the README install link and `latest` until every asset is attached
+      # and this push's Quality jobs for it have passed
+      # (publish-tested-releases.mjs). A build or test that fails leaves a
+      # draft, never a published release that is missing files or failed its
+      # tests. A component with no build job (the Go SDK) has nothing to wait
+      # for and publishes now.
       - name: Hold built releases as drafts, publish the rest
         if: steps.check-skip.outputs.skip == 'false' && steps.release.outputs.releases_created == 'true' && inputs.dry_run != true
         env:

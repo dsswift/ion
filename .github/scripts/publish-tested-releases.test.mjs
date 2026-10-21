@@ -95,40 +95,40 @@ const edits = (w) => w.calls.filter((c) => c.startsWith('release edit'));
 
 test('publishes a built release whose gating jobs all passed', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, B, 1, allPass('relay'));
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, B, 1, allPass('engine'));
   sweeper(w)();
-  assert.deepEqual(edits(w), [`release edit relay-v1.0.0 --draft=false --latest=false -R ${REPO}`]);
+  assert.deepEqual(edits(w), [`release edit engine-v1.0.0 --draft=false --latest -R ${REPO}`]);
 });
 
 test('holds a release when a gating job failed', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, B, 1, { ...allPass('relay'), 'relay-test': 'failure' });
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, B, 1, { ...allPass('engine'), 'engine-test': 'failure' });
   sweeper(w)();
   assert.deepEqual(edits(w), []);
-  assert.match(w.logs.join('\n'), /held relay-v1\.0\.0: relay-test failed/);
+  assert.match(w.logs.join('\n'), /held engine-v1\.0\.0: engine-test failed/);
 });
 
 test('holds while tests are still running or not started', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
   sweeper(w)();
   assert.match(w.logs.join('\n'), /no Quality run for this commit yet/);
-  quality(w, B, 1, { ...allPass('relay'), 'relay-test': 'running' }, { status: 'in_progress' });
+  quality(w, B, 1, { ...allPass('engine'), 'engine-test': 'running' }, { status: 'in_progress' });
   sweeper(w)();
   assert.deepEqual(edits(w), []);
-  assert.match(w.logs.join('\n'), /relay-test pending/);
+  assert.match(w.logs.join('\n'), /engine-test pending/);
 });
 
 test('holds until the build has attached every asset', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  quality(w, B, 1, allPass('relay'));
-  built(w, B, 'relay', 'relay-v0.9.0');
+  release(w, 'engine-v1.0.0', B);
+  quality(w, B, 1, allPass('engine'));
+  built(w, B, 'engine', 'engine-v0.9.0');
   sweeper(w)();
   assert.deepEqual(edits(w), []);
   assert.match(w.logs.join('\n'), /build not finished/);
@@ -136,44 +136,20 @@ test('holds until the build has attached every asset', () => {
 
 test('a job skipped on the commit takes the nearest ancestor verdict', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, A, 1, { ...allPass('relay'), 'relay-test': 'failure' });
-  quality(w, B, 2, { 'engine-lint': 'success' }); // relay-test skipped on B
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, A, 1, { ...allPass('engine'), 'engine-test': 'failure' });
+  quality(w, B, 2, { 'docker-build': 'success' }); // engine-test skipped on B
   sweeper(w)();
   assert.deepEqual(edits(w), [], 'an untouched failing test must not pass by being skipped');
 
   const ok = world();
-  release(ok, 'relay-v1.0.0', B);
-  built(ok, B, 'relay', 'relay-v1.0.0');
-  quality(ok, A, 1, allPass('relay'));
-  quality(ok, B, 2, { 'engine-lint': 'success' });
+  release(ok, 'engine-v1.0.0', B);
+  built(ok, B, 'engine', 'engine-v1.0.0');
+  quality(ok, A, 1, allPass('engine'));
+  quality(ok, B, 2, { 'docker-build': 'success' });
   sweeper(ok)();
   assert.equal(edits(ok).length, 1);
-});
-
-test('a server release waits for the engine it bundles, and both go out in one sweep', () => {
-  const w = world();
-  release(w, 'server-v2.0.0', B);
-  release(w, 'engine-v1.5.0', B);
-  built(w, B, 'server', 'server-v2.0.0 with engine-v1.5.0');
-  built(w, B, 'engine', 'engine-v1.5.0');
-  quality(w, B, 1, { ...allPass('server'), ...allPass('engine') });
-  sweeper(w)();
-  assert.deepEqual(edits(w), [
-    `release edit engine-v1.5.0 --draft=false --latest -R ${REPO}`,
-    `release edit server-v2.0.0 --draft=false --latest=false -R ${REPO}`,
-  ]);
-
-  const held = world();
-  release(held, 'server-v2.0.0', B);
-  release(held, 'engine-v1.5.0', B);
-  built(held, B, 'server', 'server-v2.0.0 with engine-v1.5.0');
-  built(held, B, 'engine', 'engine-v1.5.0');
-  quality(held, B, 1, { ...allPass('server'), ...allPass('engine'), 'engine-test': 'failure' });
-  sweeper(held)();
-  assert.deepEqual(edits(held), []);
-  assert.match(held.logs.join('\n'), /held server-v2\.0\.0: it bundles engine-v1\.5\.0, which is not public/);
 });
 
 test('an older version passing late goes public without taking latest back', () => {
@@ -189,29 +165,28 @@ test('an older version passing late goes public without taking latest back', () 
 
 test('publishing the newest version moves its :latest image tag', () => {
   const w = world();
-  w.releases['server-v1.0.0'] = { tag_name: 'server-v1.0.0', target_commitish: A, draft: false };
-  release(w, 'server-v1.1.0', B);
-  built(w, B, 'server', 'server-v1.1.0');
-  quality(w, B, 1, allPass('server'));
+  w.releases['engine-v1.0.0'] = { tag_name: 'engine-v1.0.0', target_commitish: A, draft: false };
+  release(w, 'engine-v1.1.0', B);
+  built(w, B, 'engine', 'engine-v1.1.0');
+  quality(w, B, 1, allPass('engine'));
   sweeper(w)();
   assert.deepEqual(w.calls.filter((c) => c.startsWith('docker')), [
-    'docker buildx imagetools create -t ghcr.io/owner/ion/studio-server:latest ghcr.io/owner/ion/studio-server:1.1.0',
+    'docker buildx imagetools create -t ghcr.io/owner/ion/engine:latest ghcr.io/owner/ion/engine:1.1.0',
   ]);
 });
 
 test('the summary goes out once every release of the push is public', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  release(w, 'desktop-v3.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, B, 1, allPass('relay'));
+  release(w, 'engine-v1.0.0', B);
+  // The Go SDK has no build job: hold-built-releases.sh published it already.
+  w.releases['sdk/go/v0.1.9'] = { tag_name: 'sdk/go/v0.1.9', target_commitish: B, draft: false };
   w.releaseRuns[B] = 77;
-  w.reports[77] = { releases: [{ tag_name: 'relay-v1.0.0' }, { tag_name: 'desktop-v3.0.0' }] };
+  w.reports[77] = { releases: [{ tag_name: 'engine-v1.0.0' }, { tag_name: 'sdk/go/v0.1.9' }] };
   sweeper(w)();
-  assert.ok(!w.calls.some((c) => c.startsWith('workflow run')), 'desktop is still held');
+  assert.ok(!w.calls.some((c) => c.startsWith('workflow run')), 'the engine is still held');
 
-  built(w, B, 'desktop', 'desktop-v3.0.0');
-  quality(w, B, 2, { ...allPass('relay'), ...allPass('desktop') });
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, B, 1, allPass('engine'));
   sweeper(w)();
   assert.deepEqual(w.calls.filter((c) => c.startsWith('workflow run')), [
     `workflow run release-summary.yml --ref main -f release_run_id=77 -R ${REPO}`,
@@ -220,9 +195,9 @@ test('the summary goes out once every release of the push is public', () => {
 
 test('a run whose changes job failed gives no pass by skipping', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, A, 1, allPass('relay'));
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, A, 1, allPass('engine'));
   quality(w, B, 2, { changes: 'failure' });
   sweeper(w)();
   assert.deepEqual(edits(w), []);
@@ -231,13 +206,13 @@ test('a run whose changes job failed gives no pass by skipping', () => {
 
 test('a cancelled gating job holds until it is rerun', () => {
   const w = world();
-  release(w, 'relay-v1.0.0', B);
-  built(w, B, 'relay', 'relay-v1.0.0');
-  quality(w, A, 1, allPass('relay'));
-  quality(w, B, 2, { ...allPass('relay'), 'relay-test': 'cancelled' });
+  release(w, 'engine-v1.0.0', B);
+  built(w, B, 'engine', 'engine-v1.0.0');
+  quality(w, A, 1, allPass('engine'));
+  quality(w, B, 2, { ...allPass('engine'), 'engine-test': 'cancelled' });
   sweeper(w)();
   assert.deepEqual(edits(w), []);
-  assert.match(w.logs.join('\n'), /relay-test cancelled; rerun it/);
+  assert.match(w.logs.join('\n'), /engine-test cancelled; rerun it/);
 });
 
 test('legsVerdict folds matrix legs', () => {
