@@ -30,50 +30,10 @@
         }
       ]
     },
-    "desktop": {
-      "component": "desktop",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "VERSION"
-        }
-      ]
-    },
-    "relay": {
-      "component": "relay",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "VERSION"
-        }
-      ]
-    },
-    "ios": {
-      "component": "ios",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "VERSION"
-        }
-      ]
-    },
     "sdk/go": {
       "component": "sdk/go",
       "commit-scope": "sdk",
       "tag-separator": "/",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "VERSION"
-        }
-      ]
-    },
-    "server": {
-      "component": "server",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
