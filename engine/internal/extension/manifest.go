@@ -45,6 +45,61 @@ type Manifest struct {
 	// EngineVersion is an optional semver range (e.g. ">=0.5.0"). Reserved
 	// for future use; the engine does not currently enforce this constraint.
 	EngineVersion string `json:"engineVersion,omitempty"`
+
+	// Scope declares where the extension's process runs. "session" (the
+	// default) spawns one host per conversation. "engine" spawns one host for
+	// the engine process, owned by no conversation; its schedules and webhooks
+	// fire into headless sessions. "both" does both: the engine host carries
+	// the async triggers, the session hosts carry hooks, tools, and commands.
+	Scope ManifestScope `json:"scope,omitempty"`
+}
+
+// ManifestScope is where an extension's process runs.
+type ManifestScope string
+
+const (
+	// ManifestScopeSession is one host per conversation (the default).
+	ManifestScopeSession ManifestScope = "session"
+	// ManifestScopeEngine is one host per engine process and no session hosts.
+	ManifestScopeEngine ManifestScope = "engine"
+	// ManifestScopeBoth is one engine host plus one host per conversation.
+	ManifestScopeBoth ManifestScope = "both"
+)
+
+// UnmarshalJSON rejects any value other than the three declared scopes.
+func (s *ManifestScope) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("scope must be a string: %w", err)
+	}
+	switch ManifestScope(raw) {
+	case ManifestScopeSession, ManifestScopeEngine, ManifestScopeBoth:
+		*s = ManifestScope(raw)
+		return nil
+	default:
+		return fmt.Errorf("scope must be session, engine, or both; got %q", raw)
+	}
+}
+
+// EffectiveScope resolves the scope of a possibly-absent manifest: a missing
+// manifest or an omitted field is session scope.
+func (m *Manifest) EffectiveScope() ManifestScope {
+	if m == nil || m.Scope == "" {
+		return ManifestScopeSession
+	}
+	return m.Scope
+}
+
+// SpawnsEngineHost reports whether the manifest asks for an engine-scoped host.
+func (m *Manifest) SpawnsEngineHost() bool {
+	scope := m.EffectiveScope()
+	return scope == ManifestScopeEngine || scope == ManifestScopeBoth
+}
+
+// SpawnsSessionHosts reports whether the manifest asks for per-conversation hosts.
+func (m *Manifest) SpawnsSessionHosts() bool {
+	scope := m.EffectiveScope()
+	return scope == ManifestScopeSession || scope == ManifestScopeBoth
 }
 
 // ManifestIdentity defines the verified identity kind an extension requires.
@@ -89,6 +144,6 @@ func LoadManifest(extDir string) (*Manifest, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "extension", "loaded manifest from ()", map[string]any{"path": path, "count": len(m.External)})
+	utils.LogWithFields(utils.LevelInfo, "extension", "loaded manifest from ()", map[string]any{"path": path, "count": len(m.External), "scope": m.EffectiveScope()})
 	return &m, nil
 }

@@ -237,12 +237,14 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 	if result.Name != "" {
 		h.setName(result.Name)
 	}
-	h.setDeclaredHooks(result.Hooks)
 
 	toolDeclarations := make([]toolRegistryTool, 0, len(result.Tools))
 	for _, tool := range result.Tools {
 		toolDeclarations = append(toolDeclarations, toolRegistryTool{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe})
 	}
+	// An engine host keeps only what the engine can ever call on it.
+	toolDeclarations, result.Commands, result.Hooks = h.filterEngineHostInit(toolDeclarations, result.Commands, result.Hooks)
+	h.setDeclaredHooks(result.Hooks)
 	if err := h.initToolRegistry(toolDeclarations); err != nil {
 		return fmt.Errorf("initialize tool registry: %w", err)
 	}

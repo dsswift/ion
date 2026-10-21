@@ -141,7 +141,7 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 // rejections (cap exceeded, duplicate).
 func asyncRPCErrorCode(err error) int {
 	switch {
-	case errors.Is(err, asyncreg.ErrCapExceeded), errors.Is(err, asyncreg.ErrDuplicate), errors.Is(err, asyncreg.ErrEmptyID):
+	case errors.Is(err, asyncreg.ErrCapExceeded), errors.Is(err, asyncreg.ErrDuplicate), errors.Is(err, asyncreg.ErrEmptyID), errors.Is(err, ErrScopeMismatch):
 		return -32000
 	default:
 		// Validation errors from WebhookAuth.Validate / ScheduleJob.Validate

@@ -175,6 +175,12 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	cmd.Dir = extensionDir
 	procctl.Configure(cmd)
 
+	// The scope reaches the subprocess before init so an SDK can branch its
+	// registrations ahead of the handshake; the init config repeats it.
+	if config != nil && config.Scope == "" {
+		config.Scope = string(h.Scope())
+	}
+	cmd.Env = append(os.Environ(), "ION_EXTENSION_SCOPE="+string(h.Scope()))
 	// Resolve external runtime requires (e.g. native modules) from the
 	// extension's own node_modules. Other env vars are inherited.
 	nodeModules := filepath.Join(extensionDir, "node_modules")
@@ -183,7 +189,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		if existing := os.Getenv("NODE_PATH"); existing != "" {
 			envExtra = envExtra + string(os.PathListSeparator) + existing
 		}
-		cmd.Env = append(os.Environ(), envExtra)
+		cmd.Env = append(cmd.Env, envExtra)
 	}
 
 	stdin, err := cmd.StdinPipe()

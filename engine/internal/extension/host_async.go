@@ -31,8 +31,15 @@ type asyncHostState struct {
 	// sessionKey is the engine session this host is bound to. Captured
 	// by the session manager via SetSessionKey at load time. Used by
 	// the async-fire path to resolve the session at fire time without
-	// the registry needing a back-reference to the manager.
+	// the registry needing a back-reference to the manager. Empty for an
+	// engine host, whose fires mint a headless session instead.
 	sessionKey string
+
+	// scope is the host's role and manifestScope the extension's declared
+	// scope (host_scope.go). Together they decide which registrations this
+	// host accepts.
+	scope         HostScope
+	manifestScope ManifestScope
 
 	// fireAsync is the host-side dispatcher for an `engine/fire_async`
 	// RPC into the subprocess. Set by the webhook server / scheduler
@@ -160,6 +167,9 @@ func (h *Host) RegisterWebhookDecl(route WebhookRoute, origin asyncreg.Origin) e
 	if route.Path == "" || route.Path[0] != '/' {
 		return fmt.Errorf("webhook path must start with '/', got %q", route.Path)
 	}
+	if err := h.checkAsyncScope("webhook", route.Path); err != nil {
+		return err
+	}
 	veto := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) error {
 		info := AsyncRegistrationInfo{
 			Kind:   string(asyncreg.KindWebhook),
@@ -197,6 +207,9 @@ func (h *Host) DeregisterWebhookDecl(path string) bool {
 // (veto-capable), and on success records the job in the registry.
 func (h *Host) RegisterScheduleDecl(job ScheduleJob, origin asyncreg.Origin) error {
 	if err := job.Validate(); err != nil {
+		return err
+	}
+	if err := h.checkAsyncScope("schedule", job.JobID); err != nil {
 		return err
 	}
 	veto := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) error {

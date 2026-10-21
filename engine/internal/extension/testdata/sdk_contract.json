@@ -846,6 +846,9 @@
           "model": {
             "kind": "string"
           },
+          "scope": {
+            "kind": "string"
+          },
           "workingDirectory": {
             "kind": "string"
           }

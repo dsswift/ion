@@ -698,6 +698,11 @@ type ExtensionConfig struct {
 	WorkingDirectory string `json:"workingDirectory"`
 	McpConfigPath    string `json:"mcpConfigPath,omitempty"`
 	BuildIdentity    string `json:"buildIdentity,omitempty"`
+	// Scope is the role this host plays: "session" for a per-conversation
+	// host, "engine" for the engine-scoped host. The same value is in the
+	// subprocess environment as ION_EXTENSION_SCOPE before init, so an SDK can
+	// branch its registrations before the handshake. Empty means session.
+	Scope string `json:"scope,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions Host.Load
 	// will spawn (feature 0011 / D-020, issue #308). The session layer copies
 	// the enterprise allowlist into this field so every load path (initial,

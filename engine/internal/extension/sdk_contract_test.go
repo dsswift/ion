@@ -138,6 +138,7 @@ func contextEnvelopeSchema() sdkJSONSchema {
 			Model:            "model",
 			WorkingDirectory: "/workspace",
 			McpConfigPath:    "/workspace/mcp.json",
+			Scope:            "session",
 		},
 	}, nil, "00f067aa0ba902b7")
 	ctx, ok := envelope["_ctx"].(map[string]interface{})
