@@ -57,6 +57,7 @@ import { loadRestoredHistory } from './useTabRestoration-history'
 import { registerInitialRestoredTab } from './useTabRestoration-initial-tab'
 import { backfillLastActivity } from './useTabRestoration-activity'
 import { reportStartup } from '../store/host-api'
+import { getEngineHostInfo } from '../engine/engine-bridge-fs'
 import { currentServerConfig } from '../config/current'
 import { log as _log, error as _error } from '../logger'
 import type { FileEditorTab, FileEditorDirState } from '../store/session-store-types'
@@ -74,6 +75,22 @@ async function resolveBenchPath(directory: string): Promise<{ workspace: { repoP
   if (!isValidProjectPath(directory)) return { workspace: null }
   const workspace = benchForPath(directory)
   return { workspace: workspace ? { repoPath: workspace.repoPath, sourceBranch: workspace.sourceBranch } : null }
+}
+
+/**
+ * Fetch the engine's host info before any tab is restored. Restore checks
+ * whether each tab's conversation exists with a synchronous probe that reads
+ * the cached host info to find the owner's partition. A cold cache sends the
+ * probe to the flat conversations root, where an owned conversation never
+ * lives, and the tab is restored with no conversation to resume.
+ */
+async function warmEngineHostInfo(): Promise<void> {
+  const info = await getEngineHostInfo()
+  if (info.ok) {
+    log('engine host info ready for restore', { partitioning: info.data?.principalPartitioning?.enabled ?? false })
+  } else {
+    error('engine host info unavailable; restore probes the flat conversations root', { error: info.error ?? '' })
+  }
 }
 
 /** Restore per-directory file-editor state from the persisted manifest. */
@@ -189,6 +206,8 @@ export async function bootRestoreTabs(): Promise<void> {
   const legacySettled = saved.tabs.filter(isPersistedSettled)
   saved.tabs = saved.tabs.filter((tab) => !isPersistedSettled(tab))
   saved.settledHistory = [...(saved.settledHistory ?? []), ...legacySettled]
+
+  await warmEngineHostInfo()
 
   useSessionStore.setState({ initProgress: `Restoring ${saved.tabs.length} tabs…` })
   reportStartup(`Restoring ${saved.tabs.length} tabs…`)

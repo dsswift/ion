@@ -18,6 +18,29 @@ vi.mock('../store/host-api-misc', async (importOriginal) => {
   return { ...actual, loadTabs: loadTabsMock }
 })
 
+const hostInfoMock = vi.hoisted(() => ({ cached: false }))
+vi.mock('../engine/engine-bridge-fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../engine/engine-bridge-fs')>()
+  return {
+    ...actual,
+    getEngineHostInfo: vi.fn(async () => {
+      hostInfoMock.cached = true
+      return { ok: true, data: { principalPartitioning: { enabled: true } } }
+    }),
+  }
+})
+const restoreOneTabMock = vi.hoisted(() => vi.fn())
+vi.mock('./boot-restore-tab', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./boot-restore-tab')>()
+  return {
+    ...actual,
+    restoreOneTab: vi.fn((...args: Parameters<typeof actual.restoreOneTab>) => {
+      restoreOneTabMock(hostInfoMock.cached)
+      return actual.restoreOneTab(...args)
+    }),
+  }
+})
+
 import { useSessionStore } from '../store/sessionStore'
 import { bootRestoreTabs } from './boot-restore-tabs'
 
@@ -33,6 +56,8 @@ function sessionlessTab(id: string, workingDirectory: string): PersistedTabState
 
 beforeEach(() => {
   loadTabsMock.mockReset()
+  restoreOneTabMock.mockReset()
+  hostInfoMock.cached = false
 })
 
 describe('bootRestoreTabs', () => {
@@ -51,6 +76,21 @@ describe('bootRestoreTabs', () => {
     expect(state.rehydrating).toBe(false)
     const restored = state.tabs.find((t) => t.workingDirectory === '/tmp/ion-boot-restore-test')
     expect(restored).toBeDefined()
+  })
+
+  // The restore probes for each tab's conversation in the owner's partition,
+  // which it can only locate from the engine's host info.
+  it('fetches engine host info before restoring the first tab', async () => {
+    loadTabsMock.mockResolvedValue({
+      schemaVersion: 4,
+      activeSessionId: null,
+      activeTabIndex: 0,
+      tabs: [sessionlessTab('persisted-tab-host-info', '/tmp/ion-boot-restore-host-info')],
+    })
+
+    await bootRestoreTabs()
+
+    expect(restoreOneTabMock).toHaveBeenCalledWith(true)
   })
 
   // P0: a restore has no Studio-wire connection at all (it runs at process
