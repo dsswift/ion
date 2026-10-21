@@ -185,6 +185,11 @@ func settingsPath() string {
 	return filepath.Join(utils.IonDir(), "settings.json")
 }
 
+// LoadProfiles reads the engine profiles from ~/.ion/settings.json: the
+// `engineProfiles` array, or the legacy `harnessProfiles` array when the
+// new one is absent. A missing or unreadable file yields no profiles.
+func LoadProfiles() []types.EngineProfileConfig { return loadProfiles() }
+
 func loadProfiles() []types.EngineProfileConfig {
 	data, err := os.ReadFile(settingsPath())
 	if err != nil {

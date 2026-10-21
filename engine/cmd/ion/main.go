@@ -72,6 +72,8 @@ func main() {
 		cmdAuth(positional, flags)
 	case "mcp":
 		cmdMcp(positional, flags, listFlags)
+	case "acp":
+		cmdAcp(flags)
 	case "mcp-bridge":
 		cmdMcpBridge(flags)
 	case "hook-relay":
@@ -131,6 +133,7 @@ func printUsageTo(w io.Writer) {
 	b.WriteString("  health                   Probe daemon liveness (exit 0=ok, 1=down)" + "\n")
 	b.WriteString("  record --output          Record session to NDJSON" + "\n")
 	b.WriteString("  rpc                      JSON-RPC over stdin/stdout" + "\n")
+	b.WriteString("  acp [--profile P]        Serve the engine as an ACP agent over stdin/stdout" + "\n")
 	b.WriteString("  upgrade                  Upgrade to latest release" + "\n")
 	b.WriteString("  auth verify              Verify configured workload identity" + "\n")
 	b.WriteString("  mcp <sub>                Manage MCP servers (add|list|remove|login|logout)" + "\n")

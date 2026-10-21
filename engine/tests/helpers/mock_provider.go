@@ -343,6 +343,17 @@ func (m *MockBackend) StartRun(requestID string, options types.RunOptions) {
 	m.mu.Unlock()
 }
 
+// RunIDs lists the runs StartRun has recorded, in no particular order.
+func (m *MockBackend) RunIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := make([]string, 0, len(m.Started))
+	for id := range m.Started {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 func (m *MockBackend) Cancel(requestID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
