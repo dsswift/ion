@@ -283,6 +283,11 @@ extension SessionViewModel {
                         prior.runningAgentCount = snap.runningAgentCount
                         prior.backgroundShellCount = snap.backgroundShellCount
                         prior.activeBackgroundTasks = snap.activeBackgroundTasks
+                        // Readers fall back to the live-event copy when the
+                        // snapshot omits the inventory (it does at zero), so
+                        // the copy must agree or a completion missed while
+                        // offline pins the task as running.
+                        prior.statusFields?.activeBackgroundTasks = snap.activeBackgroundTasks
                         prior.modelFallback = snap.modelFallback
                         prior.resolvedModel = snap.resolvedModel
                         // thinkingEffort is snapshot-projected (desktop sends it

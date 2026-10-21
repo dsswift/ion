@@ -113,6 +113,30 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
         XCTAssertEqual(try instance(vm).activeBackgroundTasks?.map(\.taskId), ["bg-2"])
     }
 
+    /// A completion missed while the phone was offline leaves the task in the
+    /// live-event copy (`statusFields`). The next snapshot omits the inventory
+    /// at zero, and readers fall back to that copy, so the merge must clear it.
+    func testAbsentInventoryClearsTaskHeldByLiveStatus() throws {
+        let vm = SessionViewModel()
+        try apply(vm, shellCountJSON: nil)
+        let task = BackgroundTaskState(taskId: "bg-1", command: "sleep", startedAt: 1, notifyOnComplete: true)
+        var fields = StatusFields(
+            label: "", state: "idle", sessionId: nil, team: nil, model: "",
+            contextPercent: 0, contextWindow: 0, contextTokens: nil,
+            runCostUsd: nil, conversationCostUsd: nil, permissionDenials: nil,
+            extensionName: nil, backgroundAgents: nil, backgroundShells: 1,
+            hasPendingWork: nil, numTurns: nil, conversationTurns: nil
+        )
+        fields.activeBackgroundTasks = [task]
+        vm.conversationInstances["tab-1"]?[0].statusFields = fields
+
+        try apply(vm, shellCountJSON: nil)
+
+        let inst = try instance(vm)
+        let visible = inst.activeBackgroundTasks ?? inst.statusFields?.activeBackgroundTasks ?? []
+        XCTAssertTrue(visible.isEmpty, "a snapshot with no tasks must clear a task the phone missed finishing")
+    }
+
     /// The merge exists to preserve runtime-only state, so updating the shell
     /// count must not disturb it. (The general form of this invariant is pinned
     /// by DataDrivenConversationTests.testSnapshotMergePreservesRuntimeStateForPlainTab;
