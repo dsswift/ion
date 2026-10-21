@@ -142,9 +142,12 @@ gone (an `onComplete` callback, a deferred `schedule_missed` batch) reaches
 every connected session; a resource published then lands on the engine host's
 own producer, which every client's workspace view can query.
 
-The session half of a `both` extension may not register schedules or webhooks;
-the engine refuses them with `scope_mismatch`. Register them only when
-`ion.isEngineScope()` is true.
+The session half of a `both` extension may not declare schedules or webhooks
+at init; the engine refuses those with `scope_mismatch`, because a module-scope
+declaration that did not branch on the process scope was meant for the engine
+host. Declare them only when `ion.isEngineScope()` is true. A job registered at
+runtime from a session hook (a one-shot armed for that conversation) is
+per-session by nature and is accepted on either half.
 
 ## Job shapes
 

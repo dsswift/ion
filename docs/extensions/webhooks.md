@@ -76,8 +76,9 @@ list the extension under [`extensionHosts`](../configuration/extension-hosts.md)
 Each request then runs in a headless session the engine mints for it, under the
 run-as principal, exactly as a scheduled fire does; see
 [Scheduling: where a fire runs](scheduling.md#where-a-fire-runs-session-hosts-and-engine-hosts).
-The session half of a `both` extension may not register routes; the engine
-refuses them with `scope_mismatch`.
+The session half of a `both` extension may not declare routes at init; the
+engine refuses those with `scope_mismatch`. A route registered at runtime from
+a session hook stays bound to that conversation, as on any session host.
 
 ## Auth strategies
 

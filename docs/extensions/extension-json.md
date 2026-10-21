@@ -102,7 +102,8 @@ Where the extension's process runs. The default, `session`, is one host per conv
 | Registration | Session host of a `session` extension | Session host of a `both` extension | Engine host |
 |---|---|---|---|
 | hooks, tools, commands | accepted | accepted | dropped at init (logged) |
-| schedules, webhooks | accepted | refused: `scope_mismatch` | accepted |
+| schedules, webhooks declared at init (module scope) | accepted | refused: `scope_mismatch` | accepted |
+| schedules, webhooks registered at runtime (from a hook) | accepted | accepted, bound to that conversation | accepted |
 | resource producers | accepted | accepted | accepted |
 
 An engine host keeps only the hooks the engine can fire on it: `identity_changed`, the schedule and webhook lifecycle hooks, `schedule_missed`, `dispatch_lost`, and the respawn hooks.
