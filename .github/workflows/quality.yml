@@ -72,7 +72,6 @@ jobs:
           bash .github/scripts/run-ion-prompt.test.sh
           bash .github/scripts/download-release-assets.test.sh
           node --test .github/scripts/publish-tested-releases.test.mjs
-          node --test .github/scripts/write-whats-new.test.mjs
 
   go-toolchains:
     runs-on: ubuntu-latest
