@@ -231,12 +231,12 @@ func TestParseMockScenario_Refusals(t *testing.T) {
 	}
 }
 
-// The perf runner's shipped scenarios must load as-is: the runner writes their
+// The shipped scenario files must load as-is: a perf runner writes their
 // provider block verbatim to the file providers.mock.scenarioFile names.
-func TestParseMockScenario_PerfScenarios(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "scripts", "perf", "scenarios", "*.json"))
+func TestParseMockScenario_ShippedScenarios(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("testdata", "scenarios", "*.json"))
 	if err != nil || len(paths) == 0 {
-		t.Fatalf("no perf scenarios found (err %v)", err)
+		t.Fatalf("no scenario files found (err %v)", err)
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

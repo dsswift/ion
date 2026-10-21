@@ -18,7 +18,7 @@ const MockProviderID = "mock"
 const MockDefaultModel = "mock/default"
 
 // MockScenario scripts the mock provider. The JSON shape is the `provider`
-// block of a perf scenario file (scripts/perf/scenarios/*.json), written
+// block of a scenario file (testdata/scenarios/*.json ships two), written
 // verbatim to the file engine.json's providers.mock.scenarioFile names.
 type MockScenario struct {
 	// Seed fixes everything the mock derives rather than reads from the

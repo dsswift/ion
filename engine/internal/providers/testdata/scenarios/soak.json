@@ -1,0 +1,22 @@
+{
+  "name": "soak",
+  "description": "Manual only. A longer window with more concurrent tabs for distribution tails.",
+  "provider": {
+    "seed": 7,
+    "turns": [
+      { "ttft_ms": 300, "tokens": 400, "tokens_per_s": 80, "tool_calls": [] },
+      { "ttft_ms": 800, "tokens": 1200, "tokens_per_s": 60, "tool_calls": [] },
+      { "ttft_ms": 200, "tokens": 80, "tokens_per_s": 150, "tool_calls": [] }
+    ],
+    "repeat": true
+  },
+  "plan": {
+    "tabs": 8,
+    "promptsPerTab": 12,
+    "bodyLoadsPerTab": 6,
+    "snapshotPolls": 30,
+    "pacingMs": 500,
+    "promptTimeoutMs": 120000,
+    "settleMs": 5000
+  }
+}
