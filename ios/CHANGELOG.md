@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.18.2](https://github.com/dsswift/ion/compare/ios-v2.18.1...ios-v2.18.2) (2026-10-21)
+
+### Bug Fixes
+
+* **ios:** clear finished background tasks missed while offline ([062d74d](https://github.com/dsswift/ion/commit/062d74d7583ad5b97a98650490d0b55e64c82e5e))
+* **ios:** keep the open conversation focused across background ([5f6ee28](https://github.com/dsswift/ion/commit/5f6ee28173d5708e7e64115bf7a17fb5cc4d6a0c))
+
 ## [2.18.1](https://github.com/dsswift/ion/compare/ios-v2.18.0...ios-v2.18.1) (2026-10-20)
 
 ### Bug Fixes
