@@ -18,6 +18,21 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.0.0](https://github.com/dsswift/ion/compare/engine-v1.103.1...engine-v2.0.0) (2026-10-21)
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** remove studio and fleet commands ([68a96c7](https://github.com/dsswift/ion/commit/68a96c7cc609a773f9f5f641760bd4914e66bba2))
+
+### Features
+
+* **engine:** remove studio and fleet commands ([68a96c7](https://github.com/dsswift/ion/commit/68a96c7cc609a773f9f5f641760bd4914e66bba2))
+* **engine:** house the typescript sdk tests in the engine tree ([bb336ca](https://github.com/dsswift/ion/commit/bb336ca6d2032238ad89c66fc91a2e6fc3ba62db))
+
+### Bug Fixes
+
+* **engine:** keep mock scenario fixtures in the engine tree ([3ed7ee8](https://github.com/dsswift/ion/commit/3ed7ee80fe288fd4e3c362bd84fc7fbf9b2843d6))
+
 ## [1.103.1](https://github.com/dsswift/ion/compare/engine-v1.103.0...engine-v1.103.1) (2026-10-21)
 
 ### Bug Fixes
