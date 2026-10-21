@@ -173,3 +173,6 @@ packages/**/dist/
 
 # A server test run without ION_DATA_DIR logs into the package directory.
 server/server.jsonl*
+
+# Built by go build inside the canary module; the parity suite builds its own copy.
+engine/extensions/go-canary/go-canary
