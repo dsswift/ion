@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # Code Conventions
 
-These conventions apply primarily to the engine (Go). Desktop follows standard React/TypeScript patterns. Relay follows the same Go conventions as the engine.
+These conventions apply to the engine (Go) and the Go SDK. The TypeScript SDK follows standard TypeScript patterns.
 
 ## Logging
 
@@ -142,18 +142,3 @@ type LlmProvider interface {
 - Package names are lowercase, single-word where possible
 - Avoid stuttering: `session.Manager`, not `session.SessionManager` (exception: when the type is exported and used widely outside its package)
 
-## Desktop conventions
-
-The desktop app follows these patterns:
-
-| Concern | Pattern |
-|---------|---------|
-| State | Zustand store at `stores/sessionStore.ts` |
-| Colors | `useColors()` from `theme.ts` |
-| Preferences | `usePreferencesStore()` from `preferences.ts` |
-| Icons | `@phosphor-icons/react` |
-| Animation | `framer-motion` |
-| Popovers | `usePopoverLayer()` + `createPortal` |
-| IPC types | `src/shared/types.ts` |
-
-All interactive UI elements must be descendants of a `[data-ion-ui]` container for click-through detection to work correctly.

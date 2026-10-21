@@ -159,7 +159,7 @@ Use the [`system_inject`](../hooks/reference.md#system-message-injection-1) hook
 
 ### Client filtering
 
-When messages are persisted (the default), they are tagged with `internal: true` in `load_session_history` responses. Clients can filter them for display. The Ion Desktop and iOS apps hide internal messages by default.
+When messages are persisted (the default), they are tagged with `internal: true` in `load_session_history` responses. Clients can filter them for display.
 
 ## Enterprise constraints
 

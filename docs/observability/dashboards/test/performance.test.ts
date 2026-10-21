@@ -2,8 +2,7 @@
 // it introduced. Span metrics live in Prometheus, so a dashboard now mixes
 // two stores; these pin that a PromQL target is emitted the way Grafana's
 // Prometheus datasource reads it, that it is still scoped by Device and User,
-// that it reads the span names and dimensions the stack records, and that the
-// Wire Latency statistics say what they are.
+// and that it reads the span names and dimensions the stack records.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,11 +13,9 @@ import { dirname, join } from 'node:path';
 import { buildDashboard } from '../src/dashboard.ts';
 import { RECIPES } from '../src/dashboards/index.ts';
 import { performanceDashboard } from '../src/dashboards/performance.ts';
-import { wireLatencyDashboard } from '../src/dashboards/wire-latency.ts';
 import { stat, timeseries } from '../src/panels.ts';
 import { accumulation } from '../src/queries.ts';
 import { spanQuantile, spanSelector } from '../src/queries-spans.ts';
-import { wireWindowStat } from '../src/queries-latency.ts';
 import { auditOvercount } from '../src/check.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,8 +44,8 @@ test('performance pack: registered in the reliability folder', () => {
   assert.equal(d.file, 'ion-performance');
   assert.deepEqual(
     (d.templating ?? []).map((v) => v.name),
-    ['backend', 'model', 'transport', 'client_kind'],
-    'the four span-metrics dimensions are dropdowns; Device and User are global',
+    ['backend', 'model'],
+    'the two span-metrics dimensions are dropdowns; Device and User are global',
   );
   for (const v of d.templating ?? []) {
     assert.equal(v.datasource?.type, 'prometheus', `${v.name} lists Prometheus label values`);
@@ -128,31 +125,21 @@ test('span-metrics expressions never trip the overcount audit', () => {
   );
 });
 
-test('the alert rules read the same span names the dashboard charts', () => {
+test('the alert rules read the same engine span names the dashboard charts', () => {
   const rules = readFileSync(join(OBSERVABILITY, 'grafana', 'provisioning', 'alerting', 'ion-rules.yaml'), 'utf8');
   const charted = new Set<string>();
   for (const t of targets(built()).filter((t) => t.datasource?.type === 'prometheus')) {
     for (const m of (t.expr as string).matchAll(/span_name="([^"]+)"/g)) charted.add(m[1]);
   }
-  for (const m of rules.matchAll(/span_name="([^"]+)"/g)) {
-    assert.ok(charted.has(m[1]), `alert reads span ${m[1]}, which no Performance panel charts`);
+  // One rule per `- uid:` block; only a rule on engine spans must be charted here.
+  for (const rule of rules.split(/^\s*- uid: /m).slice(1)) {
+    if (!/service="ion-engine"/.test(rule)) continue;
+    for (const m of rule.matchAll(/span_name="([^"]+)"/g)) {
+      assert.ok(charted.has(m[1]), `alert reads span ${m[1]}, which no Performance panel charts`);
+    }
   }
-  for (const uid of ['ion-store-action-p95', 'ion-run-p95', 'ion-server-event-loop-p99', 'ion-host-memory-low']) {
+  for (const uid of ['ion-run-p95', 'ion-host-memory-low']) {
     assert.ok(rules.includes(`uid: ${uid}`), `missing alert ${uid}`);
-  }
-});
-
-test('wire latency: a per-minute percentile field combines as that percentile, and says so', () => {
-  const p95 = wireWindowStat({ field: 'fields_rtt_p95_ms', window: '5m' });
-  assert.ok(p95.expr.startsWith('quantile_over_time(0.95, '), p95.expr);
-  const p50 = wireWindowStat({ field: 'fields_rtt_p50_ms', window: '5m' });
-  assert.ok(p50.expr.startsWith('quantile_over_time(0.5, '), p50.expr);
-  const peak = wireWindowStat({ field: 'fields_queue_max', window: '5m', agg: 'max' });
-  assert.ok(peak.expr.startsWith('max_over_time('), peak.expr);
-  const d = wireLatencyDashboard();
-  for (const p of d.panels as Json[]) {
-    const quantiles = ((p.targets ?? []) as Json[]).filter((t) => /quantile_over_time/.test(t.expr));
-    if (quantiles.length) assert.match(p.description, /per-minute|each minute/, `${p.title}: a quantile of per-minute summaries must say so`);
   }
 });
 

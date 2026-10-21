@@ -7,7 +7,7 @@ description: A shared Environment (ADR-033) partitions storage, tools, git ident
 
 ## Status
 
-Accepted. Builds on [ADR-033](033-ion-studio-server-and-environments.md).
+Accepted. Builds on [ADR-033](https://github.com/dsswift/ion-studio/blob/main/docs/architecture/adr/033-ion-studio-server-and-environments.md), which lives with the archived Ion Studio repository.
 
 ## Context
 

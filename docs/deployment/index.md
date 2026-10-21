@@ -1,12 +1,12 @@
 ---
 title: Deployment
-description: Deployment patterns for Ion Engine, Desktop, Relay, and iOS.
+description: Deployment patterns for Ion Engine.
 sidebar_position: 1
 ---
 
 # Deployment
 
-Ion is engine-first. The engine is a single static binary with zero runtime dependencies. Desktop and iOS connect to it as clients. Relay is transport infrastructure that connects to the engine.
+Ion is engine-first. The engine is a single static binary with zero runtime dependencies. Any client that speaks its wire protocol connects to it; the reference client set, Ion Studio, is archived at [dsswift/ion-studio](https://github.com/dsswift/ion-studio).
 
 ## Components
 
@@ -14,28 +14,18 @@ Ion is engine-first. The engine is a single static binary with zero runtime depe
 |-----------|------|---------------|
 | [Engine](engine-standalone.md) | Go agent runtime. Single binary, Unix socket daemon. | Any Linux/macOS host, container, or VM |
 | [Engine containers](engine-container.md) | Container patterns for the engine. | Docker, Kubernetes, sidecar |
-| [Ion Studio Server](studio-server.md) | Headless server that pairs with one engine to form an Environment. Also runs inside every desktop install. | A macOS or Linux host as a background service (one-line install, or over SSH from the desktop), Docker Compose, Kubernetes |
-| [Relay](relay.md) | WebSocket relay for remote iOS control. | Kubernetes, any container host |
-| [Desktop](desktop.md) | Ion Studio for macOS. Carries its own Studio Server, so a Mac running it is an Environment other desktops can pair with. | macOS 13+ workstation, installed locally or [pushed over SSH](studio-server.md#pushing-the-desktop-to-another-mac) |
-| [iOS](ios.md) | SwiftUI companion app. | iOS 17+ device |
-
-Setting up more than one machine? [Three machines, start to finish](multi-machine-walkthrough.md) goes from nothing to one laptop driving a headless host and a second laptop. Running several already? [Fleet](fleet.md) shows every host's installs, load, and [Format Versions](../architecture/format-versions.md), which hosts can work with which, and redeploys them from one Mac. A [Fleet Hub](fleet-hub.md) is an always-on page your servers report to, with sign-in.
+| [Machine identity](machine-identity.md) | A workload identity for an engine nobody signs in to. | Containers and pipelines |
 
 ## Architecture at deploy time
 
 ```
 ┌─────────────┐     Unix socket      ┌──────────────┐
-│   Desktop    │────────────────────→ │    Engine     │
-│  (Electron)  │     NDJSON           │  (ion serve)  │
-└─────────────┘                       └──────────────┘
-                                            ↑
-┌─────────────┐     WebSocket         ┌─────┴────────┐
-│     iOS     │────────────────────→  │    Relay      │
-│  (SwiftUI)  │     via relay         │  (WebSocket)  │
-└─────────────┘                       └──────────────┘
+│   Client    │────────────────────→ │    Engine     │
+│             │     NDJSON           │  (ion serve)  │
+└─────────────┘                      └──────────────┘
 ```
 
-Desktop connects to the engine directly over Unix socket. iOS connects over LAN (mDNS discovery) or remotely through the relay server. The engine has no knowledge of which client type is connected -- it speaks the same NDJSON protocol to all of them.
+A client connects to the engine over its Unix socket (a loopback port on Windows). The engine has no knowledge of which client type is connected -- it speaks the same NDJSON protocol to all of them. An engine with engine-scoped extension hosts ([`extensionHosts`](../configuration/extension-hosts.md)) runs its scheduled work with no client connected at all.
 
 ## Minimal deployment
 
@@ -49,5 +39,3 @@ chmod +x /usr/local/bin/ion
 # Start the daemon
 ion serve
 ```
-
-Desktop and iOS are optional clients. The relay is only needed for remote iOS access.

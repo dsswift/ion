@@ -36,7 +36,6 @@ Targets exist to prevent both god files (token rot, indexing cliff) and over-fra
 | TypeScript / TSX | 300 lines | 600 lines |
 | Go (excl. `_test.go`) | 400 lines | 800 lines |
 | Go (`_test.go`) | 800 lines | 1500 lines |
-| Swift | 300 lines | 600 lines |
 
 **Override:** `// @file-size-exception: <reason>` (or `# @file-size-exception:` for shell/yaml) on line 1. Use only when the file is intrinsically a single concept (table-driven switch, generated code, test fixture). The reason survives review.
 
@@ -46,15 +45,14 @@ Targets exist to prevent both god files (token rot, indexing cliff) and over-fra
 
 ### 2. One concept per file (idiomatically)
 
-A "concept" is a struct/class with its methods, OR a Zustand slice, OR an IPC feature module, OR a React component with its hook and tests in a folder. The filename announces the concept.
+A "concept" is a struct/class with its methods, or a TypeScript module with its test. The filename announces the concept.
 
 **Per language:**
 
 - **Go:** same-package multi-file. `manager.go`, `agent_registry.go`, `prompt_dispatch.go` — type plus its methods plus small helpers in one file. NOT `types.go` with 30 unrelated types.
-- **TypeScript / React:** feature folder containing component + hook + test + types. NOT a `types/` directory split from implementations.
-- **Swift:** one type per file is idiomatic; iOS already follows. Don't fight it.
+- **TypeScript:** one module per concept, with its test beside it. NOT a `types/` directory split from implementations.
 
-**Naming rule:** the filename names the concept. `agent_registry.go` not `extras.go`. `tab-slice.ts` not `helpers.ts`. If you can't name a file in 1-3 words, it's doing too much.
+**Naming rule:** the filename names the concept. `agent_registry.go` not `extras.go`. `runtime.ts` not `helpers.ts`. If you can't name a file in 1-3 words, it's doing too much.
 
 ### 3. Co-locate by feature, not by kind
 
@@ -68,7 +66,6 @@ A "concept" is a struct/class with its methods, OR a Zustand slice, OR an IPC fe
 
 - **Go:** already does this. Keep.
 - **TypeScript:** prefer `Foo.test.ts` next to `Foo.ts`. Tests next to source make scope obvious to AI and humans alike. Centralized `__tests__/` directories are acceptable but lose locality.
-- **Swift:** Xcode convention forces a separate test target. Keep `IonRemoteTests/`, but mirror the source folder structure inside.
 
 ### 5. Subfolder when a concept grows past ~5 files
 
@@ -86,18 +83,16 @@ When in doubt, organize the way other projects in the same stack organize. AI fa
 
 **CLAUDE.md is a local-only gitignored symlink to the sibling AGENTS.md.** Claude Code auto-loads `CLAUDE.md` but not `AGENTS.md`; the symlink gives Claude Code the auto-load behavior without committing duplicate files.
 
-Run `scripts/setup-claude-symlinks.sh` (or `make claude-symlinks`) after pulling new AGENTS.md files. The desktop `npm install` postinstall hook also runs it automatically.
+Run `scripts/setup-claude-symlinks.sh` (or `make claude-symlinks`) after pulling new AGENTS.md files.
 
 ### Scope
 
 **Today: area-level only.** Each major top-level component carries one AGENTS.md:
 
 - `AGENTS.md` (root) — principles + pointer here.
-- `desktop/AGENTS.md` — desktop client conventions.
 - `engine/AGENTS.md` — Go engine conventions.
-- `ios/IonRemote/AGENTS.md` — iOS conventions.
 
-**Today: NOT seeded per bounded context.** No `desktop/src/main/ipc/AGENTS.md`, no `engine/internal/session/AGENTS.md`, etc.
+**Today: NOT seeded per bounded context.** No `engine/internal/session/AGENTS.md`, no `engine/internal/extension/AGENTS.md`, etc.
 
 **Why defer per-bounded-context AGENTS.md?** This is a defensible inference, not a research finding:
 
@@ -127,9 +122,8 @@ When updating context files, distinguish what research shows from what is a defe
 - **Allowlist:** existing god files are temporarily allowed during decomposition. Allow-list shrinks per phase; new entries require explicit reviewer approval.
 - **Pre-push:** the same check is wired into the existing pre-push hook for fast local feedback.
 - **Lint (TypeScript):** ESLint's `max-lines` rule complements the bash gate.
-- **Lint (Swift):** SwiftLint's `file_length` rule.
 
 ## Non-goals
 
-- This document does NOT prescribe how to design APIs, package boundaries, or interfaces. Those concerns are addressed in `engine/AGENTS.md`, `desktop/AGENTS.md`, and per-component architecture docs.
+- This document does NOT prescribe how to design APIs, package boundaries, or interfaces. Those concerns are addressed in `engine/AGENTS.md` and the architecture docs.
 - This document does NOT mandate a single style across all of Ion; it provides per-language defaults and lets each ecosystem follow its idioms.

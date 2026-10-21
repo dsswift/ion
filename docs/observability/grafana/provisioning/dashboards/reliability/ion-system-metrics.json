@@ -1,22 +1,8 @@
 {
   "annotations": {
-    "list": [
-      {
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
-        "enable": true,
-        "hide": false,
-        "iconColor": "orange",
-        "name": "Idle repaint",
-        "titleFormat": "{{host_name}} {{fields_process_name}} gpu={{fields_gpu_percent}} cpu={{fields_cpu_percent}}",
-        "expr": "{service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"idle repaint detected\"",
-        "step": "60s"
-      }
-    ]
+    "list": []
   },
-  "description": "Host load and every Ion process, from the sample lines each process logs every 30 s. Works with telemetry off. Studio's Device Metrics appear only here: they never leave the device.",
+  "description": "Host load and every engine process, from the sample lines the engine logs every 30 s. Works with telemetry off.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -379,181 +365,6 @@
           "legendFormat": "tool"
         }
       ]
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "Studio server process CPU",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 20
-      },
-      "description": "The Ion Studio Server's own CPU (100 = one core). Its resident memory is fields.server_rss_bytes on the same line. Source: server.jsonl tag=system-metrics fields.server_cpu_percent.",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "maxDataPoints": 2000,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"system-metrics\" | msg=\"system metrics sample\" | fields_server_cpu_percent != \"\" | unwrap fields_server_cpu_percent [5m]))",
-          "queryType": "range",
-          "refId": "A",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "{{host_name}}"
-        }
-      ]
-    },
-    {
-      "id": 7,
-      "type": "timeseries",
-      "title": "Studio processes: CPU and GPU",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "description": "Ion Studio's own Electron processes on this device: all of them, the GPU helper, and the renderer. GPU time is measured on macOS only. Source: desktop.jsonl tag=device-metrics.",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "maxDataPoints": 2000,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_studio_cpu_percent != \"\" | unwrap fields_studio_cpu_percent [5m]))",
-          "queryType": "range",
-          "refId": "A",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "Studio CPU {{host_name}}"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_gpu_helper_gpu_percent != \"\" | unwrap fields_gpu_helper_gpu_percent [5m]))",
-          "queryType": "range",
-          "refId": "B",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "GPU helper GPU {{host_name}}"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_renderer_cpu_percent != \"\" | unwrap fields_renderer_cpu_percent [5m]))",
-          "queryType": "range",
-          "refId": "C",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "renderer CPU {{host_name}}"
-        }
-      ]
-    },
-    {
-      "id": 8,
-      "type": "timeseries",
-      "title": "Idle-repaint warnings",
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 28
-      },
-      "description": "Times Studio's GPU helper or a renderer stayed busy while no Studio window had focus or the machine was idle: the sign of an animation that never stops repainting. Limits are Device settings (idleRepaint* in desktop.json). Source: desktop.jsonl msg=\"idle repaint detected\".",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "maxDataPoints": 2000,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum by (host_name) (count_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"idle repaint detected\" [$__interval]))",
-          "queryType": "range",
-          "refId": "A",
-          "__ionClass": "accumulation",
-          "legendFormat": "{{host_name}}"
-        }
-      ]
     }
   ],
   "refresh": "30s",
@@ -561,8 +372,7 @@
   "tags": [
     "ion",
     "system-metrics",
-    "resources",
-    "gpu"
+    "resources"
   ],
   "templating": {
     "list": [

@@ -28,7 +28,7 @@ but one engine process, one credential store and one set of conversations
 | Providers: gateway URL, auth header, display name | The API key each user authenticates with, typed in or looked up |
 | Identity: tenant, client ID, scopes, PKCE | The user's own tokens and session |
 | Allowed models and providers | Conversations and history |
-| Telemetry endpoints and privacy level | Studio preferences: theme, layout, fonts |
+| Telemetry endpoints and privacy level | A client's own preferences |
 | Permissions, sandbox, tool restrictions | The engine process itself, on a per-user port |
 
 Nothing needs to be removed from a user's `~/.ion/engine.json` to achieve
@@ -61,11 +61,6 @@ themselves.
       "displayName": "Corporate Gateway",
       "baseURL": "https://ai.example.com",
       "authHeader": "x-api-key"
-    }
-  },
-  "customFields": {
-    "ion-desktop": {
-      "disableAutoUpdate": true
     }
   },
   "subscriptionLookup": {
@@ -153,21 +148,15 @@ provider — a direct-to-vendor key that can reach models the organisation has
 not sanctioned. Otherwise let the provider answer the question it is already
 answering.
 
-### `customFields["ion-desktop"]`
+### `customFields`
 
-The engine carries this namespace verbatim without interpreting it; the
-desktop owns the schema. `disableAutoUpdate` stops the application updating
-itself, which a managed install needs: MDM pins the version, and an app-level
-updater fighting that pin is how a fleet drifts. Without it the desktop checks
-for updates on launch and reports the failure to the operator.
+The engine carries every namespace under `customFields` verbatim without
+interpreting it; the client that owns a namespace owns its schema. The archived
+Ion Studio desktop read `customFields["ion-desktop"]` for its auto-update and
+theme policy.
 
-`installer.runningApp` decides what the macOS package does when Ion is open at
-install time. It is not in the reference file because the default, `refuse`,
-is right for an install a person starts. A fleet that pushes unattended sets
-it to `replace`; see [MDM](mdm.md#unattended-install-over-a-running-ion).
-
-A `settingsPolicy` block here, and one under `customFields["ion-server"]`,
-classifies settings key by key. See [Settings policy](settings-policy.md).
+A `settingsPolicy` block under a client's `customFields` namespace classifies
+that client's settings key by key; the engine passes it through unread.
 
 ### `auth`
 
@@ -208,8 +197,7 @@ sealed-ceiling pattern as `auth`.
 ## Verifying it took effect
 
 Enterprise config is read once, at engine start. After deploying the file,
-restart the engine — installing a new build does this automatically, and
-otherwise the desktop's Quit All stops the daemon so the next launch reloads.
+restart the engine.
 
 ```bash
 # The engine logs each source it read and each value it pinned.

@@ -54,8 +54,7 @@ export interface Expr {
   readonly pinWindow?: boolean;
   // Which store answers the expression. Absent means Loki (LogQL). A
   // `prometheus` expression is PromQL against the Prometheus datasource: the
-  // span metrics Tempo's metrics-generator writes, the relay's own metrics, and
-  // the OTLP metrics export. The panel builders emit the matching target shape
+  // span metrics Tempo's metrics-generator writes and the OTLP metrics export. The panel builders emit the matching target shape
   // and a panel mixing both stores gets the Grafana "Mixed" datasource.
   readonly datasource?: 'prometheus';
 }
@@ -71,7 +70,7 @@ export function isFixedWindow(w: Window | null): w is FixedWindow {
 export const LOKI = { type: 'loki', uid: 'loki' } as const;
 // Tempo datasource reference for the forensics dispatch-tree trace panel.
 export const TEMPO = { type: 'tempo', uid: 'tempo' } as const;
-// Prometheus datasource reference: span metrics, relay metrics, OTLP metrics.
+// Prometheus datasource reference: span metrics, OTLP metrics.
 export const PROMETHEUS = { type: 'prometheus', uid: 'prometheus' } as const;
 // Grafana's built-in Mixed datasource, for a panel whose targets read more
 // than one store. Each target then names its own datasource.

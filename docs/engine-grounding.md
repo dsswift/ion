@@ -6,7 +6,7 @@ Read this before any work that touches `engine/`. Section numbers are cited from
 
 ## 1. The engine is the product
 
-The engine is a headless Go library that emits a complete, self-describing event stream over a Unix socket (`~/.ion/engine.sock`, NDJSON). The server, desktop, iOS, relay, and harness extensions are its consumers. External consumers come first ([engine consumers](architecture/engine-consumers.md)).
+The engine is a headless Go library that emits a complete, self-describing event stream over a Unix socket (`~/.ion/engine.sock`, NDJSON). Every client and every harness extension is a consumer. External consumers come first ([engine consumers](architecture/engine-consumers.md)).
 
 - The engine never assumes a UI exists.
 - The engine never encodes renderer policy, retention rules, animation cues, or any other client concern.
@@ -18,9 +18,8 @@ The engine is a headless Go library that emits a complete, self-describing event
 | Layer | Where | Role |
 |-------|-------|------|
 | Engine | `engine/` (Go) | Hooks, events, tools, LLM streaming, agent discovery mechanics. Headless. |
-| Server | `server/` (TS) | Studio wire, auth, per-Environment orchestration. Pairs with one engine. |
-| Harness | `~/.ion/extensions/` (TS via SDK) | Policy: which agents load, delegation routing, workflow patterns. |
-| Client | `desktop/`, `ios/` | Renders UI. |
+| Harness | `~/.ion/extensions/` (TS or Go via SDK) | Policy: which agents load, delegation routing, workflow patterns. |
+| Client | Outside this repository | Renders UI over the wire protocol. |
 
 The engine never:
 
@@ -42,7 +41,7 @@ Never ship a breaking change to a published contract without explicit operator a
 | Surface | Key files |
 |---------|-----------|
 | Wire protocol | `engine/internal/protocol/protocol.go` (`ClientCommand`, `ServerMessage`, NDJSON framing) |
-| NormalizedEvent variants and fields | `engine/internal/types/normalized_event.go` (mirrored in TS and Swift) |
+| NormalizedEvent variants and fields | `engine/internal/types/normalized_event.go` (mirrored by every client) |
 | SDK types and hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` |
 | Hook names and payload shapes | `engine/internal/extension/sdk_hooks_*.go` |
 | Engine events clients read | Any event type or field a client reads |
@@ -69,9 +68,9 @@ Never ship a breaking change to a published contract without explicit operator a
 
 When the engine has a signal, it emits one typed `NormalizedEvent` variant and stops. Never also surface it in `TaskCompleteEvent.Result`, `TextChunkEvent`, a synthetic system message, or a log line. Doing so forces one UI-shaped reading on every consumer and corrupts headless pipelines that treat stream content as the model's verbatim output. Root [`AGENTS.md`](../AGENTS.md) § "The typed-event corollary".
 
-### Cross-language sync
+### Contract manifests
 
-Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON field names to `engine/internal/types/testdata/contracts.json`; TS and Swift validate against it. Steps: root [`AGENTS.md`](../AGENTS.md) § "Cross-language contract sync". Verify with `make check-contracts` and the scoped contract tests; the full suites run in CI's test lane on every push to `main`.
+Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON field names to `engine/internal/types/testdata/contracts.json`; external consumers validate their mirrors against it. Steps: root [`AGENTS.md`](../AGENTS.md) § "Contract manifests". Verify with `make check-contracts` and the scoped contract tests; the full suites run in CI's test lane on every push to `main`.
 
 ## 4. Event semantics: the snapshot contract
 
@@ -97,9 +96,7 @@ An engine change reaches every consumer, so it needs a reason stated as engine m
 
 ## 6. Settings live with their owner
 
-Every persisted setting has one scope, declared in `packages/shared/src/settings-registry.ts`. An Environment setting is one value for a whole server, changed only by a connection holding `admin`. An Account setting is a person's own on one server. Personal and Device settings live on the client. See [Settings scopes](configuration/settings-scopes.md).
-
-The engine has no opinion on any of them. It neither persists nor reads them. A setting that must influence the engine arrives as config at session start, passed in by the server. For a Personal preference the server takes the value from the conversation's own stamp, written by the client that created or last prompted it.
+A client's persisted settings are the client's. The engine has no opinion on any of them. It neither persists nor reads them. A setting that must influence the engine arrives as config at session start, passed in by the client.
 
 ## 7. Logging is part of the contract
 
@@ -117,7 +114,7 @@ While developing, run the scoped set once the change is stable:
 1. `go test ./internal/<pkg>/...` for touched packages (`-race` for concurrency; `-run <TestPrefix>` in slow packages).
 2. `golangci-lint run ./internal/<pkg>/...`.
 3. `make check-file-sizes`, and `make check-contracts` when a shared type changed.
-4. TS and Swift mirrors updated if a shared type changed.
+4. The SDK manifests regenerated if an SDK type changed (`make sdk-test` pins both SDKs against them).
 
 The full race suite, integration tests, and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Land finished work with `make land`.
 

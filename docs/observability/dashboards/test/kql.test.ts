@@ -65,9 +65,9 @@ test('structured-metadata aliases map back to the event path they came from', ()
 });
 
 test('operational-log fields read the fields bag; json params alias a body path', () => {
-  const q = kql('sum by (device_model) (count_over_time({service_name="ion-ios", event_name=""} | json device_model="fields.device_model" [$__range]))', INSTANT);
-  assert.match(q, /device_model = tostring\(fields\[@"device_model"\]\)/);
-  assert.throws(() => kql('sum(count_over_time({service_name="ion-ios", event_name=""} | json | context_session_id="x" [5m]))', INSTANT), /no logs field/);
+  const q = kql('sum by (backend) (count_over_time({service_name="ion-engine", event_name=""} | json backend="fields.backend" [$__range]))', INSTANT);
+  assert.match(q, /backend = tostring\(fields\[@"backend"\]\)/);
+  assert.throws(() => kql('sum(count_over_time({service_name="ion-engine", event_name=""} | json | context_session_id="x" [5m]))', INSTANT), /no logs field/);
 });
 
 test('a log selector reads the logs view on its service, leaving telemetry out', () => {

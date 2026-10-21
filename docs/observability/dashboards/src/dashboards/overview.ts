@@ -23,7 +23,6 @@ import { runCount } from '../queries-cost.ts';
 import { levelCount, logRateByComponent, ingestFreshnessMinutes } from '../queries-logs.ts';
 import { distinctLabelCount, HOST_PIPE, SIGNED_IN_USERS_COUNT_PIPE } from '../queries-fleet.ts';
 import { activeExtensionCount } from '../queries-logs.ts';
-import { distinctDeviceField } from '../queries-mobile.ts';
 import { accumulation, telemetry } from '../queries.ts';
 
 const fixed = (steps: unknown[] = []) => ({ mode: 'absolute', steps });
@@ -222,17 +221,6 @@ export function overviewDashboard(): Dashboard {
       },
       options: statOptions('value'),
       targets: [{ e: distinctLabelCount('user', SIGNED_IN_USERS_COUNT_PIPE, '$__range') }],
-    }),
-    stat({
-      id: 15,
-      title: 'iOS devices reporting (Mobile)',
-      gridPos: { h: 4, w: 4, x: 16, y: 4 },
-      fieldConfig: {
-        defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Mobile', '/d/ion-mobile'), noValue: 'no iOS logs' },
-        overrides: [],
-      },
-      options: statOptions('value'),
-      targets: [{ e: distinctDeviceField('device_id', '$__range', false) }],
     }),
     stat({
       id: 16,

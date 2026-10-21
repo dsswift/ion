@@ -60,7 +60,7 @@ With a managed engine file, `mcp_add`, `mcp_update`, and `mcp_remove` edit a sep
 | Enterprise lists | `mcpAllowlist` and `mcpDenylist` apply to user servers exactly as they do without a managed file. |
 | Project files | A project's `.ion/engine.json` still contributes no MCP servers. |
 
-Set `managedConfig.disableUserMcpServers` to `true` to turn this off. The user file is then not read, the managed file's servers are the only ones, and every MCP server write is refused. Ion Studio hides its Add button and says the organization manages the list.
+Set `managedConfig.disableUserMcpServers` to `true` to turn this off. The user file is then not read, the managed file's servers are the only ones, and every MCP server write is refused. A client should hide its add control and say the organization manages the list.
 
 To allow user servers but only from approved hosts, leave `disableUserMcpServers` off and set `mcpAllowlist`.
 
@@ -77,7 +77,7 @@ A write to an owned surface never reaches disk. The command fails, and its resul
 | Engine | `mcp_add`, `mcp_update`, `mcp_remove`, when `disableUserMcpServers` is `true` or the write names a server the managed file defines |
 | Models | `set_model_tier`, `remove_model_tier`, `set_default_provider` |
 
-The Studio server refuses its own writes to `engine.json` the same way (the plan-mode Bash allowlist setting) and reads that setting from the managed file.
+A client that writes `engine.json` itself should refuse the same way and read from the managed file.
 
 Each refusal writes a `WARN` log line `configuration write refused: surface is managed` and emits the telemetry event `enforcement.managed_config_write_refused`.
 
@@ -94,7 +94,7 @@ A declared surface stays owned even when its file cannot be applied. It then hol
 | The file is not a JSON object | `managed file is not a JSON object` |
 | The engine file does not decode as engine configuration | `managed file does not decode as engine configuration` |
 
-The engine logs `ERROR` `managed config not applied; surface resolves to defaults` and emits `enforcement.managed_config_invalid`. Ion Studio shows a notice above the composer.
+The engine logs `ERROR` `managed config not applied; surface resolves to defaults` and emits `enforcement.managed_config_invalid`. A client should show a notice.
 
 Roll the engine and the managed files back together. A file written for a newer schema version is refused by an older engine, by design.
 

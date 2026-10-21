@@ -9,14 +9,14 @@ Ion emits two structured NDJSON streams:
 
 | Stream | What it answers | Files | Schema |
 |---|---|---|---|
-| **Operational log** | "What did the code do on this machine?" | `~/.ion/engine.jsonl`, `<ION_DATA_DIR>/server.jsonl`, `~/.ion/desktop.jsonl`, `~/.ion/ios-diagnostic-logs.jsonl`, relay `relay.jsonl` | Canonical log schema (unversioned, additive-only) |
+| **Operational log** | "What did the code do on this machine?" | `~/.ion/engine.jsonl` | Canonical log schema (unversioned, additive-only) |
 | **Telemetry** | "What is happening across sessions, runs, and installs?" | `~/.ion/telemetry.jsonl` | Versioned event envelope (self-describing `schema` int) |
 
 Both streams use snake_case throughout and share one correlation vocabulary, so a single join key
 pivots between them (see [Correlation model](#correlation-model)).
 
 **System Metrics** are a third kind of output that rides both: sample lines in the operational
-logs (engine, server, and desktop), `system.metrics` events in telemetry, and their own OTLP
+logs, `system.metrics` events in telemetry, and their own OTLP
 metrics export. [Signals and where they go](README.md#signals-and-where-they-go) maps every output
 in one place; the recipes below read the sample lines.
 
@@ -37,7 +37,7 @@ Every operational surface writes one JSON object per line. The full normative ta
 |---|---|---|---|
 | `ts` | string | always | RFC3339Nano, UTC |
 | `level` | string enum | always | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
-| `component` | string enum | always | `engine` \| `server` \| `web` \| `desktop` \| `ios` \| `relay` \| `extension` |
+| `component` | string enum | always | `engine` \| `extension` (a client writing its own lines uses its own value) |
 | `tag` | string | optional | Subsystem within the component; for extension logs, the extension name |
 | `msg` | string | always | Short, constant, data-free clause (never interpolated) |
 | `session_id` | string | omit when not in scope | Client-supplied engine session key |
@@ -159,17 +159,7 @@ All surfaces share one schema and one JSONL format.
 |---|---|---|
 | Engine | `~/.ion/engine.jsonl` | Rename rotation, config-driven size cap; `.1` is the newest archive. The daemon and every short-lived `ion` process write this one file; any of them may rotate it, and the others move to the new live file within a second |
 | Extensions | `~/.ion/engine.jsonl` (`component=extension`, `tag=<extension-name>`) | Same file as engine |
-| Server | `<ION_DATA_DIR>/server.jsonl` (`component=server`) | Rename rotation at 20 MB; `.1` is the newest archive |
-| Browser Studio client | `<ION_DATA_DIR>/server.jsonl` (`component=web`, forwarded through the server's `POST /log`) | Same file as server |
-| Desktop | `~/.ion/desktop.jsonl` | Rename rotation; `.1` is the newest archive |
-| iOS | `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` (pulled from the device by the server it is paired with) | Rename rotation; `.1` is the newest archive |
-| Relay | `RELAY_LOG_FILE`, default `/var/log/ion/relay.jsonl` (inside the relay container) | Rename rotation; `.1` is the newest archive |
 | Telemetry (engine) | `~/.ion/telemetry.jsonl` (when telemetry is enabled) | Rename rotation by size; schema transitions are append-only |
-
-Relay specifics: `RELAY_LOG_OUTPUT` selects `stdout` | `file` | `both` (default `stdout`);
-`RELAY_LOG_LEVEL=trace` enables TRACE. The file path is inside the container, so host-side
-collection needs a volume mount; with the default stdout target, `docker logs ion-relay` shows the
-same canonical JSONL lines.
 
 Rotation means **the local files are diagnostic buffers, not archives**. The live file rotates to `.1` at the cap, then later archives expire according to the configured generation count. Any consumer that needs history beyond the cap must ship lines downstream
 (Alloy tail, the egress path below, or its own tailer) before rotation claims them.
@@ -228,9 +218,6 @@ jq -r 'select(.tag=="sysmetrics" and .level=="INFO") | [.ts, .fields.host_cpu_ut
 # Which engine process role is using the most memory right now
 jq -c 'select(.tag=="sysmetrics") | .fields | {engine_rss_bytes, extension_rss_bytes, mcp_rss_bytes, backend_rss_bytes, tool_rss_bytes}' ~/.ion/engine.jsonl | tail -1
 
-# Studio's GPU helper, and every idle-repaint warning
-jq -r 'select(.tag=="device-metrics" and .msg=="device metrics sample") | [.ts, .fields.gpu_helper_gpu_percent // "n/a"] | @tsv' ~/.ion/desktop.jsonl
-jq -c 'select(.msg=="idle repaint detected")' ~/.ion/desktop.jsonl
 ```
 
 Telemetry event queries require the telemetry forwarder because a frame can contain multiple events. Use the local reference stack for LogQL queries, or configure the telemetry `http` or `otel` target for a collector that receives expanded events.
@@ -280,8 +267,6 @@ The same System Metrics in LogQL (the **Ion System Metrics** dashboard is built 
 
 ```logql
 avg(avg_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics" | fields_host_cpu_utilization != "" | unwrap fields_host_cpu_utilization [5m]))
-avg(avg_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="device metrics sample" | fields_gpu_helper_gpu_percent != "" | unwrap fields_gpu_helper_gpu_percent [5m]))
-sum(count_over_time({service_name="ion-desktop", event_name=""} | json | msg="idle repaint detected" [1h]))
 ```
 
 #### Spans: span metrics, traces, and the log lines of one trace
@@ -300,12 +285,6 @@ OTLP `service.name`, and the dimensions `backend`, `model`, `transport`, `client
 # p95 of every engine span, one series per span name
 histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{service="ion-engine"}[5m])))
 
-# p95 of the server's time on a store action, per action
-histogram_quantile(0.95, sum by (le, action) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle"}[5m])))
-
-# store actions per second, per Studio surface
-sum by (surface) (rate(traces_spanmetrics_calls_total{span_name="action.handle"}[5m]))
-
 # calls between services, for the service graph
 sum by (client, server) (rate(traces_service_graph_request_total[5m]))
 ```
@@ -314,11 +293,8 @@ The slow ones themselves, in TraceQL against the Tempo data source (Explore → 
 TraceQL durations):
 
 ```traceql
-# every store action the server took longer than 500 ms on, newest first
-{ name = "action.handle" && duration > 500ms }
-
-# the same, for one action and one client kind
-{ name = "action.handle" && span.action = "submit" && span.client_kind = "ios" && duration > 500ms }
+# every tool call that took longer than 30 s, newest first
+{ name = "tool.execute" && duration > 30s }
 
 # a run whose model turn waited on retries: llm.call far longer than its longest llm.attempt
 { name = "llm.call" && duration > 60s } >> { name = "llm.attempt" }
@@ -328,7 +304,7 @@ Every log line of one trace, across every surface, in LogQL (the `trace_id` is o
 Tempo, or on any log line of the prompt; `trace_id` is structured metadata, so no `| json`):
 
 ```logql
-# every operational line and telemetry event of one trace: the client's spans, the relay's, the server's,
+# every operational line and telemetry event of one trace: the client's spans,
 # the engine's and extensions' lines, and the run's span events
 {service_name=~".+"} | trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
 
@@ -449,13 +425,12 @@ logs to any backend.** OTLP/HTTP logs is a vendor-neutral wire format that virtu
 log backend and collector already speaks, so pointing Ion at an OTLP endpoint is the one integration
 that works everywhere without a bespoke receiver.
 
-The engine, the server, the desktop, and the relay all ship OTLP, and every record states each fact
+The engine ships OTLP, and every record states each fact
 once, where OTLP puts it (schema version 3, [`log-schema.md`](log-schema.md#otlp-correlation-model)
 § "OTLP correlation model"):
 
 - **Resource**: the source that wrote the record. `service.namespace` is `ion`, `service.name` is
-  `ion-<component>`, `service.instance.id` is the install (a telemetry event's own `install_id`, an
-  iOS line's `device_id`), `service.version` is the build, and `host.name` is the host without
+  `ion-<component>`, `service.instance.id` is the install (a telemetry event's own `install_id`), `service.version` is the build, and `host.name` is the host without
   `.local`. Application Insights builds `RoleName` and `RoleInstance` from these.
 - **LogRecord**: a valid `trace_id` is the `traceId`, and the span the record is about is the
   `spanId`. Levels map to severity numbers (TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17) with the
@@ -474,22 +449,19 @@ No attribute repeats the trace, span, component, host, install, or build. `event
 every telemetry event and on no operational line, so it is what tells the two apart.
 
 `egressOtel.serviceName` names the exporter's instrumentation scope (`scopeLogs[].scope.name`), not a
-service. It defaults to `ion-engine` on the engine and `ion-<process>` on the server and desktop. A
+service. It defaults to `ion-engine`. A
 record's service is always its resource's `service.name`, whichever process shipped it, and a
 configured `resourceAttributes` entry never overrides `service.name`.
 
-**Engine↔TypeScript parity guarantee.** For the same canonical record, the engine (Go) and the
-TypeScript forwarder the server and desktop share produce **structurally identical** OTLP output: the same resource, the same attribute keys, the same value
-types, the same sorted key order, the same body. The two exporters share one typing
-convention and are pinned to each other by a cross-surface parity test
-(`packages/shared/src/__tests__/log-egress-otel.test.ts` asserts the TypeScript attribute set against the
-engine's, whose shape is pinned in `engine/internal/utils/log_egress_otel_test.go`). A backend
-therefore sees one uniform log shape whether a line originated in the engine or the desktop.
+**The OTLP shape is pinned.** `engine/internal/utils/log_egress_otel_test.go` pins the resource,
+the attribute keys, the value types, the sorted key order, and the body the engine produces for a
+canonical record. A client that ships its own records should match that shape, so a backend sees
+one uniform log shape whichever process emitted a line.
 
 #### Collector fan-out (backend knowledge lives in the collector, not Ion)
 
 The intended topology is: **Ion emits OTLP to a collector; the collector routes to whatever backends
-you run.** Point both surfaces (and, if you enable it, the telemetry stream) at a single OTLP
+you run.** Point the engine (and, if you enable it, the telemetry stream) at a single OTLP
 collector endpoint — the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/), Grafana
 Alloy, the Datadog Agent, or any OTLP-speaking gateway — and let that collector's pipeline config
 fan the records out to Loki, Splunk, Elastic, an S3 archive, or several at once.
@@ -501,9 +473,7 @@ without touching Ion config. Adding Splunk next to Loki is a collector-exporter 
 redeploy.
 
 ```
-engine   ─┐
-server   ─┤
-desktop  ─┼─▶  OTLP collector  ─┬─▶  Loki
+engine   ─┬─▶  OTLP collector  ─┬─▶  Loki
 telemetry─┘   (routing config)  ├─▶  Splunk
                                 └─▶  Elastic / S3 / SIEM
 ```
@@ -542,16 +512,15 @@ Both streams carry the same join keys. This is the contract that makes cross-str
 
 | Key | Operational log | Telemetry | Scope | Reach for it when |
 |---|---|---|---|---|
-| `session_id` | top-level | `context.session_id` | One engine session (desktop: tab UUID), spanning many runs | You want every run that shared a live session |
+| `session_id` | top-level | `context.session_id` | One engine session, spanning many runs | You want every run that shared a live session |
 | `conversation_id` | top-level | `context.conversation_id` | Durable conversation-file identity; spans sessions and runs | You want the whole conversation over its lifetime — audit, resource scoping |
 | `run_id` | in `fields` where relevant | `context.run_id` | One prompt-to-completion run | You are joining Ion's logs to Ion's telemetry for one run |
 | `trace_id` | top-level | top-level, and `context` on run-scoped events | **One prompt**, from the client's submit through the engine's run | You are following one prompt across every surface, or doing distributed tracing — APM operation id, `traceparent` for a downstream call |
 | `span_id` | `fields.span_id` on a span line (`tag=span`) | `payload.span_id` on a span event | One hop's timed span | You are placing one hop inside the prompt's trace |
 
-A prompt is one trace. The client that sends it (Studio in Electron or a browser, or the phone)
-starts the trace and passes it on as a `traceparent`; the relay, the server, and the engine's run
-join it, each with its own span. So `trace_id` is the same on the client's span line, the server's
-lines about the prompt, and every engine and extension line of the run it started. `run_id` is the
+A prompt is one trace. The client that sends it starts the trace and passes it on as a
+`traceparent`; the engine's run joins it with its own span. So `trace_id` is the same on the
+client's span line and every engine and extension line of the run it started. `run_id` is the
 engine-native id of the run alone. Use `trace_id` to follow a prompt across surfaces or into an OTLP
 backend, `run_id` when both sides are the engine's own streams. The hop chain and the span record
 shapes are in [`log-schema.md`](log-schema.md#spans) § "Spans".
@@ -567,12 +536,10 @@ The pivot workflow (from [`docs/enterprise/telemetry.md`](../enterprise/telemetr
 
 1. Find an error in the operational stream: `{level="ERROR"} | json | session_id = "..."`.
 2. Copy its `trace_id` — that is the prompt the error happened in. Pull every line of it, on every
-   surface: `{service_name=~".+"} | trace_id = "..."` returns the client's `prompt.send` span
-   line, the server's lines and its `action.handle` span, and the engine and extension lines of the
-   run. The same value opens the span tree in any OTLP backend the spans were exported to (Tempo in
-   the local stack): `prompt.send` → `relay.forward` (phone prompts over a relay) and
-   `action.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
-   `hook.fanout` and the rest of the engine's spans, and the client's `prompt.visible`
+   surface: `{service_name=~".+"} | trace_id = "..."` returns the client's span line and the
+   engine and extension lines of the run. The same value opens the span tree in any OTLP backend
+   the spans were exported to (Tempo in the local stack): `engine.send_prompt` → `run.execute` →
+   `llm.call` / `tool.execute` / `hook.fanout` and the rest of the engine's spans
    ([`log-schema.md`](log-schema.md#spans) § "Spans" has the whole tree).
 3. Widen from the run to the whole conversation: take `conversation_id` off any of those lines and
    query `{service_name=~".+", event_name=""} | json | conversation_id = "..."`.

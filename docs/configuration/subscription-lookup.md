@@ -119,18 +119,18 @@ Clients drive the lookup through three engine commands, each answered with the c
 
 Every change is broadcast as `engine_provider_subscription`, a complete snapshot. The snapshot names subscriptions by id and label; a key never leaves the engine. See [Client Commands](../protocol/client-commands.md#provider_subscription_status) and [Server Events](../protocol/server-events.md#engine_provider_subscription).
 
-In Ion Studio, the state and the choice appear under **Settings > Enterprise sign-in > Provider subscription**. The iPhone app shows the same section in a server's settings.
+A client shows the state and the choice in its settings.
 
 ## When a person has to act
 
-Two states leave no looked-up key applied until someone acts: `selection_required` and `none`. Ion Studio and the iPhone app both show a prompt for them without anyone opening Settings.
+Two states leave no looked-up key applied until someone acts: `selection_required` and `none`. A client should prompt for them without anyone opening its settings.
 
 | State | What the prompt shows | What it offers |
 |-------|-----------------------|----------------|
 | `selection_required` | The offered subscriptions, by label. | Choose one (`provider_subscription_select`), look up again, or dismiss. |
 | `none` | That the signed-in account has no subscription for the provider, by name. | Look up again (`provider_subscription_refresh`), or dismiss. |
 
-The prompt shows once each time the state is entered. A later snapshot of the same state does not bring it back after it is dismissed. The Settings control stays available either way. The iPhone app shows the prompt for the server it is connected to.
+The prompt shows once each time the state is entered. A later snapshot of the same state does not bring it back after it is dismissed. The settings control stays available either way.
 
 A request to the provider that fails in one of these states says so in the conversation, ahead of the provider's own error. The engine marks such a failure by putting the subscription snapshot on the [`engine_error`](../protocol/server-events.md#engine_error) event, so any consumer can tell it from another failure.
 

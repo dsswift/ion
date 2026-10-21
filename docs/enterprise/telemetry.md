@@ -298,7 +298,7 @@ If none is configured the target fails loudly at construction naming all three, 
 
 A connection string is a shared secret. Distributing one to managed devices puts the same key on every machine: any holder can write to the hub, revoking one device means rotating the key for all of them, and every sender is indistinguishable at the transport.
 
-Setting `eventHubNamespace` instead ships nothing secret. The engine authenticates with its existing identity (`auth.identityProvider`) — a signed-in user on a desktop install, a machine identity on a headless one — and authorization becomes an RBAC role assignment revocable per principal.
+Setting `eventHubNamespace` instead ships nothing secret. The engine authenticates with its existing identity (`auth.identityProvider`) — a signed-in user on a workstation install, a machine identity on a headless one — and authorization becomes an RBAC role assignment revocable per principal.
 
 | Field | Purpose |
 |---|---|
@@ -453,15 +453,15 @@ reference and consumer guide.
 
 ### Correlation model
 
-A prompt is one trace. The client that sends it starts the trace, and the relay, the server, and the
-engine's run join it, so every log line and telemetry event about that prompt, on every surface,
+A prompt is one trace. The client that sends it starts the trace, and the
+engine's run joins it, so every log line and telemetry event about that prompt, on every surface,
 carries the same `trace_id`. Every line belonging to a session carries the same `session_id`. That
 lets you move between the streams without losing the thread:
 
 1. Find an error in Loki: `{level="ERROR"} | json | session_id = "01932abc1234"`
 2. Copy the `trace_id` from that log line — it identifies the prompt the error occurred in
 3. Pull every line of that prompt across all surfaces:
-   `{service_name=~".+"} | trace_id = "..."`, or open the span tree (client, relay, server,
+   `{service_name=~".+"} | trace_id = "..."`, or open the span tree (client and
    engine) in whichever OTLP backend the spans were exported to
 4. Widen to the whole conversation with `conversation_id` when you need the history around the failure
 
@@ -512,26 +512,22 @@ losing the tail of the stream is not.
 A push failure is the opposite case and behaves the opposite way. The line is good and the sink is
 unavailable, so the cursor stays put and the next poll retries the same events.
 
-### Two decoders, one fixture
+### One decoder, one fixture
 
-The format has two implementations. The engine's is `engine/internal/telemetryformat`; the desktop's is
-`desktop/src/main/telemetry-frame.ts`. The duplication is forced — the desktop is a TypeScript process
-reading the same file, and it cannot call into Go — but two implementations of one format drift.
-
-Both are pinned against [`assets/telemetry-frame-parity.json`](../../assets/telemetry-frame-parity.json),
-generated from the Go decoder and asserted by both suites:
+The engine's decoder is `engine/internal/telemetryformat`. Its behavior is pinned by
+[`assets/telemetry-frame-parity.json`](../../assets/telemetry-frame-parity.json), generated from the
+Go decoder; a client that reads the file with its own decoder asserts against the same fixture:
 
 ```bash
 cd engine && go test ./internal/telemetryformat/ -run TestFrameParityFixture -update
 ```
 
-A change to either decoder that is not mirrored in the other fails one of the two suites. When you
-change expansion behavior, regenerate the fixture and run the desktop suite in the same commit.
+When you change expansion behavior, regenerate the fixture in the same commit.
 
 **Whichever surface ships telemetry must expand frames first.** A frame line has no top-level `name` or
 `payload`, so an egress path that does not expand it cannot recognize it as telemetry: it falls through
 to the operational-record path, which puts the raw frame JSON in `msg` and drops every cost, kind, and
 attribution attribute the dashboards query. The engine expands in
-`engine/internal/utils/log_egress_tailer_telemetry.go`; the desktop expands in
-`packages/shared/src/log-egress-tailer.ts` (which Electron's main process shares). Which surface actually ships is set by `egressShipSources` and
-`egressClientShipSources` — either one may be the shipper, so both expand.
+`engine/internal/utils/log_egress_tailer_telemetry.go`. Which surface actually ships is set by
+`egressShipSources` and `egressClientShipSources` — a client that takes the telemetry share must
+expand too.

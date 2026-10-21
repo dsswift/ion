@@ -32,7 +32,7 @@ export function renderQueriesDoc(queries: readonly RegisteredQuery[]): string {
     'A `logql` block is LogQL against the Loki datasource; field names are snake_case ' +
       'structured-metadata keys promoted by Alloy from the NDJSON telemetry log. A `promql` block is PromQL ' +
       'against the Prometheus datasource: the span metrics Tempo\'s metrics-generator writes ' +
-      '(`traces_spanmetrics_*`), the relay\'s own metrics (`relay_*`), and the OTLP metrics export. See ' +
+      '(`traces_spanmetrics_*`) and the OTLP metrics export. See ' +
       '[`log-schema.md`](log-schema.md) for the full field reference and § "Spans" for every span name.',
   );
   lines.push('');

@@ -431,8 +431,6 @@ Rewind the conversation to before a user turn — the client-facing counterpart 
 
 ---
 
-
-
 Navigate to a different node in the conversation tree.
 
 | Field      | Type               | Required | Description                   |
@@ -1166,9 +1164,7 @@ Deriving occupancy from either of the other two produces a wrong figure in oppos
 
 **Aggregate cost model.** `aggregateCostUsd` is recomputed on every `get_context_breakdown` request — no accumulator, no persistence. The engine reads each session's persisted `totalCost` from its `.llm.jsonl` header, then recursively follows `AgentDispatchData.ConversationIDs` entries in the parent's `.tree.jsonl` to collect every descendant dispatch session. In-flight background dispatches (not yet written to `.tree.jsonl`) are also included via the live dispatch registry, as of their last cost flush. Each conversation ID is counted at most once (cycle/dup guard). A mid-turn child may undercount by its unflushed turn — this self-heals on the next drawer-open after the child's next flush.
 
-Two cost numbers in the Status Drawer are intentionally distinct: the Context section shows the **per-run cost only** (`StatusFields.runCostUsd`), while the Session section shows the **end-to-end aggregate** (`conversationCostUsd` / `aggregateCostUsd`). When there are no descendant dispatches, the two are equal.
-
-**iOS companion.** iOS sends `desktop_request_context_breakdown { tabId }` to the desktop on drawer open. The desktop's `command-handler.ts` forwards a `get_context_breakdown` to the engine for that tab. The resulting `engine_context_breakdown` is forwarded to iOS as `desktop_context_breakdown` by `event-wiring.ts`, which populates `inst.contextBreakdown` and re-renders the Status Drawer. This is the on-demand recompute model: no persistence, no stale cache — every drawer open triggers a fresh computation.
+Two cost numbers are intentionally distinct for a client's status view: a context section shows the **per-run cost only** (`StatusFields.runCostUsd`), while a session section shows the **end-to-end aggregate** (`conversationCostUsd` / `aggregateCostUsd`). When there are no descendant dispatches, the two are equal.
 
 ---
 

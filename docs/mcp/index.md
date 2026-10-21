@@ -50,8 +50,7 @@ ion mcp login mobbin
 
 `ion mcp login` opens your browser; the engine discovers the server's
 authorization server, registers itself as a client if the provider supports
-dynamic registration, completes the PKCE exchange, and stores the grant. The
-same operations are available in the desktop under Settings → Servers → the server → Integrations.
+dynamic registration, completes the PKCE exchange, and stores the grant.
 
 A local server needs no authorization:
 

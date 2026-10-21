@@ -31,19 +31,17 @@ source resolves there, the engine locks instead of running unrestricted.
 
 ## LAN discovery seal
 
-`customFields['ion-studio'].lanDiscovery: "disabled"` turns LAN discovery off for the
-organization. It is read on both sides by one reader
-(`packages/shared/src/enterprise-lan-discovery.ts`): a Studio Server never announces
-itself on the network, whatever `server.json.discovery.advertise` says and whatever a
-client asks, and a desktop does not offer the Nearby door or the Discovery control.
-Pairing then goes through a pairing link or another door. Absent, or any other value,
-means allowed. See [LAN discovery](../deployment/studio-server.md#lan-discovery).
+`customFields['ion-studio'].lanDiscovery: "disabled"` is a client-namespace seal the
+archived Ion Studio honored: its server never announced itself on the network and its
+desktop offered no discovery control. The engine carries the field through
+`customFields` untouched; a client that implements LAN discovery decides what to do
+with it.
 
 ## Per-user layer
 
 The per-user layer is a second, per-user source whose **only honored content** is
-`customFields['ion-desktop'].environments` -- the list of Ion Studio Servers a person's
-desktop should offer as managed catalog entries. Every other key found in a per-user
+`customFields['ion-desktop'].environments` -- a list of managed environment catalog
+entries for a client that offers one (the archived Ion Studio desktop did). Every other key found in a per-user
 source is **ignored** and logged at `WARN` with the key name; it never reaches the merged
 policy, regardless of what it names.
 

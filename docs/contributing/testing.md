@@ -139,10 +139,11 @@ Helper functions for constructing test events:
 - Use cheap models (Haiku, GPT-4.1 Mini) to keep costs low
 - Keep assertions loose -- LLM output is nondeterministic
 
-## Desktop tests
+## TypeScript SDK tests
 
 ```bash
-cd desktop && npm test
+make sdk-ts-test
 ```
 
-Desktop tests are run as part of `make test`. They use the standard Electron/Node test tooling configured in the desktop package.
+The TypeScript SDK suite lives in `engine/extensions/sdk/__tests__/` and runs under vitest.
+

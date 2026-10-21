@@ -595,69 +595,6 @@
       ]
     },
     {
-      "id": 15,
-      "type": "stat",
-      "title": "iOS devices reporting (Mobile)",
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 4
-      },
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": []
-          },
-          "mappings": [],
-          "links": [
-            {
-              "title": "Ion Mobile",
-              "url": "/d/ion-mobile",
-              "targetBlank": false
-            }
-          ],
-          "noValue": "no iOS logs"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "none"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "count(sum by (device_id) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" [$__range])))",
-          "queryType": "instant",
-          "refId": "A",
-          "__ionClass": "accumulation"
-        }
-      ]
-    },
-    {
       "id": 16,
       "type": "stat",
       "title": "Autonomy ratio (Trust)",

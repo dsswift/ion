@@ -17,31 +17,23 @@ Three lanes start at once. None waits for another.
 | Lane | Workflow | Starts | Finishes | Holds a release? |
 |------|----------|--------|----------|-------------------|
 | Version | `release.yml` (job `release`) | On push | Under a minute | It *is* the release |
-| Build | `build.yml` (called by `release.yml`) | After the version lane | Engine ~5 min, desktop ~10 min | Only its own service |
+| Build | `build.yml` (called by `release.yml`) | After the version lane | About 5 min | The engine release |
 | Test | `quality.yml` | On push | Depends on scope | Each service whose gating jobs failed or are still running |
 | Publish | `build.yml` job `publish`, and `publish.yml` after every Quality run | When a build or a test run finishes | Seconds | It *is* the publish |
 
 ### The version lane
 
-`release-damnit` reads every commit in the push (`since` is the push's before SHA). The files a commit touches pick the package (`engine`, `desktop`, `server`, ...), and the commit-msg hook has already made its scope match; the type (`feat`, `fix`, `feat!`) picks the bump. It writes `VERSION`, `CHANGELOG.md`, and `release-please-manifest.json`, pushes them as `chore: release versions [skip ci]`, and creates one GitHub release per service that changed. The packages, commit types and repo-level scopes are all in `release-please-config.json`. To release commits an earlier push missed, run **Release** by hand with `since` set to the last release's commit.
+`release-damnit` reads every commit in the push (`since` is the push's before SHA). The files a commit touches pick the package (`engine`, `sdk`), and the commit-msg hook has already made its scope match; the type (`feat`, `fix`, `feat!`) picks the bump. It writes `VERSION`, `CHANGELOG.md`, and `release-please-manifest.json`, pushes them as `chore: release versions [skip ci]`, and creates one GitHub release per service that changed. The packages, commit types and repo-level scopes are all in `release-please-config.json`. To release commits an earlier push missed, run **Release** by hand with `since` set to the last release's commit.
 
 Nothing is manual. A commit with a `docs` scope, or under a path `release.yml` does not list, releases nothing.
 
-When the push releases the desktop, `release.yml` also writes its "What's new" notes before the version commit. Every person who runs Ion Studio reads them, so `.github/scripts/write-whats-new.mjs` passes them through three gates:
-
-1. The Ion engine image drafts plain-language bullets from the commits that ship in the app (desktop, server, engine), following `.github/ion/whats-new-prompt.md`.
-2. `lintHighlight` drops any bullet that carries engineering text: technical words, code, file names, links, commit ids, issue numbers.
-3. A second, separate run follows `.github/ion/whats-new-review-prompt.md` and keeps or drops each remaining bullet: accurate, plain, appropriate for everyone, and clear on its own. An answer that is not one verdict per bullet keeps none.
-
-Only kept bullets are written into `desktop/whats-new.json` under the new version. The version commit carries that file, so the desktop build of that version bakes the entry in and the Build Notice shows it. A release with nothing a person would notice gets no entry. The notes never hold a release: an engine failure or an unclear answer is a warning, and the version ships without notes. Edit the file by hand to correct an entry; a build already shipped keeps the text it was built with.
-
-Every CI job that asks Ion to write something runs it through `.github/scripts/run-ion-prompt.sh`, which points the engine image at the `ION_ENGINE_CONFIG_B64` config and fails on an engine error or an empty answer.
+Every CI job that asks Ion to write something (the release summary) runs it through `.github/scripts/run-ion-prompt.sh`, which points the engine image at the `ION_ENGINE_CONFIG_B64` config and fails on an engine error or an empty answer.
 
 Two pushes close together do not race: `release.yml` runs under a concurrency group that queues the second run until the first has pushed its version commit.
 
 ### The build lane
 
-A release is created **as a draft**. `.github/scripts/hold-built-releases.sh` runs right after `release-damnit` and holds every release that has a build job (`engine`, `server`, `desktop`, `relay`) as a draft. A draft is invisible to the desktop auto-updater, to `/releases/latest`, and to `ion studio update`. Releases with nothing to build (`ios`, `sdk/go`) are published on the spot.
+A release is created **as a draft**. `.github/scripts/hold-built-releases.sh` runs right after `release-damnit` and holds every release that has a build job (the engine) as a draft. A draft is invisible to `/releases/latest`, to `/releases/latest`, and to `ion studio update`. Releases with nothing to build (`ios`, `sdk/go`) are published on the spot.
 
 `build.yml` then builds only the services in the release report, from the pushed commit plus its version bump (never whatever `main` has moved to since). Each service has a `ready-<service>` job that runs once every job that attaches one of its assets has succeeded. It sets the commit status `release/<service>` on the pushed commit, naming the tag (and, for the server, the engine release its bundle carries). Images push only their version tags; `:latest` moves at publish.
 
@@ -51,7 +43,7 @@ So a failure in one service's build leaves that service's draft in place. The dr
 
 `.github/scripts/publish-tested-releases.mjs` makes a draft public when both halves are done for the commit it was cut from: its `release/<service>` status says the build is ready, and every Quality job that gates the service passed. Builds and tests finish in either order, so it runs at both ends: `build.yml`'s `publish` job and the `publish.yml` workflow on every Quality completion on `main`, including a rerun. One concurrency group keeps the two from interleaving, and each run sweeps every draft, so whichever finishes second publishes.
 
-Which Quality jobs gate which service is the `GATES` table in that script. A service that carries another's code waits for its jobs too: the desktop builds the engine and the server from the same commit, and the server bundle waits for the engine release it carries to be public. A gating job that a push skipped (its paths were untouched) takes the verdict of the nearest earlier run of it, since its inputs have not changed since then. A job that was cancelled holds until it is rerun.
+Which Quality jobs gate the engine is the `GATES` table in that script: the engine tests, lint, and cross-build, the Go and TypeScript SDK tests, and the Docker build.
 
 Publishing a service's newest version moves its `ghcr.io` `:latest` tag and, for the engine, marks the release `latest`, because the README install command resolves through `/releases/latest`. An older version whose tests pass after a newer one goes public without taking `latest` back.
 
@@ -59,11 +51,9 @@ When every release a push cut is public, the publish step dispatches the release
 
 A failed build is filed, the same way a failed test is. `build.yml` ends in a `report` job that files an issue per failed job, labelled `ci-failure`, titled `Release build failed on main: <job>`. `release.yml` has its own for the jobs outside the build, titled `Release failed on main: <job>`. A dry run files nothing.
 
-The Windows install smoke test (`scripts/ci/windows-smoke.ps1`) is the one runtime check inside the build lane. Its failure is a product bug found after the installer was built: the installer still uploads, the desktop still publishes, and an issue is filed. A `dry_run` of `build.yml` is the exception: there, a smoke failure fails the job, because surfacing it is what a dry run is for.
-
 ### The test lane
 
-`quality.yml` runs every test, lint, and drift check, scoped to the paths the push touched. An iOS-only push runs no Windows job; an engine push runs the engine matrix on all three operating systems and nothing for the desktop. The scope map is `.github/quality-paths.yml`, pinned by `scripts/test-quality-path-scopes.sh`. Scheduled and manual runs validate every scope. A push to `main` never cancels an earlier push's run: each run is the verdict its commit's releases wait for.
+`quality.yml` runs every test, lint, and drift check, scoped to the paths the push touched. A docs-only push runs the doc-link and vocabulary checks; an engine push runs the engine matrix on all three operating systems. The scope map is `.github/quality-paths.yml`, pinned by `scripts/test-quality-path-scopes.sh`. Scheduled and manual runs validate every scope. A push to `main` never cancels an earlier push's run: each run is the verdict its commit's releases wait for.
 
 The lane ends in a `report` job that reads every job's result and files an issue per failure, labelled `ci-failure`, titled `Tests failed on main: <job>`. A failure in a gating job keeps that service's release a draft: fix forward (the next push cuts a new release), or rerun the job if it was flaky. A repeat of the same failure comments on the open issue instead of opening another. Pull requests, when you open one, get their checks inline and file nothing.
 
@@ -102,7 +92,6 @@ Open a pull request when you want a review or a preview. Its checks run inline a
 | A build job failed and the draft is waiting | Re-run failed jobs on the run page. Passed jobs are kept; the ready and publish jobs run when the failed ones pass. |
 | A test failed and the draft is waiting | Fix forward, or re-run the failed Quality jobs if they were flaky. `publish.yml` sweeps when the rerun finishes. |
 | See why a release is still a draft | Open the latest **Publish** run, or the `publish` job of the build: each held release has one line saying what it waits for. Run **Publish** by hand to sweep again. |
-| Rebuild the Windows installer for the current desktop version, no new release | Run the **Rebuild Windows Desktop** workflow (`rebuild-windows.yml`). |
 | Reproduce a release-only failure from a branch | Run **Build** by hand with `dry_run: true`, the branch as `ref`, and a release report naming versions that already exist. |
 | Re-send the release summary | Run **Release Summary** by hand with the Release run id, or paste the release report. |
 

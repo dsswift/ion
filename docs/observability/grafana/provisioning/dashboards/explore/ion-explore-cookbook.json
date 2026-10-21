@@ -32,7 +32,7 @@
         "w": 24,
         "h": 8
       },
-      "description": "Every log line across all components (engine, extensions, desktop, iOS) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
+      "description": "Every log line across all components (engine, extensions) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
       "datasource": {
         "type": "loki",
         "uid": "loki"

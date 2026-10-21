@@ -14,13 +14,11 @@ import { errorsHealthDashboard } from './errors-health.ts';
 import { liveLogsDashboard } from './live-logs.ts';
 import { forensicsDashboard } from './forensics.ts';
 import { qualityDashboard } from './quality.ts';
-import { wireLatencyDashboard } from './wire-latency.ts';
 import { controlRoomDashboard } from './control-room.ts';
 import { cookbookDashboard } from './cookbook.ts';
 import { trustDashboard } from './trust.ts';
 import { usersDashboard } from './users.ts';
 import { fleetDashboard } from './fleet.ts';
-import { mobileDashboard } from './mobile.ts';
 import { systemMetricsDashboard } from './system-metrics.ts';
 import { performanceDashboard } from './performance.ts';
 
@@ -35,13 +33,11 @@ export const RECIPES: readonly Recipe[] = [
   liveLogsDashboard,
   forensicsDashboard,
   qualityDashboard,
-  wireLatencyDashboard,
   controlRoomDashboard,
   cookbookDashboard,
   trustDashboard,
   usersDashboard,
   fleetDashboard,
-  mobileDashboard,
   systemMetricsDashboard,
   performanceDashboard,
 ];

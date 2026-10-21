@@ -6,9 +6,9 @@
 // 10m), so they are class `windowed-stat`. On a series panel the builder pins
 // the window into the title; on an instant panel they evaluate once.
 //
-// wire-latency, quality (hook/tool latency), intelligence (provider league),
-// errors-health (TTFT/gap), live-logs (context pressure), and forensics (turn
-// latency) all draw from here.
+// quality (hook/tool latency), intelligence (provider league), errors-health
+// (TTFT/gap), live-logs (context pressure), and forensics (turn latency) all
+// draw from here.
 
 import type { Expr, Window } from './types.ts';
 import { windowedStat, instant, telemetry } from './queries.ts';
@@ -85,77 +85,6 @@ export const costPerRunByModelInterval = (): Expr => {
     '$__interval',
   );
 };
-
-// ---------------------------------------------------------------------------
-// wire-latency: the Studio wire, per client
-// ---------------------------------------------------------------------------
-//
-// The server writes one `wire window` line per connection per minute
-// (`server/src/protocol/wire-latency.ts`), and each client one `client window`
-// line (`packages/shared/src/client-wire-latency.ts`, and its Swift mirror).
-// Both carry tag="wire-latency"; the msg distinguishes them.
-//
-// These replaced a set of queries against desktop→iOS transport frames. That
-// transport is gone (ADR-035 put every client on the Studio wire), nothing had
-// emitted those fields since, and the dashboard reading them looked exactly
-// like a quiet system.
-
-// Neither line carries the raw probe timings: the server keeps each
-// studio_ping round trip in memory for one minute and writes the window's
-// p50 / p95 / max, and a client does the same for its action latencies. So a
-// dashboard statistic over these lines is a statistic OF per-minute summaries:
-// `quantile_over_time(0.95, ... rtt_p95_ms)` is the p95 of the per-minute
-// p95s, not the p95 of every probe. Each panel's description says so. The
-// full per-probe distribution is in the server's OTLP metrics export
-// (`ion.server.*` wire histograms), charted from Prometheus.
-
-const WIRE_WINDOW = '{service_name="ion-server", event_name=""} | json | tag="wire-latency" | msg="wire window"';
-const CLIENT_WINDOW = '{service_name=~"ion-(desktop|web|ios)", event_name=""} | json | tag="wire-latency" | msg="client window"';
-
-type WindowAgg = 'avg' | 'max' | { readonly quantile: number };
-
-function aggOverTime(agg: WindowAgg, selector: string, field: string, window: Window, by: string): string {
-  const inner = `${selector} | ${field} != "" | unwrap ${field} [${window}]`;
-  if (typeof agg === 'object') return `quantile_over_time(${agg.quantile}, ${inner}) by (${by})`;
-  return `${agg}_over_time(${inner}) by (${by})`;
-}
-
-/**
- * A numeric field off the server's per-connection window, grouped by client
- * kind. `agg` is how the per-minute figures combine over the window: a
- * quantile of them (default: the quantile the field itself names, so a p95
- * field gives the p95 of per-minute p95s), their mean, or their maximum.
- */
-export function wireWindowStat(opts: { field: string; window: Window; by?: readonly string[]; agg?: WindowAgg }): Expr {
-  const by = opts.by && opts.by.length ? opts.by.join(', ') : 'fields_client_kind';
-  return windowedStat(aggOverTime(opts.agg ?? quantileOfField(opts.field), WIRE_WINDOW, opts.field, opts.window, by), opts.window);
-}
-
-// A field named `..._p95_ms` combines as the 0.95 quantile of its per-minute
-// values, `..._p50_ms` as the median; any other field as its mean.
-function quantileOfField(field: string): WindowAgg {
-  const m = /_p(\d\d)_ms$/.exec(field);
-  return m ? { quantile: Number(m[1]) / 100 } : 'avg';
-}
-
-/** A rate off the server's window: probes lost, decode errors, bytes out. */
-export function wireWindowRate(opts: { field: string; window: Window }): Expr {
-  return windowedStat(
-    `sum by (fields_client_kind) (sum_over_time(${WIRE_WINDOW} | ${opts.field} != "" | unwrap ${opts.field} [${opts.window}]))`,
-    opts.window,
-  );
-}
-
-/**
- * The action latency a person actually waits through, from each client's own
- * window. Grouped by component, which is what tells the three clients apart:
- * `desktop` (Studio and Electron main), `web` (a browser tab, forwarded
- * through the server's POST /log), `ios` (the phone, through its diagnostic
- * pull).
- */
-export function clientWindowStat(opts: { field: string; window: Window; agg?: WindowAgg }): Expr {
-  return windowedStat(aggOverTime(opts.agg ?? quantileOfField(opts.field), CLIENT_WINDOW, opts.field, opts.window, 'service_name'), opts.window);
-}
 
 // ---------------------------------------------------------------------------
 // Instant windowed stats (single headline number)

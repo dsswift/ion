@@ -1,6 +1,6 @@
 ---
 title: Development Setup
-description: Prerequisites, build, and run instructions for Ion contributors.
+description: Clone, build, and run the engine from source.
 sidebar_position: 2
 ---
 
@@ -8,139 +8,61 @@ sidebar_position: 2
 
 ## Prerequisites
 
-| Tool | Version | Required for |
-|------|---------|-------------|
-| Go | 1.22+ | Engine, Relay |
-| Node.js | 20+ | Desktop |
-| make | any | Build orchestration |
-| Xcode | 15+ | iOS (optional) |
-| Docker | any | Relay container builds (optional) |
+| Tool | Version | Used by |
+|------|---------|---------|
+| Go | the `toolchain` line in `engine/go.mod` | Engine, Go SDK |
+| Node.js | 22+ | The TypeScript SDK's test project, the dashboards generator, the vocabulary tooling |
+| Docker | any | The Linux parity gate (optional) |
+| `release-damnit` | latest | The commit-msg hook and `make land` |
+| `golangci-lint` | the version `.github/workflows/quality.yml` pins | Engine lint |
 
 ## Clone and build
 
 ```bash
 git clone https://github.com/dsswift/ion.git
 cd ion
+make bootstrap   # hooks, CLAUDE.md symlinks, debug log level, the code graph
+make engine      # builds engine/bin/ion and installs it to ~/.ion/bin/ion
 ```
 
-### Engine
-
-```bash
-cd engine
-make build    # -> bin/ion (stripped)
-```
-
-The binary is statically linked (`CGO_ENABLED=0`). No system libraries required.
-
-### Desktop
-
-```bash
-cd desktop
-npm install
-npm run build    # compile TypeScript, verify no errors
-```
-
-`npm run build` verifies compilation only. To package the app:
-
-```bash
-npm run dist     # -> release/mac-arm64/Ion.app
-```
-
-### Relay
-
-```bash
-cd relay
-go build .       # local binary
-# or
-make relay       # Docker image for linux/amd64
-```
-
-### iOS
-
-Open `ios/IonRemote.xcodeproj` in Xcode and build from there.
+`make engine` runs `engine/commands/install.command`: it builds the binary, installs the extension SDKs to `~/.ion/extensions/`, and restarts the engine service on macOS.
 
 ## Make targets
 
-| Target | What it does |
-|--------|-------------|
-| `make install` | Builds and installs engine + desktop |
-| `make engine` | Builds engine binary, installs to `~/.ion/bin/ion` |
-| `make desktop` | Builds a development-stamped `Ion.app`, drains Ion, then installs it without a password prompt |
-| `make relay` | Docker build for linux/amd64 |
-| `make relay-local` | `go run` the relay locally |
-| `make ios` | iOS install via script |
-| `make ios-check` | Verify iOS build compiles |
-| `make test` | `go test` + `npm test` |
-| `make clean` | Remove build artifacts |
+| Target | What |
+|--------|------|
+| `make engine` | Build and install the engine and the SDKs |
+| `make test` | Engine unit tests |
+| `make engine-test` | Engine unit tests with the race detector |
+| `make sdk-test` | Go SDK and TypeScript SDK suites, which pin the two SDKs against the engine's contract manifests |
+| `make test-linux` | The Linux parity gate in a container (what CI runs) |
+| `make check-file-sizes`, `check-contracts`, `check-logging`, `check-vocabulary`, `check-doc-links`, `check-dashboards` | The scoped gates |
+| `make land` | Rebase onto `main`, check every commit, push |
 
 ## Running locally
 
-### Start the engine
-
 ```bash
-cd engine
-make build
-./bin/ion serve
+ion serve                      # the daemon
+ion prompt "what is here?"     # one-shot, no daemon needed
+ion attach                     # stream the daemon's events as NDJSON
 ```
 
-The daemon listens on `~/.ion/engine.sock`. Logs go to `~/.ion/engine.log`.
-
-### Start Desktop in dev mode
-
-```bash
-cd desktop
-npm run dev
-```
-
-This starts the Electron app with hot-reload. It connects to the engine daemon at `~/.ion/engine.sock`.
-
-### Start the relay
-
-```bash
-export RELAY_API_KEY=$(openssl rand -hex 32)
-cd relay
-go run .
-```
+Configuration lives in `~/.ion/engine.json`; see [engine.json](../configuration/engine-json.md). An extension under development is loaded with `--extension <path>` or listed in a profile.
 
 ## Build verification
 
-After making changes, verify builds compile before testing:
-
 ```bash
-# Desktop changes
-cd desktop && npm run build
-
-# Engine changes
-cd engine && go build ./...
-
-# Both
-cd engine && go build ./... && cd ../desktop && npm run build
+cd engine && go build ./... && go test ./internal/<pkg>/...
+cd engine && golangci-lint run ./internal/<pkg>/...
 ```
 
 ## Cross-compilation
 
-The engine supports cross-compilation for Linux:
-
 ```bash
-cd engine
-make build-linux     # -> bin/ion-linux-amd64
-make build-darwin    # -> bin/ion-darwin-arm64
+cd engine && make build-linux             # linux/amd64, fully static
+cd engine && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 ```
 
 ## Pipeline testing
 
-When modifying CI/CD configuration (`.github/workflows/`):
-
-```bash
-# Lint workflow files
-actionlint .github/workflows/*.yml
-
-# Dry run (parse validation)
-make test-pipeline-dry
-
-# Full local execution
-make test-pipeline-engine
-make test-pipeline-relay
-```
-
-Never commit pipeline changes without passing both `actionlint` and at least a dry run.
+`make test-pipeline-dry` and `make test-pipeline-engine` run the release build workflow locally with `act` against the release report in `.act/`.

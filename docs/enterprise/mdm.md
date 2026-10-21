@@ -25,8 +25,7 @@ Within a platform the listed sources are merged, not raced: a later source overl
 A host that serves more than one person can scope further policy to specific accounts. That policy is still part of the machine source listed above: see [Account policies](sealed-config.md#account-policies).
 
 This page describes the **machine layer** -- the sole policy enforcer. A second,
-additive-only **per-user layer** lets IT provision which Ion Studio Servers a specific
-person should see, without giving a person-writable file any power to loosen policy. See
+additive-only **per-user layer** lets IT provision a per-person environment catalog for a client that offers one, without giving a person-writable file any power to loosen policy. See
 [Enterprise Configuration](../configuration/enterprise.md) for the two-layer model.
 
 ## Managed mode
@@ -62,7 +61,7 @@ Both conditions also reach clients. The policy blob from `get_enterprise_policy`
 {"managedMode": {"managed": true, "policyAbsent": true, "overrideRefused": true}}
 ```
 
-Ion Studio shows a notice above the composer for each condition. The engine stamps `managedMode` itself, so a policy file cannot set it.
+A client shows a notice for each condition. The engine stamps `managedMode` itself, so a policy file cannot set it.
 
 The marker and the policy are read when the engine starts. After restoring policy on a locked device, restart the engine.
 
@@ -80,7 +79,7 @@ sudo mkdir -p /etc/ion
 echo '{"managed": true}' | sudo tee /etc/ion/managed.json
 ```
 
-Leave both owned by root and not writable by anyone else. On Windows, pass `/managed` to the installer; see [Win32 app settings](#win32-app-settings).
+Leave both owned by root and not writable by anyone else. On Windows the marker is `%ProgramData%\Ion\managed.json`, written by the deployment that installs the engine.
 
 ## macOS: Managed Preferences
 
@@ -160,7 +159,7 @@ Create a Configuration Profile with a Custom Settings payload targeting the `com
 </plist>
 ```
 
-`auth.requireOperatorIdentity` is a sealed startup gate. The engine refuses `start_session` and `send_prompt` until the selected interactive provider has a usable grant. Ion Desktop keeps its standalone splash visible and shows the organization sign-in control before it creates the owner renderer, so extensions cannot start first. Do not combine this field with an OAuth entry that uses `machineIdentity`; machine sources have no operator login flow.
+`auth.requireOperatorIdentity` is a sealed startup gate. The engine refuses `start_session` and `send_prompt` until the selected interactive provider has a usable grant. A client should show its sign-in control before it starts any session, so extensions cannot start first. Do not combine this field with an OAuth entry that uses `machineIdentity`; machine sources have no operator login flow.
 
 ### Verification
 
@@ -219,10 +218,7 @@ Use it for nested fields that have no top-level value name of their own:
 | Setting | `ConfigJson` shape |
 |---------|--------------------|
 | Require operator sign-in | `{"auth":{"requireOperatorIdentity":true}}` |
-| Disable the desktop auto-updater | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
-| Switch off source-control surfaces for everyone who connects to this server | `{"customFields":{"ion-server":{"developerSurfaces":{"sourceControl":"disabled","commitGraph":"disabled","worktrees":"disabled"}}}}` |
-| Lock the desktop theme | `{"customFields":{"ion-desktop":{"themePolicy":{"themeId":"<theme id>","locked":true}}}}` |
-| Seal one setting | `{"customFields":{"ion-server":{"settingsPolicy":{"keys":{"gitOpsMode":{"class":"sealed","value":"worktree"}}}}}}` |
+| A client-namespace field (the archived Ion Studio desktop read `disableAutoUpdate` here) | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
 
 ### Setting policy with PowerShell
 
@@ -239,11 +235,9 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
   -Value @('{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}') -Force | Out-Null
 ```
 
-`desktop/packaging-windows/intune/Set-IonPolicy.ps1` is a ready-to-assign version of this for tenants that deliver policy as an Intune platform script rather than through ADMX.
-
 ### Group Policy / Intune template
 
-`desktop/packaging-windows/policy/IonEngine.admx` and `policy/en-US/IonEngine.adml` ship with every desktop release as `Ion-PolicyTemplates-<version>.zip`. They give administrators a real settings UI for the values above.
+The archived Ion Studio shipped `IonEngine.admx` and `en-US/IonEngine.adml` policy templates with every desktop release (`Ion-PolicyTemplates-<version>.zip`). They give administrators a real settings UI for the values above and still describe the engine's value names.
 
 - **Domain Central Store:** copy `IonEngine.admx` to `\\<domain>\SYSVOL\<domain>\Policies\PolicyDefinitions\` and `en-US\IonEngine.adml` to the `en-US` subfolder. The settings appear under Computer Configuration > Administrative Templates > Ion Engine.
 - **Intune ADMX ingestion:** Devices > Configuration > Import ADMX, upload the `.admx` and its `.adml`, then create a Settings Catalog profile from the imported template.
@@ -357,236 +351,3 @@ sudo chown root:root /etc/ion/config.json
 ```
 
 On macOS, Managed Preferences are protected by the system and do not need manual permission changes.
-
-## Desktop app distribution, macOS (signed .pkg)
-
-The sections above deliver engine *configuration*. This section covers pushing the Ion **desktop application** binary itself to managed Macs. Self-service users install the signed, notarized package and update through the app's built-in auto-updater; managed fleets pin the version and push the same installer package.
-
-### The artifact
-
-Each desktop release publishes a component installer, `Ion-<version>.pkg`, on the GitHub release. CI builds it (`build-pkg.sh`), signs it with a Developer ID Installer certificate (`productsign`), and notarizes it. The package installs `Ion.app` to `/Applications` and replaces any existing copy, whatever its version or origin. The payload is written to a staging directory (`/Library/Application Support/Ion/pkg-staging`) and the complete bundle is then renamed into place, so an install that is interrupted never leaves a partly written `Ion.app`. On first launch the app self-installs its launchd LaunchAgent (`com.ion.engine`) and installs/updates the engine daemon binary at `~/.ion/bin/ion`, swapping it by content hash. No additional endpoint steps are required.
-
-Verify a package before distributing:
-
-```bash
-pkgutil --check-signature Ion-<version>.pkg   # Developer ID Installer
-spctl -a -vvv -t install Ion-<version>.pkg    # Gatekeeper accepts
-```
-
-### Push via Jamf / Intune
-
-Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. By default the package refuses, before anything is written, when Ion is still running: that is the right behavior for an install a person starts by hand. An unattended push selects the replace path below.
-
-### Unattended install over a running Ion
-
-Set `installer.runningApp` to `replace` in the desktop-owned `customFields['ion-desktop']` namespace of the `com.ion.engine` Managed Preferences payload. The profile must be on the machine before the package runs.
-
-```xml
-<key>customFields</key>
-<dict>
-  <key>ion-desktop</key>
-  <dict>
-    <key>installer</key>
-    <dict>
-      <key>runningApp</key>
-      <string>replace</string>
-      <key>drainTimeoutSeconds</key>
-      <integer>300</integer>
-    </dict>
-  </dict>
-</dict>
-```
-
-| Key | Values | Default |
-|---|---|---|
-| `runningApp` | `refuse`: fail the install and leave Ion running. `replace`: stop Ion, replace the bundle, exit zero. | `refuse` |
-| `drainTimeoutSeconds` | How long `replace` waits for the graceful drain. Capped at 480. | `300` |
-
-With `replace`, the package stops a running Ion in three steps and moves to the next one only when the previous one did not end the process:
-
-1. **Graceful drain** (`SIGUSR1`). Ion finishes active work, saves its state, stops the engine, and exits. The package waits up to `drainTimeoutSeconds`.
-2. **Forced quit** (`SIGUSR2`). Ion stops active work instead of waiting for it, then exits.
-3. **Termination** (`SIGKILL`).
-
-Helper processes still running from the old bundle are then ended, the bundle is replaced, and Ion is relaunched for the signed-in user. The package exits zero whether or not Ion was running.
-
-`/var/log/install.log` records which step ended the process, on a line starting `[Ion preinstall] stop outcome:` followed by `graceful`, `forced`, or `killed`.
-
-### Disable the in-app auto-updater on managed machines
-
-A managed fleet owns the version lifecycle, so the app must not self-update and fight the pinned version. Set the kill switch in the desktop-owned `customFields['ion-desktop']` namespace of the same `com.ion.engine` Managed Preferences payload:
-
-```xml
-<key>customFields</key>
-<dict>
-  <key>ion-desktop</key>
-  <dict>
-    <key>disableAutoUpdate</key>
-    <true/>
-  </dict>
-</dict>
-```
-
-With this set, the desktop skips its update check and install-on-quit entirely (`initAutoUpdater`), and version changes arrive only through your pushed `.pkg`.
-
-### CI signing prerequisites
-
-The release pipeline signs and notarizes the package when these repository secrets are present:
-
-| Secret | Purpose |
-|--------|---------|
-| `APPLE_CERT_BASE64` / `APPLE_CERT_PASSWORD` | Developer ID **Application** cert — signs `Ion.app` |
-| `APPLE_INSTALLER_CERT_BASE64` / `APPLE_INSTALLER_CERT_PASSWORD` | Developer ID **Installer** cert — `productsign` for the `.pkg` (a distinct cert type from the Application cert) |
-| `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | App Store Connect API key (base64-encoded `.p8`) — notarization for both the app and the pkg |
-
-All signing and notarization secrets are required for a desktop release. CI stops before upload if the Installer certificate is absent, if notarization fails, or if Gatekeeper rejects the package.
-
-## Desktop app distribution, Windows (.intunewin)
-
-The Windows equivalent of the `.pkg` section above. Each desktop release
-publishes `Ion-Setup-<version>-x64.intunewin` -- the NSIS installer already
-wrapped by the Microsoft Win32 Content Prep Tool -- plus the version-stamped
-`Detect-Ion.ps1` it pairs with and `Ion-PolicyTemplates-<version>.zip`.
-
-x64 is the supported target. An `arm64` installer is published as a
-best-effort cross-build; it is neither verified nor supported.
-
-### Win32 app settings
-
-| Setting | Value |
-|---------|-------|
-| Install command | `Ion-Setup-<version>-x64.exe /S /allusers /managed` |
-| Uninstall command | `"%ProgramFiles%\Ion\Uninstall Ion.exe" /allusers /S` |
-| Install behavior | System |
-| Detection rule | Custom detection script -- upload the stamped `Detect-Ion.ps1`. Run as 32-bit: No. |
-| Return codes | `0` = Success |
-
-`/managed` writes the [managed-mode marker](#managed-mode) to
-`%ProgramData%\Ion\managed.json`, after the installer has restricted that
-directory to administrators. Uninstall leaves it in place. Omit the switch for
-a device that is not meant to be managed; an upgrade without it leaves an
-existing marker alone.
-
-`/allusers` is what forces the per-machine install into `%ProgramFiles%\Ion`.
-Without it the assisted installer installs per-user, which under a
-System-context Intune deployment means into the SYSTEM profile.
-
-### Per-machine app, per-user engine
-
-The Win32 app lands the binaries for the whole device. It does not start
-anything. The engine supervisor is a **per-user** Scheduled Task named
-`Ion Engine (<SID>)`, registered on that user's first launch of Ion. The name
-carries the account's SID because a task name is machine-global: a single
-shared `Ion Engine` would be one registration for every account on a
-multi-session host. Releases that predate this registered that shared name,
-and the first launch after an upgrade retires it for the current user.
-
-So each signed-in user gets their own engine, their own `%USERPROFILE%\.ion`
-data directory, and their own loopback port derived from their own SID (in
-`51000-54999`). That split is deliberate: conversations, credentials, and logs
-are per-user data, and a machine-wide engine would share them across everyone
-on the device.
-
-There is **no shared fallback address at any layer**. A fixed port would let a
-second user's desktop attach to the first user's engine -- their
-conversations, their credentials, their file access -- with nothing on screen
-to say so. When the SID cannot be read, the engine refuses to start and the
-desktop reports that it has no address, rather than either picking one.
-
-The per-user port is an addressing decision, not an authorization one: it
-stops two engines colliding, and it does not stop another signed-in user
-scanning the range. Authorization is the engine's, which checks each loopback
-peer's process token against its own user and refuses a connection from a
-different account.
-
-To check a device, name the exact task or enumerate -- `schtasks /TN` takes an
-exact name and has no wildcard syntax:
-
-```powershell
-$sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
-schtasks /Query /TN "Ion Engine ($sid)" /V /FO LIST
-Get-ScheduledTask | Where-Object TaskName -like 'Ion Engine*' | Format-List TaskName, State
-```
-
-### Uninstall
-
-The uninstaller removes every Ion Engine scheduled task on the machine, not
-just the one belonging to whoever ran it -- tasks live in
-`C:\Windows\System32\Tasks` rather than in a profile, so an elevated
-uninstall reaches accounts that are signed out and accounts whose profile
-container is not mounted. A task is removed only when its name is one Ion
-registers **and** its registered action proves it launches Ion from an
-installed Ion directory; anything else is skipped and logged.
-
-Nothing in a user profile is touched. `%USERPROFILE%\.ion` holds
-conversations, credentials and settings and survives uninstall.
-`%ProgramData%\Ion` holds administrator-authored policy and survives too.
-
-If an uninstall ran without sufficient rights, the same code is left on the
-device at `%ProgramData%\Ion\Remove-IonEngineTasks.ps1` and an administrator
-runs it directly to finish the job. `-Detect` reports what remains without
-removing anything, which makes it usable as an Intune remediation-detection
-script.
-
-### Pin the version, disable the updater
-
-Same reasoning as the macOS section: a managed fleet owns the version
-lifecycle, so the desktop must not self-update. On Windows the kill switch
-arrives as registry policy rather than a plist -- through the ADMX
-`ConfigJson` setting, or `Set-IonPolicy.ps1`:
-
-```json
-{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}
-```
-
-With that set the desktop skips its update check and its install path
-entirely, and new versions arrive only when you assign them.
-
-### Deliver policy as its own app
-
-Policy changes more often than the application does, so it ships as a second
-Win32 app -- the Ion Enterprise Policy package -- declared as a **dependency**
-of Ion Studio with "Automatically install" set to Yes. Intune applies a
-dependency before the app that declares it, which is what makes the engine
-find its configuration on first launch. The dependency governs install order
-only, so install the application with `/managed` as well: a device whose
-policy package is later removed then locks instead of running unmanaged. It also
-means a scope list changes without redeploying the application, and a policy
-change rolls back on its own.
-
-The package writes only the values it declares, records what it owns outside
-the policy key, verifies every value by reading it back, and on uninstall
-removes only what it placed. It also carries the theme pack the policy's
-`themePolicy` locks, installed under `%ProgramData%\Ion\themes\<id>`: a
-device that applied a locked theme policy without the pack would fall back to
-a built-in theme and still report itself compliant.
-
-Build it with `desktop/packaging-windows/intune/policy/New-IonPolicyIntuneWin.ps1`,
-which produces the `.intunewin`, the stamped detector and a provenance
-manifest in one step. The tool refuses any config carrying a credential
-(machine policy under HKLM is readable by every account on the device), an
-unfilled placeholder, a missing production field, or a theme pack that is not
-the one the policy locks.
-
-### Signature and provenance
-
-Signing is decided before the build, and there is no path that publishes an
-unsigned installer while claiming otherwise:
-
-| Configuration | Outcome |
-|---|---|
-| A code-signing certificate is configured | The installer is signed; a signing failure fails the release. |
-| Signing is required and no certificate is configured | The release stops before building. |
-| Neither | The build proceeds and every artifact is labelled unsigned in its provenance manifest. |
-
-Every release publishes `Ion-Artifacts-<version>-x64.json` and a matching
-`.sha256`. Each artifact's SHA-256 and Authenticode status are read off the
-file rather than taken from the build's intent, and a build from a dirty tree
-is labelled `test-build` and `reproducible: false`. Verify the hash of what
-you received against the manifest before assigning it.
-
-An unsigned installer run by hand still hits SmartScreen. An Intune
-System-context install does not prompt either way.
-
-Full step-by-step, including the manual repackaging command and the policy
-app's settings: `desktop/packaging-windows/intune/README.md`.

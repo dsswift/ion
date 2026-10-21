@@ -9,8 +9,7 @@
 // OTLP LogRecord traceId and spanId). An operational line has no event_name.
 //
 // Two pipelines:
-//   1. ion_parse     — tails engine.jsonl, server.jsonl, desktop.jsonl and
-//                      ios-diagnostic-logs.jsonl, and promotes
+//   1. ion_parse     — tails engine.jsonl and promotes
 //                      service_name/level/tag as Loki stream labels.
 //   2. ion_telemetry — receives expanded telemetry events from the
 //                      telemetry-forwarder and promotes the event name as the
@@ -37,7 +36,7 @@
 // restarting Alloy). See README.md for the one-line engine.json snippet.
 
 // ---------------------------------------------------------------------------
-// 1. STRUCTURED LOG PIPELINE — engine / server / desktop / ios logs
+// 1. STRUCTURED LOG PIPELINE — engine logs
 //
 // Explicit file list (not a glob) to prevent telemetry.jsonl from being
 // ingested by this pipeline. If a glob were used, telemetry.jsonl would be
@@ -47,13 +46,6 @@
 local.file_match "ion_logs" {
   path_targets = [
     {"__path__" = "/ion-logs/engine.jsonl"},
-    // The Ion Studio Server's own lines (component=server) and the browser
-    // client lines it records for them (component=web). Absent until the
-    // server split made them their own file, which is how they went
-    // uncollected.
-    {"__path__" = "/ion-logs/server.jsonl"},
-    {"__path__" = "/ion-logs/desktop.jsonl"},
-    {"__path__" = "/ion-logs/ios-diagnostic-logs.jsonl"},
   ]
   sync_period = "5s"
 }
@@ -275,7 +267,7 @@ loki.process "ion_telemetry" {
 //              logger stamps it). `.local` is trimmed so one machine has one
 //              name, as the OTLP resource does.
 //   user       the signed-in operator (`user`, top-level on both shapes),
-//              present when the engine or desktop had an identity to report.
+//              present when the engine had an identity to report.
 //
 // A line with neither leaves the label unset; a dashboard's `host_name=~".*"`
 // still matches it. These are the only identity labels: machine_id and the
@@ -330,12 +322,9 @@ loki.write "local" {
 
 // A log shipper pointed at this stack (logging.egressOtel.endpoint =
 // http://localhost:4318) posts its logs before its spans, and sends the spans
-// only once the logs are accepted. This stack already reads every Ion log file
-// from disk (section 1), so OTLP logs are accepted and dropped here rather
-// than stored twice. The one exception is the relay (service.name ion-relay,
-// the `relay` compose profile): it writes no file this stack tails, so its
-// OTLP logs are the only copy and go to Loki through the same parse pipeline
-// as the tailed files. Traces go to Tempo.
+// only once the logs are accepted. This stack already reads the engine log
+// file from disk (section 1), so OTLP logs are accepted and dropped here
+// rather than stored twice. Traces go to Tempo.
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -344,41 +333,9 @@ otelcol.receiver.otlp "default" {
     endpoint = "0.0.0.0:4318"
   }
   output {
-    logs   = [otelcol.processor.filter.relay_logs_only.input, otelcol.exporter.loki.otlp_logs_already_tailed.input]
+    logs   = [otelcol.exporter.loki.otlp_logs_already_tailed.input]
     traces = [otelcol.exporter.otlp.tempo.input]
   }
-}
-
-// Keep only the relay's records on this branch; every other service's OTLP
-// logs are already tailed from disk and continue to the drop below.
-otelcol.processor.filter "relay_logs_only" {
-  error_mode = "ignore"
-  logs {
-    log_record = [
-      `resource.attributes["service.name"] != "ion-relay"`,
-    ]
-  }
-  output {
-    logs = [otelcol.processor.attributes.relay_loki_raw.input]
-  }
-}
-
-// The relay's record body is the canonical JSONL line itself (log-schema.md
-// § "relay"), so hand it to Loki raw: loki.process.ion_parse then reads the
-// same component/level/tag/trace_id fields it reads from a tailed file.
-otelcol.processor.attributes "relay_loki_raw" {
-  action {
-    key    = "loki.format"
-    action = "insert"
-    value  = "raw"
-  }
-  output {
-    logs = [otelcol.exporter.loki.relay.input]
-  }
-}
-
-otelcol.exporter.loki "relay" {
-  forward_to = [loki.process.ion_parse.receiver]
 }
 
 otelcol.exporter.loki "otlp_logs_already_tailed" {

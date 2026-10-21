@@ -23,19 +23,18 @@ Graphify is optional. Nothing in Ion requires it, and a clone without it is full
 ### query — the locator
 
 ```bash
-graphify query "complete worktree"
+graphify query "shared paths"
 ```
 
 ```
-Traversal: BFS depth=2 | Start: ['worktree.ts', 'worktree-slice.ts', 'WorktreeInfo', '.complete()'] | 193 nodes found
+Traversal: BFS depth=2 | Start: ['shared_paths.go', 'sharedRoots', 'isSharedTarget'] | 120 nodes found
 
-NODE worktree.ts [src=desktop/src/main/ipc/worktree.ts loc=L1 ...]
-NODE worktree-slice.ts [src=desktop/src/renderer/stores/slices/worktree-slice.ts loc=L1 ...]
-NODE WorktreeInfo [src=desktop/src/shared/types-session.ts loc=L673 ...]
-NODE .complete() [src=engine/internal/session/run_once.go loc=L75 ...]
+NODE shared_paths.go [src=engine/internal/workspaces/shared_paths.go loc=L1 ...]
+NODE sharedRoots [src=engine/internal/workspaces/shared_paths.go loc=L100 ...]
+NODE isSharedTarget [src=engine/internal/workspaces/shared_paths.go loc=L249 ...]
 ```
 
-Three files and a type, with line numbers, from one call. That is the job: **the graph tells you where to look, the source file tells you what it does.**
+A file and its symbols, with line numbers, from one call. That is the job: **the graph tells you where to look, the source file tells you what it does.**
 
 ### explain — the edge list
 
@@ -119,8 +118,7 @@ The graph is a **power-law network**. Median node degree is 3, but a handful of 
 | `NewManager()` | Session construction, referenced across tests and callers |
 | `Context` | The SDK context type, threaded everywhere |
 | `newMockBackend()` | Test helper used by most session tests |
-| `useColors()` | Every themed renderer component |
-| `shared/types.ts` | Type barrel imported across the desktop |
+| `types.ts` | The TypeScript SDK's type barrel, imported by every SDK module |
 
 A depth-2 traversal reaches one of these within a hop or two of almost any seed, and the hub's hundreds of neighbours then crowd out the remaining budget.
 

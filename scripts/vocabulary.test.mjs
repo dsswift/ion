@@ -71,58 +71,6 @@ test('check rejects stale generated output', () => {
   assert.match(`${result.stdout}${result.stderr}`, /run `make generate-vocabulary`/);
 });
 
-// The Desktop client has two presentations. A `desktop` implementation is a shared
-// component that both presentations mount, so it must satisfy the Studio column and the
-// Overlay column. A `studio` or `overlay` implementation is presentation-specific and must
-// not satisfy the other presentation. iOS stays independent of every Desktop platform.
-function clientImplementation(platform, symbol) {
-  return { platform, presentation: 'ui', language: platform === 'ios' ? 'swift' : 'typescript', symbol, path: 'source.go' };
-}
-function parityRow(term, implementations) {
-  const fix = fixture([entry({ domain: 'clients', implementations })]);
-  const generated = run(fix, 'generate');
-  assert.equal(generated.status, 0, generated.stderr);
-  const row = fs.readFileSync(fix.out, 'utf8').split('\n').find((line) => line.startsWith(`| ${term} |`));
-  assert.ok(row, `expected a parity row for ${term}`);
-  const cells = row.split('|').slice(1, -1).map((cell) => cell.trim());
-  assert.equal(cells.length, 6, `expected six parity cells, got ${row}`);
-  return { desktop: cells[1], studio: cells[2], overlay: cells[3], ios: cells[4], gaps: cells[5] };
-}
-
-test('shared desktop implementation counts for both Studio and Overlay', () => {
-  const cells = parityRow('Alpha', [clientImplementation('desktop', 'AlphaSymbol')]);
-  assert.equal(cells.desktop, '`AlphaSymbol`');
-  assert.equal(cells.studio, '`AlphaSymbol`');
-  assert.equal(cells.overlay, '`AlphaSymbol`');
-  assert.equal(cells.gaps, 'iOS');
-});
-test('studio-only implementation does not imply Overlay', () => {
-  const cells = parityRow('Alpha', [clientImplementation('studio', 'AlphaSymbol')]);
-  assert.equal(cells.studio, '`AlphaSymbol`');
-  assert.equal(cells.overlay, 'None');
-  assert.equal(cells.desktop, 'None');
-  assert.equal(cells.gaps, 'Overlay, iOS');
-});
-test('overlay-only implementation does not imply Studio', () => {
-  const cells = parityRow('Alpha', [clientImplementation('overlay', 'AlphaSymbol')]);
-  assert.equal(cells.overlay, '`AlphaSymbol`');
-  assert.equal(cells.studio, 'None');
-  assert.equal(cells.desktop, 'None');
-  assert.equal(cells.gaps, 'Studio, iOS');
-});
-test('iOS parity stays independent of Desktop platforms', () => {
-  const desktopOnly = parityRow('Alpha', [clientImplementation('desktop', 'AlphaSymbol')]);
-  assert.equal(desktopOnly.ios, 'None');
-  const iosOnly = parityRow('Alpha', [clientImplementation('ios', 'AlphaSymbol')]);
-  assert.equal(iosOnly.ios, '`AlphaSymbol`');
-  assert.equal(iosOnly.desktop, 'None');
-  assert.equal(iosOnly.studio, 'None');
-  assert.equal(iosOnly.overlay, 'None');
-  assert.equal(iosOnly.gaps, 'Desktop, Studio, Overlay');
-  const both = parityRow('Alpha', [clientImplementation('desktop', 'AlphaSymbol'), clientImplementation('ios', 'AlphaSymbol')]);
-  assert.equal(both.gaps, 'None');
-});
-
 test('CLI check detects drift when the invoked tool path contains a space', () => {
   const fix = fixture();
   const toolRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ion vocabulary tool '));
@@ -168,18 +116,19 @@ test('check accepts generated output with CRLF line endings', () => {
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('escapes pipe characters in generated parity table cells', () => {
-  const fix = fixture([entry({ term: 'Alpha|Pipe', domain: 'clients', implementations: [clientImplementation('desktop', 'Alpha|Symbol')] })]);
+test('escapes pipe characters in generated table cells', () => {
+  const fix = fixture([entry({ term: 'Alpha|Pipe', implementations: [{ platform: 'engine', presentation: 'code', language: 'go', symbol: 'Alpha|Symbol', path: 'source.go' }] })]);
   fs.writeFileSync(path.join(fix.root, 'source.go'), 'Alpha|Symbol\n', 'utf8');
   assert.equal(run(fix, 'generate').status, 0);
-  const row = fs.readFileSync(fix.out, 'utf8').split('\n').find((line) => line.startsWith('| Alpha\\|Pipe |'));
-  assert.equal(row, '| Alpha\\|Pipe | `Alpha\\|Symbol` | `Alpha\\|Symbol` | `Alpha\\|Symbol` | None | iOS |');
+  const output = fs.readFileSync(fix.out, 'utf8');
+  assert.match(output, /#### Alpha\|Pipe \{#term-alpha\}/);
+  assert.match(output, /`Alpha\|Symbol` in `source.go`/);
 });
 
 test('renders multi-entry registry metadata, indexes, and replacements', () => {
   const terms = [
     entry({ id: 'alpha', term: 'Zulu', status: 'deprecated', replacementId: 'beta', qualifiers: ['local'], aliases: ['z alias'], legacyNames: ['old zulu'], notes: 'Retired term.' }),
-    entry({ id: 'beta', term: 'Alpha', definition: 'Replacement definition.', domain: 'clients', kind: 'ui-component', status: 'review-needed', qualifiers: ['shared'], aliases: ['a alias'], legacyNames: ['old alpha'], contract: 'none', implementations: [clientImplementation('desktop', 'AlphaSymbol')], notes: 'Review this term.' }),
+    entry({ id: 'beta', term: 'Alpha', definition: 'Replacement definition.', domain: 'harness-sdk', kind: 'runtime-mechanic', status: 'review-needed', qualifiers: ['shared'], aliases: ['a alias'], legacyNames: ['old alpha'], contract: 'none', implementations: [{ platform: 'sdk', presentation: 'code', language: 'go', symbol: 'AlphaSymbol', path: 'source.go' }], notes: 'Review this term.' }),
   ];
   const fix = fixture(terms);
   assert.equal(run(fix, 'generate').status, 0);

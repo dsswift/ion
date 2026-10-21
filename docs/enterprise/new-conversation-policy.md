@@ -42,7 +42,7 @@ When no enterprise config is loaded, or when the config has no `newConversationD
 { "requestId": "r1", "ok": true, "data": { "newConversationDefaults": null } }
 ```
 
-The desktop calls this RPC during startup to determine whether the new-conversation flow should be locked. iOS does **not** call the RPC directly; it receives the resolved policy as `newConversationPolicy` in the `desktop_settings_snapshot` event, which the desktop populates from the RPC result.
+A client calls this RPC during startup to determine whether its new-conversation flow should be locked.
 
 ## Config field: `EnterpriseConfig.newConversationDefaults`
 
@@ -74,16 +74,13 @@ Set in the `enterprise` block of the engine config (delivered via MDM, Group Pol
 
 ## Client behavior when locked
 
-When `locked` is `true`, both desktop and iOS skip the profile picker and directory picker entirely and open the conversation directly with the mandated values. The user's default-directory and default-profile settings are ignored at new-conversation creation time.
-
-- **Desktop**: `resolveNewConversationAction` returns `{ kind: 'locked', baseDirectory, profileId }`. The conversation opens directly with the mandated values.
-- **iOS**: the free function `resolveNewConversationAction(...)` in `NewConversationRouting.swift` returns `.locked(baseDirectory:profileId:)`; the dispatch to `createTab` happens in `TabListView.swift`. The new-conversation sheet bypasses profile and directory selection.
+When `locked` is `true`, a client skips its profile picker and directory picker entirely and opens the conversation directly with the mandated values. The user's default-directory and default-profile settings are ignored at new-conversation creation time.
 
 Empty `engineProfileId` with `locked: true` is valid. It means a plain conversation (no extensions) is mandated. Users cannot switch to an extension profile.
 
 ## Controls hidden when locked
 
-A lock that names a `baseDirectory` takes folder and project choice away. The desktop and web clients hide these controls while it is in force:
+A lock that names a `baseDirectory` takes folder and project choice away. The archived Ion Studio hid these controls while it was in force, and a client with the same surfaces should do the same:
 
 | Where | Control hidden |
 |-------|----------------|
@@ -99,9 +96,9 @@ A lock with an empty `baseDirectory` (a profile lock only) hides none of these: 
 
 Left visible because it only reads: the Explorer tree of the locked folder, the project scope filter in the Inbox, and each conversation's profile badge.
 
-## Server enforcement when locked
+## Enforcement when locked
 
-The Studio server applies the lock itself, so a client that ignores it is refused rather than trusted:
+The engine applies the profile lock itself, and a client that fronts the engine should apply the directory lock the same way, so a client that ignores it is refused rather than trusted. The archived Ion Studio server did:
 
 - `createConversationTab` opens every new conversation in `baseDirectory` on `engineProfileId`, whatever directory, profile, or worktree the caller asked for. A restore keeps what it recorded.
 - The engine forces the locked profile onto every session it starts.
@@ -138,4 +135,4 @@ Result: every new conversation loads the `corp-security-profile` profile. Users 
 }
 ```
 
-Result: `baseDirectory` and `engineProfileId` are pushed to the engine, but clients treat them as suggestions. The desktop and iOS honor the user's own Settings preferences if the user has set them, and fall back to these values only when the user has not made a choice.
+Result: `baseDirectory` and `engineProfileId` are pushed to the engine, but clients treat them as suggestions. A client honors the user's own preferences if the user has set them, and falls back to these values only when the user has not made a choice.

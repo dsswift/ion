@@ -12,8 +12,6 @@ Ion has four domains. Understanding them up front will save you time when buildi
 |--------|------------|
 | **engine** | The Go runtime. Headless mechanics: sessions, hooks, events, tools, streaming. |
 | **harness-sdk** | Extension code on top of the engine, through the SDK. Decides policy. |
-| **clients** | Applications that render engine state. Desktop and iOS are the reference implementations. |
-| **relay** | Transport infrastructure. Pairs two peers and forwards opaque frames. Not a client. |
 
 Every shared concept below has one canonical name. The [Ion Vocabulary](../vocabulary/index.md) is the authority: it carries each term's definition, its domain, its contract classification, and the real code symbols that implement it.
 
@@ -27,15 +25,10 @@ This is the most important distinction in Ion.
 
 This separation means the same engine binary can power completely different agent experiences depending on which harness is loaded.
 
-A **client** (the desktop app, a CLI, the mobile remote) connects to the engine over its socket and renders events into a UI. Clients have no access to engine internals. They send commands and receive events.
-
-Two facts about clients that the words often blur:
-
-- **Desktop is one client with two presentations.** The Overlay is the transparent glass window. The Studio is the standalone workspace window. Exactly one is active at a time. They are presentations of one application, not two clients.
-- **The relay is not a client.** It is transport infrastructure between the engine and a mobile client. It renders nothing and stores nothing.
+A **client** (the `ion` CLI, an ACP client, or any program that speaks the protocol) connects to the engine over its socket and renders events into a UI. Clients have no access to engine internals. They send commands and receive events. Clients live outside this repository.
 
 ```
-Client (Desktop/CLI/Mobile)
+Client (CLI or any protocol consumer)
     |
     | NDJSON over Unix socket or TCP
     |
@@ -162,17 +155,6 @@ Every tool invocation passes through the hook system. Per-tool hooks (`beforeBas
 
 See the [tools reference](../tools/reference.md) for the complete, authoritative list.
 
-## Environments
-
-An Environment is one engine plus one Ion Studio Server: a place where
-conversations run. Every desktop install is an Environment (this Mac), and a
-headless host becomes one when the server is installed on it. A desktop can
-be connected to several at once, with all their conversations in one Inbox;
-a conversation runs on the Environment it was created on and can be
-transferred to another. An Environment belongs to one account on its host,
-and every device that person pairs acts as that same identity there. See
-[Ion Studio Server](../deployment/studio-server.md).
-
 ## Configuration
 
 Ion uses a 4-layer configuration merge:
@@ -194,7 +176,6 @@ Key configuration areas:
 | `mcpServers` | MCP server connections |
 | `profiles` | Named session presets |
 | `network` | Proxy, custom CA, TLS settings |
-| `relay` | Remote relay connection for mobile access |
 | `featureFlags` | Feature flag sources and overrides |
 
 See the [configuration reference](../configuration/) for the full schema.

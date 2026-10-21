@@ -203,15 +203,15 @@ To **explicitly disable the built-in gate globally** (the default), leave `enabl
 }
 ```
 
-### Reference policy implementation
+### Reference policy
 
-The Ion desktop client ships a reference `before_early_stop_decision` handler in `desktop/src/main/early-stop-policy.ts` that:
+A harness that wants the Claude-Code-style continuation registers a `before_early_stop_decision` handler that:
 
 - Reads a user-facing `enableEarlyStopContinuation` setting (default `false`).
 - Returns `ForceContinue: &true` plus a Claude-Code-style `ContinueMessage` ("Stopped at X% of token target …") when the setting is on and `Eligible` is true.
 - Returns `ForceContinue: &false` when the setting is off, and no opinion when the mechanical safeguards report `Eligible=false`.
 
-Harness engineers running the engine outside the Ion desktop are encouraged to copy or adapt this implementation. The engine deliberately ships no prompt text so the harness owns the wording (and the user-facing toggle, if any) end-to-end.
+The archived Ion Studio desktop shipped exactly this handler. The engine deliberately ships no prompt text so the harness owns the wording (and the user-facing toggle, if any) end-to-end.
 
 **Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
 
@@ -829,7 +829,7 @@ When `security.principalPartitioning` is also active, the sandbox's filesystem r
 
 ## git
 
-Per-session git author identity, independent of the per-principal git *credential* resolution the server performs (see [Server configuration](server-json.md#git) and [Git identity setup](../deployment/git-identity-setup.md)) — this section resolves the name/email a commit records, not what it authenticates with.
+Per-session git author identity, independent of any git *credential* resolution a client performs on its side — this section resolves the name/email a commit records, not what it authenticates with.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1205,7 +1205,6 @@ A multi-provider configuration mixing a local Ollama model with a hosted OpenAI 
 * [models.json Reference](models.md) for registering custom models and tier aliases.
 * [Provider Setup](../providers/index.md) for the catalog of supported providers and their environment variables.
 * [ADR-034: Principal Isolation and Tenancy](../architecture/adr/034-principal-isolation-and-tenancy.md) for why `security.principalPartitioning`, `security.sandbox`, and `git.identity` exist.
-* [Git identity setup](../deployment/git-identity-setup.md) for the operator-facing checklist behind `git.identity` and its server-side counterpart.
 
 ## newConversationDefaults
 

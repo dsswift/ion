@@ -164,35 +164,6 @@ services:
         limits:
           memory: 256m
 
-  # The Ion relay, built from relay/Dockerfile. Optional: `docker compose
-  # --profile relay up` starts it. It ships its own logs and relay.forward
-  # spans to Alloy over OTLP (section 4 of alloy-config.alloy keeps ion-relay
-  # logs instead of dropping them, since no file tails them) and serves
-  # Prometheus metrics on /metrics of its listen port, which prometheus.yml
-  # scrapes as `relay:8443`. RELAY_API_KEY is the PSK a server and a phone
-  # present; the default is for a stack nobody else can reach.
-  relay:
-    build:
-      context: ../../relay
-    profiles:
-      - relay
-    ports:
-      - "${RELAY_PORT:-8443}:8443" # WebSocket channels, /healthz, /metrics
-    environment:
-      - RELAY_API_KEY=${RELAY_API_KEY:-local-dev-relay-key}
-      - RELAY_LOG_OUTPUT=stdout
-      - RELAY_OTLP_ENDPOINT=http://alloy:4318
-      - RELAY_METRICS_ENABLED=true
-      - RELAY_HOST=${RELAY_HOST:-relay-local}
-    networks:
-      - ion-obs
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-    depends_on:
-      - alloy
-
   # Local Event Hub emulator — optional, only needed to exercise
   # conversationEvents.targets: ["eventhub"] without a real Azure subscription.
   # Speaks AMQP only (no HTTPS ingest); needs the azurite sidecar below.

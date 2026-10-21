@@ -12,18 +12,16 @@ Ion is a monorepo. The engine is the product; the other components are reference
 
 ```
 ion/
-  engine/       # Go agent runtime (the product)
-  desktop/      # Electron client: Overlay and Studio presentations
-  relay/        # Go WebSocket relay (transport infrastructure)
-  ios/          # SwiftUI client
+  engine/       # Go agent runtime (the product), with the TypeScript SDK
+  sdk/go/       # Go extension SDK
   docs/         # Documentation (Docusaurus)
 ```
 
 ## Before you start
 
-1. Understand the [four-domain vocabulary model](../architecture/index.md). Every change belongs to exactly one domain: engine, harness-sdk, clients, or relay.
+1. Understand the [two-domain vocabulary model](../architecture/index.md). Every change belongs to exactly one domain: engine or harness-sdk.
 2. Read [ADR-001](../architecture/adr/001-engine-vs-harness.md) to understand the engine vs harness boundary.
-3. The engine is the product. Desktop and iOS are reference client implementations, and the relay is transport infrastructure. Prioritize engine quality.
+3. The engine is the product. Clients live outside this repository and consume its wire protocol.
 4. Use the canonical name for every shared concept. The [Ion Vocabulary](../vocabulary/index.md) is the authority.
 
 ## Vocabulary workflow
@@ -47,7 +45,7 @@ When your change introduces or renames a shared concept:
 
 4. Commit both files together.
 
-Each entry needs a definition, a domain (`engine`, `harness-sdk`, `clients`, `relay`), a kind, a status, a contract classification, and at least one implementation citing a real symbol in a real repo-relative file. The checker verifies that the file exists and that the symbol appears in it, so a stale path or a renamed symbol fails the gate.
+Each entry needs a definition, a domain (`engine`, `harness-sdk`), a kind, a status, a contract classification, and at least one implementation citing a real symbol in a real repo-relative file. The checker verifies that the file exists and that the symbol appears in it, so a stale path or a renamed symbol fails the gate.
 
 A registry entry names a concept in prose. It never renames a published wire field, an event type string, a hook name, or an SDK type. Those follow the contract rules in the root `AGENTS.md`.
 
@@ -61,7 +59,6 @@ A registry entry names a concept in prose. It never renames a published wire fie
 | [Branch lifecycle](branch-lifecycle.md) | Feature work → align → squash → push to main, and the hooks that run automatically |
 | [Graph queries](graph-queries.md) | Querying the graphify knowledge graph: subcommands, budgets, edge confidence |
 | [Delivery pipeline](delivery-pipeline.md) | Push to main → version → build → publish; where tests and scans fit |
-| [Performance](performance.md) | The nightly perf harness, profiles per surface, the Performance dashboard, comparing commits |
 
 ## Quick reference
 
@@ -71,9 +68,6 @@ make install
 
 # Engine only
 cd engine && make build
-
-# Desktop only
-cd desktop && npm run build
 
 # Run all tests
 make test

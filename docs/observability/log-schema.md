@@ -1,6 +1,6 @@
 # Ion Unified Log Schema
 
-Canonical JSONL schema for all surfaces: **engine**, **desktop**, **server**, **web**, **ios**, **relay**, **extension**.
+Canonical JSONL schema for every surface the engine writes: **engine** and **extension**. A client of the engine that writes its own logs follows the same schema with its own `component` value; the archived Ion Studio clients did.
 
 Every surface writes one JSON object per line (NDJSON). All fields are snake_case. No surface may invent
 top-level fields outside this schema; additional context goes into `fields`.
@@ -22,10 +22,10 @@ contract: the same lines without those spans and fields.
 |---|---|---|---|
 | `ts` | string | YES | RFC3339Nano, always UTC. Example: `2024-11-15T22:04:05.123456789Z` |
 | `level` | string enum | YES | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR`. No absent-equals-INFO default — the field must be present on every line. |
-| `component` | string enum | YES | `engine` \| `desktop` \| `server` \| `web` \| `ios` \| `relay` \| `extension` |
+| `component` | string enum | YES | `engine` \| `extension`; a client writing its own lines uses its own value |
 | `tag` | string | NO | Subsystem tag within the component (`session`, `ext:my-agent`, etc.). For extension-component logs, this MUST be the extension name. |
 | `msg` | string | YES | Human-readable message. No structured data embedded here; use `fields`. |
-| `session_id` | string | NO | The engine session key: the opaque, client-supplied key that identifies the current engine session. For desktop clients this is the tab UUID (`ClientCommand.Key`). For external consumers it may be any string the client chose. This is NOT the conversation ID. Omit (never `""`) when not in a session context. |
+| `session_id` | string | NO | The engine session key: the opaque, client-supplied key that identifies the current engine session (`ClientCommand.Key`); any string the client chose. This is NOT the conversation ID. Omit (never `""`) when not in a session context. |
 | `conversation_id` | string | NO | The engine-minted conversation-file identity, format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). This is the durable identity of the persisted conversation tree at `~/.ion/conversations/<id>.tree.jsonl`. A single conversation spans multiple sessions and runs. Omit (never `""`) when not associated with a conversation. |
 | `trace_id` | string | NO | W3C trace-context trace-id: 32 lowercase hex chars. Scoped to **one prompt**, from the client's submit to the end of the engine's run — see § "Correlation-ID vocabulary" and § "Spans". Omit when no prompt is in flight. |
 | `span_id` | string | NO | OpenTelemetry-compatible 16-hex span ID. Omit when no span is active. A span line carries its own `span_id` in `fields` instead (§ "Spans"). |
@@ -56,7 +56,7 @@ DEBUG; volume with no reconstruction value (heartbeats, raw stream chunks) is TR
 ### Message structure
 
 `msg` is a **short, stable, data-free clause**. No interpolation of any kind: no `fmt.Sprintf` into
-`msg` (Go), no template literals (TypeScript), no `"\()"` interpolation (Swift). The same logical event
+`msg` (Go), no template literals (TypeScript). The same logical event
 always produces the byte-identical `msg` string. Rationale: Loki groupability — counting and alerting on
 a line (`count_over_time({...} |= "session started" [1h])`) only works when the message is a constant.
 Interpolated messages create one unique string per occurrence and defeat aggregation.
@@ -99,13 +99,12 @@ has neither.
 schedule/webhook deliveries have no run in flight, so the key is absent rather than empty (see
 § "Empty-string rule"). Those lines remain joinable by `session_id` and `conversation_id`.
 
-**The client that sends a prompt mints its `trace_id`.** Studio (in Electron or a browser) and
-the phone start the trace when the operator submits and pass it on as a `traceparent`; the server
-and the engine's run join it. A pivot on `trace_id` therefore returns that prompt's lines on every
-surface that handled it: the client's span, the relay's forward span, the server's lines and span,
-and the engine and extension lines of the run. A prompt that arrives with no valid `traceparent`
-(a server-originated turn, a caller that sends none) starts its trace at the server, and a run the
-engine starts on its own (a schedule, a webhook) starts it at the engine. Lines about no prompt carry
+**The client that sends a prompt mints its `trace_id`.** The client starts the trace when the
+operator submits and passes it on as a `traceparent`; the engine's run joins it. A pivot on
+`trace_id` therefore returns that prompt's lines on every surface that handled it: the client's
+span and the engine and extension lines of the run. A prompt that arrives with no valid
+`traceparent` starts its trace at the engine, and so does a run the engine starts on its own (a
+schedule, a webhook). Lines about no prompt carry
 none; follow a conversation across prompts by `conversation_id` or `session_id`, which each surface
 resolves per line. How the trace moves hop to hop is § "Spans".
 
@@ -134,7 +133,7 @@ Canonical keys for common concepts:
 | `provider` | string | Provider ID |
 | `duration_ms` | int | Wall-clock duration in milliseconds |
 | `cost_usd` | float | Cost in USD |
-| `error` | string | Error message (relay normalizes `err` → `error` at collection time) |
+| `error` | string | Error message |
 | `count` | int | Generic cardinality |
 | `path` | string | Filesystem path |
 | `status` | string/int | Status or state, or HTTP status code |
@@ -174,69 +173,44 @@ Engine WARN, no session (daemon startup):
 
 ## Spans
 
-Spans are the unit of timing: every operation Ion times is a span, written through one helper per
-language (`Collector.StartSpanCtx` in Go, `startSpan` in `@ion/shared/trace-context`, `DiagnosticLog.logSpan`
-on iOS); no surface writes an ad hoc `elapsed_ms`. Durations become distributions downstream, not in app
+Spans are the unit of timing: every operation Ion times is a span, written through one helper
+(`Collector.StartSpanCtx` in Go); no surface writes an ad hoc `elapsed_ms`. Durations become distributions downstream, not in app
 code: Tempo's metrics-generator turns the spans into latency histograms and a service graph
 (`traces_spanmetrics_*`, `traces_service_graph_*`; [README § Tempo](README.md#tempo)), which the Ion
 Performance dashboard and its alerts read.
 
-One user action is one W3C trace, end to end. The client mints a `traceparent` for every action it
-sends, not only a prompt; the server joins it on `action.handle` and carries it into the engine on
-`engine.request`; the engine stamps the trace on every event of the run; the client closes the loop
-with a render span when the effect is on screen. A prompt reads:
+One user action is one W3C trace, end to end. A client mints a `traceparent` for the action it
+sends; the engine joins it on `command.dispatch`, stamps the trace on every event of the run, and a
+client closes the loop with its own render span when the effect is on screen. A prompt reads, from
+the engine's side:
 
 ```
-prompt.send              client (Studio desktop, Studio web, iOS)   kind client
-  relay.forward          relay, phone frames only                   kind server
-  action.handle          Ion server, action=submit                  kind server
-    engine.send_prompt   Ion server, the call into the engine       kind client
-      run.execute        engine                                     kind server
-        context.assemble                                            kind internal
-        llm.call                                                    kind client
-          llm.attempt    one request to the provider                kind client
-        tool.execute                                                kind internal
-          mcp.call       a tool served by an MCP server             kind client
-          permission.decide                                         kind internal
-        hook.fanout      one hook point, every extension             kind internal
-          extension.hook_latency   one extension's handler          kind client
-        dispatch.agent   a sub-agent run; its own run.execute below kind internal
-        compaction                                                  kind internal
-        conversation.persist                                        kind internal
-    transcript.patch     Ion server, one transcript delta           kind internal
-    store.broadcast      Ion server, fan-out to every connection    kind internal
-prompt.visible           client, submit to first token on screen   kind internal
-  transcript.apply       client, one delta rendered                 kind internal
+run.execute              engine                                     kind server
+  context.assemble                                                  kind internal
+  llm.call                                                          kind client
+    llm.attempt          one request to the provider                kind client
+  tool.execute                                                      kind internal
+    mcp.call             a tool served by an MCP server             kind client
+    permission.decide                                               kind internal
+  hook.fanout            one hook point, every extension             kind internal
+    extension.hook_latency   one extension's handler                kind client
+  dispatch.agent         a sub-agent run; its own run.execute below kind internal
+  compaction                                                        kind internal
+  conversation.persist                                              kind internal
 ```
 
-`relay.forward` is a child of `prompt.send`, and `action.handle` (the server's span for every Studio
-action; a prompt is the `submit` action) is a child of `relay.forward` when a relay with tracing on
-delivered the frame and of `prompt.send` otherwise. `engine.send_prompt` is a child of `action.handle`,
-and `run.execute` is a child of `engine.send_prompt`. Every hop between two services is a client span whose child is a server
-span in the next service; § "OTLP correlation model" says why. `prompt.visible` is a second root-level
-span of the same trace on the client: it starts with the submit and ends when the first token of the
-answer renders, so it is the number a person feels.
+`run.execute` is a child of whatever client span sent the prompt, when the command carried a
+`traceparent`, and a root otherwise. Every hop between two services is a client span whose child is
+a server span in the next service; § "OTLP correlation model" says why.
 
-Any other action a client sends reads `action.handle` → `engine.request` → `command.dispatch`, with
-`snapshot.build`, `tabs_index.build`, `settled.publish`, `body.serve`, and the git, worktree, bench, and
-transfer spans as the server's work under it, and `store.hydrate` / `snapshot.apply` / `body.load` as
-the client's render. Start-up is its own trace per process: `daemon.startup` (engine, with
-`config.load`, `provider.probe`, `extension.spawn`, `mcp.start` under it), `server.startup` (the server,
-process start to its listeners accepting clients), `app.launch` (desktop, with
-`window.ready`, `studio.first_paint`, `connection.connect`, `store.hydrate`; and iOS, with
-`connection.connect`, `pairing.complete`, `snapshot.apply`), and `session.start` (engine, with
-`conversation.load`).
+Any other command a client sends reads `command.dispatch` with the engine's work under it. Start-up
+is its own trace per process: `daemon.startup` (engine, with `config.load`, `provider.probe`,
+`extension.spawn`, `mcp.start` under it) and `session.start` (engine, with `conversation.load`).
 
 ### Where each span starts and ends
 
 | Span | Starts | Ends | Written by |
 |---|---|---|---|
-| `prompt.send` (Studio) | The operator submits (`desktop/src/renderer/lib/action-trace.ts`, `submitWithTrace`) | The server answers the `submit` action, accepted or refused | `rendererLogger`: `desktop.jsonl` in Electron, `server.jsonl` as `component=web` in a browser |
-| `action.send` (Studio) | Any other `studio_action` leaves the renderer (`desktop/src/renderer/host/host-actions.ts`) | Its `studio_action_result` arrives, a refusal or error as the span's error | `rendererLogger`. Attributes `action`, `environment_id`, `surface`; its `traceparent` rides the frame for `action.handle` |
-| `prompt.send` (iOS) | The operator submits (`SessionViewModel.submit`, `ActionTraceBook.openPrompt`) | The server answers `session.prompt` (a failed or timed-out action answers rejected) | `DiagnosticLog.logSpan`, pulled into `ios-diagnostic-logs.jsonl`. Attributes `action` (`session.prompt`), `tab_id`, `client_msg_id`, `surface`, `peer.service` |
-| `action.send` (iOS) | Any other `studio_action` leaves the transport (`StudioTransport`, `ActionTraceBook.openAction`), a paged action once for all its pages | Its result arrives; a refusal, failure, or timeout is the span's error | `DiagnosticLog.logSpan`, a client span. Attributes `action`, `tab_id` (when the action names one), `surface`, `peer.service`; its `traceparent` rides the frame's envelope for `action.handle` |
-| `relay.forward` | The relay receives the frame | The frame is written to the peer | The relay's own OTLP export (§ "relay") |
-| `engine.send_prompt` | The server sends `send_prompt` or `send_command` (`server/src/engine/engine-bridge-core.ts`) | The engine answers `send_prompt`; for `send_command`, the send itself (the command is not awaited) | `server/src/tracing/prompt-span.ts` through the server logger |
 | `run.execute` | The engine run starts | The run exits | The engine's telemetry stream (every engine span below is a telemetry span event, `engine/internal/telemetry`) |
 | `llm.call` | The engine starts one model turn, retries included | The turn's final response or error | Engine. Attributes `model` and `backend` |
 | `llm.attempt` | One request to the provider | Its response or error | Engine, a child of `llm.call`; one per retry |
@@ -253,65 +227,17 @@ process start to its listeners accepting clients), `app.launch` (desktop, with
 | `session.start` | A session is created or reattached | It is ready for a prompt | Engine, with `conversation.load` under it |
 | `daemon.startup` | The engine process starts | The socket accepts clients | Engine, a root; `config.load`, `provider.probe`, `extension.spawn`, `mcp.start` are its children |
 | `config.load` / `provider.probe` / `extension.spawn` / `mcp.start` | The config read, the provider reachability check, the extension subprocess launch, the MCP server start begins | It returns, or the init handshake completes | Engine |
-| `action.handle` | The server receives a `studio_action` (`protocol/actions.ts`); a prompt is the `submit`, `submitRemotePrompt`, or `session.prompt` action | Its `studio_action_result` is sent | `server/src/tracing/op-span.ts` through the server logger. Attributes `action`, `surface` (`mirror` \| `thin`; `server` for a turn the server authored with no action in flight), `client_kind`, `transport`, `outcome` (`ok` \| `refused:<code>` \| `error:<code>`); a prompt adds `tab_id`, `request_id`, `prompt_surface`, `accepted`, `engine_dispatched`. Parent: the sealed envelope's `traceparent`, else the frame's, else one in the arguments, else a new root |
-| `engine.request` | The server sends any client command to the engine (`engine-bridge-core.ts`) | The engine answers it, or the request times out (the span's error) | Server, a client span; attributes `command`, `answered`, `ok`. Its `traceparent` rides the command; `engine.send_prompt` is its prompt-specific sibling, and a command that already carries a `traceparent` gets no `engine.request` |
-| `server.startup` | The server process starts (its time origin) | Its listeners accept clients, or the boot refuses (`state_file_corrupt`, the span's error) | Server (`main.ts`), a root. Attributes `pid`, `listening`, `environment_id`, `port` |
-| `snapshot.build` | The server starts assembling a connect snapshot (`protocol/snapshot.ts`) or the thin poll snapshot (`remote/snapshot-polling.ts`) | It is built | Server. Attribute `view` (`mirror` \| `thin`) |
-| `tabs_index.build` | `tabs.json` is read for a snapshot (`protocol/tabs-index.ts`) | The tab list is in memory | Server. Attribute `tab_count` |
-| `thin.first_paint` | The server starts the phone's first thin view (`thin-view/thin-sync.ts`) | Every first-paint event is queued | Server. Attribute `event_count` |
-| `transcript.patch` | One transcript delta is computed (`transcript/transcript-channel.ts`) | It is queued to every subscriber | Server, under the engine event's trace when one made the change. Attributes `stream_id`, `kind`, `rev`, `total`, `subscribers` |
-| `body.serve` | A conversation body request starts being answered (`protocol/bodies.ts`, after its turn in the answer queue) | The body has left the socket | Server. Attributes `tab_id`, `view` |
-| `settled.publish` | A changed settled-conversation list is sent to a thin connection (`thin-view/thin-settled.ts`) | It is queued | Server. Attribute `settled_count` |
-| `store.broadcast` | A Studio wire channel is published (`protocol/events.ts`), when at least one connection is attached | Every connection has it queued or was skipped | Server, under the engine event's trace when the payload carries one. Attributes `channel`, `connections`, `delivered` |
-| `git.exec` | A git subprocess is spawned (`git/git-exec.ts`, every `runGit` included) | It exits | Server, a client span. Attributes `git_command` (the subcommand), `cwd` |
-| `worktree.provision` / `worktree.land` / `worktree.retire` | The operation's body starts, after any queue wait | It completes or fails (the span's error) | Server. Attributes `repo_path`, `worktree_path`, `ok` / `state` |
-| `bench.rebuild` | An integration bench assembly starts (`integration/bench-assemble.ts`, after the queue) | Every member is applied, or the assembly fails | Server. Attributes `repo_path`, `source_branch`, `members_total` |
-| `transfer.export` / `transfer.import` | A transfer bundle starts being written, or read | It is sealed, or applied; a refusal is `refusal` | Server. Attributes `tab_id`, `ok` / `archive_path`, `ok` |
-| `http.request` | The server receives an HTTP request (`http/health.ts`, every route and static asset) | The response ends, or the connection closes first (the span's error) | Server, joins a `traceparent` header. Attributes `method`, `path`, `status`, `outcome` |
-| `log.ingest` | A browser client's `POST /log` line arrives (`http/log-ingest.ts`) | It is written or refused | Server, a child of `http.request`. Attribute `written` |
-| `hello.auth` | A connection's hello is received (`protocol/hello.ts`) | Its welcome or refusal is sent | Server. Attributes `client_kind`, `credential_kind`, `transport`, `accepted` |
-| `relay.frame` | `in`: a relayed envelope arrives (`protocol/sealed-socket.ts`), a child of the relay's span when the envelope names it. `out`: a frame is sealed for the relay | `in`: the opened frame is dispatched. `out`: the relay channel has taken the envelope | Server. Attributes `direction`, `client_id`, `bytes` (out) |
-| `fleet.deploy` | A deploy record is reported (`fleet/deploy-actions.ts`) | It is published to every client and handed to every hub | Server. Attributes `deploy_id`, `state`, `target_count` |
-| `push.ring` | A push is requested for offline thin clients (`thin-view/push-doorbell.ts`) | Every doorbell is handed to its relay channel | Server, a client span; its `traceparent` rides each doorbell envelope. Attributes `kind`, `channel_count` |
-| `app.launch` (Studio) | The Electron main process starts (its time origin) | Electron is ready (`app.whenReady`) | Electron main (`desktop/src/main/spans.ts`), `desktop.jsonl`; a root. `window.ready`, `studio.first_paint`, `store.hydrate` are its children: the window is handed the traceparent as a launch argument |
-| `window.ready` | The Studio `BrowserWindow` is created (`studio-window-manager.ts`) | Its `ready-to-show` | Electron main. Attribute `revealed` |
-| `studio.first_paint` | The renderer's time origin | The Studio shell's first React commit (`performance.mark` `ion:studio.first_paint`) | `rendererLogger` (`desktop/src/renderer/lib/render-spans.ts`), once per window |
-| `store.hydrate` | Mirror boot (`bootMirror`) | The first tabs hydration commits (`hydrateTabsFromSync`) | `rendererLogger`. Attributes `environment_id`, `tab_count`; later hydrations are not this span |
-| `connection.connect` (Studio) | One connection attempt starts (`environment-connection.ts`) | Its welcome, or the failure that ends the attempt (the span's error) | Electron main, a client span per attempt. Attributes `environment_id`, `transport` (`local` \| `tcp` \| `ssh` \| `relay`; an SSH forward is `ssh`, never `tcp`), `route` (`tcp` \| `relay` \| `local`), `attempt` |
-| `body.load` | `studio_body_request` is sent for one page (`body-sync.ts`) | That page is applied to the pane | `rendererLogger`, a client span per page. Attributes `tab_id`, `environment_id`, `row_count`, `older_page` |
-| `transcript.apply` | The oldest transcript delta not yet committed arrives for a tab (`ion:normalized-event`) | The React commit of `TranscriptRows` that shows it (`performance.measure` `ion:transcript.apply:<tab>`) | `rendererLogger`. Sampled: at most one span per tab per 500 ms, attribute `deltas` counting what that commit absorbed |
-| `prompt.visible` | The operator submits (with `prompt.send`, its parent) | The first `text_chunk` of the answer has painted | `rendererLogger`. Joined to the prompt's trace by the event's stamped `trace_id`, or by tab when unstamped (`joined_by`). Desktop, web, iOS |
-| `terminal.echo` | A sampled terminal keystroke is sent (one in 16 per terminal) | The next output for that terminal is written to its viewer | `rendererLogger` (`terminal-echo-trace.ts`). Attribute `terminal_key`, `bytes`; an echo later than 5 s is dropped |
-| `app.launch` (iOS) | The process starts (the kernel's start time of the process, `AppLaunchTrace`) | The first scene is active | `DiagnosticLog.logSpan`; a root. The launch's first `connection.connect`, `pairing.complete`, and `snapshot.apply` are its children; every later one of each is its own trace |
-| `connection.connect` (iOS) | One dial starts (`StudioConnection.connect`) | Its welcome, or the failure that ends the attempt (the span's error) | iOS, a client span per attempt. Attributes `route` (`tcp` \| `relay`), `environment_id` (from the welcome), `attempt`, `peer.service` |
-| `pairing.complete` | The pairing flow leaves rest (`PairingState` moves to `discovering`, `connecting`, `exchangingKeys`, or `configuringRelay`) | The pairing is stored (`paired`), or fails (`failed`, the span's error), or is cancelled back to `idle` | iOS (`ClientSpanBook`). Attributes `started_as`, `outcome` (`paired` \| `failed` \| `cancelled`) |
-| `snapshot.apply` (iOS) | A snapshot event is decoded (`SessionViewModel.handleEvent`) | Its tabs, remote display, and resources are applied | iOS. Attribute `tabs` |
-| `transcript.apply` (iOS) | One `desktop_transcript_patch` is decoded | It is applied to the rows, ignored, or sent for a resync (`outcome`) | iOS, one span per patch, a child of the tab's open `prompt.visible` when one waits, else of the frame's `trace_id` / `span_id` when stamped, else a root. Attributes `tab_id`, `kind` (`append` \| `splice` \| `reset`), `rev`, `outcome` |
-| `prompt.visible` (iOS) | The operator submits (with `prompt.send`; a second root of the same trace) | The first patch that puts a row or text of the answer on screen is applied (`SessionViewModel+RenderSpans.swift`). A refused prompt ends it failed; a closed conversation ends it `conversation closed` | iOS. Joined by the patch's stamped `trace_id` when present, else by tab (`joined_by`) |
-| `push.open` | A push notification is tapped (`AppDelegate`) | The conversation it names is on screen (`ConversationView` appears) | iOS. A child of the push payload's `traceparent`, which the relay copies from the server's doorbell; a push that names no conversation this phone may open ends failed at once |
-
-`action.handle` joins the client's trace when the frame, its envelope, or an argument carried a valid
-`traceparent`, and starts a new root otherwise. A server-authored turn (no action in flight) opens its
-own `action.handle` with `action=submit` and logs one line with the reason, `tag=trace`:
-`prompt trace joined the client trace`, or `prompt trace started a new root` with
-`reason` = `client sent no traceparent` | `client traceparent is invalid`. Every server line about
-handling the prompt carries the prompt's top-level `trace_id`.
-
-Every server span carries `user`, the principal the operation runs for (`identity/request-principal.ts`),
-so span metrics slice by person.
 
 ### Propagation
 
 `traceparent` is `00-<32 hex trace-id>-<16 hex parent span-id>-<2 hex flags>`. A value is valid only
-at version `00`, lowercase hex, trace-id and span-id not all zero; the engine, the server, the
-clients, and the relay apply the same rule.
+at version `00`, lowercase hex, trace-id and span-id not all zero; the engine and every
+client apply the same rule.
 
 | Hop | Carrier |
 |---|---|
-| Studio → server | Every store action's options, `traceparent` (the client span); `submit` is the prompt case |
-| Phone → server | Every `studio_action`'s `traceparent` on the frame's outer sealed envelope, where the relay reads it ([Studio wire § Trace context on the envelope](../protocol/studio-wire.md#trace-context-on-the-envelope)); `session.prompt` carries the same value as a `traceparent` argument too |
-| Server → engine | Every client command's `traceparent` (the `engine.request` client span, `engine.send_prompt` for a prompt; [client commands](../protocol/client-commands.md)) |
-| Engine → server → client | `trace_id` and `span_id` on every `NormalizedEvent` of the run, carried onto every outbound frame (§ "Correlation-ID vocabulary") |
+| Client → engine | Every client command's `traceparent` (the `engine.request` client span, `engine.send_prompt` for a prompt; [client commands](../protocol/client-commands.md)) |
+| Engine → client | `trace_id` and `span_id` on every `NormalizedEvent` of the run, carried onto every outbound frame (§ "Correlation-ID vocabulary") |
 | Engine → extension | The hook envelope's `_ctx.traceId` and `_ctx.spanId` (the `extension.hook_latency` span for that call); on a schedule or webhook delivery, `engine/fire_async` `traceId` / `spanId` (the fire's root span) |
 | Extension → engine | A prompt sent from a schedule or webhook handler carries the fire's `traceparent`; its `run.execute` joins under the fire's root span. Every other extension prompt starts a trace of its own |
 | Engine → provider | `traceparent` header on every provider request (anthropic, openai-compatible, google, bedrock), parent `llm.call` |
@@ -330,10 +256,10 @@ prompts it sends all land in that trace.
 A span is a log record whose `ts` is the span's END and whose top-level `trace_id` is its trace. Two
 shapes carry one:
 
-**Span log line** (server, desktop, web, iOS). An operational line with `tag` = `span`:
+**Span log line** (a client of the engine that writes the schema). An operational line with `tag` = `span`:
 
 ```json
-{"ts":"2026-09-23T10:00:01.250000000Z","level":"INFO","component":"server","tag":"span","msg":"action.handle","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","conversation_id":"1780093348767-c1c03e998388","fields":{"span_id":"00f067aa0ba902b7","parent_span_id":"1111222233334444","duration_ms":12,"span_kind":"server","action":"submit","surface":"mirror","user":"local:user","tab_id":"t1","accepted":true}}
+{"ts":"2026-09-23T10:00:01.250000000Z","level":"INFO","component":"cli","tag":"span","msg":"engine.send_prompt","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","conversation_id":"1780093348767-c1c03e998388","fields":{"span_id":"00f067aa0ba902b7","parent_span_id":"1111222233334444","duration_ms":12,"span_kind":"client","peer.service":"ion-engine","user":"local:user","accepted":true}}
 ```
 
 - `msg` is the span name. `fields.span_id` (16 hex) and a numeric `fields.duration_ms` are required;
@@ -341,10 +267,8 @@ shapes carry one:
   `internal` (the default). A non-empty `fields.error` marks the span failed; such a line is WARN.
 - Every other `fields` key is a span attribute. `session_id` and `conversation_id` stay top-level
   and are not repeated in `fields`.
-- A surface states the trace as a `trace_id` field; its logger lifts that to the top level
-  (`@ion/shared/log-correlation` `lineFields`, and `DiagnosticLog` on iOS). Any line may carry a
-  `trace_id` this way.
-- A browser span line keeps `tag` = `span` through `POST /log`; other forwarded lines get `web:`.
+- A surface states the trace as a `trace_id` field; its logger lifts that to the top level. Any
+  line may carry a `trace_id` this way.
 
 **Telemetry span event** (engine). A `telemetry.jsonl` event whose `payload` holds `span_id` and
 `duration_ms`. Its name is the span name: `run.execute`, `llm.call`, `llm.attempt`, `tool.execute`,
@@ -357,26 +281,21 @@ shapes carry one:
 `llm.attempt`, and `mcp.call` (a call into another process) are `client`; the rest are internal. Every other payload key is a span
 attribute, so the metrics-generator can split a histogram by `model`, `backend`, or `command`.
 
-A client span names the service it calls in the `peer.service` attribute: `ion-server` on
-`prompt.send`, `ion-engine` on `engine.send_prompt` and `engine.request`.
-
-**Relay span.** `relay.forward` is the relay's OTLP span (§ "relay"), with `direction`, `read_ms`
-(receive to full frame), and `write_ms` (write to the peer) as attributes; `duration_ms` is the sum.
+A client span names the service it calls in the `peer.service` attribute: `ion-engine` on
+`engine.send_prompt` and `engine.request`.
 
 ### Export
 
 With the `otel` egress target, each batch's span records are posted to `<endpoint>/v1/traces` as
 OTLP/JSON after the batch's logs are accepted, with the same headers. The engine does it for the
-files it ships (`engine/internal/utils/log_egress_traces.go`), and the desktop and server do the same
-for what they ship (`packages/shared/src/log-egress-traces.ts`), with the same recognition rules and
-attribute mapping:
+files it ships (`engine/internal/utils/log_egress_traces.go`); a client that ships its own files
+follows the same recognition rules and attribute mapping:
 
 - The resource is the recording source's (§ "OTLP correlation model"); `service.name` is
   `ion-<component>`. Start is `ts` minus `duration_ms`, end is `ts`.
 - `kind` comes from `span_kind`: `server` is 2, `client` is 3, anything else is internal (1).
 - Attributes are the span's fields (minus `span_id`, `parent_span_id`, `duration_ms`, `span_kind`,
-  `error`, and the fields the resource states: `host` and `install_id`, or on iOS `device_id` and
-  `app_version`), plus top-level `session_id` and `conversation_id`, plus the telemetry `context`'s
+  `error`, and the fields the resource states: `host` and `install_id`), plus top-level `session_id` and `conversation_id`, plus the telemetry `context`'s
   `session_id`, `conversation_id`, and `run_id`.
 - A failed span export is logged and never fails the batch: the logs already landed, and the span
   line itself stays findable by `trace_id`.
@@ -384,8 +303,8 @@ attribute mapping:
 ## OTLP correlation model
 
 One emission serves every consumer. Each shipped log record and span carries the same identity, and
-each backend reads the part it needs. The engine (`engine/internal/utils/log_egress_resource.go`), the
-server and desktop (`packages/shared/src/log-egress-resource.ts`), and the relay derive it by one rule.
+each backend reads the part it needs. The engine (`engine/internal/utils/log_egress_resource.go`) derives it by one rule, and a
+client that ships its own records follows it.
 
 ### Resource: which service wrote it
 
@@ -396,10 +315,10 @@ share one resource.
 | Attribute | Value |
 |---|---|
 | `service.namespace` | `ion`, for every component |
-| `service.name` | `ion-<component>`: `ion-engine`, `ion-extension`, `ion-server`, `ion-desktop`, `ion-web`, `ion-ios`, `ion-relay` |
-| `service.instance.id` | The host's `install_id` (`~/.ion/install_id`); on a telemetry event, the event's `install_id`; on an iOS line, the line's `fields.device_id`; on the relay, its host name |
-| `service.version` | The shipping process's build version; on a telemetry event, the event's `version`; on an iOS line, `fields.app_version`; on the relay, its `VERSION` |
-| `host.name` | The OS host name without `.local`; on a telemetry event, the event's `host`; absent on iOS lines, which describe the device, not the host that shipped them |
+| `service.name` | `ion-<component>`: `ion-engine`, `ion-extension`, and `ion-<component>` for a client's own component |
+| `service.instance.id` | The host's `install_id` (`~/.ion/install_id`); on a telemetry event, the event's `install_id`; on a line a client ships for a device, that device's `fields.device_id` |
+| `service.version` | The shipping process's build version; on a telemetry event, the event's `version`; on a line a client ships for a device, that device's `fields.app_version` |
+| `host.name` | The OS host name without `.local`; on a telemetry event, the event's `host`; absent on a line that describes a device other than the host that shipped it |
 
 The otel config's `resourceAttributes` are added to every resource and win over the derived values,
 except `service.name`, which always names the source. `serviceName` names the exporter's
@@ -450,7 +369,7 @@ Six stream labels. All other fields stay in the log body or in structured metada
 
 | Label | OTLP source | Local source | Rationale |
 |---|---|---|---|
-| `service_name` | `service.name` | `ion-` + the line's `component`; the forwarder's stream label for telemetry | The surface that wrote the record (`ion-engine`, `ion-server`, `ion-desktop`, `ion-web`, `ion-ios`, `ion-relay`, `ion-extension`) |
+| `service_name` | `service.name` | `ion-` + the line's `component`; the forwarder's stream label for telemetry | The surface that wrote the record (`ion-engine`, `ion-extension`, or a client's own) |
 | `event_name` | `event.name` | the telemetry event's `name` | Present only on telemetry events. A log selector says `event_name=""`; a telemetry selector names the event (`{event_name="run.complete"}`) or `event_name=~".+"` |
 | `level` | `severityText` | `level` | Severity filtering without full-text scan. Operational lines only |
 | `tag` | the `tag` attribute | `tag` | Subsystem and extension fan-out (`ext:my-agent`, `session`, ...) |
@@ -463,8 +382,8 @@ Structured metadata, filtered without a parser (`| trace_id = "..."`):
 |---|---|---|
 | `trace_id` | LogRecord `traceId` | top-level `trace_id` |
 | `span_id` | LogRecord `spanId` | a span line's `fields.span_id`, else top-level `span_id`; a telemetry event's `payload.span_id`, else `context.parent_span_id` |
-| `service_instance_id` | `service.instance.id` | a telemetry event's `install_id`; an iOS line's `fields.device_id` |
-| `service_version` | `service.version` | a telemetry event's `version`; an iOS line's `fields.app_version` |
+| `service_instance_id` | `service.instance.id` | a telemetry event's `install_id`; a device line's `fields.device_id` |
+| `service_version` | `service.version` | a telemetry event's `version`; a device line's `fields.app_version` |
 
 Telemetry events also carry the payload and context keys listed under § "Telemetry event fields" as
 structured metadata. `host_name` and `user` are set on every pipeline by one Alloy stage,
@@ -472,9 +391,9 @@ structured metadata. `host_name` and `user` are set on every pipeline by one All
 leaves them unset. They are the only identity labels: `machine_id` and the MDM ids are
 one-per-install and stay in the body, where `| json` reads them. Three consequences to know:
 
-- Every engine, server, and desktop line carries `fields.host` in the local file, so a local stack labels its lines by device. A line written before the machine identity loads (the first lines of a desktop or server boot) has none.
+- Every engine line carries `fields.host` in the local file, so a local stack labels its lines by device. A line written before the machine identity loads (the first lines of a boot) has none.
 - `host`, `machine_id`, `mdm_device_id`, and `mdm_serial` belong to the logger. It stamps them over any caller field of the same name, and `make check-logging` (RESERVED-KEY) fails a call site that uses one: a URL's host logged as `host` would otherwise show up as a device. Name such a value for what it is (`url_host`, `git_host`, `bind_host`).
-- An iOS line is labeled with the device that shipped it (the server's host), not the phone; the Mobile dashboard slices phones by their own device fields.
+- A line a client ships for another device is labeled with the host that shipped it, not the device it describes.
 
 `session_id` and `conversation_id` stay in the body and are queried with LogQL
 `| json | session_id = "..."`. Promoting them to labels would create extreme label cardinality.
@@ -585,7 +504,7 @@ application-surface identity, supplied via `EngineConfig.appContext` (or
 refreshed by any later addressed command carrying `appContext`) and stamped
 by the engine without interpreting the keys. This is what makes several
 parallel conversations distinguishable by the surface a human sees them in:
-the Ion desktop sends `{client, tab_id}`. A dispatched sub-agent reports its
+a tabbed client might send `{client, tab_id}`. A dispatched sub-agent reports its
 parent session's value, since it runs inside the parent's surface and has
 none of its own. Absent entirely for a consumer that supplies none, which is
 every consumer that does not opt in.
@@ -687,8 +606,6 @@ upgrade.
 
 ---
 
-
-
 ### engine (`component: "engine"`)
 
 - Written by `utils.Log` / `utils.LogCtx` (Go, `log/slog` JSON handler).
@@ -742,135 +659,6 @@ Each watch change logs `watcher set` / `watcher removed` (`connection_id`, `inte
 - `tag` MUST be the extension name (host fills this; extension code passes its own name).
 - `session_id` and `conversation_id` are stamped by the host from the bound session context.
 - `fields` map is preserved exactly as sent by the SDK — never concatenated into `msg`.
-
-### desktop (`component: "desktop"`)
-
-- Written by Electron's main process and its renderer.
-- Since the Ion Studio Server was split out ([ADR-033](../architecture/adr/033-ion-studio-server-and-environments.md)), the store, the Studio wire, worktrees, git and the remote/relay transport log as `server`, not here. What remains on this component is what Electron itself does: windows, menus, tray, deep links, the engine daemon bootstrap, the local server supervisor, and the renderer's own lines. Desktop main runs a great deal of `@ion/server` code in-process, and those lines are stamped `desktop` too, because the process is what a reader needs to know (`desktop/src/main/server-logger-adapter.ts`).
-- File: `~/.ion/desktop.jsonl`, rename-rotate at 20 MB, 3 generations (`.1`, `.2`, `.3`).
-- `tag` = subsystem label (`ipc`, `conversation`, `sync`, etc.).
-- **Spans.** `tag=span` lines per § "Span record shapes": Electron main writes `app.launch`, `window.ready`, and `connection.connect` (`desktop/src/main/spans.ts`); the renderer writes the rest of the Studio rows in § "Where each span starts and ends" through `rendererLogger`.
-- **Client window** (`tag=wire-latency`, `msg="client window"`, `ClientWireLatency` in Electron main): the fields of `packages/shared/src/client-wire-latency.ts`, with `transport` one of `local` \| `tcp` \| `ssh` \| `relay` (`ssh` when the socket is dialed through this desktop's SSH forward). Electron adds `ipc_hop_p50_ms`: the renderer's round trip for an action minus main's wire time for the same frame id, so the preload bridge is never counted as wire. Absent in a window with no paired sample (`desktop/src/main/connections/ipc-hop.ts`).
-- **Profile capture** (`tag=profiling`): `profile capture started` (`process` `main` \| `renderer`, `kind` `cpu` \| `heap`, `seconds`, `out_dir`), `profile capture written` (`path`, `duration_ms`), `profile capture failed` (`error`), and `profile capture refused: <reason>` at WARN. Profiles land in `<data dir>/profiles/`.
-
-#### Machine identity in `fields` (desktop)
-
-After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps the following fields onto every log line (via `initLoggerMachineIdentity`). They win over a caller field of the same name.
-
-| Field | Source | Notes |
-|---|---|---|
-| `host` | `os.hostname()` | Always present. `.local` suffix stripped (matches the engine and telemetry `host` value). |
-| `machine_id` | `ioreg IOPlatformUUID` (macOS) | Stable hardware UUID. Absent on non-macOS platforms. |
-| `mdm_device_id` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMDeviceID` key) | Present only on MDM-enrolled macOS machines. |
-| `mdm_serial` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMSerialNumber` key) | Present only on MDM-enrolled macOS machines. |
-
-#### Device Metrics sample (desktop)
-
-`tag=device-metrics`. Ion Studio's own Electron processes, measured on the device and never sent anywhere else.
-
-- `msg="device metrics sample"`: one per 30 s at INFO (every 1 s at DEBUG while the Environment page's panel is open). Flat fields: `studio_process_count`, `studio_cpu_percent` and `studio_rss_bytes` (all Studio processes), `gpu_helper_cpu_percent`, `gpu_helper_rss_bytes`, `renderer_cpu_percent`, `renderer_rss_bytes`, `focused`, `system_idle_state`, `interval_ms`. GPU time as % of wall time (100 = one GPU fully busy): `studio_gpu_percent`, `gpu_helper_gpu_percent`, `renderer_gpu_percent`, present only when measured (macOS today), never zero for unknown.
-- `msg="idle repaint detected"` at WARN, once per episode: a GPU helper or renderer stayed above the `idleRepaint*` Device-setting limits while no Studio window had focus or the machine was idle. Fields: `pid`, `process_name`, `gpu_percent`, `cpu_percent`, `busy_for_ms`, `focused`, `system_idle_state`. `msg="idle repaint ended"` at INFO when it settles.
-
-### server (`component: "server"`)
-
-- Written by `server/src/logger.ts` (the Ion Studio Server, `@ion/server`).
-- `fields.pid` is stamped on every line (caller fields win on collision). Two server processes once wrote interleaved lines to one `server.jsonl` -- an orphaned child of a quit desktop and its successor -- and nothing on a line said which process wrote it. Filter one process with `jq 'select(.fields.pid == N)'`.
-- File: `<ION_DATA_DIR>/server.jsonl`, rename-rotate at 20 MB, default 3 generations (`.1`, `.2`, `.3`).
-- `tag` = subsystem label (`auth`, `wire`, `worktree`, etc.).
-- Every connection transition, hide decision, refusal, and migration step logs at INFO with `environment_id`, `client_id`, `principal_subject`, and `reason` fields (manifest C12).
-- **System Metrics sample:** `tag=system-metrics`, `msg="system metrics sample"`, one per 30 s at INFO, with the server's own process: `server_cpu_percent` (% of one core), `server_rss_bytes`, `server_event_loop_utilization` (0..1), `server_event_loop_p50_ms` and `server_event_loop_p99_ms` (how late the event loop ran its timers within the sample), and `watchers`. Watch changes log `system metrics watch changed` / `system metrics watch ended by disconnect` with `connection_id`, `view`, and `watchers`.
-- Machine identity (`host`, `machine_id`, `mdm_device_id`, `mdm_serial`) is stamped on every line, on the same terms as the desktop's table above (`initLoggerMachineIdentity`, applied at boot by `server/src/process-logging.ts`).
-- `ION_LOG_OUTPUT` selects `file` (default), `stdout`, or `both`. The server's Docker image sets `both`: the file for an operator on the volume, stdout for `docker logs` and any container log collector.
-
-### web (`component: "web"`)
-
-- Written by the SAME `server/src/logger.ts` module as `server`, but stamped `component: "web"` instead — the one deliberate exception to "the server stamps its own component on everything it writes." `server/src/http/log-ingest.ts`'s `POST /log` route forwards a browser Studio client's OWN log lines (spec 18) into `server.jsonl`, and those lines describe BROWSER-side behavior, not the Node server process's own — stamping them `server` would misattribute every web-client failure to the wrong component.
-- File: `<ION_DATA_DIR>/server.jsonl` (same file as `server`, distinguished only by `component`).
-- `tag` is prefixed `web:` by the ingest route, except a span line, which keeps `tag` = `span` (§ "Spans").
-- `fields.subject` is the authenticated caller and `fields.user_agent` the browser that sent it. Both are stamped by the route; a client's own copy of either, and of `pid`/`host`/`machine_id`/`mdm_*`, is dropped rather than merged, so a browser cannot attribute its lines to another process or machine.
-- Each caller has a per-window line budget. Over it, the route answers `429` and records one WARN naming the subject and the count.
-
-### ios (`component: "ios"`)
-
-- Written via `DiagnosticLog.log()` on the device, then pulled by the server it is paired with and appended to `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` (`server/src/remote/handlers/diagnostics.ts`). The pull is the server's, not the desktop's, since ADR-033 -- so with a REMOTE server the phone's lines land on that host, not on the Mac.
-- On-device storage: `current.log` plus 1 MB segments (`session-<launch>-<maxSeq>.log`). The pull reads every segment, so rotation never hides a line. A segment is deleted only after every paired server that owns lines in it has confirmed them (the server's `sinceSeq` on its next pull is the confirmation), keeping about 10 MB of confirmed history for the on-device viewer. Unconfirmed segments go only past a 100 MB hard cap, and each such delete writes a WARN `log segment dropped before shipping` with `after_seq` / `through_seq`, so the gap is explicit on the server. The server advances its cursor only after the lines are on disk. Server-side file: rename-rotate at 10 MB, 2 generations (`.1`, `.2`).
-- `tag` = Swift subsystem label.
-- **Spans.** `tag=span` lines per § "Span record shapes", written by `DiagnosticLog.logSpan`. The iOS span names are the rows marked iOS in § "Where each span starts and ends": `app.launch`, `connection.connect`, `pairing.complete`, `snapshot.apply`, `transcript.apply`, `prompt.send`, `action.send`, `prompt.visible`, `push.open`. Every span carries `user` when the welcome's principal is a person (its `email` or `username`); a `paired:` subject is a pairing, not a person, and stamps nothing. The same span is also an `OSSignposter` interval (category `spans`), begun when the span starts and ended when the line is written, so Instruments shows what the log shows.
-- **Measurement lines.** A few lines carry numbers as JSON numbers beside the string `fields` (`DiagnosticLog.log(_:numbers:)`):
-  - `client window` (`tag=wire-latency`, once a minute and at stop, `StudioClientLatency`): `transport` is the route the socket took (`tcp` \| `relay`; `unknown` before a socket is adopted), `environment_id` the environment the welcome named (absent before it). Numbers: `action_p50_ms`, `action_p95_ms`, `action_max_ms`, `actions`, `action_timeouts` (the round trip, timed from the socket write), and `queue_p50_ms`, `queued` (the wait from `submitAction` to the write, reported apart so the wire's number stays the wire's). The field names it shares with `packages/shared/src/client-wire-latency.ts` are the same because one dashboard reads both.
-  - `heartbeat latency` (`tag=wire-latency`, at most once a minute, `ConnectionQuality`): `transport` (`tcp` \| `relay` \| `disconnected`); numbers `one_way_ms` (the median server-timestamp-to-receipt over the window, clock skew included), `samples`, `buffered`.
-  - `metrickit sample` (`tag=metrics.metrickit`, one per `MXMetricPayload`, about daily, device only; `MetricKitSample`): `period_start`, `period_end`, `app_build`; numbers `launch_p50_ms`, `launches`, `hang_count`, `hang_total_ms`, `hang_p50_ms`, `hang_rate` (hang time over foreground time), `foreground_ms`, `cellular_rx_bytes`, `cellular_tx_bytes`, `wifi_rx_bytes`, `wifi_tx_bytes`. A metric the payload lacks is absent.
-  - `restore cached layout hit` (`tag=session.cache`): number `age_s`, how old the restored cache is.
-- **Per-device identity in `fields`.** Every iOS line carries device-attribution keys in its `fields` object so the central sink can answer "which device, on which app build, paired to which desktop, produced this line?" The identity is split by who owns it:
-
-  | Field | Stamped by | Meaning |
-  |---|---|---|
-  | `device_id` | iOS | Stable per-device hardware identity from `UIDevice.identifierForVendor` (UUID string). Survives app reinstalls and re-pairings; resets only on a full device wipe. This is the authoritative durable device identifier for grouping and liveness queries. |
-  | `device_model` | iOS | Hardware model identifier from `utsname.machine` (e.g. `iPhone15,3`). |
-  | `app_version` | iOS | App marketing version (`CFBundleShortVersionString`). |
-  | `app_build` | iOS | App build number (`CFBundleVersion`). |
-  | `os_version` | iOS | iOS version (`UIDevice.systemVersion`). |
-  | `mdm_device_id` | iOS | MDM-assigned device ID from the Managed App Config key `MDMDeviceID`. Present only on MDM-enrolled devices (e.g. Intune-managed). Absent otherwise. |
-  | `mdm_serial` | iOS | MDM-reported hardware serial number from the Managed App Config key `MDMSerialNumber`. Present only on MDM-enrolled devices. Absent otherwise. |
-  | `seq` | iOS | Monotonic per-line sequence (string-encoded int), persisted in `UserDefaults` and never reset across launches. The desktop's exactly-once pull cursor: it requests lines with `seq` greater than its persisted per-device mark and dedups on `seq` before appending, so a reconnect or desktop restart resumes instead of re-shipping history. Independent of on-device file rotation (unlike a line count). |
-  | `pairing_id` | Desktop | The ECDH channel ID for the specific desktop pairing session that collected these logs. Links a log line to a pairing session — distinct from `device_id` (hardware) and stable across reconnects within the same pairing. Injected at persist time. |
-  | `desktop_host` | Server | The hostname of the Ion server that pulled the line from the phone (a desktop's own server, or a remote one), injected at persist time. The field keeps its original name. **Mirrors the telemetry `host` value** for the same machine, so an iOS line cross-references the Ion Fleet board's host rows — the basis for the device↔desktop pairing view on the Ion Mobile dashboard. |
-
-  These power the **Ion Mobile** dashboard (`docs/observability/dashboards/src/dashboards/mobile.ts`), which queries the `{service_name="ion-ios", event_name=""}` log stream. None of these are stream labels; dashboards parse them with `| json`. On a shipped record `device_id` and `app_version` are the resource's `service.instance.id` and `service.version`, not attributes.
-
-### relay (`component: "relay"`)
-
-- Written by the Go relay server. Writes canonical JSONL to a **file** (`RELAY_LOG_FILE`, default
-  `/var/log/ion/relay.jsonl`) with nested `fields` (always present, `{}` when empty) and the full
-  five-level enum including `TRACE` — parity with engine/server/desktop/ios. `RELAY_LOG_OUTPUT` selects
-  `stdout` | `file` | `both` (default `stdout`). Rename-rotate at 20 MB, default 3 generations;
-  configurable via `RELAY_LOG_MAX_FILES` env var.
-- `RELAY_LOG_LEVEL=trace` enables TRACE; default minimum level is INFO.
-- `tag` = subsystem label (`ws`, `auth`, `sync`, etc.).
-- **OTLP shipping (optional).** When `RELAY_OTLP_ENDPOINT` is set, every line that passes the level gate
-  is also queued and POSTed as OTLP/HTTP JSON to `<endpoint>/v1/logs` every few seconds and at shutdown.
-  The record mirrors the engine's operational OTLP record: the body is the canonical JSONL line itself,
-  `severityText`/`severityNumber` carry the level, and the attributes are `tag`, each present
-  top-level correlation key (`session_id`, `conversation_id`, `channel_id`, `role`, `port`), and every
-  `fields` key except `span_id` and `host`. A line with a valid `trace_id` carries it as the LogRecord
-  `traceId` (and `fields.span_id` as `spanId`), and nowhere else. The resource carries `service.namespace=ion`, `service.name=ion-relay`,
-  `service.instance.id` and `host.name` (the host name), and `service.version` (the relay's `VERSION`). The queue is bounded and drops the oldest
-  line on overflow; the drop count and export failures are written to the local log only, never shipped.
-  Auth is an OAuth2 `client_credentials` bearer token, cached until shortly before expiry and refreshed
-  once on a 401. It is minted with a client secret (`RELAY_OTLP_TOKEN_URL`, `RELAY_OTLP_CLIENT_ID`,
-  `RELAY_OTLP_CLIENT_SECRET`, `RELAY_OTLP_SCOPE`), or, when `AZURE_FEDERATED_TOKEN_FILE` is set, with an
-  Azure workload identity client assertion (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `RELAY_OTLP_SCOPE`; the
-  file is re-read on every fetch). The `otlp shipping enabled` line carries `auth_mode`
-  (`none` | `client_secret` | `federated_token`), `token_url`, and `client_id`; every failed fetch logs
-  `otlp: token request failed` with `auth_mode` and `err`. Unset `RELAY_OTLP_ENDPOINT` and nothing ships.
-- **Forward spans.** With shipping on, a forwarded frame in either direction whose outer envelope carries
-  a W3C `traceparent` (`00-<32 hex>-<16 hex>-<2 hex>`) records one `relay.forward` span, shipped to
-  `<endpoint>/v1/traces`. It joins the sender's trace (same trace id, parent = the traceparent's span id)
-  and runs from the previous frame boundary (when the relay went back to reading the socket) to the last
-  peer write. Attributes: `direction` (`mobile_to_ion` | `ion_to_mobile`), `channel_id`, `seq` (when the
-  envelope has one), `bytes`, `read_ms` (read start to frame received), `write_ms` (the whole write
-  phase), `peers` (how many were written), `peer_write_ms` (the slowest single peer write), and
-  `slow_peer` (that peer: `ion` for the server, else the relay-minted client id). A failed peer write
-  sets the span status to error. An invalid traceparent records no span.
-- **Span injection.** When a span is recorded, the relay rewrites the outer envelope's `traceparent` on
-  the wire to `00-<same trace id>-<relay.forward span id>-<same flags>` before forwarding, so the
-  receiver's span parents under `relay.forward` instead of beside it (`relay/forward.go`,
-  `rewriteTraceparent`). The edit is the sixteen span-id bytes in place; the sealed payload and every
-  other byte are unchanged. With shipping off, or when no span could be recorded, the frame is forwarded
-  byte for byte. A doorbell (push) envelope's `traceparent` is copied into the APNs payload as
-  `traceparent`; `relay.apns.delivered` and `relay.apns.error` lines carry `duration_ms` (enqueue to
-  APNs response) and `queue_wait_ms` (enqueue to worker pickup).
-- **Metrics.** `GET /metrics` on the listen port (Prometheus text format; `RELAY_METRICS_ENABLED=false`
-  removes the route), defined in `relay/metrics.go` (`relayMetricNames`): `relay_connections{role}`,
-  `relay_frames_total{direction}`, `relay_bytes_total{direction}`, `relay_forward_seconds{direction}`
-  (frame received to last peer write), `relay_ping_rtt_seconds` (keepalive ping to pong),
-  `relay_reconnects_total{role}` (a join that replaced a live connection of the same role),
-  `relay_auth_seconds{outcome}` (`success` or the auth failure reason), `relay_apns_queue_depth`,
-  `relay_apns_seconds{outcome}` (`delivered` or the push failure reason), `relay_apns_dropped_total`,
-  plus the Go runtime and process collectors. `RELAY_PPROF_LISTEN=<loopback addr>` serves
-  `net/http/pprof` on a separate listener; unset is off.
-
----
 
 ## Schema stability
 

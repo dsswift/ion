@@ -19,7 +19,7 @@ The engine provides a generic resource subsystem for durable structured content.
 ## Component Map
 
 ```
-Engine (Go)                    Desktop (TypeScript)              iOS (Swift)
+Engine (Go)                    Client                            Thin client
 --------------------           ----------------------            ----------------
 internal/resource/             main/event-wiring-                ViewModels/
   broker.go                      resources.ts                     ResourceStore
@@ -51,7 +51,7 @@ SDK (TypeScript)
 ### 1. Publishing a Briefing (Interactive Session)
 
 ```
-Extension Tool Call                     Engine                    Desktop              iOS
+Extension Tool Call                     Engine                    Client               Thin client
      |                                    |                         |                   |
      | ctx.resources.publish('create',    |                         |                   |
      |   {id, kind, content, convId})     |                         |                   |
@@ -85,7 +85,7 @@ Extension Tool Call                     Engine                    Desktop       
 ### 2. Subscription on Connect
 
 ```
-Desktop                          Engine                     Extension
+Client                           Engine                     Extension
    |                               |                           |
    |-- resource_subscribe -------->|                           |
    |   {kind:'briefing',           |                           |
@@ -111,13 +111,13 @@ Desktop                          Engine                     Extension
    | Store populated               |                           |
 ```
 
-### 3. iOS Content Loading (On-Demand)
+### 3. Client content loading (on-demand)
 
 Snapshot polling delivers metadata only (id, kind, title, createdAt, read).
 Full content is fetched when the user taps a briefing to expand it.
 
 ```
-iOS                           Desktop                    Disk
+Thin client                   Client                     Disk
  |                              |                         |
  | User taps briefing           |                         |
  | (content is empty)           |                         |
@@ -153,10 +153,10 @@ iOS                           Desktop                    Disk
 
 ### 4. Read State Propagation
 
-Desktop persists read state, while the engine broker is the live distribution path. Any client that marks a resource as read sends the mutation to Desktop. Desktop persists it, publishes it to the workspace broker, and every connected client applies the same delta. Read state is monotonic: an unread producer snapshot cannot reverse a read observed by any client.
+A client persists its own read state, while the engine broker is the live distribution path. Any client that marks a resource as read sends the mutation to a client. a client persists it, publishes it to the workspace broker, and every connected client applies the same delta. Read state is monotonic: an unread producer snapshot cannot reverse a read observed by any client.
 
 ```
-iOS reads a briefing            Desktop                   Engine
+Thin client reads a briefing    Client                    Engine
  |                                |                         |
  | resourceStore.markRead(id)     |                         |
  | (local optimistic update)      |                         |
@@ -181,17 +181,17 @@ iOS reads a briefing            Desktop                   Engine
  |                                |<-- engine_resource_delta |
  |                                |    {op:'mark_read'}     |
  |                                |                         |
- |                          Overlay + Studio update       |
+ |                          Client UI updates       |
  |                          from the same typed delta        |
  |                                |                         |
- |                          Desktop snapshots include       |
+ |                          Client snapshots include       |
  |                          read:true for reconnects        |
 ```
 
-### 5. Desktop reads a briefing
+### 5. A client reads a briefing
 
 ```
-Desktop Renderer                Desktop Main              Engine
+Client UI                Client core              Engine
  |                                |                         |
  | User clicks notification       |                         |
  | markResourceRead(kind, id)     |                         |
@@ -208,9 +208,9 @@ Desktop Renderer                Desktop Main              Engine
  |                                |                   Broker fans out
  |                                |                         |
  |                                |<-- engine_resource_delta |
- |                          Overlay + Studio update       |
+ |                          Client UI updates       |
  |                                |                         |
- |                                |                   iOS receives delta
+ |                                |                   Thin client receives delta
 ```
 
 ## Persistence Layout
@@ -222,12 +222,12 @@ Desktop Renderer                Desktop Main              Engine
       briefing-{timestamp}-{hex}.json  # One file per resource item
     {conversationId}/                # Conversation-scoped resources
       briefing-{timestamp}-{hex}.json
-  resource-read-state.json           # Desktop read-state persistence
+  resource-read-state.json           # a client's read-state persistence
                                      # Array of producer-qualified identities
-  resource-deleted-state.json        # Desktop deletion tombstones
+  resource-deleted-state.json        # a client deletion tombstones
                                      # Prevents producer snapshots restoring deletes
 
-iOS Documents/
+a thin client Documents/
   resource-store-items.json          # Persisted items across app relaunches
   UserDefaults: resourceStore.readIds  # Local read-state cache
 ```
@@ -247,19 +247,19 @@ iOS Documents/
 
 2. **Snapshots carry metadata only.** The snapshot/polling path sends id, kind, title, createdAt, read. Full content is fetched on demand via `request_resource_content`. This keeps snapshot payloads small for polling.
 
-3. **One read state across clients.** Desktop persists the read identity. The engine broker distributes live `mark_read` deltas to every connected client. Desktop and iOS apply reads monotonically, and reconnecting clients receive the persisted state in the Desktop snapshot.
+3. **One read state across clients.** a client persists the read identity. The engine broker distributes live `mark_read` deltas to every connected client. a client and a thin client apply reads monotonically, and reconnecting clients receive the persisted state in the a client snapshot.
 
-4. **Deletes use durable tombstones.** Desktop persists each deleted identity and filters it from producer snapshots. The engine broker distributes the live `delete` delta to every connected client. A producer can keep its own historical file without making a deleted notification return.
+4. **Deletes use durable tombstones.** a client persists each deleted identity and filters it from producer snapshots. The engine broker distributes the live `delete` delta to every connected client. A producer can keep its own historical file without making a deleted notification return.
 
-5. **Content preservation across snapshots.** iOS's `applySnapshot` preserves existing non-empty content when the incoming snapshot item has empty content. This prevents the 5-second snapshot poll from wiping content the user just loaded.
+5. **Content preservation across snapshots.** a thin client's `applySnapshot` preserves existing non-empty content when the incoming snapshot item has empty content. This prevents the 5-second snapshot poll from wiping content the user just loaded.
 
 ## Cross-device synchronization
 
-The desktop is the primary client. The iOS app is a thin client connected via WebSocket (directly or through the relay). All state changes flow through the engine:
+Several clients may hold the same session. All state changes flow through the engine:
 
-- When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
+- When a resource is published, the engine broadcasts the delta to all subscribers.
 - When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
-- Desktop persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. Desktop snapshots carry the persisted result to reconnecting devices.
+- a client persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. a client snapshots carry the persisted result to reconnecting devices.
 
 ### Producer-owned persistence
 
@@ -281,4 +281,4 @@ An SDK answers `-32601` for an operation the extension registered no handler for
 
 ## Notifications
 
-`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads. The push body is a doorbell string ("New briefing ready"), not content. The relay includes `ionResourceId` and `ionKind` in the APNs payload for future deep-linking. iOS does not yet read these fields; the current `AppDelegate` navigates by `tabId` only.
+`ctx.notify()` sends a push notification through the engine's `relay` connection when one is configured. Notifications are signals, not payloads. The push body is a doorbell string ("New briefing ready"), not content. The notification carries `ionResourceId` and `ionKind` so a receiving client can deep-link.

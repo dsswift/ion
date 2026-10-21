@@ -25,7 +25,7 @@ export function cookbookDashboard(): Dashboard {
     cookbookLogs(
       3,
       'All logs for a conversation',
-      "Every log line across all components (engine, extensions, desktop, iOS) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
+      "Every log line across all components (engine, extensions) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
       1,
       '{service_name=~".+", event_name=""} | json | conversation_id = "$conversation_id"',
       true,

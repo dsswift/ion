@@ -10,7 +10,7 @@ sidebar_position: 5
 
 - The engine's own emission sites (Agent tool spawner, session lifecycle, host death recovery).
 - Extension-emitted state via `ctx.emit({ type: 'engine_agent_state', ... })`.
-- All consumers: desktop renderer, iOS client, any future headless harness.
+- All consumers: every client and headless harness.
 
 If any part of the system disagrees with this document, the document wins. File a bug.
 
@@ -47,7 +47,7 @@ When you receive `engine_agent_state`:
 3. **Do not invent retention rules.** Specifically, do not keep entries that "look historical" (status != running, has a `conversationId`, etc.). If the engine wanted you to see them, the engine would have included them in the snapshot.
 4. **If you need a "past dispatches" feature, build it on conversation history.** Conversation messages are persisted separately and are an appropriate source of truth for "what did this agent say last time." Agent state is not.
 
-This rule existed implicitly for a long time. The desktop renderer briefly violated it with a "preserve historical" branch in `engine-event-slice.ts`, and the bug surfaced as stale agent rows on iOS reconnect (the desktop's preserved-but-stale state was being forwarded to the mobile client via `sendCurrentEngineState`). The rule is now explicit and tested.
+This rule existed implicitly for a long time. A client once violated it with a "preserve historical" branch, and the bug surfaced as stale agent rows on a second client's reconnect, because the first client's preserved-but-stale state was forwarded on. The rule is now explicit and tested.
 
 ## Recovery: extension death
 
@@ -67,7 +67,7 @@ Recovery stays inside the engine. Consumers remain dumb replace-receivers — th
 
 When a client (re)connects, the engine bridge calls `ReconcileState(key)`. This unconditionally emits the current `engine_agent_state` snapshot — even the empty one. A reconnecting client must learn the truth as much as a long-connected one needs the next live update.
 
-Consumers that skip "empty payload" emissions (whether at the engine, bridge, or client layer) silently break this contract. The desktop's `sendCurrentEngineState` previously had such a skip; it has been removed.
+Consumers that skip "empty payload" emissions (whether at the engine, a bridge, or a client layer) silently break this contract.
 
 ## Status values
 
@@ -113,7 +113,7 @@ Keys beginning with `_` are reserved by the engine (see `_truncated` below).
 
 `metadata` is an open-ended map, and because this event is a **complete snapshot** an oversized value is paid on *every* emission for the life of the session rather than once. The engine therefore bounds an **outbound deep-copy projection**. Registry state remains full fidelity for persistence, dispatch lifecycle updates, and on-demand retrieval.
 
-This is not theoretical. A 36,969,872-byte `engine_agent_state` carrying only 11 agents (~3.3 MB each) was rebuilt byte-identical for over 15 hours. It exceeded the desktop's 6 MiB transport cap on all 1,873 attempts, so it was dropped every time — iOS went blind to agent state for the entire window while the desktop burned CPU rebuilding an undeliverable frame. The engine had written all 35 MB to the NDJSON socket regardless, so every external wire consumer paid for it too.
+This is not theoretical. A 36,969,872-byte `engine_agent_state` carrying only 11 agents (~3.3 MB each) was rebuilt byte-identical for over 15 hours. It exceeded a client's 6 MiB transport cap on all 1,873 attempts, so it was dropped every time — a second client went blind to agent state for the entire window while the first burned CPU rebuilding an undeliverable frame. The engine had written all 35 MB to the NDJSON socket regardless, so every external wire consumer paid for it too.
 
 The tiers are configurable under `limits.agentStateMetadata` in `engine.json` (`0` = default, `-1` = disabled), with an enterprise ceiling that is minimum-wins:
 
@@ -133,7 +133,7 @@ Rules the clamp obeys, which consumers may rely on:
 
 - **An agent is never dropped**, only metadata. Omitting an agent from a complete snapshot means "this agent is gone", so shedding one to save bytes would be a lie.
 - **Protected keys are never removed or structurally corrupted.** The bounded broadcast may UTF-8-truncate an oversized scalar and marks the affected key in `_truncatedKeys`, but it never replaces an array or map with a marker or changes a key's JSON type. A dispatch member remains an addressable object; when no complete member fits, the projection carries an empty `dispatches[]` plus `dispatchesTotal`, and a consumer requests exact data with `get_agent_state`.
-- **`visibility` and `invited` are protected for a cross-client reason.** iOS defaults an absent `visibility` to `ephemeral` and renders ephemeral agents only while running; an absent `invited` defaults to `false`, which hides `sticky` rows. Dropping either would silently empty the agents panel — a wrong render that looks successful, which is worse than a dropped frame.
+- **`visibility` and `invited` are protected for a cross-client reason.** A client may default an absent `visibility` to `ephemeral` and renders ephemeral agents only while running; an absent `invited` defaults to `false`, which hides `sticky` rows. Dropping either would silently empty the agents panel — a wrong render that looks successful, which is worse than a dropped frame.
 - **Truncation is UTF-8 safe.** A byte-slice cut would emit invalid UTF-8 and make the whole frame undecodable, turning a large snapshot into no snapshot.
 - **`dispatches[]` keeps its most recent entries**, each recursed into rather than flattened, because per-dispatch UI state is keyed on the `id` / `status` / `conversationId` inside it. When the array is cut, `dispatchesTotal` carries the pre-cut count.
 
@@ -161,7 +161,7 @@ Dispatch registration writes a durable `running` record before a child starts. A
 
 A consumer that receives `_truncated` can request `get_agent_state` with its session key. The engine returns `{ agents: [...] }` as the `ServerResult.data` payload for **that requesting socket only**, using the full-fidelity registry snapshot without metadata bounds. It is deliberately a command result rather than an engine event: engine events broadcast to every attached client, and broadcasting a large retrieval response would recreate the repeated fan-out this bound prevents. One explicit local-socket request may carry tens of megabytes; repeated unsolicited snapshots may not.
 
-> **iOS caveat.** iOS rebuilds the metadata map from its typed fields when it persists a tab snapshot, so unknown keys — including `_truncated` — do not survive a save/load round-trip. The marker is reliable on first receipt.
+> **Persistence caveat.** A client that rebuilds the metadata map from typed fields when it persists a snapshot loses unknown keys, including `_truncated`. The marker is reliable on first receipt.
 
 ## Emission cardinality: dedup and coalescing
 

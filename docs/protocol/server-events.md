@@ -420,7 +420,7 @@ A message from the extension harness.
 
 | Key | Type | Purpose |
 |---|---|---|
-| `dedupKey` | string | Renderer-side dedup tag. The desktop session store suppresses repeated harness messages with the same `dedupKey` within a single engine-instance scrollback, so a re-emitted welcome on every `session_start` (e.g. across app restart with no intervening user turn) renders at most once per tab. Namespace convention: `<extensionName>:<messageKey>` (e.g. `my-extension:welcome`). iOS receives the key on the wire but does not currently honor it; future iOS-side dedup is forward-compatible without a protocol change. The key persists with the message so the renderer's dedup table survives restart and rehydrate. |
+| `dedupKey` | string | Renderer-side dedup tag. A client suppresses repeated harness messages with the same `dedupKey` within a single engine-instance scrollback, so a re-emitted welcome on every `session_start` (e.g. across app restart with no intervening user turn) renders at most once per conversation. Namespace convention: `<extensionName>:<messageKey>` (e.g. `my-extension:welcome`). iOS receives the key on the wire but does not currently honor it; future iOS-side dedup is forward-compatible without a protocol change. The key persists with the message so the renderer's dedup table survives restart and rehydrate. |
 
 #### engine_dialog
 
@@ -605,7 +605,7 @@ The engine never cancels a pending elicitation on its own. If the client disconn
 
 #### engine_elicitation_response
 
-Emitted by the engine after it receives and processes an `elicitation_response` client command. Lets other connected clients (e.g. a desktop observer alongside iOS) see that the elicitation was resolved.
+Emitted by the engine after it receives and processes an `elicitation_response` client command. Lets other connected clients see that the elicitation was resolved.
 
 | Field        | Type   | Description |
 |--------------|--------|-------------|
@@ -704,9 +704,9 @@ commands live for this session" signal.
 
 Snapshot semantics follow the same rules as `engine_agent_state`; see
 [Agent State Contract](../architecture/agent-state.md) for the canonical
-example. Consumers using the snapshot as a routing-hint cache (e.g. the
-desktop's prompt pipeline, which short-circuits local `.md` template
-lookups when an extension owns the same slash name) must drop entries
+example. Consumers using the snapshot as a routing-hint cache (a client's prompt
+pipeline that short-circuits local `.md` template lookups when an
+extension owns the same slash name) must drop entries
 absent from the latest snapshot, not retain them defensively.
 
 The engine never trusts a consumer's cache when dispatching a command —
@@ -745,7 +745,7 @@ extension-command failure (extension threw), or unknown command (engine
 disclaims the name). Emitted exactly once per dispatch, after the
 command's execution path completes.
 
-Consumers awaiting a slash dispatch (typically the desktop's prompt
+Consumers awaiting a slash dispatch (typically a client's prompt
 pipeline) read this event to decide between "engine handled it, draw
 the divider and move on" and "engine disclaimed the name, fall through
 to local `.md` template expansion."
@@ -772,8 +772,8 @@ one of `"markdown"`, `"json"`, `"html"`, or `"jsonl"`. When the user runs
 **not** need to sniff the payload bytes.
 
 The engine attaches no rendering or persistence semantics. Reference
-consumers interpret the payload per their own UX: the desktop opens a
-save-as dialog, iOS presents a share sheet writing a typed temp file, and
+consumers interpret the payload per their own UX: a desktop client opens a
+save-as dialog, a phone presents a share sheet, and
 a headless consumer (CLI orchestrator, custom harness) may pipe the
 payload to stdout, write it to a predetermined path, or stream it over its
 own transport.
@@ -789,7 +789,7 @@ own transport.
 Wire-protocol surface for the `before_early_stop_decision` extension
 hook. Emitted when the model has just emitted `end_turn` / `stop` and no
 subprocess extension has already expressed an opinion via the in-process hook. Lets socket-only
-harnesses (e.g. the desktop's `early-stop-policy.ts`) participate in
+harnesses participate in
 the decision without running a subprocess extension. See
 [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) for
 the engine-vs-harness boundary that motivates the request/response
@@ -907,14 +907,14 @@ Incremental resource update. Sent after the initial snapshot whenever an item is
 
 #### engine_notification
 
-Push notification signal from an extension. The `push`/`pushTitle`/`pushBody` fields trigger APNs delivery through the relay when the iOS client is connected. The `notify*` fields carry the in-app notification payload for desktop and web clients.
+Push notification signal from an extension. The `push`/`pushTitle`/`pushBody` fields trigger push delivery through the configured relay. The `notify*` fields carry the in-app notification payload for connected clients.
 
 | Field              | Type    | Description                                                                 |
 |--------------------|---------|-----------------------------------------------------------------------------|
 | `type`             | `"engine_notification"` | Event type                                                    |
-| `push`             | boolean | When `true`, triggers an APNs push through the relay                        |
-| `pushTitle`        | string  | APNs alert title                                                            |
-| `pushBody`         | string  | APNs alert body                                                             |
+| `push`             | boolean | When `true`, triggers a push through the relay                             |
+| `pushTitle`        | string  | Push alert title                                                            |
+| `pushBody`         | string  | Push alert body                                                             |
 | `notifyKind`       | string  | Application-defined notification kind                                       |
 | `notifyResourceId` | string  | Optional resource ID the notification relates to                            |
 | `notifyTitle`      | string  | In-app notification title                                                   |
@@ -1183,7 +1183,6 @@ Only emitted when the stream was at an interruptible point: text in progress, wi
 | `steerInterruptBlocksKept` | integer | Assistant content blocks completed before the interrupt and preserved into history. Omitted when zero. |
 | `steerQueuedCount` | integer | Steer messages buffered at interrupt time. Above 1 explains a following turn that consumes several instructions at once. Omitted when zero. |
 
-
 #### engine_intercept
 
 Fire-and-forget signal emitted when an extension calls `ctx.Intercept()`. The engine attaches no semantics beyond routing. Not retained or replayed on reconnect.
@@ -1287,7 +1286,7 @@ Delivery health of one telemetry egress target (`http` or `eventhub`, for the `t
 | `telemetryCritical` | boolean | Durability actually lost |
 | `telemetryLastError` | string | The latest delivery failure |
 
-The Ion Studio Server retains the latest state per target and replays it on the Studio snapshot (`telemetryHealth`), so a client that connects mid-outage sees it without waiting for the next transition. See [Telemetry](../enterprise/telemetry.md) for the thresholds.
+A client that fronts the engine should retain the latest state per target and replay it to late joiners, so a client that connects mid-outage sees it without waiting for the next transition. See [Telemetry](../enterprise/telemetry.md) for the thresholds.
 
 #### engine_mcp_servers
 
@@ -1413,7 +1412,7 @@ The `load_session_history` response includes these fields on user-role `SessionM
 
 ### Thin-client transcript — TranscriptRow
 
-The same fields appear on the `TranscriptRow`s a thin client receives, in a `studio_body` snapshot and in `desktop_transcript_patch` events (see [Studio wire](studio-wire.md) § "Transcript streams"). When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
+A client that renders a transcript carries the same fields on its rows: `slashCommand` names the command, and `slashArgs` and `slashSource` supply its detail and badge.
 
 | Field            | Type   | Description |
 |------------------|--------|-------------|

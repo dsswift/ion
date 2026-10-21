@@ -183,7 +183,7 @@ export function forensicsDashboard(): Dashboard {
       id: 9,
       title: 'Engine log for this session',
       description:
-        'All engine/extension/desktop log lines in the time window that carry conversation_id, oldest first (a narrative, not a live tail). Engine log lines emit session_id = the client session key (UUID format for desktop clients) and conversation_id = the engine conversation-file ID ({millis}-{hex}). This panel filters on conversation_id to correlate engine log output with telemetry events for the selected session.',
+        'All engine and extension log lines in the time window that carry conversation_id, oldest first (a narrative, not a live tail). Engine log lines emit session_id = the client session key (UUID format) and conversation_id = the engine conversation-file ID ({millis}-{hex}). This panel filters on conversation_id to correlate engine log output with telemetry events for the selected session.',
       gridPos: { h: 12, w: 24, x: 0, y: 41 },
       sortAscending: true,
       target: { e: stream('{service_name=~".+", event_name=""} | json | conversation_id="$session"') },

@@ -3,34 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DOMAIN_VALUES = ['engine', 'harness-sdk', 'clients', 'relay'];
+const DOMAIN_VALUES = ['engine', 'harness-sdk'];
 const KIND_VALUES = ['product-concept', 'ui-component', 'state', 'action', 'runtime-mechanic', 'internal-type', 'public-contract'];
 const STATUS_VALUES = ['canonical', 'review-needed', 'deprecated'];
 const CONTRACT_VALUES = ['public-wire', 'public-sdk', 'internal', 'none'];
-// `server` is the Ion Studio Server (`server/`, ADR-033): a headless platform of its own,
-// neither a Desktop presentation nor the engine.
-const PLATFORM_VALUES = ['engine', 'sdk', 'server', 'desktop', 'studio', 'overlay', 'ios', 'relay'];
+const PLATFORM_VALUES = ['engine', 'sdk'];
 const PRESENTATION_VALUES = ['code', 'ui', 'wire', 'doc'];
-const LANGUAGE_VALUES = ['go', 'typescript', 'swift', 'markdown', 'json'];
-// Platform `desktop` records the shared Desktop client: one component that both Desktop
-// presentations mount, so it covers the Studio column and the Overlay column. Platform
-// `studio` or `overlay` records a presentation-specific surface, so it covers that one
-// presentation and leaves the other presentation a real gap. The Desktop client itself is
-// covered by any of the three, because Studio and Overlay are Desktop presentations.
-const DESKTOP_PLATFORMS = ['desktop', 'studio', 'overlay'];
-const CLIENT_PLATFORMS = [...DESKTOP_PLATFORMS, 'ios'];
-const PARITY_COLUMNS = [
-  ['Desktop', DESKTOP_PLATFORMS],
-  ['Studio', ['studio', 'desktop']],
-  ['Overlay', ['overlay', 'desktop']],
-  ['iOS', ['ios']],
-];
-
+const LANGUAGE_VALUES = ['go', 'typescript', 'markdown', 'json'];
 const DOMAIN_SCOPES = {
   engine: 'Headless runtime mechanics, normalized events, tools, and wire behavior.',
   'harness-sdk': 'Extension and SDK surfaces that decide policy on top of engine mechanics.',
-  clients: 'Desktop, Studio, overlay, and iOS presentations of engine state.',
-  relay: 'Transport, authentication, and synchronization between connected clients.',
 };
 
 const ENTRY_KEYS = new Set(['id', 'term', 'definition', 'domain', 'kind', 'status', 'qualifiers', 'aliases', 'legacyNames', 'implementations', 'contract', 'replacementId', 'notes']);
@@ -172,12 +154,12 @@ export function validateRegistry(data, root) {
 function markdownList(values) { return values.length ? values.map((value) => `\`${value}\``).join(', ') : 'None'; }
 function anchor(entry) { return `term-${entry.id}`; }
 function schemaMarkdown() {
-  return `## Registry schema\n\nRegistry: \`docs/vocabulary/terms.json\`. Its root object is \`{ "version": 1, "terms": [...] }\`. Unknown keys are rejected.\n\n| Field | Type and rule |\n| --- | --- |\n| \`id\` | Required string. Unique kebab-case stable identifier. |\n| \`term\` | Required string. Unique canonical human term, case-insensitive. |\n| \`definition\` | Required non-empty string. |\n| \`domain\` | Required enum: ${markdownCell(DOMAIN_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`kind\` | Required enum: ${markdownCell(KIND_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`status\` | Required enum: ${markdownCell(STATUS_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`qualifiers\` | Optional string array. Permitted modifier words. Default: \`[]\`. |\n| \`aliases\` | Optional string array. Informal or alternate names. Default: \`[]\`. |\n| \`legacyNames\` | Optional string array. Retired names. Default: \`[]\`. |\n| \`implementations\` | Optional array, default \`[]\`. Each item has \`platform\` (${markdownCell(PLATFORM_VALUES.map((value) => `\`${value}\``).join(', '))}), \`presentation\` (${markdownCell(PRESENTATION_VALUES.map((value) => `\`${value}\``).join(', '))}), \`language\` (${markdownCell(LANGUAGE_VALUES.map((value) => `\`${value}\``).join(', '))}), \`symbol\`, and repo-root-relative \`path\`. The file and literal symbol must exist. |\n| \`contract\` | Required enum: \`public-wire\`, \`public-sdk\`, \`internal\`, \`none\`. |\n| \`replacementId\` | Optional string. Required only for deprecated entries and must name another entry. |\n| \`notes\` | Optional non-empty string. |\n\nContract meanings: \`public-wire\` is a published wire contract. \`public-sdk\` is a published SDK contract. \`internal\` is an internal implementation contract. \`none\` has no contract classification. \`public-contract\` kinds require \`public-wire\` or \`public-sdk\`; \`internal-type\` kinds require \`internal\` or \`none\`.\n\nPlatform meanings for client surfaces: use \`desktop\` for a shared Desktop component that both Desktop presentations mount, and \`studio\` or \`overlay\` only for a surface that exists in one presentation. The generated parity matrix reads a \`desktop\` implementation as present in Studio and in Overlay.\n`;
+  return `## Registry schema\n\nRegistry: \`docs/vocabulary/terms.json\`. Its root object is \`{ "version": 1, "terms": [...] }\`. Unknown keys are rejected.\n\n| Field | Type and rule |\n| --- | --- |\n| \`id\` | Required string. Unique kebab-case stable identifier. |\n| \`term\` | Required string. Unique canonical human term, case-insensitive. |\n| \`definition\` | Required non-empty string. |\n| \`domain\` | Required enum: ${markdownCell(DOMAIN_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`kind\` | Required enum: ${markdownCell(KIND_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`status\` | Required enum: ${markdownCell(STATUS_VALUES.map((value) => `\`${value}\``).join(', '))}. |\n| \`qualifiers\` | Optional string array. Permitted modifier words. Default: \`[]\`. |\n| \`aliases\` | Optional string array. Informal or alternate names. Default: \`[]\`. |\n| \`legacyNames\` | Optional string array. Retired names. Default: \`[]\`. |\n| \`implementations\` | Optional array, default \`[]\`. Each item has \`platform\` (${markdownCell(PLATFORM_VALUES.map((value) => `\`${value}\``).join(', '))}), \`presentation\` (${markdownCell(PRESENTATION_VALUES.map((value) => `\`${value}\``).join(', '))}), \`language\` (${markdownCell(LANGUAGE_VALUES.map((value) => `\`${value}\``).join(', '))}), \`symbol\`, and repo-root-relative \`path\`. The file and literal symbol must exist. |\n| \`contract\` | Required enum: \`public-wire\`, \`public-sdk\`, \`internal\`, \`none\`. |\n| \`replacementId\` | Optional string. Required only for deprecated entries and must name another entry. |\n| \`notes\` | Optional non-empty string. |\n\nContract meanings: \`public-wire\` is a published wire contract. \`public-sdk\` is a published SDK contract. \`internal\` is an internal implementation contract. \`none\` has no contract classification. \`public-contract\` kinds require \`public-wire\` or \`public-sdk\`; \`internal-type\` kinds require \`internal\` or \`none\`.\n`;
 }
 
 export function renderMarkdown(data) {
   const entries = data.terms;
-  const lines = ['---', 'title: Ion Vocabulary', 'description: Canonical terms for shared Ion concepts across the engine, harness SDK, clients, and relay.', 'sidebar_position: 1', '---', '', '<!-- GENERATED FILE. DO NOT EDIT. Source: docs/vocabulary/terms.json. Run `make generate-vocabulary`. -->', '', '# Ion Vocabulary', '', schemaMarkdown(), '## Naming and qualifier rules', '', 'Use each canonical term exactly as listed. A qualifier may precede or follow a canonical term only when it appears in that term\'s `qualifiers` list. Aliases and legacy names are index entries, not canonical names.', '', '## Four-domain model', ''];
+  const lines = ['---', 'title: Ion Vocabulary', 'description: Canonical terms for shared Ion concepts across the engine and the harness SDK.', 'sidebar_position: 1', '---', '', '<!-- GENERATED FILE. DO NOT EDIT. Source: docs/vocabulary/terms.json. Run `make generate-vocabulary`. -->', '', '# Ion Vocabulary', '', schemaMarkdown(), '## Naming and qualifier rules', '', 'Use each canonical term exactly as listed. A qualifier may precede or follow a canonical term only when it appears in that term\'s `qualifiers` list. Aliases and legacy names are index entries, not canonical names.', '', '## Two-domain model', ''];
   for (const domain of DOMAIN_VALUES) lines.push(`- **${domain}**: ${DOMAIN_SCOPES[domain]}`);
   lines.push('', '## Alphabetical index', '');
   for (const entry of [...entries].sort((a, b) => a.term < b.term ? -1 : a.term > b.term ? 1 : 0)) lines.push(`- [${entry.term}](#${anchor(entry)})`);
@@ -203,15 +185,6 @@ export function renderMarkdown(data) {
       }
     }
   }
-  const clientEntries = entries.filter((entry) => (entry.implementations ?? []).some((item) => CLIENT_PLATFORMS.includes(item.platform)));
-  lines.push('## Client parity matrix', '', 'The Desktop client has two presentations, Studio and Overlay. An implementation on platform `desktop` is a shared Desktop component that both presentations mount, so it satisfies the Studio column and the Overlay column. An implementation on platform `studio` or `overlay` is presentation-specific and satisfies only that presentation. iOS is a separate client and is never satisfied by a Desktop implementation.', '', '| Canonical name | Desktop symbol | Studio use | Overlay use | iOS symbol | Gaps |', '| --- | --- | --- | --- | --- | --- |');
-  for (const entry of clientEntries) {
-    const implementations = entry.implementations;
-    const symbols = (platforms) => implementations.filter((item) => platforms.includes(item.platform)).map((item) => `\`${item.symbol}\``).join(', ') || 'None';
-    const gaps = PARITY_COLUMNS.filter(([, platforms]) => !implementations.some((item) => platforms.includes(item.platform))).map(([label]) => label).join(', ') || 'None';
-    lines.push(`| ${markdownCell(entry.term)} | ${markdownCell(symbols(['desktop']))} | ${markdownCell(symbols(['studio', 'desktop']))} | ${markdownCell(symbols(['overlay', 'desktop']))} | ${markdownCell(symbols(['ios']))} | ${markdownCell(gaps)} |`);
-  }
-  if (!clientEntries.length) lines.push('| None | None | None | None | None | None |');
   const alternateNames = entries.flatMap((entry) => [...(entry.aliases ?? []).map((name) => ({ name, entry, role: 'Alias' })), ...(entry.legacyNames ?? []).map((name) => ({ name, entry, role: 'Legacy name' }))]).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   lines.push('', '## Alias and legacy-name index', '');
   if (alternateNames.length) for (const item of alternateNames) lines.push(`- ${item.role}: \`${item.name}\` → [${item.entry.term}](#${anchor(item.entry)})`);

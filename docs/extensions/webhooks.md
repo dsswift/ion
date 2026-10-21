@@ -241,8 +241,8 @@ another extension's resources would be a footgun.
 
 ## Observability events
 
-Every fire emits a structured `engine_webhook_*` event for the
-desktop/iOS audit-log panel:
+Every fire emits a structured `engine_webhook_*` event a client can
+render as an audit log:
 
 | Event | Fires when |
 |---|---|

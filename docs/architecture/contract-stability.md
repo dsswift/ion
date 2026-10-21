@@ -1,6 +1,6 @@
 ---
 title: Contract Stability
-description: Stability rules for the engine wire, the Studio wire, wire naming, and cross-language type sync.
+description: Stability rules for the engine wire, a client's own wire, wire naming, and cross-language type sync.
 sidebar_position: 10
 ---
 
@@ -23,7 +23,7 @@ Correcting an improper legacy name on the engine wire **may** be committed as a 
 | Surface | Key files |
 |---------|-----------|
 | Wire protocol | `engine/internal/protocol/protocol.go` (`ClientCommand`, `ServerMessage`, NDJSON shape) |
-| NormalizedEvent variants & fields | `engine/internal/types/normalized_event.go`, mirrored in `packages/shared/src/types-events.ts` and `ios/IonRemote/Models/NormalizedEvent.swift` |
+| NormalizedEvent variants & fields | `engine/internal/types/normalized_event.go`, mirrored by every client that decodes events |
 | SDK types & hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` (`HookHandler`, `Context`, payload types) |
 | Hook names & payload shapes | All hooks registered in `engine/internal/extension/sdk_hooks_*.go` |
 | Engine events consumed by clients | Any event type or field a client reads to render UI |
@@ -44,15 +44,15 @@ Correcting an improper legacy name on the engine wire **may** be committed as a 
 
 If you believe a break is truly necessary, stop and discuss with the user — never commit it silently.
 
-## The Studio wire's client surface - lockstep, not scrutinized
+## A client's own wire - lockstep, not scrutinized
 
-There is one client wire: the [Studio wire](../protocol/studio-wire.md). Studio, a browser, and iOS all speak it to a server. The separate `desktop_*` device transport the phone used to speak is gone — see [ADR-035](adr/035-one-wire.md).
+A client that fronts the engine for other clients defines its own wire; the archived Ion Studio did ([ADR-035](https://github.com/dsswift/ion-studio/blob/main/docs/architecture/adr/035-one-wire.md)). That wire is the client's contract, not the engine's.
 
-The wire's client surface operates under a **lockstep model**. Every client that speaks it is co-located in this repo, so a rename ships to every side in one PR and there is no deployment window where one side has the new string and the other has the old one. These changes are not breaking changes in the external-integrator sense.
+The wire's client surface operates under a **lockstep model**. Every client that speaks it is co-located in the client's repo, so a rename ships to every side in one PR and there is no deployment window where one side has the new string and the other has the old one. These changes are not breaking changes in the external-integrator sense.
 
-**Do not push back on a Studio-wire client-surface change as though it were a published-contract break.** It is not. The only obligation is **parity**: every side is updated in the same PR.
+**Do not push back on a client-wire change as though it were a published-contract break.** It is not. The only obligation is **parity**: every side is updated in the same PR.
 
-Parity check for a client-surface change: confirm `packages/shared/src/studio-wire/` (frame types, `EVENT_CHANNELS`, the action table), the thin payload types in `server/src/remote/protocol.ts`, the iOS `RemoteCommand.swift` / `NormalizedEvent.swift` TypeKey raw values and `StudioTransportCommandMapping.swift`, and any ViewModel or handler that switches on the string are all updated in the same commit (or PR). A new phone command must also have a row in `packages/shared/src/studio-wire/phone-command-map.json`, which a test on each side reads from disk.
+A client that mirrors engine types validates its mirror against the published `engine/internal/types/testdata/contracts.json`; that test is the client's, and it fails when the engine's manifest moves without the mirror.
 
 **The engine wire is still scrutinized.** Nothing above relaxes the rules in the previous section.
 
@@ -63,26 +63,21 @@ Wire events are prefixed by the **owner of the contract**. See [docs/architectur
 | Owner | Prefix | Wire |
 |-------|--------|------|
 | Engine | `engine_` | Engine NDJSON socket |
-| Server | `desktop_` | The Studio wire's thin payloads |
-| Studio SDK | `ion-studio.` | Studio control resources |
+| A client that fronts the engine | its own prefix (the archived Ion Studio used `desktop_` and `ion-studio.`) | The client's own wire |
 
 The engine's outbound event set is uniformly `engine_`-prefixed (see `engine/internal/types/engine_event.go`).
-
-The `desktop_` prefix now names **server-derived payloads on the Studio wire**, not a wire of its own. A thin client receives them on `studio:thin-event`: the server does the derivation once (transcript rows out of engine tool events, batched text deltas, tab and worktree state) and every thin client renders the result rather than re-implementing it against raw engine events. The prefix is historical — it was the `desktop_*` device transport's — and it is kept because renaming a payload type that three clients decode buys nothing. Any new member carries the correct prefix from its first commit; PRs that introduce unprefixed or cross-prefixed members are non-conforming.
 
 **Internal vs. wire names.** `NormalizedEvent` uses bare names internally. These never reach a consumer: `translateToEngineEvent()` converts them to `engine_*` before anything is written to the socket. The bare internal names and the wire names are distinct layers.
 
 ## Cross-language contract sync
 
-Go is the source of truth. A reflection-based test (`engine/internal/types/contract_test.go`) extracts every shared struct's JSON field names into a golden manifest (`engine/internal/types/testdata/contracts.json`). TS and Swift tests validate against it.
+Go is the source of truth. A reflection-based test (`engine/internal/types/contract_test.go`) extracts every shared struct's JSON field names into a golden manifest (`engine/internal/types/testdata/contracts.json`). Client mirrors validate against it.
 
 **Workflow when you change a shared type (NormalizedEvent variant, StatusFields, EngineConfig, etc.):**
 
 1. Make the Go change in `engine/internal/types/`.
 2. Regenerate the manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`
-3. Update the TS field map in `packages/shared/src/__tests__/contract-sync.test.ts` to match.
-4. Update the TS type definition in the appropriate file under `packages/shared/src/`: `types-engine.ts`, `types-events.ts`, or `types-engine-event.ts` (the `EngineEvent` discriminated union lives in `types-engine-event.ts`, split from `types-engine.ts` to stay under the 600-line cap).
-5. Update the Swift type in `ios/IonRemote/Models/` and the Swift contract test if field coverage changed.
-6. Run `make check-contracts`, `npm test`, and `make ios-check` to verify.
+3. Update the TypeScript SDK types in `engine/extensions/sdk/ion-sdk/` when the type is part of the SDK surface.
+4. Run `make check-contracts` to verify.
 
 If you skip a step, CI fails with a clear message identifying the drift (e.g. `"Go-only: [newField]"`).

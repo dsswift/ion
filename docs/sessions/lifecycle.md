@@ -133,7 +133,7 @@ A fork gets its own copy of the plan, so the fork's edits never change the sourc
 
 The plan ID is **preserved** across plan-mode toggles. Toggling plan mode off — via the dropdown, keyboard shortcut, or any client command — does not retire the ID. When plan mode is re-enabled on the same session, the engine reuses the same plan file.
 
-The plan ID is only retired when the engine **session itself is replaced**. On the desktop this happens when the user clicks Implement, which calls `resetTabSession()` and creates a fresh engine session. The next plan-mode enable then allocates a new slug.
+The plan ID is only retired when the engine **session itself is replaced**. In a client this happens when the user approves the plan and the client creates a fresh engine session. The next plan-mode enable then allocates a new slug.
 
 On re-entry (plan mode re-enabled after a prior exit within the same session), `SendPrompt` sets `PlanModeReentry=true` on the run options. The plan-mode enter notice is prefixed with re-entry guidance that instructs the LLM to read the existing plan before making changes.
 
@@ -157,9 +157,7 @@ The engine's plan-mode framing — both the full instructions sent as the enter 
 3. **Engine defaults** (lowest priority)
    `buildPlanModePrompt(planFilePath, planFileExists)` builds the full prompt; `buildPlanModeSparseReminder(planFilePath)` builds the per-turn reminder. Both include the end-of-turn discipline text (`AskUserQuestion` or `ExitPlanMode`) and the Forbidden Prose Patterns callout. These are the values used when no override is set at any layer.
 
-The server ships its reference prose as `ENTER_PLAN_MODE_DESCRIPTION` (the `EnterPlanMode` tool description) and forwards `PLAN_MODE_SPARSE_REMINDER` as the sparse-reminder override on every prompt dispatch (see `server/src/engine/prompt-pipeline-prose.ts`). The `EnterPlanMode` description is shown in every mode, so it must not claim that the tool's presence means plan mode is off. Third-party harnesses set their own values or omit these fields to inherit the engine defaults.
-
-Power users can customize the desktop's defaults via `~/.ion/settings.json` `desktop.*` keys — see the [desktop power-user overrides](../configuration/settings-json.md) section.
+A harness may ship its own `EnterPlanMode` tool description and a sparse-reminder override on every prompt dispatch. The `EnterPlanMode` description is shown in every mode, so it must not claim that the tool's presence means plan mode is off. Harnesses that omit these fields inherit the engine defaults.
 
 Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md): the engine provides the mechanism (prompt builder, sparse-reminder injection, hook firing), the harness provides the policy (what the prose says). The three-layer precedence is symmetric between `PlanModePrompt` and `PlanModeSparseReminder` by design.
 
@@ -187,7 +185,7 @@ When the model calls `EnterPlanMode`:
 1. The engine fires the [`before_plan_mode_enter`](../hooks/reference.md#plan-mode-3) hook. Extensions can veto by returning `Allow: &false`. Default is auto-approve.
 2. If denied, the run continues in auto mode and the denial reason is returned to the model as the tool result.
 3. If allowed, the session flips to plan mode and the run **continues** (unlike `ExitPlanMode`, which terminates the run). The tool result states that plan mode is active and names the plan file. The read-only boundary applies from the model's next tool call, and the plan-mode instructions follow as the enter notice.
-4. The desktop and iOS UI reflect the transition via `engine_plan_mode_changed{enabled: true}`.
+4. Clients reflect the transition via `engine_plan_mode_changed{enabled: true}`.
 
 ### Model-initiated plan-mode exit
 

@@ -47,7 +47,7 @@ Every query starts with `let` bindings for the views it reads, taken from
 `views`. When the pipeline's landing tables or columns change, edit `views` and
 re-render. No query changes.
 
-A PromQL target (the Ion Performance pack's span metrics and relay metrics, and
+A PromQL target (the Ion Performance pack's span metrics, and
 the System Metrics PromQL) is not compiled: the same expression runs against the
 Azure Monitor workspace, so it is pointed at `prometheus` unchanged. Span metrics
 reach the workspace from a Tempo or an OpenTelemetry Collector `spanmetrics`

@@ -1,16 +1,15 @@
 // Recipe: Ion System Metrics (uid ion-system-metrics-001).
 //
 // How busy each device is and what Ion uses on it, charted from the sample
-// lines each process logs every 30 s, one line per device (the `host` label
+// lines the engine logs every 30 s, one line per device (the `host` label
 // Alloy stamps on every line). The Device and User dropdowns every dashboard
 // carries scope it to part of the fleet. Works with telemetry off. The OTLP
 // metrics export carries the engine's figures to a metrics store instead;
-// this dashboard is the zero-config view, and the only one that sees
-// Studio's own Device Metrics, which never leave the machine.
+// this dashboard is the zero-config view.
 
 import type { Dashboard } from '../dashboard.ts';
 import { stat, timeseries } from '../panels.ts';
-import { engineSample, engineRoleSample, serverSample, deviceSample, idleRepaintCount, devicesReporting } from '../queries-system-metrics.ts';
+import { engineSample, engineRoleSample, devicesReporting } from '../queries-system-metrics.ts';
 
 const line = (unit: string, max?: number) => ({
   defaults: { unit, ...(max !== undefined ? { max, min: 0 } : {}), custom: { lineWidth: 2, fillOpacity: 10 } },
@@ -79,46 +78,13 @@ export function systemMetricsDashboard(): Dashboard {
         ...(i > 0 ? { refId: String.fromCharCode(65 + i) } : {}),
       })),
     }),
-    timeseries({
-      id: 6,
-      title: 'Studio server process CPU',
-      description: 'The Ion Studio Server\'s own CPU (100 = one core). Its resident memory is fields.server_rss_bytes on the same line. Source: server.jsonl tag=system-metrics fields.server_cpu_percent.',
-      gridPos: { h: 8, w: 12, x: 0, y: 20 },
-      fieldConfig: line('percent'),
-      options: legend(),
-      targets: [
-        { e: serverSample('fields_server_cpu_percent'), legend: '{{host_name}}' },
-      ],
-    }),
-    timeseries({
-      id: 7,
-      title: 'Studio processes: CPU and GPU',
-      description: 'Ion Studio\'s own Electron processes on this device: all of them, the GPU helper, and the renderer. GPU time is measured on macOS only. Source: desktop.jsonl tag=device-metrics.',
-      gridPos: { h: 8, w: 12, x: 12, y: 20 },
-      fieldConfig: line('percent'),
-      options: legend(),
-      targets: [
-        { e: deviceSample('fields_studio_cpu_percent'), legend: 'Studio CPU {{host_name}}' },
-        { e: deviceSample('fields_gpu_helper_gpu_percent'), legend: 'GPU helper GPU {{host_name}}', refId: 'B' },
-        { e: deviceSample('fields_renderer_cpu_percent'), legend: 'renderer CPU {{host_name}}', refId: 'C' },
-      ],
-    }),
-    timeseries({
-      id: 8,
-      title: 'Idle-repaint warnings',
-      description: 'Times Studio\'s GPU helper or a renderer stayed busy while no Studio window had focus or the machine was idle: the sign of an animation that never stops repainting. Limits are Device settings (idleRepaint* in desktop.json). Source: desktop.jsonl msg="idle repaint detected".',
-      gridPos: { h: 8, w: 24, x: 0, y: 28 },
-      fieldConfig: line('short'),
-      options: legend(),
-      targets: [{ e: idleRepaintCount(), legend: '{{host_name}}' }],
-    }),
   ];
 
   return {
     uid: 'ion-system-metrics-001',
     title: 'Ion System Metrics',
-    description: 'Host load and every Ion process, from the sample lines each process logs every 30 s. Works with telemetry off. Studio\'s Device Metrics appear only here: they never leave the device.',
-    tags: ['ion', 'system-metrics', 'resources', 'gpu'],
+    description: 'Host load and every engine process, from the sample lines the engine logs every 30 s. Works with telemetry off.',
+    tags: ['ion', 'system-metrics', 'resources'],
     schemaVersion: 38,
     version: 1,
     graphTooltip: 1,
@@ -127,14 +93,6 @@ export function systemMetricsDashboard(): Dashboard {
     folder: 'reliability',
     file: 'ion-system-metrics',
     panels,
-    annotations: [
-      {
-        name: 'Idle repaint',
-        expr: '{service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="idle repaint detected"',
-        iconColor: 'orange',
-        step: '60s',
-        titleFormat: '{{host_name}} {{fields_process_name}} gpu={{fields_gpu_percent}} cpu={{fields_cpu_percent}}',
-      },
-    ],
+    annotations: [],
   };
 }

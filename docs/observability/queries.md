@@ -2,7 +2,7 @@
 
 > **Generated file — do not edit by hand.** This document is emitted by `docs/observability/dashboards` (`npm run generate`). Every expression below is defined once in the canonical query module and shared by the dashboard panels, so the reference cannot drift from what the dashboards actually run. Edit the query module and regenerate; `make check-dashboards` fails on drift.
 
-A `logql` block is LogQL against the Loki datasource; field names are snake_case structured-metadata keys promoted by Alloy from the NDJSON telemetry log. A `promql` block is PromQL against the Prometheus datasource: the span metrics Tempo's metrics-generator writes (`traces_spanmetrics_*`), the relay's own metrics (`relay_*`), and the OTLP metrics export. See [`log-schema.md`](log-schema.md) for the full field reference and § "Spans" for every span name.
+A `logql` block is LogQL against the Loki datasource; field names are snake_case structured-metadata keys promoted by Alloy from the NDJSON telemetry log. A `promql` block is PromQL against the Prometheus datasource: the span metrics Tempo's metrics-generator writes (`traces_spanmetrics_*`) and the OTLP metrics export. See [`log-schema.md`](log-schema.md) for the full field reference and § "Spans" for every span name.
 
 ## Query classes
 
@@ -26,74 +26,24 @@ Share of all host CPUs in use, averaged over the window, from the engine's 30 s 
 avg by (host_name) (avg_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics" | msg=~"system metrics sample|HIGH MEMORY" | fields_host_cpu_utilization != "" | unwrap fields_host_cpu_utilization [5m]))
 ```
 
-### Studio GPU helper GPU (from logs)
-
-**Class:** `windowed-stat` &nbsp; **Window:** `5m`
-
-GPU time of Ion Studio's GPU helper as a share of wall time (100 = one GPU fully busy), from the desktop's Device Metrics sample line. macOS only; the field is absent, not zero, elsewhere.
-
-```logql
-avg by (host_name) (avg_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="device metrics sample" | fields_gpu_helper_gpu_percent != "" | unwrap fields_gpu_helper_gpu_percent [5m]))
-```
-
-### Idle-repaint warnings (from logs)
-
-**Class:** `accumulation` &nbsp; **Window:** `$__interval`
-
-Count of `idle repaint detected` WARN lines: Studio's GPU helper or a renderer busy while no Studio window had focus or the machine was idle.
-
-```logql
-sum by (host_name) (count_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="idle repaint detected" [$__interval]))
-```
-
 ### Span latency p95 by span name (span metrics)
 
 **Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
 
-p95 of one service's spans per step, one series per span name, from the histogram Tempo's metrics-generator writes to Prometheus. Swap the service, the quantile, or the grouping (`model`, `backend`, `action`, `command`, `surface`, `transport`, `client_kind`, `direction`). Seconds.
+p95 of one service's spans per step, one series per span name, from the histogram Tempo's metrics-generator writes to Prometheus. Swap the service, the quantile, or the grouping (`model`, `backend`, `command`). Seconds.
 
 ```promql
 histogram_quantile(0.95, sum by (le, span_name) (rate(traces_spanmetrics_latency_bucket{span_name=~".+", service="ion-engine"}[$__rate_interval])))
-```
-
-### Store action p95 by action (span metrics)
-
-**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
-
-p95 of the server's `action.handle` span per store action: the server's own time on one Studio action, from receipt to the result sent. The Performance alert "Ion store action p95 over 500 ms" reads the ungrouped form.
-
-```promql
-histogram_quantile(0.95, sum by (le, action) (rate(traces_spanmetrics_latency_bucket{span_name="action.handle", service="ion-server"}[$__rate_interval])))
 ```
 
 ### Cold start p95 over the dashboard range (span metrics)
 
 **Class:** `instant` &nbsp; **Window:** `$__range`
 
-One headline number for a start-up span over the whole range: `daemon.startup` (engine), `app.launch` (desktop and iOS, told apart by `service`), `extension.spawn` (engine).
+One headline number for a start-up span over the whole range: `daemon.startup`, `session.start`, `extension.spawn`, `mcp.start` (all engine).
 
 ```promql
 histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{span_name="daemon.startup", service="ion-engine"}[$__range])))
-```
-
-### Span rate by surface (span metrics)
-
-**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
-
-Spans per second from the call counter, here `action.handle` split by the Studio surface that sent the action.
-
-```promql
-sum by (surface) (rate(traces_spanmetrics_calls_total{span_name="action.handle", service="ion-server"}[$__rate_interval]))
-```
-
-### Relay forward p95 by direction (relay metrics)
-
-**Class:** `windowed-stat` &nbsp; **Window:** `$__rate_interval`
-
-p95 of the relay's own `relay_forward_seconds` histogram, per direction (`mobile_to_ion`, `ion_to_mobile`), scraped from the relay's metrics endpoint. The `relay.forward` span gives the same figure through span metrics.
-
-```promql
-histogram_quantile(0.95, sum by (le, direction) (rate(relay_forward_seconds_bucket{le=~".+"}[$__rate_interval])))
 ```
 
 ### Ingest freshness by component (minutes since last line)
@@ -134,16 +84,6 @@ Number of distinct `user` values seen in telemetry over the window. The inner su
 
 ```logql
 count(sum by (user) (count_over_time({event_name=~".+"} | json | user!="" [$__range])))
-```
-
-### Distinct iOS device_id count
-
-**Class:** `accumulation` &nbsp; **Window:** `$__range`
-
-Number of distinct `device_id` values seen in the iOS log stream over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the mobile "Devices reporting" and "App versions" headline stats.
-
-```logql
-count(sum by (device_id) (count_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" [$__range])))
 ```
 
 ### Total spend (bare run_cost_usd)
@@ -274,56 +214,6 @@ Distinct service_instance_id count grouped by host. A host with more than one in
 
 ```logql
 count by (host_name) (sum by (host_name, service_instance_id) (count_over_time({event_name=~".+"} | json [$__range])))
-```
-
-### Distinct iOS device_id count
-
-**Class:** `accumulation` &nbsp; **Window:** `$__range`
-
-Number of distinct `device_id` values seen in the iOS log stream over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the mobile "Devices reporting" and "App versions" headline stats.
-
-```logql
-count(sum by (device_id) (count_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range])))
-```
-
-### Distinct iOS app_version count
-
-**Class:** `accumulation` &nbsp; **Window:** `$__range`
-
-Number of distinct `app_version` values seen in the iOS log stream over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the mobile "Devices reporting" and "App versions" headline stats.
-
-```logql
-count(sum by (app_version) (count_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range])))
-```
-
-### iOS device last-seen (minutes since last log line)
-
-**Class:** `instant` &nbsp; **Window:** `24h`
-
-Minutes since the most recent iOS log line per device. The mobile liveness detector: a device whose logs stopped arriving climbs while the others stay near zero. Grouped by device_id (stable hardware identity) and device_model for display. Fixed [24h] lookback so a long-quiet device stays visible as a growing value rather than dropping out of a narrow dashboard range.
-
-```logql
-(vector(${__to:date:seconds}) - on() group_right() max by (device_id, device_model) (max_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" | label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [24h]))) / 60
-```
-
-### iOS app-version drift by device
-
-**Class:** `instant` &nbsp; **Window:** `$__range`
-
-Every device_id / device_model / app_version / os_version combination reporting in the iOS log stream over the window, with its line count. Two rows for one device_id means it upgraded the app (or OS) mid-window. Answers "which device is on which build?". mdm_device_id and mdm_serial appear when the device is enrolled in MDM, enabling cross-reference to Intune or other MDM consoles.
-
-```logql
-sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, app_version, app_build, os_version) (count_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range]))
-```
-
-### iOS device↔server pairing matrix
-
-**Class:** `instant` &nbsp; **Window:** `$__range`
-
-Every device_id / device_model × desktop_host pair that produced iOS log lines over the window, with the line count. A device paired to two servers yields two rows — this is the "which iOS device connected to which server, and generated logs there" view. pairing_id is the ECDH channel ID for the specific pairing session; device_id is the stable per-device hardware identity (survives re-pairings). desktop_host mirrors the telemetry `host` value, so a row cross-references the Ion Fleet board for the same machine. mdm_device_id / mdm_serial enable Intune correlation.
-
-```logql
-sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, desktop_host) (count_over_time({service_name="ion-ios", event_name=""} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range]))
 ```
 
 ## System Metrics (PromQL)

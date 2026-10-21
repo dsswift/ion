@@ -267,7 +267,7 @@ Enforcement replaces and removes values a user or project configured. So that a 
 - The engine computes the list. A policy source that carries an `overrides` key has it discarded.
 - The list describes the config the daemon loaded at start: the user-level `engine.json` against the enterprise policy.
 
-Ion Studio shows the provider notices on the Providers & models page and the MCP notices on the MCP servers list.
+A client shows the provider notices beside its provider settings and the MCP notices beside its server list.
 
 ## Extension allowlist
 
@@ -410,7 +410,7 @@ When the machine does not set an allowlist, the account list applies as written.
 
 An asset an administrator installs for the whole machine reaches every account on it. `assetScope` lets an asset reach some accounts only.
 
-The engine does not read assets. It reports, on the resolved policy, the `assetScopes` of every account policy that matched the account. A consumer maps a scope to its own on-disk location. Ion Studio looks for theme packs in `accounts/<scope>/themes` beside the machine themes root, so a pack installed there is offered only to accounts whose policy names that scope. See [Theme Packs](../design/theme-packs.md#install-locations).
+The engine does not read assets. It reports, on the resolved policy, the `assetScopes` of every account policy that matched the account. A consumer maps a scope to its own on-disk location; the archived Ion Studio looked for theme packs in `accounts/<scope>/themes` beside its machine themes root, so a pack installed there was offered only to accounts whose policy named that scope.
 
 `assetScopes` is set by the engine. A policy source cannot set it.
 
@@ -438,6 +438,6 @@ The `customFields` map is a pass-through for organization-specific metadata. The
 }
 ```
 
-The `ion-desktop` key is a desktop-owned namespace by convention: the Ion desktop reads its client-side enterprise constraints from `customFields["ion-desktop"]` (auto-update disable, theme enforcement via `themePolicy` — see [Theme Packs](../design/theme-packs.md#enterprise-enforcement)). The engine passes the namespace through without validating it.
+A client owns a namespace under `customFields` by convention (the archived Ion desktop read its client-side constraints from `customFields["ion-desktop"]`). The engine passes every namespace through without validating it.
 
-The `ion-server` key is the Studio Server's namespace in the same way. Both namespaces take a `settingsPolicy` block that classifies settings key by key; see [Settings policy](settings-policy.md).
+A namespace may carry a `settingsPolicy` block that classifies that client's settings key by key; the engine does not read it.

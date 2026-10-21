@@ -385,7 +385,7 @@ ion.registerCommand('cloud', {
 
 ## Custom event types for harness-specific UI
 
-Out of the five engine-recognised event types, the most common harness need is "tell the desktop something application-specific happened so it can update a custom panel." The `EngineEvent` union accepts arbitrary `type` values for that case — the engine and desktop bridge pass them through verbatim.
+Out of the five engine-recognised event types, the most common harness need is "tell the client something application-specific happened so it can update a custom panel." The `EngineEvent` union accepts arbitrary `type` values for that case — the engine passes them through verbatim.
 
 ```typescript
 import { createIon } from '../sdk/ion-sdk'
@@ -406,6 +406,6 @@ ion.registerCommand('inbox-refresh', {
 })
 ```
 
-The desktop renderer subscribes to the event by `type` string and updates its custom Inbox panel. Renderers that don't subscribe to `jarvis_inbox_update` simply ignore it.
+A client subscribes to the event by `type` string and updates its custom panel. Clients that don't subscribe to `jarvis_inbox_update` simply ignore it.
 
 Pick a unique prefix for your custom types (`jarvis_*`, `myext_*`) so future engine event names don't collide with yours.

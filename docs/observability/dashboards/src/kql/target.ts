@@ -23,8 +23,8 @@ import { readFileSync } from 'node:fs';
 export interface AzureTarget {
   readonly datasource: { readonly type: string; readonly uid: string };
   // The Prometheus data source that reads the deployment's Azure Monitor
-  // workspace. A PromQL target (span metrics, relay metrics, the OTLP metrics
-  // export) is not compiled; it is pointed here unchanged, since the same
+  // workspace. A PromQL target (span metrics, the OTLP metrics export) is not
+  // compiled; it is pointed here unchanged, since the same
   // PromQL runs against the local Prometheus and the workspace.
   readonly prometheus: { readonly type: string; readonly uid: string };
   readonly resources: readonly string[];

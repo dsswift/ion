@@ -625,7 +625,7 @@ The Go SDK context exposes methods for the resource subsystem, push notification
 
 **Notifications:**
 
-- **`ctx.Notify(opts NotifyOpts)`** -- emit a push notification through the engine/relay pipeline. `NotifyOpts` carries `Kind`, `ResourceID`, `Title`, `Body`, `Sound`, `Scope`, `ConversationID`, and `TargetSessionKey`. The `Push`, `PushTitle`, and `PushBody` fields on the resulting `engine_notification` event trigger APNs delivery when the relay is connected.
+- **`ctx.Notify(opts NotifyOpts)`** -- emit a push notification through the engine's `relay` connection. `NotifyOpts` carries `Kind`, `ResourceID`, `Title`, `Body`, `Sound`, `Scope`, `ConversationID`, and `TargetSessionKey`. The `Push`, `PushTitle`, and `PushBody` fields on the resulting `engine_notification` event trigger APNs delivery when the relay is connected.
 
 **Cross-session messaging:**
 

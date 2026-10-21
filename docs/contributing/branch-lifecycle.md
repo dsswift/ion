@@ -44,7 +44,7 @@ A worktree is for something big. It starts from `main` and lands back on `main`.
 
 1. Create the worktree from `main`. Do the work there, one package per commit.
 2. Before landing, rebase the worktree onto `origin/main` and resolve conflicts there, where the work is.
-3. Land it: `make land <branch>` (`release-damnit land <branch>`), or the Land verb in Ion ([worktrees and benches](../architecture/worktrees-and-benches.md)). It merges the branch into the remote `main` as one merge commit in a temporary worktree, checks every commit, and pushes. It never touches your checkouts, and it moves local `main` up afterwards.
+3. Land it: `make land <branch>` (`release-damnit land <branch>`). It merges the branch into the remote `main` as one merge commit in a temporary worktree, checks every commit, and pushes. It never touches your checkouts, and it moves local `main` up afterwards.
 
 ## What runs automatically
 

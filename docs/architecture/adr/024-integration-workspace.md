@@ -429,8 +429,9 @@ resolution can pass both and still not compile (the live case: a recorded
 resolution carrying a duplicated `}, "")` line that git considered clean). A
 resolution is only correct when the project accepts the resulting tree, and Ion
 must not know Go from npm — so the project declares the check in the committed
-`.ion/worktree.json` as `bench.verify` (see
-[worktree-json.md](../../configuration/worktree-json.md) § "Bench verification").
+`.ion/worktree.json` as `bench.verify` (a field the bench product reads; the
+engine reads only `sharedPaths`, see
+[worktree-json.md](../../configuration/worktree-json.md)).
 
 Two gates, one command:
 

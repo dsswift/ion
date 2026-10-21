@@ -286,8 +286,8 @@ Diagnostic output goes to stderr. The process exits when the socket connection c
 Manage MCP (Model Context Protocol) servers. Subcommands: `add`, `list`,
 `remove`, `login`, `logout`.
 
-Every subcommand is a client of the engine's `mcp_*` wire commands, so the CLI,
-the desktop (Settings → Servers → the server → Integrations), and any third-party client drive the same
+Every subcommand is a client of the engine's `mcp_*` wire commands, so the CLI
+and any third-party client drive the same
 mechanism. Servers are written to `~/.ion/engine.json`.
 
 #### `ion mcp add <name> <url>`

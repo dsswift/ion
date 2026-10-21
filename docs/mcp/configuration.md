@@ -198,9 +198,7 @@ Microsoft Entra: set only `client_id`, the app registration Ion signs in as.
 The endpoints login discovers are stored with the grant, so a later token
 refresh needs no discovery.
 
-You do not have to edit `engine.json` by hand. The desktop's add and edit
-forms (Settings → Servers → the server → Integrations) and the iPhone app set
-the same client, and so does the CLI:
+You do not have to edit `engine.json` by hand. The CLI sets the same client:
 
 ```bash
 ion mcp add internal-api https://mcp.example.com/mcp --client-id ion-engine
@@ -217,8 +215,8 @@ The engine binds an MCP grant to its discovered authorization-server issuer and
 protected-resource URI. It never reuses a bound grant for a different issuer or
 resource. When a server returns an insufficient-scope Bearer challenge, Ion
 collects the requested scopes, starts a bounded reauthorization flow, and
-emits the authorization URL as typed engine data. Headless clients can present
-that URL themselves; desktop may open it. A refresh token is not retried as a
+emits the authorization URL as typed engine data. A client presents
+that URL however it likes. A refresh token is not retried as a
 substitute for user consent to new scope.
 
 #### OAuth fields

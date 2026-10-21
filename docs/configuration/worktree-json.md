@@ -1,33 +1,19 @@
 ---
 title: worktree.json Reference
-description: Declare the gitignored dependency state a worktree needs so Ion can provision it.
+description: The committed project manifest a worktree-provisioning client reads, and the one field the engine reads from it.
 sidebar_position: 6
 ---
 
 # worktree.json Reference
 
-`.ion/worktree.json` is a **committed, project-level** file that tells Ion what a
-working copy of your project needs beyond what git tracks. When Ion creates a
-worktree it reads this manifest and materialises those directories, so a new
-worktree can build immediately instead of arriving as a bare checkout.
+`.ion/worktree.json` is a **committed, project-level** file. A client that
+provisions worktrees (the archived Ion Studio did, with seed directories, a
+setup command, ephemeral defaults, and a bench verify command) owns most of the
+manifest and documents its own fields. The engine reads exactly one field:
+`worktree.sharedPaths`.
 
-**The file is optional.** With no manifest, worktree creation behaves exactly as
-it did before this feature existed.
-
-## Why it is needed
-
-A git worktree contains only tracked files. Everything gitignored but required
-for local development is absent:
-
-- `node_modules/` (npm, pnpm, yarn)
-- `vendor/` (Go, PHP)
-- `.venv/` (Python)
-- `target/` (Rust, Maven)
-- `Pods/` (CocoaPods)
-- Git hooks, generated config, build caches
-
-Git will never carry these — that is the point of ignoring them — so something
-has to put them there.
+**The file is optional.** With no manifest, a worktree conversation is simply
+refused every write into its base repository.
 
 ## Shape
 
@@ -35,118 +21,17 @@ has to put them there.
 {
   "version": 1,
   "worktree": {
-    "seed": [
-      {
-        "path": "node_modules",
-        "build": "npm ci",
-        "staleWhen": ["package-lock.json"]
-      }
-    ],
-    "sharedPaths": ["docs/retros"],
-    "setup": "make bootstrap",
-    "ephemeralDefault": false,
-    "ephemeralMayDiscard": false
-  },
-  "bench": {
-    "verify": "cd engine && go build ./... && cd ../desktop && npm run typecheck",
-    "verifyTimeoutMs": 600000
+    "sharedPaths": ["docs/retros"]
   }
 }
 ```
 
-### Top-level
-
-| Field | Type | Description |
-|---|---|---|
-| `version` | int | Manifest format version. Must be `1`. An unrecognised version disables provisioning rather than risking a misread. |
-| `worktree.seed` | array | Directories to materialise. See below. |
+| Field | Type | Meaning |
+|-------|------|---------|
+| `version` | number | Manifest version. Only `1` exists. |
 | `worktree.sharedPaths` | string[] | Gitignored base-repo directories a worktree conversation may write into. See "Shared paths" below. |
-| `worktree.ephemeralDefault` | boolean | Whether a worktree cut for a conversation is ephemeral when the request does not say. Default `false`. See "Ephemeral worktrees" below. |
-| `worktree.ephemeralMayDiscard` | boolean | Whether closing an ephemeral worktree's conversation may remove it while it holds unlanded work. Default `false`. See "Ephemeral worktrees" below. |
-| `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. For a project Ion cloned, neither this nor any seed `build` runs until the project is trusted: with the clone (Transfer's **Clone and trust**), or later with Settings → Servers → the server → Projects → Trust project, which also provisions the worktrees it already has. |
-| `bench.verify` | string | Project-declared command that decides whether a bench merge resolution produces an acceptable tree. See "Bench verification" below. |
-| `bench.verifyTimeoutMs` | int | Timeout for `bench.verify` in milliseconds. Optional; a sane default applies when absent. |
 
-### Seed entries
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `path` | string | yes | Repo-relative directory to materialise. **Must be gitignored** (see Rules). |
-| `build` | string | no | Command that rebuilds this directory from scratch. Used when no copy-on-write clone is available, and to reconcile staleness. |
-| `cwd` | string | no | Repo-relative directory to run `build` in. Defaults to the repo root. |
-| `staleWhen` | string[] | no | Files whose content decides whether the seeded directory is still valid — normally lockfiles. |
-| `link` | boolean | no | Explicitly link one regular, primary-owned source file. Cannot be combined with `build`, `cwd`, or non-empty `staleWhen`. |
-
-## How Ion materialises a seed entry
-
-| Rung | When | Cost |
-|---|---|---|
-| **clone** | Copy-on-write reflink is available between the repo and the worktree root | near-zero time and disk |
-| **build** | No reflink — runs your `build` command | a normal install |
-| **copy** | Only when no `build` is declared | full disk, slow |
-
-Capability is **probed**, not assumed from the platform. Reflink is a property of
-the volume pair, so the answer differs between APFS and an external HFS+ disk,
-between Btrfs and ext4, and between a Windows Dev Drive and NTFS. Ion writes a
-temporary file and attempts a forced reflink to find out.
-
-Reflink also requires source and destination on the **same volume**. If your repo
-and the worktree root are on different disks, every entry falls to `build`.
-
-### Why build beats copy
-
-Both produce an independent tree, so copy's only advantage is working offline —
-while its cost is unbounded. `build` is also more correct: it reconciles against
-*that worktree's* lockfile rather than snapshotting whatever state the source
-happened to be in. Copy exists only for directories with no way to rebuild them.
-
-### Cache-first npm installs
-
-npm stores downloaded package archives in its user-level content-addressable
-cache, normally `~/.npm`, outside every worktree. Place an `.npmrc` in each
-npm project directory that runs an install, including nested projects such as
-`desktop/`, and set `prefer-offline=true`. Root and nested `npm ci` commands then
-reuse a cached archive before checking the registry. npm still fetches from the
-configured registry when an archive is absent, so a fresh worktree can provision
-normally.
-
-```ini
-# .npmrc and desktop/.npmrc
-prefer-offline=true
-```
-
-Do not set `offline=true` for normal worktree provisioning. That setting rejects
-cache misses, which makes a first install or newly introduced dependency fail.
-The cache shares package archives; every worktree still receives its own
-independent `node_modules` tree through the provisioning ladder.
-
-### Clones are safe to write to
-
-A reflink shares physical blocks but is a separate file. The first write to
-either side duplicates the affected blocks, so `npm install` inside a cloned
-worktree affects nothing else and costs only its real delta.
-
-Ion never symlinks a shared mutable dependency directory. A symlink is one
-directory with two names, so an install in any worktree would mutate the main
-clone and every sibling.
-
-### Explicit linked files
-
-A project can opt a **regular file** into primary-owned sharing with `link: true`.
-This is not a ladder fallback: clone/build/copy remain independent directory
-strategies. The source must exist and be a regular file; `build`, `cwd`, and
-non-empty `staleWhen` are invalid on a linked entry. Ion creates parent
-directories in the worktree, then creates an absolute file symlink. It never
-replaces an existing real file or wrong link. Missing sources skip cleanly, so
-optional caches stay optional.
-
-```json
-{ "path": "graphify-out/graph.json", "link": true }
-```
-
-This lets worktrees read the primary checkout's maintained graph while their
-`graphify-out/cache/` query stamps stay local. Only the primary checkout may
-rebuild the graph; `make graph` refuses in a worktree. `make graph-refresh` only creates or validates the primary graph link for compatibility and never rebuilds there.
+Other keys are ignored by the engine.
 
 ## Shared paths
 
@@ -214,217 +99,12 @@ let a corrupt file silently disable containment.
 Sibling worktrees are never shared. A gitignored path inside another
 conversation's checkout is that conversation's private build state, not a shared
 artifact directory.
-
-## Ephemeral worktrees
-
-An ephemeral worktree is cut for one conversation and removed when that
-conversation closes, as long as it holds nothing that has not landed. Two fields
-set the project's policy:
-
-```json
-{
-  "worktree": {
-    "ephemeralDefault": false,
-    "ephemeralMayDiscard": false
-  }
-}
-```
-
-- `ephemeralDefault` decides whether a worktree cut for a conversation is
-  ephemeral when the client does not say and the person has not remembered an
-  answer for the project. A client can always ask either way
-  (`ephemeralWorktree` on `tabs.create`). A worktree cut from the worktree
-  list's New worktree, with no conversation, is never ephemeral.
-
-The branch step of a new worktree conversation, on desktop and iOS, offers
-**Ephemeral** (preselected from this default) and **Remember for this project**.
-Remembering saves the branch in the `worktreeBranchDefaults` setting and the
-ephemeral answer as `worktreeEphemeral` on the project's entry in `projects`
-(`rememberWorktreeChoice` on `tabs.create`). Both are personal settings. The
-next worktree conversation in that project then starts at once, and the saved
-answer outranks `ephemeralDefault`. **Choose branch…** in the project menu, or
-an Alt/Option-click on the worktree row on desktop, shows the step again.
-Project settings show and clear both saved values.
-- `ephemeralMayDiscard` decides what happens when the conversation closes and
-  the worktree still has uncommitted files or commits that have not landed.
-  Off (the default): the worktree is kept, becomes an ordinary worktree, and the
-  worktree list shows why. On: it is removed the way Retire's discard removes
-  one, after anchoring the work under `refs/ion/discarded/`.
-
-Removal follows Retire exactly: it refuses while any conversation in the
-worktree, or in a bench its removal would prune, is still working, and it closes
-whatever is left in those directories. Another conversation still open in the
-worktree also keeps it. A field that is not a boolean is ignored, with a
-warning in `server.jsonl`, so a typo can never grant discard. Like
-`sharedPaths`, the fields are read from the base repo's committed manifest.
-
-## Rules
-
-**Seeded paths must be gitignored.** Ion runs `git check-ignore` on every
-declared `path` and refuses any that git tracks or would report as untracked.
-Seeding a non-ignored path would leave it in `git status`, which is the exact
-problem this feature exists to avoid.
-
-**Paths must stay inside the repo.** Absolute paths, drive-qualified paths, and
-any `..` segment are rejected when the manifest is read.
-
-**Malformed manifests fail open.** A syntax error, an unknown version, or a bad
-entry disables provisioning (with a warning in the server's log) rather
-than blocking worktree creation.
-
-**Commands are project-authored and run as-is.** Ion executes what the manifest
-declares, in the worktree, with output captured. This is the same trust posture
-as your git hooks or an `npm install` postinstall script — and a manifest is only
-read from a repo you already opened.
-
-## Keeping a worktree current
-
-Three mechanisms, in the order they usually apply:
-
-1. **Just install.** Every rung produces an independent tree, so running your
-   package manager in the worktree is correct with no involvement from Ion.
-2. **Automatic staleness.** After seeding, Ion compares each `staleWhen` file
-   against the source. On divergence it runs `build` — this is what catches a
-   sibling's dependency bump after a sync.
-3. **Re-provision.** A worktree row-menu verb that re-runs the whole ladder.
-
-## Bench verification (`bench.verify`)
-
-Git's own resolution checks are text checks: "no unmerged paths" plus
-`git diff --cached --check` accept any resolution that is textually clean, even
-one that does not compile. A recorded resolution (`git rerere`) that passes the
-text checks but breaks the build is *poison*: every later assembly replays it
-and commits the same broken content. `bench.verify` closes that gap — the
-project declares the command that decides whether the resulting tree is
-acceptable, because Ion must not know Go from npm (the same posture `seed[].build`
-and `setup` take).
-
-When it runs:
-
-- **Record time** — always. Completing a bench resolution merge (the desktop's
-  Continue) runs `verify` in the bench after the text checks pass. On failure
-  the merge is rolled back, the just-written recording is forgotten, and the
-  conflict is restored for an honest re-resolution. Poison is never recorded.
-- **Replay time** — only when at least one member merged from a recorded
-  resolution. A purely clean-merge assembly contains exactly what the members
-  committed, so Ion introduced nothing to distrust and no build cost is paid.
-  On failure the recordings are **retained**, not forgotten — an assembly
-  cannot attribute the failure to one specific replayed recording, and
-  forgetting all of them would discard every recording the bench holds to
-  punish one poisoned resolution. The bench is wiped to its atomic-failure
-  state and the assembly is reported failed, classified `verification`
-  (distinct from a merge `conflict`), with the verify command, its output,
-  and the suspect branch names attached as evidence. The desktop's
-  bench-verification recovery dialog offers the operator's consented
-  alternative: discard the recordings for the named suspects and reassemble,
-  or open an AI-assisted analysis conversation that rebuilds the failing tree
-  and returns a verdict (a poisoned recording to discard and re-resolve, or a
-  genuine cross-member incompatibility to fix upstream in the owning
-  worktree — never in the bench). See
-  [ADR-024](../architecture/adr/024-integration-workspace.md) § "The
-  bench-verification recovery dialog, and AI-assisted analysis".
-
-Fail-open: a missing or malformed `bench` block means no verification, logged
-with the reason — a project without the block behaves exactly as before.
-
-**Which manifest answers.** Assembly reads the `bench` block from the
-**assembled bench tree** first, and from the source branch only as a fallback.
-The bench tree is the enrolled combination, so it is the only place that
-describes what is actually being verified: a member whose own commits introduce
-the `bench` block is honoured on the assembly that carries it, rather than
-ignored until that block lands on the source branch. The command always runs in
-the bench regardless of which manifest answered, and the log line records
-`manifest_source` so it is never ambiguous which one did.
-
-That ordering is load-bearing rather than cosmetic. Reading only the source
-branch made this guard unreachable until its own enabling change landed — an
-assembly replayed a resolution that did not compile, committed it, and logged
-`bench verification skipped; project declares no command` while the block that
-would have caught it sat in the assembled tree.
-
-**A verify failure is not always Ion's fault.** A member whose own committed
-code is broken fails verify too when a replay was present; the cost is one
-honest re-resolution. The inverse (trusting a poisoned replay) repeats on every
-assembly forever.
-
-## Examples
-
-### Node monorepo
-
-```json
-{
-  "version": 1,
-  "worktree": {
-    "seed": [
-      { "path": "node_modules", "build": "npm ci", "staleWhen": ["package-lock.json"] },
-      { "path": "web/node_modules", "build": "npm ci", "cwd": "web",
-        "staleWhen": ["web/package-lock.json"] }
-    ],
-    "setup": "npm run prepare"
-  }
-}
-```
-
-### Go
-
-```json
-{
-  "version": 1,
-  "worktree": {
-    "seed": [
-      { "path": "vendor", "build": "go mod vendor", "staleWhen": ["go.mod", "go.sum"] }
-    ]
-  }
-}
-```
-
-### Python (uv)
-
-```json
-{
-  "version": 1,
-  "worktree": {
-    "seed": [
-      { "path": ".venv", "build": "uv sync", "staleWhen": ["uv.lock"] }
-    ]
-  }
-}
-```
-
-### Rust
-
-```json
-{
-  "version": 1,
-  "worktree": {
-    "seed": [
-      { "path": "target", "build": "cargo fetch", "staleWhen": ["Cargo.lock"] }
-    ]
-  }
-}
-```
-
-### A cache with no rebuild command
-
-A derived artifact that is expensive to regenerate and cheap to clone can declare
-no `build` at all; Ion clones it, or copies it when reflink is unavailable.
-
-```json
-{
-  "version": 1,
-  "worktree": {
-    "seed": [{ "path": ".build-cache" }]
-  }
-}
-```
-
 ## Observability
 
-Every decision lands in the server's log under `tag=worktree.provision` (worktree provisioning is the server's work since ADR-033):
-the manifest that was loaded, the probed reflink capability per volume pair, the
-rung chosen for each entry with elapsed time, and the full reason for any
-refusal or failure.
+Every shared-path decision lands in `~/.ion/engine.jsonl` under
+`tag=workspaces`: the manifest that was loaded, and each declaration accepted
+or rejected with its reason.
 
 ```bash
-jq -c 'select(.tag=="worktree.provision")' "${ION_DATA_DIR:-$HOME/.ion}/server.jsonl"
+jq -c 'select(.tag=="workspaces")' ~/.ion/engine.jsonl
 ```

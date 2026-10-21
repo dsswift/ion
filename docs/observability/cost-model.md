@@ -1,8 +1,7 @@
 # Ion Cost Model
 
 This document defines the three cost granularities in the Ion engine and explains
-how they map to observable fields in telemetry, the engine wire, the desktop UI,
-and iOS.
+how they map to observable fields in telemetry and the engine wire.
 
 ## Granularities
 

@@ -106,7 +106,7 @@ Hybrid is a contract-safe change:
 - The public `RunBackend` interface is unchanged. `HybridBackend` satisfies it without modifying it.
 - `Steer` is not added to `RunBackend`. It is reached through a local `steerable` interface in `engine/internal/session/agent.go` — that interface is internal to the session package and is not part of the engine's published contract.
 - `ApiBackend.AuthResolver()` is a new additive accessor (returns the stored resolver, or `nil`). It does not appear on `RunBackend` and does not affect any consumer.
-- No `NormalizedEvent` variants are added, removed, or renamed. No hook payloads change. No wire-protocol fields change. Desktop, iOS, and harness extensions see no contract-level differences.
+- No `NormalizedEvent` variants are added, removed, or renamed. No hook payloads change. No wire-protocol fields change. Clients and harness extensions see no contract-level differences.
 
 See [docs/engine-grounding.md](../engine-grounding.md) §3 for the contract-stability rules this change is designed to respect.
 

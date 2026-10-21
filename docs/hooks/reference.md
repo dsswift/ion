@@ -712,7 +712,7 @@ type PromptContext struct {
 ```
 
 - `Worktree` is populated when `kind` is `"worktree"` (engine-owned registry lookup).
-- `Bench` is populated when a client supplies `ClientWorkspaceContext.Bench` (e.g. Ion's desktop sends structured bench facts here).
+- `Bench` is populated when a client supplies `ClientWorkspaceContext.Bench` (a client with an integration bench sends structured bench facts here).
 - `Client` is populated from `ClientWorkspaceContext.Data` for generic consumer-defined data.
 
 **Kind values:**
