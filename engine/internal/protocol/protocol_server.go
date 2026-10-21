@@ -45,6 +45,9 @@ type SessionInfo struct {
 	// was supplied on start_session (manifest C1/C2). Empty for a session
 	// nobody attributed.
 	PrincipalSubject string `json:"principalSubject,omitempty"`
+	// Headless is true for a session the engine minted for an engine host's
+	// fire. No client owns it; a client lists it only to account for it.
+	Headless bool `json:"headless,omitempty"`
 }
 
 // ServerSessionList carries the list_sessions response.

@@ -11,4 +11,7 @@ type SessionInfo struct {
 	// was supplied on start_session. Empty for a session nobody attributed
 	// -- the "unowned" case list_sessions.includeUnowned surfaces.
 	PrincipalSubject string `json:"principalSubject,omitempty"`
+	// Headless is true for a session the engine minted for an engine host's
+	// fire (headless_session.go). No client owns it.
+	Headless bool `json:"headless,omitempty"`
 }

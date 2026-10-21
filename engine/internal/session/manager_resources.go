@@ -31,6 +31,10 @@ func (m *Manager) workspaceResourceBrokers() ([]string, map[string]*resource.Bro
 			brokers[key] = session.resourceBroker
 		}
 	}
+	if m.engineHostBroker != nil {
+		keys = append(keys, engineHostsKey)
+		brokers[engineHostsKey] = m.engineHostBroker
+	}
 	m.mu.RUnlock()
 	sort.Strings(keys)
 	return keys, brokers

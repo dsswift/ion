@@ -60,10 +60,17 @@ type AsyncFirePayload struct {
 // delivery. Split from FireAsync so the envelope's wire shape is pinned
 // without a subprocess.
 func (h *Host) buildAsyncFireEnvelope(kind asyncreg.Kind, id string, ctx *Context, payload interface{}) AsyncFirePayload {
+	// The session the fire runs in: the resolver's context names it (a
+	// headless session for an engine host); a session host's bound key is
+	// the same value and the fallback for a context built without one.
+	sessionKey := ctx.SessionKey
+	if sessionKey == "" {
+		sessionKey = h.SessionKey()
+	}
 	return AsyncFirePayload{
 		Kind:       string(kind),
 		ID:         id,
-		SessionKey: h.SessionKey(),
+		SessionKey: sessionKey,
 		Identity:   ctx.Identity,
 		TraceID:    ctx.TraceID,
 		SpanID:     ctx.RunSpanID,

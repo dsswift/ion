@@ -29,6 +29,12 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 	group.SetSpanStarter(hookSpanStarter(s.telemetry))
 	for _, plan := range extPaths {
 		extPath := plan.Path
+		if !plan.Manifest.SpawnsSessionHosts() {
+			// An engine-only extension has no session half; its one host is
+			// the engine's (engine_hosts.go).
+			utils.LogWithFields(utils.LevelInfo, "session", "extension skipped: manifest scope is engine only", map[string]any{"key": key, "extension": plan.Identifier, "ext_path": extPath})
+			continue
+		}
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_working_message",
 			EventMessage: fmt.Sprintf("Loading extension: %s", filepath.Base(filepath.Dir(extPath))),
@@ -50,10 +56,12 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		}
 
 		host.SetEngineBuildIdentity(buildIdentity)
+		host.SetScope(extension.HostScopeSession, plan.Manifest.EffectiveScope())
 		extCfg := &extension.ExtensionConfig{
 			ExtensionDir:     filepath.Dir(extPath),
 			WorkingDirectory: config.WorkingDirectory,
 			BuildIdentity:    buildIdentity,
+			Scope:            string(extension.HostScopeSession),
 		}
 		// Enterprise extension allowlist (feature 0011 / D-020, issue #308):
 		// carry the sealed allowlist into the host so Host.Load can enforce it

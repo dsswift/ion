@@ -714,6 +714,11 @@ type engineSession struct {
 	// session quiescent, and zero while it has work. Guarded by Manager.mu.
 	quiescentSince time.Time
 
+	// headless marks a session the engine minted for an engine host's fire
+	// (headless_session.go). No client subscribes to it; idle release uses
+	// the headless window and asks no extension before stopping it.
+	headless bool
+
 	// parked records that this session's run exited at a turn boundary
 	// because outstandingBackgroundTasks was non-empty, and is waiting to be
 	// woken by a completion. Nil when the session is not parked. Distinct from

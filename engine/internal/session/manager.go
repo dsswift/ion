@@ -6,6 +6,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/scheduling"
@@ -55,6 +56,13 @@ type Manager struct {
 	// onSessionReleased is told about each engine-initiated release, after
 	// the session is gone. Guarded by mu.
 	onSessionReleased func(key, reason string)
+
+	// engineHosts is the engine-scoped extension host group (engine_hosts.go),
+	// nil until StartEngineHosts loads one. engineHostBroker serves its
+	// resource producers; runAsPrincipal is who its headless sessions act as.
+	engineHosts      *extension.ExtensionGroup
+	engineHostBroker *resource.Broker
+	runAsPrincipal   *types.SessionPrincipal
 
 	// childBackendOverride is a test-only seam: when non-nil, newChildBackend
 	// returns this factory's output instead of constructing a real backend.
@@ -381,6 +389,7 @@ func (m *Manager) ListSessions() []SessionInfo {
 			ConversationID:   s.conversationID,
 			ExtensionName:    s.extensionName,
 			PrincipalSubject: principalSubject,
+			Headless:         s.headless,
 		})
 	}
 	return result
@@ -493,6 +502,7 @@ func (m *Manager) Shutdown() {
 	m.PrepareForProcessShutdown()
 
 	m.StopAll() //nolint:errcheck // best-effort stop; not-found is benign
+	m.stopEngineHosts()
 	m.asyncMu.Lock()
 	srv := m.webhookServer
 	sch := m.scheduler

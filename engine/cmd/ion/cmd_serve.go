@@ -442,6 +442,12 @@ func cmdServe(flags map[string]string) {
 	}
 	fmt.Printf("Ion Engine v%s started (pid %d)\n", version, os.Getpid())
 
+	// Engine-scoped extension hosts come up after the socket so a failure is
+	// logged against a running engine; conversations never wait on them.
+	if err := srv.SessionManager().StartEngineHosts(context.Background()); err != nil {
+		utils.LogWithFields(utils.LevelError, "main", "engine hosts failed to start", map[string]any{"error": utils.ErrStr(err)})
+	}
+
 	// debug.pprof.listen: a loopback-only net/http/pprof listener, off by
 	// default. A refused or failed bind is logged by StartPprofListener and
 	// the engine runs without it; Stop closes a serving one.

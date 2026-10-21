@@ -131,6 +131,11 @@ func (m *Manager) evaluateIdleRelease(key string, now time.Time) bool {
 	if !ok {
 		return false
 	}
+	if s.headless {
+		// Nothing will ever prompt a headless session again; it goes as soon
+		// as its fire's work is done, after the short headless window.
+		after, timed = m.headlessIdleRelease(), true
+	}
 
 	m.mu.Lock()
 	if m.sessions[key] != s {
@@ -203,7 +208,10 @@ func (m *Manager) AbortOrRelease(key string, scope AbortScope) bool {
 func (m *Manager) releaseQuiescentSession(key string, s *engineSession, reason string, idle time.Duration) bool {
 	fields := map[string]any{"key": key, "reason": reason, "idle_ms": idle.Milliseconds(), "conversation_id": s.conversationID}
 
-	if s.extGroup != nil && !s.extGroup.IsEmpty() {
+	if s.headless {
+		// No harness owns a headless session, so none is asked to keep it.
+		utils.LogWithFields(utils.LevelInfo, idleReleaseLogTag, "headless session release: session_before_release skipped", fields)
+	} else if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		keep, err := s.extGroup.FireSessionBeforeRelease(m.newExtContext(s, key), extension.SessionReleaseInfo{
 			Reason: reason, IdleMs: idle.Milliseconds(),
 		})
@@ -249,4 +257,14 @@ func (m *Manager) releaseQuiescentSession(key string, s *engineSession, reason s
 		released(key, reason)
 	}
 	return true
+}
+
+// headlessIdleRelease is the quiescence window of a headless session.
+func (m *Manager) headlessIdleRelease() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.config == nil || m.config.ExtensionHosts == nil {
+		return types.DefaultHeadlessIdleRelease
+	}
+	return m.config.ExtensionHosts.Session.IdleRelease()
 }

@@ -75,6 +75,10 @@ func (m *Manager) ensureAsyncSubsystems() (*webhooks.Server, *scheduling.Schedul
 // nominal types differ — callers wrap as needed.
 func (m *Manager) buildAsyncContextResolver() func(*extension.Host) (*extension.Context, error) {
 	return func(host *extension.Host) (*extension.Context, error) {
+		if host.IsEngineHost() {
+			// An engine host has no conversation: every fire gets its own.
+			return m.mintHeadlessSession(host)
+		}
 		key := host.SessionKey()
 		if key == "" {
 			return nil, fmt.Errorf("host %s has no session key", host.Name())

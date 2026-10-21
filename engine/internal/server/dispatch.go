@@ -254,6 +254,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 				ToolCount:        si.ToolCount,
 				ConversationID:   si.ConversationID,
 				PrincipalSubject: si.PrincipalSubject,
+				Headless:         si.Headless,
 			})
 		}
 		if cmd.RequestID != "" {
