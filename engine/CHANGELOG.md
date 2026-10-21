@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.2](https://github.com/dsswift/ion/compare/engine-v2.1.1...engine-v2.1.2) (2026-10-21)
+
+### Bug Fixes
+
+* **engine:** restart the launchagent reliably on install ([3e06322](https://github.com/dsswift/ion/commit/3e0632202e0fe916b2197b6dc6d518ee373fd03e))
+
 ## [2.1.1](https://github.com/dsswift/ion/compare/engine-v2.1.0...engine-v2.1.1) (2026-10-21)
 
 ### Bug Fixes
