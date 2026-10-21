@@ -10,6 +10,9 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
 cd "$SCRIPT_DIR"
 
+# shellcheck source=launchagent.sh
+source "$SCRIPT_DIR/commands/launchagent.sh"
+
 # ── Preflight ──
 #
 # Checks Go version and Xcode CLT before attempting the build. Catches the
@@ -73,16 +76,9 @@ mkdir -p "$BIN_DIR"
 
 # Stop the running LaunchAgent so the new binary takes effect on next start.
 # bootout removes the service from the bootstrap namespace (prevents KeepAlive
-# restart). On a fresh install (no agent ever loaded) bootout exits non-zero.
+# restart); stop_launch_agent waits until launchd has finished removing it.
 echo "==> Stopping engine LaunchAgent (if running)..."
-launchctl bootout "gui/$(id -u)/$PLIST_LABEL" 2>/dev/null || true
-# Wait for the service to be fully removed from the namespace. Without this,
-# bootstrap can see the departing service as "already loaded" (exit 5) and
-# RunAtLoad won't fire — leaving the old binary running.
-for _i in $(seq 1 50); do
-    launchctl print "gui/$(id -u)/$PLIST_LABEL" >/dev/null 2>&1 || break
-    sleep 0.1
-done
+stop_launch_agent
 rm -f "$ION_HOME/engine.sock"
 
 rm -f "$BIN_DIR/ion"
@@ -179,19 +175,11 @@ if [[ -f "$PLIST_TEMPLATE" ]]; then
     mkdir -p "$LAUNCH_AGENTS_DIR"
     # Replace every $HOME literal in the template with the real home directory.
     sed "s|\$HOME|$HOME|g" "$PLIST_TEMPLATE" > "$PLIST_DEST"
-    # Load into the launchd bootstrap namespace. RunAtLoad starts the engine
-    # immediately. The bootout-wait above guarantees a clean load (no exit 5).
-    launchctl bootstrap "gui/$(id -u)" "$PLIST_DEST" 2>/dev/null || true
-    # Wait for the engine to bind its socket (confirms the process is ready).
-    for _i in $(seq 1 30); do
-        [ -S "$ION_HOME/engine.sock" ] && break
-        sleep 0.2
-    done
-    if [ -S "$ION_HOME/engine.sock" ]; then
-        echo "==> LaunchAgent $PLIST_LABEL started"
-    else
-        echo "  WARNING: engine socket not ready after 6s (engine may still be starting)"
-    fi
+    # Load and start the service, then wait for the engine to bind its socket.
+    # A failure here exits the install: a binary on disk with no engine running
+    # leaves every client unable to connect.
+    start_launch_agent "$PLIST_DEST"
+    echo "==> LaunchAgent $PLIST_LABEL started"
 else
     echo "  WARNING: plist template not found at $PLIST_TEMPLATE, skipping LaunchAgent install"
 fi

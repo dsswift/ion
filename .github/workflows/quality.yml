@@ -85,6 +85,8 @@ jobs:
         run: bash scripts/gate-cache.test.sh
       - name: Test the main-moved check
         run: bash scripts/check-main-current.test.sh
+      - name: Test the engine LaunchAgent restart
+        run: bash engine/commands/launchagent.test.sh
 
   file-size:
     runs-on: ubuntu-latest
