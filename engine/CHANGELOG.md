@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.1](https://github.com/dsswift/ion/compare/engine-v2.1.0...engine-v2.1.1) (2026-10-21)
+
+### Bug Fixes
+
+* **engine:** register the acp agent protocol version as a format ([ab884d1](https://github.com/dsswift/ion/commit/ab884d1ba56222e9cd8586b7cae93affa0534183))
+
 ## [2.1.0](https://github.com/dsswift/ion/compare/engine-v2.0.0...engine-v2.1.0) (2026-10-21)
 
 ### Features
