@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -139,7 +140,10 @@ func TestCliShellTools_RegisteredInPlanModeAndRefusedAtTheCall(t *testing.T) {
 func TestCliShellTools_NotifyingBashJoinsOutstandingSet(t *testing.T) {
 	key := "cli-shell-notify"
 	mgr := newCliShellTestManager(t, key)
-	dir := t.TempDir()
+	// os.TempDir(), not t.TempDir(): stopping a background task signals it
+	// without waiting, and Windows cannot remove a directory that is still a
+	// live process's working directory.
+	dir := os.TempDir()
 
 	ctx := mgr.cliToolContextStamper(sessionFor(t, mgr, key), key)(context.Background())
 	res, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
@@ -170,7 +174,10 @@ func TestCliShellTools_NotifyingBashJoinsOutstandingSet(t *testing.T) {
 func TestCliShellTools_NonNotifyingBashStaysUntracked(t *testing.T) {
 	key := "cli-shell-no-notify"
 	mgr := newCliShellTestManager(t, key)
-	dir := t.TempDir()
+	// os.TempDir(), not t.TempDir(): stopping a background task signals it
+	// without waiting, and Windows cannot remove a directory that is still a
+	// live process's working directory.
+	dir := os.TempDir()
 
 	ctx := mgr.cliToolContextStamper(sessionFor(t, mgr, key), key)(context.Background())
 	res, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
@@ -245,7 +252,10 @@ func sessionFor(t *testing.T, mgr *Manager, key string) *engineSession {
 func TestCliShellTools_ParkSeamsReportBridgedWork(t *testing.T) {
 	key := "cli-shell-seams"
 	mgr := newCliShellTestManager(t, key)
-	opts := &types.RunOptions{ProjectPath: t.TempDir()}
+	// os.TempDir(), not t.TempDir(): stopping a background task signals it
+	// without waiting, and Windows cannot remove a directory that is still a
+	// live process's working directory.
+	opts := &types.RunOptions{ProjectPath: os.TempDir()}
 	s := sessionFor(t, mgr, key)
 
 	mgr.wireCliShellToolServer(s, key, opts, nil)

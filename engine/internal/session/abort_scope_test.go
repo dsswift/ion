@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/session/agents"
@@ -102,10 +103,13 @@ func TestSendAbortScoped_AllWorkStopsOwnedBackgroundTasks(t *testing.T) {
 
 	ownedCtx := tools.WithBackgroundTaskOwner(context.Background(), "all-work")
 	otherCtx := tools.WithBackgroundTaskOwner(context.Background(), "other")
-	if _, err := tools.ExecuteTool(ownedCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, t.TempDir()); err != nil {
+	// os.TempDir(), not t.TempDir(): stopping a background task signals it
+	// without waiting, and Windows cannot remove a directory that is still a
+	// live process's working directory.
+	if _, err := tools.ExecuteTool(ownedCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, os.TempDir()); err != nil {
 		t.Fatalf("start owned background task: %v", err)
 	}
-	if _, err := tools.ExecuteTool(otherCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, t.TempDir()); err != nil {
+	if _, err := tools.ExecuteTool(otherCtx, "Bash", map[string]any{"command": `sh -c "sleep 60"`, "run_in_background": true}, os.TempDir()); err != nil {
 		t.Fatalf("start unrelated background task: %v", err)
 	}
 	t.Cleanup(func() { tools.StopBackgroundTasksForOwner("all-work"); tools.StopBackgroundTasksForOwner("other") })

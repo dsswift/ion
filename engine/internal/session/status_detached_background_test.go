@@ -8,6 +8,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -43,10 +44,13 @@ func startDetachedCommand(t *testing.T, key string) string {
 	if bash == nil {
 		t.Fatal("Bash tool is not registered")
 	}
+	// os.TempDir(), not t.TempDir(): stopping a background task signals it
+	// without waiting, and Windows cannot remove a directory that is still a
+	// live process's working directory.
 	result, err := bash.Execute(ctx, map[string]any{
 		"command":           `sh -c "sleep 30"`,
 		"run_in_background": true,
-	}, t.TempDir())
+	}, os.TempDir())
 	if err != nil {
 		t.Fatalf("Bash run_in_background: %v", err)
 	}
