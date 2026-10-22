@@ -1,0 +1,16 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Set up worktree",
+      "command": "mkdir -p graphify-out docs && ln -sfn \"$T3CODE_PROJECT_ROOT/graphify-out/graph.json\" graphify-out/graph.json && ln -sfn \"$T3CODE_PROJECT_ROOT/docs/retros\" docs/retros && make bootstrap",
+      "icon": "configure",
+      "runOnWorktreeCreate": true
+    },
+    {
+      "name": "Verify engine build",
+      "command": "cd engine && go build ./...",
+      "icon": "build"
+    }
+  ]
+}
