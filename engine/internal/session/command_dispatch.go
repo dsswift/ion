@@ -622,7 +622,7 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 // expected to handle the format-specific rendering or download; the engine
 // attaches no semantics beyond "this is the export".
 //
-// Per CLAUDE.md "Engine consumers" framing, this event is one half of the
+// Per AGENTS.md "Engine consumers" framing, this event is one half of the
 // contract: the desktop and iOS reference implementations render save-as
 // dialogs and share sheets, but external consumers (CLI orchestrators,
 // custom harnesses) may pipe the payload to stdout, write it to a

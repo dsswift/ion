@@ -24,7 +24,7 @@ import (
 // Without (2) and (3), the engine either failed silently (no signal to
 // consumers that the model wasn't what they asked for) or risked
 // poisoning downstream parsers by mutating stream content. See the
-// grand-surfing-moth plan and CLAUDE.md § "The typed-event corollary".
+// grand-surfing-moth plan and AGENTS.md § "The typed-event corollary".
 func TestModelFallback_SwapsToDefaultAndEmitsEvent(t *testing.T) {
 	const llmOutput = "this is the exact verbatim LLM output, do not touch"
 

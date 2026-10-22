@@ -299,7 +299,7 @@ type RunOptions struct {
 	// engine.json `earlyStopContinue` block < RunOptions fields below <
 	// `before_early_stop_decision` hook return value at runtime.
 	//
-	// Field stability: additive only (per CLAUDE.md contract rules). Zero
+	// Field stability: additive only (per AGENTS.md contract rules). Zero
 	// values mean "inherit from a lower layer"; pointer fields exist so that
 	// "explicitly false / explicitly zero" can be distinguished from "unset".
 

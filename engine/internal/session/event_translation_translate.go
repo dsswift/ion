@@ -52,7 +52,7 @@ func translateEventData(event types.NormalizedEvent, contextWindow int) types.En
 		// A single image produced during the run — tool-returned or
 		// provider-generated. The engine is a pass-through for images: it
 		// emits the on-disk file path, never base64 bytes. Consumers render
-		// or ignore it; the engine has no opinion (see CLAUDE.md § "The
+		// or ignore it; the engine has no opinion (see AGENTS.md § "The
 		// typed-event corollary").
 		return types.EngineEvent{
 			Type:             "engine_image_content",
@@ -443,7 +443,7 @@ func translateEventData(event types.NormalizedEvent, contextWindow int) types.En
 		// event so clients can render an indicator. The desktop and iOS
 		// renderers display a small ⚠ glyph on the affected engine
 		// instance pill; headless harnesses may abort, retry, or route
-		// elsewhere. The engine has no opinion — see CLAUDE.md §
+		// elsewhere. The engine has no opinion — see AGENTS.md §
 		// "The typed-event corollary" for the rule that the typed event
 		// is the engine's *complete* signaling surface (no parallel
 		// stream-content mutation).
@@ -458,7 +458,7 @@ func translateEventData(event types.NormalizedEvent, contextWindow int) types.En
 		// Surface a declined feature request as a typed engine event so
 		// clients can render a recoverable message (not a dead engine).
 		// The engine reports; the harness decides (reroute / abort /
-		// notify). See CLAUDE.md § "The typed-event corollary".
+		// notify). See AGENTS.md § "The typed-event corollary".
 		return types.EngineEvent{
 			Type:              "engine_capability_unsupported",
 			Capability:        e.Capability,

@@ -31,7 +31,7 @@ import (
 //     so consumers can react. The event is a workflow signal — fired
 //     once at the swap site, not retained in any snapshot, never
 //     duplicated to stream content (TaskCompleteEvent.Result,
-//     TextChunkEvent). See CLAUDE.md § "The typed-event corollary"
+//     TextChunkEvent). See AGENTS.md § "The typed-event corollary"
 //     for the rule that prohibits double-surfacing.
 //  3. Logs the emission at INFO with the session id so it's grep-able.
 //
@@ -75,7 +75,7 @@ func (b *ApiBackend) resolveProviderForRun(ctx context.Context, run *activeRun, 
 		// that need sticky UI must project the fact into their own state.
 		// We never mutate stream content (TaskCompleteEvent.Result,
 		// TextChunkEvent) to communicate this — typed event is the entire
-		// signaling surface. See CLAUDE.md § "The typed-event corollary".
+		// signaling surface. See AGENTS.md § "The typed-event corollary".
 		original := model
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "model not found, falling back to default", map[string]any{
 			"model":         model,

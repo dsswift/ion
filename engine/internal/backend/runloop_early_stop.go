@@ -148,7 +148,7 @@ func mergeEarlyStopConfig(opts types.RunOptions, cfg *RunConfig) effectiveEarlyS
 //   - bumped run.continuationCount and recorded the delta
 //   - fired early_stop_continued (if a handler is wired)
 //
-// Verbose logging at every branch satisfies the logging policy in CLAUDE.md:
+// Verbose logging at every branch satisfies the logging policy in AGENTS.md:
 // from the log alone a reader can reconstruct exactly which combination of
 // engine defaults / engine.json / RunOptions / hook overrides produced the
 // final decision.

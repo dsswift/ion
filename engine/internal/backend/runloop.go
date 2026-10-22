@@ -39,7 +39,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Resolve the effective early-stop continuation config for this run.
 	// Defaults < engine.json < RunOptions < sub-agent gate. Log the final
 	// snapshot once at INFO so a reader can reconstruct the decision path
-	// from logs alone (per CLAUDE.md logging policy).
+	// from logs alone (per AGENTS.md logging policy).
 	earlyStop := mergeEarlyStopConfig(opts, run.cfg)
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop", map[string]any{
 		"run_id":            run.requestID,

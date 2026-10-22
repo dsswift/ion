@@ -8,7 +8,7 @@ package types
 // The engine reports; the consumer decides. A harness may reroute the prompt
 // to a capable model, abort, notify the user, or ignore the event — the
 // engine has no opinion and never auto-reroutes (that would be a policy
-// lock-in). Per CLAUDE.md § "The typed-event corollary", this typed event is
+// lock-in). Per AGENTS.md § "The typed-event corollary", this typed event is
 // the engine's complete signaling surface for the declined request: no run
 // starts, no stream content is synthesized, and the session stays idle and
 // immediately usable for the next prompt.

@@ -26,7 +26,7 @@ func compatCfg() WalkerConfig {
 	}
 }
 
-// The Ion repo shape: AGENTS.md is the source and CLAUDE.md a symlink to it.
+// A common repo shape: AGENTS.md is the source and CLAUDE.md a symlink to it.
 // With Claude compatibility on, both names match, and the instructions must
 // still be injected once.
 func TestWalkContextFiles_SymlinkInjectedOnce(t *testing.T) {

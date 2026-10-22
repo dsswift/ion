@@ -451,7 +451,7 @@ type BackgroundTaskState struct {
 // Contract stability note: this type is additive. Once published it
 // follows the same backwards-compatibility rules as every other shared
 // type — new fields are zero-default and additive, no field is removed
-// or renamed without a major version. See CLAUDE.md "Contract stability".
+// or renamed without a major version. See AGENTS.md "Contract stability".
 type SessionStatus struct {
 	// Key is the opaque, harness-chosen session key. The engine treats
 	// it as an opaque identifier and never parses its structure. Always set.

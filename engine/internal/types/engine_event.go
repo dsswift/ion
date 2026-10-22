@@ -164,7 +164,7 @@ type EngineEvent struct {
 	// so (e.g. desktop renders a watchdog icon, iOS surfaces a distinct
 	// notification, headless harnesses may opt to retry). See
 	// engine/internal/backend/runloop_watchdog.go for the watchdog
-	// implementation and CLAUDE.md § "The typed-event corollary" for
+	// implementation and AGENTS.md § "The typed-event corollary" for
 	// the rule that this typed event is the engine's complete
 	// signaling surface for stall detection.
 	RunStalledDuration     float64 `json:"runStalledDuration,omitempty"`
@@ -267,7 +267,7 @@ type EngineEvent struct {
 	// desktop or iOS doesn't have to parse an opaque map to learn the
 	// fallback decision. Consumers may surface a status indicator,
 	// abort orchestration, log a metric, or ignore the event — see
-	// CLAUDE.md § "The typed-event corollary".
+	// AGENTS.md § "The typed-event corollary".
 	FallbackRequestedModel string `json:"fallbackRequestedModel,omitempty"`
 	FallbackModel          string `json:"fallbackModel,omitempty"`
 	FallbackReason         string `json:"fallbackReason,omitempty"`
@@ -329,7 +329,7 @@ type EngineEvent struct {
 	// CapabilityUnsupportedEvent NormalizedEvent variant. No run starts;
 	// the session stays idle and immediately usable. Consumers may reroute
 	// to a capable model, surface the reason, or ignore the event — see
-	// CLAUDE.md § "The typed-event corollary".
+	// AGENTS.md § "The typed-event corollary".
 	Capability        string `json:"capability,omitempty"`
 	CapabilityBackend string `json:"capabilityBackend,omitempty"`
 	CapabilityReason  string `json:"capabilityReason,omitempty"`
