@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0](https://github.com/dsswift/ion/compare/sdk/go/v1.0.0...sdk/go/v1.1.0) (2026-10-22)
+
+### Features
+
+* **sdk:** run an extension binary as its own acp agent ([130b610](https://github.com/dsswift/ion/commit/130b610d633b87299cffa290160bd72908cbc563))
+
 ## [1.0.0](https://github.com/dsswift/ion/compare/sdk/go/v0.1.25...sdk/go/v1.0.0) (2026-10-22)
 
 ### ⚠ BREAKING CHANGES

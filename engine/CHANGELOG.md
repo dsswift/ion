@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.1.0](https://github.com/dsswift/ion/compare/engine-v3.0.0...engine-v3.1.0) (2026-10-22)
+
+### Features
+
+* **engine:** serve harnesses as acp agents and sign in over acp ([f9add90](https://github.com/dsswift/ion/commit/f9add90a9609bfa541373acb9c8da597792759e6))
+
 ## [3.0.0](https://github.com/dsswift/ion/compare/engine-v2.1.6...engine-v3.0.0) (2026-10-22)
 
 ### ⚠ BREAKING CHANGES
