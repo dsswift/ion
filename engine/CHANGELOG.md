@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.1.1](https://github.com/dsswift/ion/compare/engine-v3.1.0...engine-v3.1.1) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** end acp turns on their own run's idle ([7629eea](https://github.com/dsswift/ion/commit/7629eea114e177c3bdfd3e3c915f9afe2785b581))
+
 ## [3.1.0](https://github.com/dsswift/ion/compare/engine-v3.0.0...engine-v3.1.0) (2026-10-22)
 
 ### Features
