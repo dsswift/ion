@@ -8,8 +8,8 @@ sidebar_position: 3
 
 The engine maintains a list of regex patterns that match risky shell commands. When a Bash tool invocation matches one of these patterns, the engine flags it before execution. What happens next depends on the permission mode:
 
-- **allow mode**: The built-in patterns are not checked. Add a `deny` rule to block a command in this mode.
-- **ask mode**: The command is blocked.
+- **allow mode**: Neither the built-in nor your configured patterns are checked. Add a `deny` rule to block a command in this mode.
+- **ask mode**: A built-in pattern blocks the command. A configured pattern prompts the user.
 - **deny mode**: The command is blocked.
 
 ## Default patterns
@@ -45,7 +45,7 @@ Add patterns via the `dangerousPatterns` field in your permission policy:
 }
 ```
 
-Custom patterns are appended to the built-in list. You cannot remove built-in patterns, only add to them.
+Custom patterns are appended to the built-in list. You cannot remove built-in patterns, only add to them. In `ask` mode a custom pattern match prompts the user rather than blocking, unless the first matching rule denies the command.
 
 ### Pattern format
 
@@ -86,7 +86,8 @@ These are a hard block, separate from the permission-mode behavior above. A Bash
 Dangerous pattern detection and permission rules are separate systems that work together:
 
 1. In `ask` or `deny` mode, the engine checks the built-in dangerous patterns first. A match blocks the command.
-2. The engine then walks the permission rules (first match wins), in every mode.
-3. If no rule matches, the mode default applies.
+2. In `ask` or `deny` mode, the engine then checks your `dangerousPatterns`. A match blocks the command in `deny` mode and prompts in `ask` mode (a `deny` rule that matches the command still blocks it).
+3. The engine then walks the permission rules (first match wins), in every mode.
+4. If no rule matches, the mode default applies.
 
-This means an `allow` rule cannot override a built-in dangerous pattern in `ask` or `deny` mode. In `allow` mode the built-in patterns are off, so a `deny` rule is the way to block a command.
+This means an `allow` rule cannot override a dangerous pattern in `ask` or `deny` mode. In `allow` mode the built-in patterns are off, so a `deny` rule is the way to block a command.

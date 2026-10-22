@@ -397,7 +397,7 @@ Controls how the engine evaluates tool execution permissions.
 |-------|------|---------|-------------|
 | `mode` | string | -- | Default decision when no rule matches. `"allow"`, `"ask"`, or `"deny"`. |
 | `rules` | array | `[]` | Ordered list of permission rules evaluated top to bottom. |
-| `dangerousPatterns` | string[] | `[]` | Regex patterns for commands that should always require approval. |
+| `dangerousPatterns` | string[] | `[]` | Regex patterns for Bash commands that need approval in `ask` mode and are blocked in `deny` mode. Off in `allow` mode. |
 | `readOnlyPaths` | string[] | `[]` | Path patterns where writes are denied. |
 
 ### Permission rule fields

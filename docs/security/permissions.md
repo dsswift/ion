@@ -118,7 +118,7 @@ The `readOnlyPaths` array contains glob patterns for paths that should be readab
 
 ## Dangerous patterns
 
-The `dangerousPatterns` array supplements the engine's built-in list of risky command patterns. When a Bash command matches a dangerous pattern, it is flagged for additional scrutiny (in `ask` mode, the user is prompted; in `deny` mode, it is blocked). See [Dangerous patterns](dangerous-patterns.md) for the full default list and customization options.
+The `dangerousPatterns` array supplements the engine's built-in list of risky command patterns. Each entry is a regex searched in the full Bash command. A match is checked before the rules, so an `allow` rule cannot lift it: in `ask` mode the user is prompted (unless the first matching rule denies the command), and in `deny` mode it is blocked. Like the built-in list, these patterns are off in `allow` mode; use a `deny` rule there. See [Dangerous patterns](dangerous-patterns.md) for the full default list and customization options.
 
 ## Enterprise enforcement
 
