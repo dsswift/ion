@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.5](https://github.com/dsswift/ion/compare/engine-v2.1.4...engine-v2.1.5) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** apply permission rules in allow mode ([5360018](https://github.com/dsswift/ion/commit/53600189e03a6d200a2f35e464f3d0d575abf9d2))
+
 ## [2.1.4](https://github.com/dsswift/ion/compare/engine-v2.1.3...engine-v2.1.4) (2026-10-22)
 
 ### Bug Fixes
