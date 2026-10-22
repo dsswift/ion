@@ -43,6 +43,27 @@ stop_launch_agent() {
     return 1
 }
 
+# stop_unmanaged_engine BIN: shut down an engine that still answers on the
+# socket once the service is gone. An engine an `ion` command started when none
+# was running belongs to no LaunchAgent, so bootout leaves it running and
+# holding the engine lock, and the new service exits at start. BIN is the
+# installed (old) binary, which speaks that engine's shutdown command. Returns
+# non-zero when the engine still answers after ION_LAUNCHD_STOP_TIMEOUT_S.
+stop_unmanaged_engine() {
+    local bin="$1" sock="$ION_HOME/engine.sock" polls
+    [ -S "$sock" ] && [ -x "$bin" ] || return 0
+    ION_SOCKET_PATH="$sock" "$bin" health >/dev/null 2>&1 || return 0
+    echo "  An engine outside the LaunchAgent is running; shutting it down..."
+    ION_SOCKET_PATH="$sock" "$bin" shutdown >/dev/null 2>&1 || true
+    polls="$(launchagent_polls "$ION_LAUNCHD_STOP_TIMEOUT_S")"
+    for _ in $(seq 1 "$polls"); do
+        ION_SOCKET_PATH="$sock" "$bin" health >/dev/null 2>&1 || return 0
+        sleep "$ION_LAUNCHD_POLL_S"
+    done
+    echo "  ERROR: the engine on $sock still answers after ${ION_LAUNCHD_STOP_TIMEOUT_S}s; stop it before installing" >&2
+    return 1
+}
+
 # start_launch_agent PLIST: bootstrap the service, start it, and wait for the
 # engine socket. Returns non-zero when any step fails.
 start_launch_agent() {

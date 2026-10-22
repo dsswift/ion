@@ -92,4 +92,26 @@ export FAKE_NO_BIND=1
 if run start_launch_agent "$TMP/com.ion.engine.plist" 2>"$TMP/err"; then fail "an unbound engine was reported started"; fi
 grep -q "not bound" "$TMP/err" || fail "unbound socket gave no error: $(cat "$TMP/err")"
 
-echo "launchagent: 5 cases passed"
+# 6. An engine outside the LaunchAgent is shut down through its socket; one
+#    that keeps answering fails the stop instead of being orphaned.
+cat > "$TMP/bin/fake-ion" <<'ION_EOF'
+#!/usr/bin/env bash
+case "$1" in
+  health) [ -f "$FAKE/engine_up" ] ;;
+  shutdown) echo shutdown >> "$FAKE/calls"; [ -n "${FAKE_IGNORE_SHUTDOWN:-}" ] || rm -f "$FAKE/engine_up" ;;
+esac
+ION_EOF
+chmod +x "$TMP/bin/fake-ion"
+reset none
+touch "$FAKE/engine_up"
+python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$ION_HOME/engine.sock"
+run stop_unmanaged_engine "$TMP/bin/fake-ion" >/dev/null || fail "an unmanaged engine was not stopped"
+grep -qx shutdown "$FAKE/calls" || fail "the unmanaged engine was never sent shutdown"
+[ ! -f "$FAKE/engine_up" ] || fail "the unmanaged engine is still up"
+touch "$FAKE/engine_up"
+if FAKE_IGNORE_SHUTDOWN=1 STOP_S=0.2 run stop_unmanaged_engine "$TMP/bin/fake-ion" >/dev/null 2>"$TMP/err"; then fail "an engine that kept answering was reported stopped"; fi
+grep -q "still answers" "$TMP/err" || fail "a surviving engine gave no error: $(cat "$TMP/err")"
+rm -f "$ION_HOME/engine.sock"
+run stop_unmanaged_engine "$TMP/bin/fake-ion" || fail "no socket should mean nothing to stop"
+
+echo "launchagent: 6 cases passed"

@@ -77,8 +77,11 @@ mkdir -p "$BIN_DIR"
 # Stop the running LaunchAgent so the new binary takes effect on next start.
 # bootout removes the service from the bootstrap namespace (prevents KeepAlive
 # restart); stop_launch_agent waits until launchd has finished removing it.
+# An engine some `ion` command started outside the LaunchAgent survives that,
+# so stop_unmanaged_engine shuts it down before its socket is removed.
 echo "==> Stopping engine LaunchAgent (if running)..."
 stop_launch_agent
+stop_unmanaged_engine "$BIN_DIR/ion"
 rm -f "$ION_HOME/engine.sock"
 
 rm -f "$BIN_DIR/ion"
