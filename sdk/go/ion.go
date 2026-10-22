@@ -79,7 +79,8 @@ import (
 // the transport to the engine. Create one with [New], register handlers, then
 // call [SDK.Run].
 type SDK struct {
-	name string
+	name  string
+	title string
 
 	mu           sync.RWMutex
 	hooks        map[string]hookEntry
@@ -149,6 +150,9 @@ func WithInput(r interface{ Read([]byte) (int, error) }) Option {
 
 // New creates an SDK. Registration calls made on the returned value before
 // [SDK.Run] are delivered to the engine in the init handshake.
+//
+// A binary run with the single argument [ACPCommand] never returns from New:
+// the process becomes the engine's ACP agent for this extension (acp.go).
 func New(opts ...Option) *SDK {
 	s := &SDK{
 		hooks:     make(map[string]hookEntry),
@@ -163,6 +167,9 @@ func New(opts ...Option) *SDK {
 	s.resources = newResourceRegistry(s)
 	for _, opt := range opts {
 		opt(s)
+	}
+	if len(os.Args) > 1 && os.Args[1] == ACPCommand {
+		s.serveACP() // never returns: see acp.go
 	}
 	return s
 }

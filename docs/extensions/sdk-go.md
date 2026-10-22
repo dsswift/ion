@@ -101,6 +101,21 @@ The public Go SDK is an ordinary Go module resolved by `go get`. In a source che
 
 `HookBeforeSlashModelBoundary` receives the command, requested tier, current serving model, history state, and configured default. Return `SlashModelBoundaryResult{Apply: &value}` to override that decision. Return the zero value to abstain. `SendPromptOpts.SlashModelTierApplyMidConversation` supplies the same policy for one prompt before the hook runs.
 
+## Serving the extension as its own ACP agent
+
+The same binary is an [Agent Client Protocol](../deployment/acp-agent.md) agent when run with the single argument `acp`. `ion.New` sees it before anything else runs and replaces the process with `ion acp --harness <the binary's directory>`, so an ACP client (T3 Code, Zed) launches the harness by its own path:
+
+```go
+sdk := ion.New(ion.WithName("cos2"), ion.WithTitle("Chief of Staff"))
+```
+
+```bash
+~/.ion/extensions/cos2/main acp            # what the ACP client runs
+~/.ion/extensions/cos2/main acp --model m  # further arguments pass through to ion acp
+```
+
+`WithTitle` is the title the client shows; the agent's name is the manifest's `name`. The engine binary is `ION_ENGINE_BINARY` (`ion.EngineBinaryEnv`), else `~/.ion/bin/ion`, else `ion` on `PATH`. No registration, hook, or log line runs in the `acp` process, so nothing the extension does can write into the ACP stream.
+
 ## Stdout is the protocol
 
 Every byte on stdout must be a JSON-RPC frame. One stray `fmt.Println` lands in the middle of a frame, desynchronises the stream, and the engine drops the connection — and the failure looks nothing like its cause.
