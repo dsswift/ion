@@ -186,6 +186,10 @@ func TestRenamePropagatesWithoutExtensions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mgr.StopSession("bare") //nolint:errcheck // test cleanup
+	mgr.mu.RLock()
+	s := mgr.sessions["bare"]
+	mgr.mu.RUnlock()
+	awaitWorkspaceWatcher(t, mgr, s)
 
 	if err := os.Rename(filepath.Join(root, "old-name.md"), filepath.Join(root, "new-name.md")); err != nil {
 		t.Fatal(err)

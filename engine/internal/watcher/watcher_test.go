@@ -583,14 +583,14 @@ func withRecursiveSource(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return recursiveSource{src}, nil
+		return recursiveTestSource{src}, nil
 	}
 	t.Cleanup(func() { newEventSource = prev })
 }
 
-type recursiveSource struct{ eventSource }
+type recursiveTestSource struct{ eventSource }
 
-func (recursiveSource) Recursive() bool { return true }
+func (recursiveTestSource) Recursive() bool { return true }
 
 // withStartWalkVisit installs a per-directory hook on the Start walk.
 // Restored on cleanup.
