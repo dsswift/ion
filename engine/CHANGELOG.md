@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.6](https://github.com/dsswift/ion/compare/engine-v2.1.5...engine-v2.1.6) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** enforce configured dangerous patterns ([180f07c](https://github.com/dsswift/ion/commit/180f07c86e5403eebdd4fa62889ad93a57db6c17))
+
 ## [2.1.5](https://github.com/dsswift/ion/compare/engine-v2.1.4...engine-v2.1.5) (2026-10-22)
 
 ### Bug Fixes
