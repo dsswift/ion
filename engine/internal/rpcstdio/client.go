@@ -170,7 +170,13 @@ func (c *Client) Request(ctx context.Context, method string, params any) (json.R
 	utils.LogWithFields(utils.LevelDebug, "rpcstdio", "request sent", map[string]any{"tag": c.tag, "method": method, "id": id})
 
 	select {
-	case resp := <-ch:
+	case resp, ok := <-ch:
+		// A peer that dies closes every pending channel along with deadCh,
+		// and select picks between them at random: a closed channel is the
+		// death, not a response.
+		if !ok {
+			return nil, fmt.Errorf("%s: peer died during %s", c.tag, method)
+		}
 		if resp.err != nil {
 			return nil, resp.err
 		}

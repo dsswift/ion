@@ -389,3 +389,35 @@ func TestClient_PeerRequest_WithIDSeesTheRequestID(t *testing.T) {
 		t.Fatal("OnRequestWithID never ran")
 	}
 }
+
+// Close closes every pending reply channel along with deadCh, and the waiting
+// Request may see either first; both must read as the peer dying. Repeated so
+// the random select order reaches the closed-channel side.
+func TestClient_RequestSurvivesClosedReplyChannel(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		c, peer := newClientWithPeer(t, Options{Tag: "test"})
+		arrived := make(chan struct{})
+		block := make(chan struct{})
+		peer.on("hang", func(json.RawMessage) (any, *RPCError) {
+			close(arrived)
+			<-block
+			return nil, nil
+		})
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := c.Request(context.Background(), "hang", nil)
+			errCh <- err
+		}()
+		<-arrived
+		_ = c.Close() //nolint:errcheck // the pipe close result is not under test
+		select {
+		case err := <-errCh:
+			if err == nil {
+				t.Fatal("a request pending at Close must fail")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("pending request not unblocked by Close")
+		}
+		close(block)
+	}
+}
