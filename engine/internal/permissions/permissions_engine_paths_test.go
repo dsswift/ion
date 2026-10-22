@@ -263,7 +263,6 @@ func TestEngine_SensitivePaths(t *testing.T) {
 // =============================================================================
 
 func TestEngine_ReadOnlyPaths(t *testing.T) {
-	// Read-only path enforcement requires non-allow mode (allow mode short-circuits).
 	// Use "ask" mode with wildcard allow rule so normal paths resolve to allow.
 	t.Run("blocks Write to read-only path", func(t *testing.T) {
 		e := NewEngine(&types.PermissionPolicy{

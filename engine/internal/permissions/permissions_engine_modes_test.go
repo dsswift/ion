@@ -608,3 +608,72 @@ func TestEngine_ExplicitRules(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Engine: allow mode still honors explicit rules and readOnlyPaths
+// =============================================================================
+
+func TestEngine_AllowModeRules(t *testing.T) {
+	denyTerraform := types.PermissionRule{
+		Tool:            "Bash",
+		Decision:        "deny",
+		CommandPatterns: []string{`(^|[;&|(]\s*)terraform\s+(apply|destroy)\b`},
+	}
+	bash := func(cmd string) CheckInfo {
+		return CheckInfo{Tool: "Bash", Input: map[string]interface{}{"command": cmd}, Cwd: "/tmp"}
+	}
+
+	t.Run("matching deny rule denies inside a compound command", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow", Rules: []types.PermissionRule{denyTerraform}})
+		got := e.Check(bash("cd /tmp && terraform apply -auto-approve"))
+		if got.Decision != "deny" || got.Layer != "explicit_rule" {
+			t.Fatalf("want deny/explicit_rule, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+
+	t.Run("non-matching rule falls back to allow", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow", Rules: []types.PermissionRule{denyTerraform}})
+		got := e.Check(bash("cd /tmp && terraform plan"))
+		if got.Decision != "allow" || got.Layer != "allow_mode" {
+			t.Fatalf("want allow/allow_mode, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+
+	t.Run("no rules allows", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow"})
+		got := e.Check(bash("terraform apply -auto-approve"))
+		if got.Decision != "allow" || got.Layer != "allow_mode" {
+			t.Fatalf("want allow/allow_mode, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+
+	t.Run("first matching rule wins", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow", Rules: []types.PermissionRule{
+			{Tool: "Bash", Decision: "allow", CommandPatterns: []string{`terraform apply -target=module\.sandbox`}},
+			denyTerraform,
+		}})
+		got := e.Check(bash("terraform apply -target=module.sandbox"))
+		if got.Decision != "allow" || got.Layer != "explicit_rule" {
+			t.Fatalf("want allow/explicit_rule, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+
+	t.Run("readOnlyPaths still deny writes", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow", ReadOnlyPaths: []string{"/protected/*"}})
+		got := e.Check(CheckInfo{Tool: "Write", Input: map[string]interface{}{"file_path": "/protected/a.yaml"}})
+		if got.Decision != "deny" || got.Layer != "read_only_path" {
+			t.Fatalf("want deny/read_only_path, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+
+	t.Run("built-in rails stay off", func(t *testing.T) {
+		e := NewEngine(&types.PermissionPolicy{Mode: "allow", TierRules: map[string]string{"HIGH": "deny"}})
+		if got := e.Check(bash("rm -rf /")); got.Decision != "allow" {
+			t.Fatalf("dangerous pattern must not fire in allow mode, got %s/%s", got.Decision, got.Layer)
+		}
+		read := CheckInfo{Tool: "Read", Input: map[string]interface{}{"file_path": "/etc/shadow"}, Tier: "HIGH"}
+		if got := e.Check(read); got.Decision != "allow" {
+			t.Fatalf("sensitive path and tier rule must not fire in allow mode, got %s/%s", got.Decision, got.Layer)
+		}
+	})
+}

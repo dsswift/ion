@@ -65,7 +65,7 @@ type CheckResult struct {
 	// when no tier was supplied or no TierRule matched).
 	Tier string
 	// Layer names the evaluation stage that produced this decision, e.g.
-	// "allow_mode", "dangerous_pattern", "sensitive_path", "read_only_path",
+	// "allow_mode" (allow mode, no rule matched), "dangerous_pattern", "sensitive_path", "read_only_path",
 	// "tier_rule", "explicit_rule", "safe_command", "llm_classifier",
 	// "mode_default", or "skill_grant". Surfaced on the AuditEntry so observers can see which
 	// rail decided a call. Empty only for results constructed outside Check.
@@ -74,12 +74,17 @@ type CheckResult struct {
 
 // Check evaluates a tool invocation against the policy.
 // Evaluation order:
-//  1. Allow mode: skip all checks. Harness engineer opted out of engine-level enforcement.
-//  2. Dangerous patterns check (bash commands only, deny/ask modes).
-//  3. Sensitive path check (tools with path input).
-//  4. Read-only path check (write tools).
-//  5. Per-rule matching (first match wins -- rules can punch holes in deny mode).
-//  6. Mode-based default: deny blocks, ask prompts user.
+//  1. Dangerous patterns check (bash commands only, deny/ask modes).
+//  2. Sensitive path check (tools with path input, deny/ask modes).
+//  3. Read-only path check (write tools, every mode).
+//  4. Tier rule from the permission_classify hook (deny/ask modes).
+//  5. Per-rule matching (first match wins, every mode -- rules can punch holes
+//     in deny mode and block commands in allow mode).
+//  6. Mode-based default: allow passes, deny blocks, ask prompts user.
+//
+// Allow mode opts out of the engine's built-in rails (steps 1, 2, 4 and the
+// ask-mode safe-command and LLM classifier stages) but never out of the
+// operator's own readOnlyPaths and rules.
 func (e *Engine) Check(info CheckInfo) *CheckResult {
 	// Capture the check start so audit() can record decision latency. Every
 	// return path below routes through e.finish(info, result, checkStart).
@@ -100,15 +105,12 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		info.Tool = normalized
 	}
 
-	// In allow mode, skip all checks -- harness engineer opted out of engine-level enforcement
-	if e.policy.Mode == "allow" {
-		result := &CheckResult{Decision: "allow", Reason: "default allow", Layer: "allow_mode"}
-		e.finish(info, result, checkStart)
-		return result
-	}
+	// Allow mode skips the built-in rails below; explicit configuration
+	// (readOnlyPaths, rules) still applies.
+	allowMode := e.policy.Mode == "allow"
 
 	// Check dangerous patterns for bash tool (deny/ask modes only)
-	if IsBashToolName(info.Tool) {
+	if !allowMode && IsBashToolName(info.Tool) {
 		if cmd, ok := info.Input["command"].(string); ok {
 			if dangerous, reason := IsDangerousCommand(cmd); dangerous {
 				result := &CheckResult{
@@ -122,8 +124,8 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		}
 	}
 
-	// Check sensitive paths for tools with path input
-	if path, ok := extractPath(info); ok {
+	// Check sensitive paths for tools with path input (deny/ask modes only)
+	if path, ok := extractPath(info); ok && !allowMode {
 		if IsSensitivePath(path) {
 			result := &CheckResult{
 				Decision: "deny",
@@ -155,7 +157,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 	// Tier-keyed rule (from permission_classify hook). Consulted before
 	// per-rule matching so a harness's taxonomy (SAFE/LOW/MEDIUM/HIGH/CRITICAL
 	// or any custom label) can short-circuit before the rules list runs.
-	if info.Tier != "" && e.policy.TierRules != nil {
+	if !allowMode && info.Tier != "" && e.policy.TierRules != nil {
 		if decision, ok := e.policy.TierRules[info.Tier]; ok && decision != "" {
 			result := &CheckResult{
 				Decision: decision,
@@ -174,7 +176,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		if !matchTool(rule.Tool, info.Tool) {
 			continue
 		}
-		if matchRule(rule, info) {
+		if matchRule(rule, info, matchCommandRegex) {
 			result := &CheckResult{
 				Decision: rule.Decision,
 				Reason:   "matched rule for " + rule.Tool,
@@ -193,7 +195,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		result = &CheckResult{
 			Decision: "allow",
 			Reason:   "default allow",
-			Layer:    "mode_default",
+			Layer:    "allow_mode",
 		}
 	case "ask":
 		// Auto-approve safe commands in ask mode
@@ -302,12 +304,12 @@ func (e *Engine) finish(info CheckInfo, result *CheckResult, checkStart time.Tim
 }
 
 // MatchGrant returns the first grant that covers the call, or nil. A grant
-// matches on tool name and, when it carries patterns, on the command or path
-// exactly as a policy rule does.
+// matches on tool name and, when it carries patterns, on the path as a policy
+// rule does and on the command as an `allowed-tools` glob.
 func MatchGrant(grants []types.PermissionRule, info CheckInfo) *types.PermissionRule {
 	for i := range grants {
 		g := &grants[i]
-		if matchTool(g.Tool, NormalizeToolName(info.Tool)) && matchRule(g, info) {
+		if matchTool(g.Tool, NormalizeToolName(info.Tool)) && matchRule(g, info, matchCommandGlob) {
 			return g
 		}
 	}
@@ -376,7 +378,9 @@ func matchTool(pattern, tool string) bool {
 }
 
 // matchRule checks if a rule's command/path patterns match the check input.
-func matchRule(rule *types.PermissionRule, info CheckInfo) bool {
+// matchCmd decides how a command pattern is read: regex for policy rules,
+// glob for skill grants.
+func matchRule(rule *types.PermissionRule, info CheckInfo, matchCmd commandMatcher) bool {
 	// If rule has command patterns, at least one must match
 	if len(rule.CommandPatterns) > 0 {
 		cmd, ok := info.Input["command"].(string)
@@ -385,7 +389,7 @@ func matchRule(rule *types.PermissionRule, info CheckInfo) bool {
 		}
 		matched := false
 		for _, pat := range rule.CommandPatterns {
-			if MatchPattern(pat, cmd) {
+			if matchCmd(pat, cmd) {
 				matched = true
 				break
 			}

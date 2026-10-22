@@ -601,7 +601,7 @@ func TestMatchRule(t *testing.T) {
 			Input: map[string]interface{}{"command": "ls"},
 			Cwd:   "/tmp",
 		}
-		if !matchRule(rule, info) {
+		if !matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected match")
 		}
 	})
@@ -610,14 +610,14 @@ func TestMatchRule(t *testing.T) {
 		rule := &types.PermissionRule{
 			Tool:            "bash",
 			Decision:        "allow",
-			CommandPatterns: []string{"git *"},
+			CommandPatterns: []string{`^git\s`},
 		}
 		info := CheckInfo{
 			Tool:  "bash",
 			Input: map[string]interface{}{"command": "git status"},
 			Cwd:   "/tmp",
 		}
-		if !matchRule(rule, info) {
+		if !matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected match for git status")
 		}
 	})
@@ -626,14 +626,14 @@ func TestMatchRule(t *testing.T) {
 		rule := &types.PermissionRule{
 			Tool:            "bash",
 			Decision:        "allow",
-			CommandPatterns: []string{"git *"},
+			CommandPatterns: []string{`^git\s`},
 		}
 		info := CheckInfo{
 			Tool:  "bash",
 			Input: map[string]interface{}{"command": "npm install"},
 			Cwd:   "/tmp",
 		}
-		if matchRule(rule, info) {
+		if matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected no match for npm install")
 		}
 	})
@@ -642,14 +642,14 @@ func TestMatchRule(t *testing.T) {
 		rule := &types.PermissionRule{
 			Tool:            "bash",
 			Decision:        "allow",
-			CommandPatterns: []string{"git *"},
+			CommandPatterns: []string{`^git\s`},
 		}
 		info := CheckInfo{
 			Tool:  "bash",
 			Input: map[string]interface{}{},
 			Cwd:   "/tmp",
 		}
-		if matchRule(rule, info) {
+		if matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected no match when command missing")
 		}
 	})
@@ -665,7 +665,7 @@ func TestMatchRule(t *testing.T) {
 			Input: map[string]interface{}{"path": "/app/src/index.ts"},
 			Cwd:   "/tmp",
 		}
-		if !matchRule(rule, info) {
+		if !matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected match for /app/src/index.ts")
 		}
 	})
@@ -681,7 +681,7 @@ func TestMatchRule(t *testing.T) {
 			Input: map[string]interface{}{"path": "/app/lib/index.ts"},
 			Cwd:   "/tmp",
 		}
-		if matchRule(rule, info) {
+		if matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected no match for /app/lib/index.ts")
 		}
 	})
@@ -697,7 +697,7 @@ func TestMatchRule(t *testing.T) {
 			Input: map[string]interface{}{},
 			Cwd:   "/tmp",
 		}
-		if matchRule(rule, info) {
+		if matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected no match when path missing")
 		}
 	})
@@ -706,14 +706,14 @@ func TestMatchRule(t *testing.T) {
 		rule := &types.PermissionRule{
 			Tool:            "bash",
 			Decision:        "allow",
-			CommandPatterns: []string{"git *", "npm *", "make *"},
+			CommandPatterns: []string{`^git\s`, `^npm\s`, `^make\s`},
 		}
 		info := CheckInfo{
 			Tool:  "bash",
 			Input: map[string]interface{}{"command": "npm install"},
 			Cwd:   "/tmp",
 		}
-		if !matchRule(rule, info) {
+		if !matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected match for npm install against multiple patterns")
 		}
 	})
@@ -729,7 +729,7 @@ func TestMatchRule(t *testing.T) {
 			Input: map[string]interface{}{"path": "/app/test/main_test.go"},
 			Cwd:   "/tmp",
 		}
-		if !matchRule(rule, info) {
+		if !matchRule(rule, info, matchCommandRegex) {
 			t.Error("expected match against multiple path patterns")
 		}
 	})

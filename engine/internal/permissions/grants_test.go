@@ -46,3 +46,21 @@ func TestCheck_GrantMustMatchPattern(t *testing.T) {
 		t.Fatalf("non-matching grant must leave ask, got %s", got.Decision)
 	}
 }
+
+func TestCheck_GrantGlobCrossesSlashes(t *testing.T) {
+	e := NewEngine(askPolicy())
+	info := CheckInfo{
+		Tool:   "Bash",
+		Input:  map[string]interface{}{"command": "git add src/app/main.go"},
+		Grants: []types.PermissionRule{{Tool: "Bash", Decision: "allow", CommandPatterns: []string{"git add *"}}},
+	}
+	if got := e.Check(info); got.Decision != "allow" || got.Layer != "skill_grant" {
+		t.Fatalf("a `git add *` grant must cover a path argument, got %s/%s", got.Decision, got.Layer)
+	}
+}
+
+func TestMatchCommandRegex_InvalidPatternMatchesNothing(t *testing.T) {
+	if matchCommandRegex(`terraform (apply`, "terraform (apply") {
+		t.Fatal("a pattern that does not compile must not match")
+	}
+}
