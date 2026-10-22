@@ -900,6 +900,8 @@ Engine-wide limits for the filesystem-watch and session-lifecycle subsystems. Om
 | `sessionIdleReleaseMs` | int64 | `1800000` (30 min) | How long a session must stay quiescent before the engine releases it with the same teardown as `stop_session`. Quiescent means no run, no accepted work pending, no agent in a non-terminal status, no live background process, and no extension schedule or webhook. The conversation is durable, so prompting the key again starts the session afresh. A negative value disables timed release. Extensions can keep a session through the `session_before_release` hook. See [Idle release](../sessions/lifecycle.md#idle-release). |
 | `releaseIdleSessionOnAbort` | bool | enabled when absent | When an `abort` with scope `all` or `all_work` arrives for a session that was already quiescent, release the session instead of leaving it resident. Explicit `false` keeps the session. Independent of `sessionIdleReleaseMs`. |
 | `maxWatchedDirs` | int | `50000` | Cap on the number of directories a single workspace watcher enters during its startup walk. On Linux each one holds an inotify watch; on macOS and Windows one subscription on the root covers the whole tree and the walk only seeds rename tracking, but the same cap bounds it. When reached, the watcher keeps working for the directories it did attach and stops descending. The walk runs in the background, so a session on a huge root (a home directory) starts at once either way. Raise it for genuinely huge monorepos; lower it to keep a tighter bound per watcher. |
+| `trackRenames` | bool | enabled when absent | Report renames of tracked files through the [`workspace_file_renamed`](../hooks/reference.md#file-changes) hook. When `false` the watcher keeps no per-file state and reports no renames; the delete and create of a rename still arrive through `workspace_file_changed`. See [Workspace Renames](../architecture/workspace-renames.md). Explicit `false` disables. |
+| `renameExtensions` | string[] | `[".md"]` | File extensions whose renames are reported. Matched without regard to case. A missing leading dot is added. A non-empty array replaces the earlier one. |
 | `promptContext` | bool | enabled when absent | Workspace context in the prompt. The engine resolves context from three sources in precedence order: per-prompt `ClientWorkspaceContext` > session-level `EngineConfig.ClientWorkspaceContext` > engine worktree registry. Worktree facts (checkout, base repo, branch, siblings) come from the registry; bench and generic client data come from the client-supplied `ClientWorkspaceContext` (with structured bench facts in the `bench` field, generic data in `data`, and prose in `text`). Independent of `security.workspaceContainment` -- containment refuses writes regardless of whether the context prose is delivered. Extensions can replace or suppress the prose via `system_inject` with kind `workspace_context`. Explicit `false` disables. |
 
 Same merge semantics as other config fields: higher-priority layers override lower ones. Zero means "use the compiled default."
@@ -909,38 +911,12 @@ Same merge semantics as other config fields: higher-priority layers override low
   "workspace": {
     "sessionReapGraceMs": 120000,
     "sessionIdleReleaseMs": 3600000,
-    "maxWatchedDirs": 100000
+    "maxWatchedDirs": 100000,
+    "trackRenames": true,
+    "renameExtensions": [".md", ".mdx"]
   }
 }
 ```
-
-## wikiLinks
-
-Controls [wiki-link maintenance](../architecture/wiki-links.md): rename detection in a watched workspace, rewriting `[[target]]` links when a document is renamed, and the read-only link integrity scan. Omit the block to use the defaults, which turn everything on.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Master switch. When `false` the engine records no file identity, detects no renames, rewrites nothing, and refuses the integrity scan without reading the workspace. A session with no extension loaded then runs no workspace watcher. |
-| `propagateOnRename` | bool | `true` | Rewrite inbound links when a document is renamed. When `false`, renames are still detected and reported through the `workspace_file_renamed` hook, and no file is rewritten. |
-| `integrityScan` | bool | `true` | Allow the on-demand link integrity scan. When `false` the scan is refused before the workspace is read. The scan never runs on its own. |
-| `extensions` | string[] | `[".md"]` | File extensions treated as documents: the files scanned for links and the files whose renames are detected. Matched without regard to case. A missing leading dot is added. |
-
-`propagateOnRename` and `integrityScan` are independent. Either can be turned off without the other. Both are off whenever `enabled` is `false`.
-
-A later config layer overrides only the fields it sets. A non-empty `extensions` array replaces the earlier one.
-
-```json
-{
-  "wikiLinks": {
-    "enabled": true,
-    "propagateOnRename": true,
-    "integrityScan": false,
-    "extensions": [".md", ".mdx"]
-  }
-}
-```
-
-Turning the block off does not change existing links. Turning it back on does not repair renames that happened while it was off. Run the integrity scan to find those.
 
 ## shell
 

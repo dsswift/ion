@@ -80,7 +80,6 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Hook](#term-hook)
 - [Idle release](#term-session-idle-release)
 - [Injection Kind](#term-injection-kind)
-- [Link Integrity Scan](#term-link-integrity-scan)
 - [Managed Config Projection](#term-managed-config-projection)
 - [Managed-Mode Marker](#term-managed-mode-marker)
 - [Message](#term-message)
@@ -122,7 +121,6 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Turn](#term-turn)
 - [Vocabulary registry](#term-vocabulary-registry)
 - [Webhook](#term-webhook)
-- [Wiki-Link Propagation](#term-wiki-link-propagation)
 - [Workspace](#term-workspace)
 - [Workspace Rename](#term-workspace-rename)
 
@@ -511,20 +509,6 @@ A session the engine mints for an engine host's schedule or webhook fire. A real
 - **Implementations:**
   - `engine` / `code` / `go`: `func (m *Manager) mintHeadlessSession` in `engine/internal/session/headless_session.go`
   - `engine` / `doc` / `markdown`: `What a fire looks like` in `docs/configuration/extension-hosts.md`
-
-#### Link Integrity Scan {#term-link-integrity-scan}
-
-A read-only pass over a session's working directory that resolves every wiki link in every document and reports the ones that name no single file: a missing target, or a bare name more than one file carries. It writes nothing and runs only when asked (scan_wiki_links, ctx.scanWikiLinks). It finds the links broken by renames the engine never observed, which Wiki-Link Propagation cannot repair.
-
-- **ID:** `link-integrity-scan`
-- **Status:** `canonical`
-- **Qualifiers:** None
-- **Aliases:** None
-- **Legacy names:** None
-- **Contract:** `public-wire`
-- **Implementations:**
-  - `engine` / `code` / `go`: `func Scan` in `engine/internal/wikilinks/scan.go`
-  - `engine` / `code` / `go`: `type WikiLinkIntegrityReport` in `engine/internal/types/wiki_links.go`
 
 #### Managed Config Projection {#term-managed-config-projection}
 
@@ -918,23 +902,9 @@ An inbound HTTP route that the engine hosts. The engine owns the listening and t
   - `engine` / `code` / `go`: `type Server struct` in `engine/internal/webhooks/server.go`
   - `sdk` / `code` / `typescript`: `export const webhooksApi` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
 
-#### Wiki-Link Propagation {#term-wiki-link-propagation}
-
-Rewriting wiki links ([[target]], [[target|alias]]) after a Workspace Rename so every link keeps naming the file it named before. One pass handles a batch of renames, changes only link targets (alias, section, and link style are kept), is confined to the watched working directory, and produces one report of every file and link it changed (engine_wiki_links_propagated, the wiki_links_propagated hook).
-
-- **ID:** `wiki-link-propagation`
-- **Status:** `canonical`
-- **Qualifiers:** None
-- **Aliases:** None
-- **Legacy names:** None
-- **Contract:** `public-wire`
-- **Implementations:**
-  - `engine` / `code` / `go`: `func Propagate` in `engine/internal/wikilinks/propagate.go`
-  - `engine` / `code` / `go`: `type WikiLinkPropagationReport` in `engine/internal/types/wiki_links.go`
-
 #### Workspace Rename {#term-workspace-rename}
 
-One file moving from one path to another inside a watched working directory, detected by the engine from what changed on disk: a removal and a creation that describe the same file (same file, size, and modification time). Whatever performed the move is irrelevant. Reported as a single event carrying both paths (the workspace_file_renamed hook), in addition to the delete and create the watcher always reports. Detected only for documents, the extensions named by the wikiLinks config.
+One file moving from one path to another inside a watched working directory, detected by the engine from what changed on disk: a removal and a creation that describe the same file (same file, size, and modification time). Whatever performed the move is irrelevant. Reported as a single event carrying both paths (the workspace_file_renamed hook), in addition to the delete and create the watcher always reports. Detected only for the extensions named by the workspace config's renameExtensions, while trackRenames is on.
 
 - **ID:** `workspace-rename`
 - **Status:** `canonical`

@@ -429,8 +429,7 @@ type PermissionDeniedInfo struct {
 |------|------|---------|--------|--------|
 | `file_changed` | LLM Write or Edit tool wrote a file (does **not** fire on external edits — see `workspace_file_changed`) | `FileChangedInfo{Path, Action}` | ignored | Observe only |
 | `workspace_file_changed` | Any non-ignored file or directory under the session working directory was created, modified, or deleted (LLM tools, user editor, shell scripts — anything) | `WorkspaceFileChangedInfo{Path, RelPath, Action}` | ignored | Observe only |
-| `workspace_file_renamed` | The workspace watcher matched a removal and a creation to the same document. Fires in addition to the `workspace_file_changed` delete and create for the two paths | `WorkspaceFileRenamedInfo{OldPath, OldRelPath, NewPath, NewRelPath}` | ignored | Observe only |
-| `wiki_links_propagated` | The engine finished rewriting wiki links after one or more renames. Fires once per pass, even when no link needed rewriting | `WikiLinkPropagationReport{Root, Renames, Files, RewriteCount, Failed}` | ignored | Observe only |
+| `workspace_file_renamed` | The workspace watcher matched a removal and a creation to the same file. Fires in addition to the `workspace_file_changed` delete and create for the two paths | `WorkspaceFileRenamedInfo{OldPath, OldRelPath, NewPath, NewRelPath}` | ignored | Observe only |
 
 ### Payload Types
 
@@ -467,28 +466,7 @@ type WorkspaceFileRenamedInfo struct {
 }
 ```
 
-`workspace_file_renamed` fires only for documents: files whose extension is listed in the [`wikiLinks.extensions`](../configuration/engine-json.md#wikilinks) config, and only while `wikiLinks.enabled` is true. It is delivered a moment after the rename, in the order renames were observed. With `wikiLinks.propagateOnRename` set to `false` this hook still fires, so a harness can apply its own handling.
-
-**WikiLinkPropagationReport**
-```go
-type WikiLinkPropagationReport struct {
-    Root         string                 // absolute workspace root
-    Renames      []WikiLinkRename       // {OldPath, NewPath}, workspace-relative
-    Files        []WikiLinkFileRewrites // {Path, Rewrites}
-    RewriteCount int                    // total links rewritten
-    Failed       []WikiLinkFileFailure  // {Path, Error}
-}
-
-type WikiLinkRewrite struct {
-    Line      int     // 1-based
-    OldLink   string  // full link text before, brackets included
-    NewLink   string  // full link text after
-    OldTarget string  // workspace-relative path the link named before
-    NewTarget string  // workspace-relative path it names now
-}
-```
-
-The report is the complete record of one pass. The files are already written when the hook fires. See [Wiki-Link Maintenance](../architecture/wiki-links.md) for detection, resolution, and rewrite rules.
+`workspace_file_renamed` fires only for files whose extension is listed in the [`workspace.renameExtensions`](../configuration/engine-json.md#workspace) config, and only while `workspace.trackRenames` is true. It is delivered in the order renames were observed. See [Workspace Renames](../architecture/workspace-renames.md) for how a rename is detected.
 
 ## Task Lifecycle
 

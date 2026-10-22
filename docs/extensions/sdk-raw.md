@@ -546,42 +546,6 @@ Paging uses `cursor`, an opaque string. Pass back `nextCursor` to get the entrie
 
 `limit` and `maxBytes` ask for a page size. The engine lowers either to its maximum, set by `dispatchConversationRead` in `engine.json`, and reports what it used in `limits`. A single entry too large for the page is returned alone, with oversized blocks cut and marked `truncated` with `originalBytes`.
 
-### ext/scan_wiki_links
-
-Runs the read-only [link integrity scan](../architecture/wiki-links.md#link-integrity-scan) over the session's working directory.
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 100005,
-  "method": "ext/scan_wiki_links",
-  "params": {}
-}
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 100005,
-  "result": {
-    "root": "/work/docs",
-    "documentsScanned": 212,
-    "linksChecked": 640,
-    "broken": [
-      {
-        "path": "guides/setup.md",
-        "line": 14,
-        "link": "[[install-notes|notes]]",
-        "target": "install-notes",
-        "reason": "missing"
-      }
-    ]
-  }
-}
-```
-
-`broken` is an empty array when every link resolves. `reason` is `missing` or `ambiguous`; an ambiguous entry also carries `candidates`. The call answers with a JSON-RPC error, not an empty report, when the scan is turned off by the `wikiLinks` block in `engine.json`.
-
 ### ext/task_suspend
 
 Ends the current LLM run without completing it. Two shapes, distinguished by depth:
