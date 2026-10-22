@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# A git hook exports GIT_DIR and friends. Left set, every git command below
+# would act on the repository being pushed instead of the scratch one.
+unset $(git rev-parse --local-env-vars)
+
 CURRENT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-main-current.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

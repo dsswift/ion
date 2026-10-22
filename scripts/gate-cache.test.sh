@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+# A git hook exports GIT_DIR and friends. Left set, every git command below
+# would act on the repository being pushed instead of the scratch one.
+unset $(git rev-parse --local-env-vars)
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$REPO_ROOT/scripts/gate-cache.sh"
 TMP_ROOT="$(mktemp -d -t gate-cache-test.XXXXXX)"
