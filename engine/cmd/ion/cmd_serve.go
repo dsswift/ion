@@ -58,12 +58,6 @@ func cmdServe(flags map[string]string) {
 		consoleOutcome, consoleHideErr = hideOwnConsole()
 	}
 
-	// Read back any pre-existing exit breadcrumb so the prior exit is
-	// observable in the log immediately after startup. Then write our own
-	// "running" record so an unclean termination is detectable by the next start.
-	logPriorExit(exitPath())
-	writeRunning(exitPath())
-
 	configStart := time.Now()
 	cfg := config.LoadConfig("")
 	configEnd := time.Now()
@@ -433,6 +427,14 @@ func cmdServe(flags map[string]string) {
 		fmt.Fprintf(os.Stderr, "Engine already running: %s\n", lockErr)
 		os.Exit(1)
 	}
+
+	// The breadcrumb is the daemon's own. Only the process holding the PID
+	// lock reads the prior one and writes its "running" record: a second
+	// `ion serve` that a client spawned against a live daemon would otherwise
+	// report that daemon as an unclean exit and overwrite its record before
+	// losing the lock and exiting.
+	logPriorExit(exitPath())
+	writeRunning(exitPath())
 
 	utils.LogWithFields(utils.LevelInfo, "main", "binding socket at", map[string]any{"sock": sock})
 	tools.CleanStaleTaskOutputs()

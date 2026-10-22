@@ -167,8 +167,8 @@ func writePanic(path string, reason string, stack string) {
 }
 
 // logPriorExit reads any pre-existing breadcrumb file at path, classifies the
-// prior process exit, and logs the result. Called once at engine startup, after
-// the process-start banner.
+// prior process exit, and logs the result. Called once at engine startup, by
+// the process that holds the PID lock.
 //
 // Classification:
 //
