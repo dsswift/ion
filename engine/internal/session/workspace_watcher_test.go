@@ -77,16 +77,31 @@ func startSessionWithWatcher(t *testing.T, ignores []string) (*Manager, string, 
 	mgr.mu.Unlock()
 
 	mgr.ensureWorkspaceWatcher(s, key)
-	mgr.mu.RLock()
-	running := s.fsWatcherRelease != nil
-	mgr.mu.RUnlock()
-	if !running {
-		t.Fatal("session has no workspace watcher")
-	}
+	awaitWorkspaceWatcher(t, mgr, s)
 
 	// Allow fsnotify to settle before tests start writing.
 	time.Sleep(20 * time.Millisecond)
 	return mgr, key, rec, cwd
+}
+
+// awaitWorkspaceWatcher fails the test when the session has no workspace
+// watcher, and otherwise waits for the pooled watcher to finish starting:
+// the watcher starts in the background, and a write before it has attached
+// the tree would go unseen.
+func awaitWorkspaceWatcher(t *testing.T, mgr *Manager, s *engineSession) {
+	t.Helper()
+	mgr.mu.RLock()
+	running := s.fsWatcherRelease != nil
+	ready := s.fsWatcherReady
+	mgr.mu.RUnlock()
+	if !running {
+		t.Fatal("session has no workspace watcher")
+	}
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("workspace watcher did not finish starting")
+	}
 }
 
 func TestWorkspaceWatcher_FiresOnFileWrite(t *testing.T) {

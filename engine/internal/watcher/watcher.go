@@ -53,8 +53,9 @@ const debounceWindow = 50 * time.Millisecond
 // pathologically large tree (a symlink cycle, a monorepo with hundreds of
 // thousands of directories, or a root mistakenly pointed at `/` or `$HOME`)
 // can exhaust a per-process kernel limit. A recursive source (FSEvents on
-// macOS, the root handle on Windows) attaches nothing per directory and is
-// not capped.
+// macOS, the root handle on Windows) attaches nothing per directory; the cap
+// still bounds its startup walk, which seeds rename tracking, so a huge root
+// costs a bounded walk on every platform.
 //
 // 50_000 is comfortably above any realistic single repository (the Ion repo is
 // ~4800 directories) yet far below the per-process ceiling even when several
@@ -130,10 +131,13 @@ type Watcher struct {
 	cancel  context.CancelFunc
 	pending map[string]*pendingEvent
 	pendMu  sync.Mutex
-	started bool
-	closed  bool
-	onEvent func(Info)
-	doneCh  chan struct{}
+	// starting is set while Start walks the tree, before the pump runs.
+	// Close during that window marks closed and lets Start clean up.
+	starting bool
+	started  bool
+	closed   bool
+	onEvent  func(Info)
+	doneCh   chan struct{}
 
 	// maxDirs is the per-watcher directory cap. Resolved at construction from
 	// the New/NewWithMaxDirs argument: a positive value is used verbatim; zero
@@ -247,7 +251,8 @@ func NewWithOptions(root string, ignores []string, opts Options) (*Watcher, erro
 // invoked from the pump goroutine after debounce -- callers must not block in
 // the callback (forward to a channel / extension group if heavy work is
 // needed). Start is idempotent on error: a partial walk that fails midway
-// still closes the event source before returning.
+// still closes the event source before returning. A Close that arrives while
+// Start is walking ends the walk; Start then returns ErrClosedDuringStart.
 func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	w.mu.Lock()
 	if w.started {
@@ -256,7 +261,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	}
 	if w.closed {
 		w.mu.Unlock()
-		return errors.New("watcher: already closed")
+		return ErrClosedDuringStart
 	}
 	if onEvent == nil {
 		w.mu.Unlock()
@@ -271,9 +276,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	}
 	w.src = src
 	w.onEvent = onEvent
-	pumpCtx, cancel := context.WithCancel(ctx)
-	w.cancel = cancel
-	w.started = true
+	w.starting = true
 	w.mu.Unlock()
 
 	// Walk the tree and attach to every non-ignored directory. We tolerate
@@ -284,31 +287,64 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	recursive := src.Recursive()
 	attached := 0
 	var walkErr error
+	walkBegan := time.Now()
 	if !recursive || w.renames != nil {
 		walkErr = w.startWalk(src, recursive, &attached)
 	}
+
+	// The closed check and the move to started happen under one lock hold: a
+	// Close landing between them would see a watcher that is neither
+	// starting nor started and leave the pump to leak.
+	w.mu.Lock()
+	if walkErr == nil && w.closed {
+		walkErr = ErrClosedDuringStart
+	}
 	if walkErr != nil {
+		w.starting = false
+		w.src = nil
+		w.mu.Unlock()
 		// Walk itself only returns the root-stat error here; per-entry errors
 		// are swallowed above. If we got nothing usable, bail out cleanly.
-		utils.LogWithFields(utils.LevelError, "watcher", "start walk failed", map[string]any{"error": walkErr.Error()})
+		level := utils.LevelError
+		if errors.Is(walkErr, ErrClosedDuringStart) {
+			level = utils.LevelInfo
+		}
+		utils.LogWithFields(level, "watcher", "start walk failed", map[string]any{"path": w.root, "error": walkErr.Error(), "duration_ms": time.Since(walkBegan).Milliseconds()})
 		src.Close() //nolint:errcheck // resource close
-		cancel()
-		w.mu.Lock()
-		w.started = false
-		w.src = nil
-		w.cancel = nil
-		w.mu.Unlock()
 		return walkErr
 	}
+	pumpCtx, cancel := context.WithCancel(ctx)
+	w.cancel = cancel
+	w.starting = false
+	w.started = true
+	w.mu.Unlock()
 
-	utils.LogWithFields(utils.LevelDebug, "watcher", "start attached", map[string]any{"path": w.root, "count": attached, "recursive": recursive})
+	utils.LogWithFields(utils.LevelDebug, "watcher", "start attached", map[string]any{"path": w.root, "count": attached, "recursive": recursive, "duration_ms": time.Since(walkBegan).Milliseconds()})
 	go w.pump(pumpCtx, src)
 	return nil
 }
 
+// ErrClosedDuringStart is the Start error when Close was called before Start
+// or while it was still walking the tree. The watcher never ran and holds
+// nothing.
+var ErrClosedDuringStart = errors.New("watcher: closed during start")
+
+// startWalkVisit, when non-nil, is called with each directory the Start walk
+// enters, after the ignore check. Tests use it to act mid-walk. Production
+// code never sets it.
+var startWalkVisit func(dir string)
+
 // startWalk is Start's walk of the existing tree. It seeds rename tracking
 // and, for a per-directory source, attaches every non-ignored directory.
+//
+// The walk stops early in two cases. Close during the walk: the next
+// directory ends it, so releasing a watcher never waits on a tree it no
+// longer needs. The directory cap: a per-directory source stops attaching,
+// and a recursive source stops seeding, once maxDirs directories have been
+// entered, so a root such as a home directory bounds the walk the same way
+// on every platform.
 func (w *Watcher) startWalk(src eventSource, recursive bool, attached *int) error {
+	entered := 0
 	return filepath.Walk(w.root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk skip", map[string]any{"path": path, "error": err.Error()})
@@ -325,12 +361,26 @@ func (w *Watcher) startWalk(src eventSource, recursive bool, attached *int) erro
 			}
 			return nil
 		}
+		if w.isClosed() {
+			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk stopped: closed", map[string]any{"path": w.root, "count": entered})
+			return filepath.SkipAll
+		}
 		rel := w.rel(path)
 		if w.shouldIgnore(rel, true) {
 			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk ignore dir", map[string]any{"path": rel})
 			return filepath.SkipDir
 		}
+		if startWalkVisit != nil {
+			startWalkVisit(path)
+		}
+		entered++
 		if recursive {
+			// A recursive source attaches nothing per directory, but the seed
+			// walk still visits every one; the same cap bounds it.
+			if entered > w.maxDirs {
+				w.markTruncated()
+				return filepath.SkipAll
+			}
 			return nil
 		}
 		// Enforce the directory cap before attaching another descriptor so a
@@ -368,8 +418,15 @@ func (w *Watcher) Close() error {
 	cancel := w.cancel
 	src := w.src
 	started := w.started
+	starting := w.starting
 	w.mu.Unlock()
 
+	if starting {
+		// Start is still walking the tree. It checks closed on every
+		// directory, ends the walk, and closes the source itself.
+		utils.LogWithFields(utils.LevelInfo, "watcher", "close during start: walk will stop", map[string]any{"path": w.root})
+		return nil
+	}
 	if !started {
 		utils.LogWithFields(utils.LevelInfo, "watcher", "close not started nothing to do", map[string]any{"path": w.root})
 		return nil
@@ -614,16 +671,17 @@ func (w *Watcher) deliverFunc(path, rel string) func() {
 	}
 }
 
-// markTruncated records that a walk hit maxWatchedDirs and stopped attaching
-// descriptors. Sets the truncated flag (under mu) and logs a single WARN with
-// the root and cap so the condition is observable without spamming the log on
-// a busy tree. Safe to call from multiple walk closures.
+// markTruncated records that a walk hit maxWatchedDirs and stopped: a
+// per-directory source attaches no further descriptors, a recursive source
+// seeds no further renames. Sets the truncated flag (under mu) and logs a
+// single WARN with the root and cap so the condition is observable without
+// spamming the log on a busy tree. Safe to call from multiple walk closures.
 func (w *Watcher) markTruncated() {
 	w.mu.Lock()
 	w.truncated = true
 	w.mu.Unlock()
 	w.capWarnOnce.Do(func() {
-		capWarnLogger("watcher", "directory cap reached, not attaching further dirs root="+w.root+" cap="+countStr(w.maxDirs))
+		capWarnLogger("watcher", "directory cap reached, walk stopped root="+w.root+" cap="+countStr(w.maxDirs))
 	})
 }
 
@@ -651,6 +709,13 @@ func (w *Watcher) releaseAttach() {
 	if w.attachedCount > 0 {
 		w.attachedCount--
 	}
+}
+
+// isClosed reports whether Close has been called.
+func (w *Watcher) isClosed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.closed
 }
 
 // rel returns the forward-slash path of `path` relative to the watcher root.

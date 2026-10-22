@@ -87,12 +87,7 @@ func watchSession(t *testing.T, mgr *Manager, key, root string) *linkRecorder {
 	mgr.mu.Unlock()
 
 	mgr.ensureWorkspaceWatcher(s, key)
-	mgr.mu.RLock()
-	running := s.fsWatcherRelease != nil
-	mgr.mu.RUnlock()
-	if !running {
-		t.Fatal("session has no workspace watcher")
-	}
+	awaitWorkspaceWatcher(t, mgr, s)
 	t.Cleanup(func() { mgr.StopSession(key) }) //nolint:errcheck // test cleanup
 	return rec
 }

@@ -554,6 +554,10 @@ type engineSession struct {
 	// watcher. The underlying watcher closes when the last session sharing
 	// the same working directory releases. nil when no watcher is active.
 	fsWatcherRelease func()
+	// fsWatcherReady closes once the pooled watcher has started, or failed
+	// to. Set together with fsWatcherRelease. The session is usable before
+	// it closes; only workspace events wait on it.
+	fsWatcherReady <-chan struct{}
 
 	// Last-known context usage state, carried forward across status
 	// emissions so the footer always reflects the most recent data.

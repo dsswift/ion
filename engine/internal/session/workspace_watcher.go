@@ -70,7 +70,7 @@ func (m *Manager) ensureWorkspaceWatcher(s *engineSession, key string) {
 	if running {
 		return
 	}
-	release := m.startWorkspaceWatcher(s, key)
+	release, ready := m.startWorkspaceWatcher(s, key)
 	if release == nil {
 		return
 	}
@@ -82,6 +82,7 @@ func (m *Manager) ensureWorkspaceWatcher(s *engineSession, key string) {
 		return
 	}
 	s.fsWatcherRelease = release
+	s.fsWatcherReady = ready
 	m.mu.Unlock()
 }
 
@@ -98,22 +99,24 @@ func (m *Manager) sessionExtGroup(s *engineSession) *extension.ExtensionGroup {
 
 // startWorkspaceWatcher acquires a shared watcher from the Manager's pool
 // for this session's working directory. Returns a release function (or nil
-// when no watcher should run). Multiple sessions on the same directory
-// share one underlying filesystem watcher rather than one each.
+// when no watcher should run) and the channel that closes once the watcher
+// has started. Multiple sessions on the same directory share one underlying
+// filesystem watcher rather than one each. The watcher's startup walk runs
+// in the background, so this returns at once however large the tree.
 //
 // A watcher has two consumers: extensions, which receive the workspace hooks,
 // and wiki-link maintenance, which is an engine feature and needs renames
 // observed whether or not any extension is loaded. With neither, no watcher
 // runs.
-func (m *Manager) startWorkspaceWatcher(s *engineSession, key string) func() {
+func (m *Manager) startWorkspaceWatcher(s *engineSession, key string) (release func(), ready <-chan struct{}) {
 	links := m.resolveWikiLinkSettings()
 	if !links.enabled && m.sessionExtGroup(s) == nil {
 		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=no_extensions_and_wiki_links_disabled", map[string]any{"key": key})
-		return nil
+		return nil, nil
 	}
 	if s.config.WorkingDirectory == "" {
 		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=empty_working_directory", map[string]any{"key": key})
-		return nil
+		return nil, nil
 	}
 
 	// Skip watcher when the working directory IS the engine's own data
@@ -128,7 +131,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string) func() {
 		cwdClean := filepath.Clean(s.config.WorkingDirectory)
 		if cwdClean == ionHome {
 			utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: skip reason=working_directory_is_ion_home", map[string]any{"key": key, "cwd_clean": cwdClean})
-			return nil
+			return nil, nil
 		}
 	}
 
@@ -186,12 +189,12 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string) func() {
 		maxDirs = m.config.GetWorkspace().MaxWatchedDirsOr()
 	}
 
-	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, links, watchSubscriber{onEvent: onEvent, onPropagated: onPropagated})
+	release, ready, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, links, watchSubscriber{onEvent: onEvent, onPropagated: onPropagated})
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "session", "startworkspacewatcher: acquire failed", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "error": err})
-		return nil
+		return nil, nil
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: acquired", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "count": len(ignores), "source": source})
-	return release
+	return release, ready
 }
