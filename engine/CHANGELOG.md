@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.3](https://github.com/dsswift/ion/compare/engine-v2.1.2...engine-v2.1.3) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** never block session start on the workspace walk ([590b549](https://github.com/dsswift/ion/commit/590b54983d247d400834dc5f311d3ac647f1979b))
+* **engine:** take the pid lock before writing the exit breadcrumb ([8aa9e63](https://github.com/dsswift/ion/commit/8aa9e635ac7e14edcbbf69b2622f7be470890cc9))
+
 ## [2.1.2](https://github.com/dsswift/ion/compare/engine-v2.1.1...engine-v2.1.2) (2026-10-21)
 
 ### Bug Fixes
