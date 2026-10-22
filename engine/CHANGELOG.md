@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.4](https://github.com/dsswift/ion/compare/engine-v2.1.3...engine-v2.1.4) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** wait for the background watcher in its tests ([4873a1b](https://github.com/dsswift/ion/commit/4873a1b0b5ec78d4ab60ba3763cc5c80460d436f))
+
 ## [2.1.3](https://github.com/dsswift/ion/compare/engine-v2.1.2...engine-v2.1.3) (2026-10-22)
 
 ### Bug Fixes
