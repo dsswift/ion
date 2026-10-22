@@ -28,17 +28,16 @@ func (a *Agent) sessionPrompt(params json.RawMessage) (any, *rpcstdio.RPCError) 
 	if strings.TrimSpace(text) == "" && len(attachments) == 0 {
 		return nil, fmtErr("prompt has no text")
 	}
-	t := &turn{done: make(chan struct{})}
+	cmd := s.promptCommand(text, s.effectiveModel(), attachments)
+	t := &turn{done: make(chan struct{}), command: cmd["cmd"] == "command"}
 	s.mu.Lock()
 	if s.turn != nil {
 		s.mu.Unlock()
 		return nil, fmtErr("a prompt is already running in session %s", s.id)
 	}
+	t.baseline = s.runEpoch
 	s.turn = t
 	s.mu.Unlock()
-	model := s.effectiveModel()
-
-	cmd := s.promptCommand(text, model, attachments)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	_, err := a.engine.Send(ctx, cmd)
 	cancel()

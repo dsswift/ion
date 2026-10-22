@@ -37,6 +37,8 @@ func (s *Session) translate(ev EngineEvent) {
 		s.usage(e)
 	case "engine_status":
 		s.status(e)
+	case "engine_command_result":
+		s.commandResult(e)
 	case "engine_error":
 		s.engineError(e)
 	case "engine_permission_request":
@@ -191,11 +193,15 @@ func (s *Session) usage(e map[string]any) {
 	s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateUsage, Used: &used, Size: &size})
 }
 
-// status ends the prompt turn on idle. The completion reason the run
-// carried picks the ACP stop reason.
+// status ends the prompt turn on the idle that ends its run. The completion
+// reason the run carried picks the ACP stop reason.
 func (s *Session) status(e map[string]any) {
 	fields, _ := e["fields"].(map[string]any) //nolint:errcheck // a status without fields carries no state
-	if fields == nil || str(fields, "state") != "idle" {
+	if fields == nil {
+		return
+	}
+	state := str(fields, "state")
+	if !s.observeRunEpoch(fields, state) || state != "idle" {
 		return
 	}
 	if cost := numF(fields, "conversationCostUsd"); cost > 0 {
@@ -213,6 +219,58 @@ func (s *Session) status(e map[string]any) {
 	default:
 		s.finishTurn(StopEndTurn, nil)
 	}
+}
+
+// observeRunEpoch records the status's run epoch and reports whether the
+// status describes the active turn's run (always true with no turn, or from
+// an engine whose statuses carry no epoch). A status whose epoch has not
+// passed the turn's baseline was built before the engine took the prompt. A
+// lower epoch than the last one seen means the engine recreated the session,
+// so the baseline is rebased onto the new count.
+func (s *Session) observeRunEpoch(fields map[string]any, state string) bool {
+	raw, ok := fields["runEpoch"].(float64)
+	if !ok {
+		return true
+	}
+	epoch := int64(raw)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.turn
+	if t != nil && epoch < s.runEpoch {
+		t.baseline = epoch
+		if state == "running" {
+			t.baseline = epoch - 1
+		}
+	}
+	s.runEpoch = epoch
+	if t == nil {
+		return true
+	}
+	if epoch <= t.baseline {
+		utils.LogWithFields(utils.LevelDebug, "acp", "status predates the prompt; turn continues", map[string]any{"session_id": s.id, "state": state, "run_epoch": epoch, "baseline": t.baseline})
+		return false
+	}
+	if state == "running" {
+		t.started = true
+	}
+	return true
+}
+
+// commandResult ends a slash command's turn when the command finished
+// without starting a run; a command that started one ends on its idle.
+func (s *Session) commandResult(e map[string]any) {
+	s.mu.Lock()
+	t := s.turn
+	waitForRun := t == nil || !t.command || t.started
+	s.mu.Unlock()
+	if waitForRun {
+		return
+	}
+	if msg := str(e, "commandError"); msg != "" {
+		s.finishTurn(StopEndTurn, &engineError{msg: msg, code: "command_failed"})
+		return
+	}
+	s.finishTurn(StopEndTurn, nil)
 }
 
 // engineError ends the turn with the engine's message. A warning-level

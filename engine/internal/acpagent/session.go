@@ -30,6 +30,9 @@ type Session struct {
 	toolInput map[string]*strings.Builder
 	// turn is the prompt the client is waiting on, nil between prompts.
 	turn *turn
+	// runEpoch is the last run epoch an engine status reported for this
+	// session (StatusFields.RunEpoch).
+	runEpoch int64
 }
 
 // turn is one session/prompt in flight: the loop settles it when the run
@@ -38,6 +41,14 @@ type turn struct {
 	done   chan struct{}
 	reason string
 	err    error
+	// baseline is the session's run epoch when the prompt was sent. An idle
+	// status whose epoch has not passed it was built before the engine took
+	// the prompt, so it never ends the turn.
+	baseline int64
+	// command marks a slash command, which may finish without starting a
+	// run; started records that a run did start during the turn.
+	command bool
+	started bool
 }
 
 // sessionKeyPrefix marks engine sessions an ACP agent opened.
