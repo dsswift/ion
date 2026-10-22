@@ -18,6 +18,16 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.0.0](https://github.com/dsswift/ion/compare/engine-v2.1.6...engine-v3.0.0) (2026-10-22)
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** remove wiki link maintenance, keep rename tracking ([c7b116b](https://github.com/dsswift/ion/commit/c7b116b8280c9be7baf6127b8bfb51ca543a9858))
+
+### Features
+
+* **engine:** remove wiki link maintenance, keep rename tracking ([c7b116b](https://github.com/dsswift/ion/commit/c7b116b8280c9be7baf6127b8bfb51ca543a9858))
+
 ## [2.1.6](https://github.com/dsswift/ion/compare/engine-v2.1.5...engine-v2.1.6) (2026-10-22)
 
 ### Bug Fixes

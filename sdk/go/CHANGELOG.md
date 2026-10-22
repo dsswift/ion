@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0](https://github.com/dsswift/ion/compare/sdk/go/v0.1.25...sdk/go/v1.0.0) (2026-10-22)
+
+### ⚠ BREAKING CHANGES
+
+* **sdk:** remove wiki link hook and ScanWikiLinks ([a23e892](https://github.com/dsswift/ion/commit/a23e892d84766ec8115c85f7fb08aaf25ce6f74a))
+
+### Features
+
+* **sdk:** remove wiki link hook and ScanWikiLinks ([a23e892](https://github.com/dsswift/ion/commit/a23e892d84766ec8115c85f7fb08aaf25ce6f74a))
+
 ## [0.1.25](https://github.com/dsswift/ion/compare/sdk/go/v0.1.24...sdk/go/v0.1.25) (2026-10-21)
 
 ### Features
