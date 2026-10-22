@@ -27,7 +27,7 @@ Override: `// @file-size-exception: <reason>` (`#` for shell/yaml/python) on lin
 
 ## Context files
 
-`AGENTS.md` is canonical and committed. `CLAUDE.md` is a gitignored local symlink to its sibling (`make claude-symlinks`). Do not add new per-folder `AGENTS.md` files.
+`AGENTS.md` is the only instruction file; Claude Code reads it natively. Never add a `CLAUDE.md` (file, symlink, or import). Do not add new per-folder `AGENTS.md` files.
 
 ## Codebase questions — query the graph first, always
 

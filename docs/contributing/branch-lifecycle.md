@@ -103,6 +103,6 @@ git clone <repo> && cd ion
 make bootstrap
 ```
 
-That is the whole setup. `make bootstrap` runs `npm install` (activating the hooks), creates the `CLAUDE.md` symlinks, and builds the knowledge graph if graphify is installed. It is idempotent — re-run it any time.
+That is the whole setup. `make bootstrap` runs `npm install` (activating the hooks) and builds the knowledge graph if graphify is installed. It is idempotent — re-run it any time.
 
 Graphify is the only optional piece. Without it bootstrap prints a skip notice and completes; you get every quality gate and lose only the graph. Install it with `uv tool install graphifyy` (or `pipx install graphifyy`) and re-run `make bootstrap` if you want it later.

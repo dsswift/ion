@@ -75,15 +75,13 @@ A subfolder is an indicator that a concept has internal structure. Extract to a 
 
 When in doubt, organize the way other projects in the same stack organize. AI fails when the code doesn't look like its training distribution. Idiomatic, conventional, "where you'd expect it" structure outperforms architecturally clever structures regardless of file size choices.
 
-## Context files: AGENTS.md and CLAUDE.md
+## Context files: AGENTS.md
 
 ### Filename convention
 
-**AGENTS.md is canonical and committed.** It's the cross-tool open standard (Cursor, Codex, OpenCode, and others).
+**AGENTS.md is the only instruction file.** It's the cross-tool open standard (Claude Code, Cursor, Codex, OpenCode, and others read it natively).
 
-**CLAUDE.md is a local-only gitignored symlink to the sibling AGENTS.md.** Claude Code auto-loads `CLAUDE.md` but not `AGENTS.md`; the symlink gives Claude Code the auto-load behavior without committing duplicate files.
-
-Run `scripts/setup-claude-symlinks.sh` (or `make claude-symlinks`) after pulling new AGENTS.md files.
+**Never add a CLAUDE.md**, as a file, a symlink, or an import. `.gitignore` blocks committing one.
 
 ### Scope
 

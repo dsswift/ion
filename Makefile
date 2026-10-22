@@ -1,4 +1,4 @@
-.PHONY: land default demo engine generate-dashboards engine-test sdk-test sdk-ts-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary clean check-file-sizes check-no-binaries check-contracts check-logging check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks log-level-debug
+.PHONY: land default demo engine generate-dashboards engine-test sdk-test sdk-ts-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary clean check-file-sizes check-no-binaries check-contracts check-logging check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary bootstrap graph graph-ensure graph-refresh hooks log-level-debug
 
 # Homebrew installs node under /opt/homebrew/bin on Apple Silicon. Make runs
 # recipes with /bin/sh which only has /usr/bin:/bin in PATH, so node is not
@@ -264,11 +264,6 @@ check-logging:
 	@bash scripts/check-logging-reserved-keys.test.sh
 	@bash scripts/check-logging-non-canon.test.sh
 
-# Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
-# CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.
-claude-symlinks:
-	@bash scripts/setup-claude-symlinks.sh
-
 # One-command setup for a fresh clone. Idempotent — safe to re-run.
 #
 # Two things a clone cannot carry:
@@ -285,7 +280,6 @@ claude-symlinks:
 # tracked, so they arrive with the clone and need nothing.
 bootstrap:
 	@$(MAKE) --no-print-directory hooks
-	@$(MAKE) --no-print-directory claude-symlinks
 	@$(MAKE) --no-print-directory log-level-debug
 	@$(MAKE) --no-print-directory graph-ensure
 	@echo "✅ bootstrap complete"

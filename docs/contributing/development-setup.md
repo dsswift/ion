@@ -21,7 +21,7 @@ sidebar_position: 2
 ```bash
 git clone https://github.com/dsswift/ion.git
 cd ion
-make bootstrap   # hooks, CLAUDE.md symlinks, debug log level, the code graph
+make bootstrap   # hooks, debug log level, the code graph
 make engine      # builds engine/bin/ion and installs it to ~/.ion/bin/ion
 ```
 
