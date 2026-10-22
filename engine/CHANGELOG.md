@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.1.3](https://github.com/dsswift/ion/compare/engine-v3.1.2...engine-v3.1.3) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** treat a closed rpc reply channel as peer death ([4d32d51](https://github.com/dsswift/ion/commit/4d32d5116fca428671ca6c33a08f58f0dd4108a8))
+* **engine:** run background shell tests outside deleted temp dirs ([c67cfa1](https://github.com/dsswift/ion/commit/c67cfa16998c6df1315943fdc61b31b6958f7763))
+
 ## [3.1.2](https://github.com/dsswift/ion/compare/engine-v3.1.1...engine-v3.1.2) (2026-10-22)
 
 ### Bug Fixes
