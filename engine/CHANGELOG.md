@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.1.2](https://github.com/dsswift/ion/compare/engine-v3.1.1...engine-v3.1.2) (2026-10-22)
+
+### Bug Fixes
+
+* **engine:** stop an unmanaged engine before installing ([06b3c35](https://github.com/dsswift/ion/commit/06b3c359a52c655f3644c63362db0497450bf005))
+
 ## [3.1.1](https://github.com/dsswift/ion/compare/engine-v3.1.0...engine-v3.1.1) (2026-10-22)
 
 ### Bug Fixes
