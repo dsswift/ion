@@ -14,7 +14,7 @@ The `mode` field sets the baseline behavior when no rule matches a tool invocati
 
 | Mode | Behavior |
 |------|----------|
-| `allow` | All tool calls pass. No prompting. This is the default. |
+| `allow` | Tool calls pass unless a rule or `readOnlyPaths` blocks them. No prompting. The built-in dangerous-pattern and sensitive-path checks are off. This is the default. |
 | `ask` | Unknown tool calls prompt the user for approval via the client. |
 | `deny` | All tool calls are blocked unless an explicit rule allows them. |
 
@@ -61,7 +61,7 @@ Each rule targets a specific tool and declares a decision (`allow` or `deny`). R
 |-------|------|-------------|
 | `tool` | `string` | Tool name to match (e.g., `"Bash"`, `"Write"`, `"Read"`) |
 | `decision` | `string` | `"allow"` or `"deny"` |
-| `commandPatterns` | `string[]` | Regex patterns matched against the command string. Applies to `Bash` tool invocations. |
+| `commandPatterns` | `string[]` | Regex patterns searched for anywhere in the full command string, so a pattern also finds a command inside a compound one such as `cd /tmp && terraform apply`. Anchor with `^` to match only the start. Applies to `Bash` tool invocations. |
 | `pathPatterns` | `string[]` | Glob patterns matched against file paths. Applies to `Read`, `Write`, and `Edit` tools. |
 
 ## Evaluation order

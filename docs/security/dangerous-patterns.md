@@ -8,8 +8,8 @@ sidebar_position: 3
 
 The engine maintains a list of regex patterns that match risky shell commands. When a Bash tool invocation matches one of these patterns, the engine flags it before execution. What happens next depends on the permission mode:
 
-- **allow mode**: The command runs, but the match is logged in the audit trail.
-- **ask mode**: The user is prompted with the matched pattern and reason before the command runs.
+- **allow mode**: The built-in patterns are not checked. Add a `deny` rule to block a command in this mode.
+- **ask mode**: The command is blocked.
 - **deny mode**: The command is blocked.
 
 ## Default patterns
@@ -85,9 +85,8 @@ These are a hard block, separate from the permission-mode behavior above. A Bash
 
 Dangerous pattern detection and permission rules are separate systems that work together:
 
-1. The engine checks permission rules first (first-match-wins).
-2. If a rule explicitly allows the command, it runs.
-3. If no rule matches and the mode is `ask` or `deny`, the engine then checks dangerous patterns.
-4. A dangerous pattern match in `ask` mode triggers a user prompt with the pattern description.
+1. In `ask` or `deny` mode, the engine checks the built-in dangerous patterns first. A match blocks the command.
+2. The engine then walks the permission rules (first match wins), in every mode.
+3. If no rule matches, the mode default applies.
 
-This means an explicit `allow` rule overrides dangerous pattern detection. Design your rules carefully if you have both.
+This means an `allow` rule cannot override a built-in dangerous pattern in `ask` or `deny` mode. In `allow` mode the built-in patterns are off, so a `deny` rule is the way to block a command.
