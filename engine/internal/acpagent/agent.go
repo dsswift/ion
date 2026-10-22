@@ -3,6 +3,7 @@ package acpagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -27,6 +28,13 @@ type Options struct {
 	// DefaultModel is the engine's configured default, shown as the model
 	// option's current value when the session names none.
 	DefaultModel string
+	// Harness, when set, pins every session to one extension. The agent
+	// reports the harness as itself in agentInfo and offers no profile
+	// option, so a client sees the harness, not the engine. Profile and
+	// Profiles are ignored.
+	Harness *Harness
+	// SignIn, when set, offers clients the engine's operator sign-in.
+	SignIn *SignIn
 }
 
 // Profile is one engine profile the agent can load.
@@ -34,6 +42,38 @@ type Profile struct {
 	ID         string
 	Name       string
 	Extensions []string
+}
+
+// Harness is the one extension a pinned agent serves.
+type Harness struct {
+	// Name is the agentInfo name: the extension's manifest name.
+	Name string
+	// Title is the agentInfo title a client shows. Empty falls back to Name.
+	Title string
+	// Path is the extension path every session loads.
+	Path string
+}
+
+// harnessName is the pinned harness's name for log lines, empty when the
+// agent serves the profile catalog.
+func (o Options) harnessName() string {
+	if o.Harness == nil {
+		return ""
+	}
+	return o.Harness.Name
+}
+
+// agentInfo is the implementation the agent reports on initialize: the
+// pinned harness, else the engine.
+func (o Options) agentInfo() Implementation {
+	if h := o.Harness; h != nil {
+		title := h.Title
+		if title == "" {
+			title = h.Name
+		}
+		return Implementation{Name: h.Name, Title: title, Version: o.Version}
+	}
+	return Implementation{Name: "ion", Title: "Ion Engine", Version: o.Version}
 }
 
 // Agent is one ACP agent process: a JSON-RPC peer over stdio and a
@@ -55,9 +95,9 @@ type Agent struct {
 func New(engine *EngineConn, out io.WriteCloser, in io.Reader, opts Options) *Agent {
 	a := &Agent{engine: engine, opts: opts, sessions: map[string]*Session{}, done: make(chan struct{})}
 	a.rpc = rpcstdio.NewClient(out, in, rpcstdio.Options{
-		Tag:            "acp.agent",
-		OnRequest:      a.handleRequest,
-		OnNotification: a.handleNotification,
+		Tag:             "acp.agent",
+		OnRequestWithID: a.handleRequest,
+		OnNotification:  a.handleNotification,
 		OnClosed: func(err error) {
 			utils.LogWithFields(utils.LevelInfo, "acp", "client connection ended", map[string]any{"error": utils.ErrStr(err)})
 			close(a.done)
@@ -112,13 +152,15 @@ func (a *Agent) handleNotification(method string, params json.RawMessage) {
 	}
 }
 
-func (a *Agent) handleRequest(method string, params json.RawMessage) (any, *rpcstdio.RPCError) {
+func (a *Agent) handleRequest(method string, id, params json.RawMessage) (any, *rpcstdio.RPCError) {
 	utils.LogWithFields(utils.LevelDebug, "acp", "request", map[string]any{"method": method})
 	switch method {
 	case MethodInitialize:
 		return a.initialize(params)
 	case MethodAuthenticate:
-		return map[string]any{}, nil
+		return a.authenticate(id, params)
+	case MethodLogout:
+		return a.logout()
 	case MethodSessionNew:
 		return a.sessionNew(params)
 	case MethodSessionLoad:
@@ -157,9 +199,10 @@ func (a *Agent) initialize(params json.RawMessage) (any, *rpcstdio.RPCError) {
 			PromptCapabilities:  PromptCapabilities{Image: true, EmbeddedContext: true},
 			McpCapabilities:     map[string]bool{"http": false, "sse": false},
 			SessionCapabilities: map[string]any{},
+			Auth:                a.opts.authCapabilities(),
 		},
-		AuthMethods: []any{},
-		AgentInfo:   Implementation{Name: "ion", Title: "Ion Engine", Version: a.opts.Version},
+		AuthMethods: a.opts.authMethods(),
+		AgentInfo:   a.opts.agentInfo(),
 	}, nil
 }
 
@@ -186,10 +229,23 @@ func badParams(err error) *rpcstdio.RPCError {
 	return &rpcstdio.RPCError{Code: -32602, Message: "invalid params: " + err.Error()}
 }
 
+// JSON-RPC error codes the agent answers with. ACP reserves -32000 for
+// "authentication required", which a client answers by signing in, so no
+// other failure may use it.
+const (
+	codeAuthRequired  = -32000
+	codeInternalError = -32603
+)
+
+// internalError answers a failed request. A refusal for want of an operator
+// sign-in is authentication required, so the client can offer sign-in.
 func internalError(err error) *rpcstdio.RPCError {
-	return &rpcstdio.RPCError{Code: -32000, Message: err.Error()}
+	if errors.Is(err, errAuthRequired) {
+		return &rpcstdio.RPCError{Code: codeAuthRequired, Message: err.Error()}
+	}
+	return &rpcstdio.RPCError{Code: codeInternalError, Message: err.Error()}
 }
 
 func fmtErr(format string, args ...any) *rpcstdio.RPCError {
-	return &rpcstdio.RPCError{Code: -32000, Message: fmt.Sprintf(format, args...)}
+	return &rpcstdio.RPCError{Code: codeInternalError, Message: fmt.Sprintf(format, args...)}
 }

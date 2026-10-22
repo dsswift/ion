@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/rpcstdio"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -69,7 +70,7 @@ func (a *Agent) sessionNew(params json.RawMessage) (any, *rpcstdio.RPCError) {
 	a.mu.Lock()
 	a.sessions[id] = s
 	a.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "acp", "session opened", map[string]any{"session_id": id, "cwd": req.Cwd, "profile": s.profileID, "mcp_servers_ignored": len(req.McpServers)})
+	utils.LogWithFields(utils.LevelInfo, "acp", "session opened", map[string]any{"session_id": id, "cwd": req.Cwd, "profile": s.profileID, "harness": a.opts.harnessName(), "mcp_servers_ignored": len(req.McpServers)})
 	return SessionResponse{SessionID: id, Modes: s.modeState(), ConfigOptions: s.configOptions()}, nil
 }
 
@@ -94,7 +95,7 @@ func (a *Agent) sessionLoad(params json.RawMessage) (any, *rpcstdio.RPCError) {
 	if err := s.replayHistory(context.Background()); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "acp", "history replay failed", map[string]any{"session_id": s.id, "error": err.Error()})
 	}
-	utils.LogWithFields(utils.LevelInfo, "acp", "session loaded", map[string]any{"session_id": s.id, "cwd": req.Cwd, "profile": s.profileID})
+	utils.LogWithFields(utils.LevelInfo, "acp", "session loaded", map[string]any{"session_id": s.id, "cwd": req.Cwd, "profile": s.profileID, "harness": a.opts.harnessName()})
 	return SessionResponse{Modes: s.modeState(), ConfigOptions: s.configOptions()}, nil
 }
 
@@ -107,7 +108,9 @@ func (s *Session) start(ctx context.Context, resume bool) error {
 		config["model"] = model
 	}
 	s.mu.Lock()
-	if p := s.agent.findProfile(s.profileID); p != nil {
+	if h := s.agent.opts.Harness; h != nil {
+		config["extensions"] = []string{h.Path}
+	} else if p := s.agent.findProfile(s.profileID); p != nil {
 		config["profileId"] = p.ID
 		config["extensions"] = p.Extensions
 	} else {
@@ -119,8 +122,11 @@ func (s *Session) start(ctx context.Context, resume bool) error {
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	if _, err := s.agent.engine.Send(ctx, map[string]any{"cmd": "start_session", "key": s.id, "config": config}); err != nil {
+	if res, err := s.agent.engine.Send(ctx, map[string]any{"cmd": "start_session", "key": s.id, "config": config}); err != nil {
 		s.agent.engine.Unsubscribe(s.id)
+		if str(res, "policyFailure") == types.PolicyFailureAuthenticationFailed {
+			return fmt.Errorf("%w: %w", errAuthRequired, err)
+		}
 		return err
 	}
 	go s.loop()

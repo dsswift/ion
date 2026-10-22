@@ -30,6 +30,7 @@ const (
 	MethodSessionCancel          = "session/cancel"
 	MethodSessionSetMode         = "session/set_mode"
 	MethodSessionSetConfigOption = "session/set_config_option"
+	MethodLogout                 = "logout"
 )
 
 // Client-side method names (agent → client).
@@ -122,13 +123,34 @@ type AgentCapabilities struct {
 	PromptCapabilities  PromptCapabilities `json:"promptCapabilities"`
 	McpCapabilities     map[string]bool    `json:"mcpCapabilities"`
 	SessionCapabilities map[string]any     `json:"sessionCapabilities"`
+	// Auth advertises logout when the agent offers sign-in.
+	Auth *AgentAuthCapabilities `json:"auth,omitempty"`
+}
+
+// AgentAuthCapabilities lists the auth methods beyond authenticate the agent
+// supports. An empty object advertises the method.
+type AgentAuthCapabilities struct {
+	Logout *struct{} `json:"logout,omitempty"`
+}
+
+// AuthMethod is one sign-in method the agent advertises. With no type it is
+// an agent method: the client calls authenticate and the agent runs it.
+type AuthMethod struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// AuthenticateRequest is the "authenticate" params.
+type AuthenticateRequest struct {
+	MethodID string `json:"methodId"`
 }
 
 // InitializeResponse is the "initialize" result.
 type InitializeResponse struct {
 	ProtocolVersion   int               `json:"protocolVersion"`
 	AgentCapabilities AgentCapabilities `json:"agentCapabilities"`
-	AuthMethods       []any             `json:"authMethods"`
+	AuthMethods       []AuthMethod      `json:"authMethods"`
 	AgentInfo         Implementation    `json:"agentInfo"`
 }
 
@@ -380,6 +402,21 @@ type ElicitationCreateRequest struct {
 	Message         string         `json:"message"`
 	SessionID       string         `json:"sessionId"`
 	RequestedSchema map[string]any `json:"requestedSchema"`
+}
+
+// ElicitationURLRequest is the "elicitation/create" params in url mode,
+// scoped to the JSON-RPC request it serves rather than to a session.
+type ElicitationURLRequest struct {
+	Mode          string          `json:"mode"`
+	ElicitationID string          `json:"elicitationId"`
+	URL           string          `json:"url"`
+	Message       string          `json:"message"`
+	RequestID     json.RawMessage `json:"requestId"`
+}
+
+// ElicitationCompleteNotification is the "elicitation/complete" params.
+type ElicitationCompleteNotification struct {
+	ElicitationID string `json:"elicitationId"`
 }
 
 // ElicitationCreateResponse is the client's answer: accept with content,

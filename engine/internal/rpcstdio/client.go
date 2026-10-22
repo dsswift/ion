@@ -50,6 +50,11 @@ type Options struct {
 	// RPC result; a non-nil *RPCError becomes the error response. Nil replies
 	// to every peer request with a method-not-found error.
 	OnRequest func(method string, params json.RawMessage) (any, *RPCError)
+	// OnRequestWithID is OnRequest that also receives the request's id
+	// verbatim, for a handler whose own outgoing calls must name the request
+	// they serve (ACP's request-scoped elicitation). When set it replaces
+	// OnRequest.
+	OnRequestWithID func(method string, id, params json.RawMessage) (any, *RPCError)
 	// OnClosed fires exactly once when the read loop ends (peer EOF, read
 	// error, or Close). The error is nil for a clean Close and non-nil for an
 	// unexpected end. Nil skips the notification.
@@ -82,7 +87,7 @@ type Client struct {
 	deadOnce sync.Once
 
 	onNotification func(method string, params json.RawMessage)
-	onRequest      func(method string, params json.RawMessage) (any, *RPCError)
+	onRequest      func(method string, id, params json.RawMessage) (any, *RPCError)
 	onClosed       func(err error)
 }
 
@@ -96,8 +101,12 @@ func NewClient(stdin io.WriteCloser, stdout io.Reader, opts Options) *Client {
 		pending:        make(map[int64]chan *response),
 		deadCh:         make(chan struct{}),
 		onNotification: opts.OnNotification,
-		onRequest:      opts.OnRequest,
+		onRequest:      opts.OnRequestWithID,
 		onClosed:       opts.OnClosed,
+	}
+	if c.onRequest == nil && opts.OnRequest != nil {
+		handle := opts.OnRequest
+		c.onRequest = func(method string, _, params json.RawMessage) (any, *RPCError) { return handle(method, params) }
 	}
 	go c.readLoop(stdout)
 	return c
@@ -281,7 +290,7 @@ func (c *Client) handlePeerRequest(method string, id json.RawMessage, params jso
 		c.writeFrame(wireResponse{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: -32601, Message: "method not found: " + method}}) //nolint:errcheck // best-effort; failure not actionable here
 		return
 	}
-	result, rpcErr := c.onRequest(method, params)
+	result, rpcErr := c.onRequest(method, id, params)
 	resp := wireResponse{JSONRPC: "2.0", ID: id}
 	if rpcErr != nil {
 		resp.Error = rpcErr

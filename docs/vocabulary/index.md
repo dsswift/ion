@@ -291,7 +291,7 @@ The conversation tree entry that records a cancelled run. It names the run, whet
 
 #### ACP Agent {#term-acp-agent}
 
-The engine served to an Agent Client Protocol client: `ion acp` speaks ACP over its stdio and translates each call into engine socket commands and each engine event into a session update. Every ACP session is an ordinary engine session keyed acp-<id>; the client picks the engine profile and model through ACP config options. Distinct from the ACP backend, where the engine is the client of another agent.
+The engine served to an Agent Client Protocol client: `ion acp` speaks ACP over its stdio and translates each call into engine socket commands and each engine event into a session update. Every ACP session is an ordinary engine session keyed acp-<id>; the client picks the engine profile and model through ACP config options, or `--harness` pins one extension the agent then reports as itself. Distinct from the ACP backend, where the engine is the client of another agent.
 
 - **ID:** `acp-agent`
 - **Status:** `canonical`

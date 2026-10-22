@@ -179,7 +179,8 @@ func (c *EngineConn) Send(ctx context.Context, cmd map[string]any) (map[string]a
 var answered = map[string]bool{
 	"start_session": true, "stop_session": true, "send_prompt": true,
 	"list_models": true, "load_session_history": true, "set_plan_mode": true,
-	"list_sessions": true,
+	"list_sessions": true, "oidc_identity": true, "oidc_begin_login": true,
+	"oidc_logout": true,
 }
 
 func (c *EngineConn) forget(reqID string) {

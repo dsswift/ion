@@ -28,6 +28,11 @@ type fakeEngine struct {
 	models []map[string]any
 	// failPrompt makes send_prompt answer with an error.
 	failPrompt string
+	// failStart makes start_session answer with an error carrying this
+	// policy failure id.
+	failStart string
+	// loginURL is what oidc_begin_login answers with.
+	loginURL string
 }
 
 func newFakeEngine(t *testing.T) *fakeEngine {
@@ -83,7 +88,22 @@ func (f *fakeEngine) answer(conn net.Conn, cmd map[string]any) {
 	reqID, _ := cmd["requestId"].(string)
 	res := map[string]any{"cmd": "result", "requestId": reqID, "ok": true}
 	switch name {
-	case "start_session", "stop_session", "set_plan_mode":
+	case "stop_session", "set_plan_mode", "oidc_logout":
+	case "start_session":
+		f.mu.Lock()
+		failure := f.failStart
+		f.mu.Unlock()
+		if failure != "" {
+			res["ok"] = false
+			res["error"] = "refused: " + failure
+			res["policyFailure"] = failure
+		}
+	case "oidc_identity":
+		res["data"] = map[string]any{"signedIn": false, "requireOperatorIdentity": true}
+	case "oidc_begin_login":
+		f.mu.Lock()
+		res["data"] = map[string]any{"authorizationUrl": f.loginURL}
+		f.mu.Unlock()
 	case "send_prompt":
 		f.mu.Lock()
 		fail := f.failPrompt

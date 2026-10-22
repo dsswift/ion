@@ -369,3 +369,23 @@ func TestClient_ContextCancel(t *testing.T) {
 		t.Fatal("expected context-cancel error")
 	}
 }
+
+func TestClient_PeerRequest_WithIDSeesTheRequestID(t *testing.T) {
+	got := make(chan string, 1)
+	_, peer := newClientWithPeer(t, Options{
+		Tag: "test",
+		OnRequestWithID: func(method string, id, _ json.RawMessage) (any, *RPCError) {
+			got <- method + " " + string(id)
+			return map[string]any{}, nil
+		},
+	})
+	peer.sendRequest("41", "authenticate", map[string]any{})
+	select {
+	case v := <-got:
+		if v != "authenticate 41" && v != `authenticate "41"` {
+			t.Fatalf("handler saw %q", v)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("OnRequestWithID never ran")
+	}
+}

@@ -27,8 +27,18 @@ func (a *Agent) findProfile(ref string) *Profile {
 }
 
 // configOptions is the full option list with current values: the profile
-// (which extension set the session runs) and the model.
+// (which extension set the session runs) and the model. A pinned harness
+// offers the model only; its extension set is not the client's to change.
 func (s *Session) configOptions() []ConfigOption {
+	models := s.agent.modelOptions()
+	currentModel := s.effectiveModel()
+	if currentModel != "" && !hasValue(models, currentModel) {
+		models = append([]SelectOption{{Value: currentModel, Name: currentModel}}, models...)
+	}
+	model := ConfigOption{ID: ConfigModel, Name: "Model", Category: "model", Type: "select", CurrentValue: currentModel, Options: models}
+	if s.agent.opts.Harness != nil {
+		return []ConfigOption{model}
+	}
 	s.mu.Lock()
 	profileID := s.profileID
 	s.mu.Unlock()
@@ -39,14 +49,9 @@ func (s *Session) configOptions() []ConfigOption {
 	if profileID == "" {
 		profileID = ProfileNone
 	}
-	models := s.agent.modelOptions()
-	currentModel := s.effectiveModel()
-	if currentModel != "" && !hasValue(models, currentModel) {
-		models = append([]SelectOption{{Value: currentModel, Name: currentModel}}, models...)
-	}
 	return []ConfigOption{
 		{ID: ConfigProfile, Name: "Profile", Description: "Ion engine profile: the extensions this session loads", Type: "select", CurrentValue: profileID, Options: profiles},
-		{ID: ConfigModel, Name: "Model", Category: "model", Type: "select", CurrentValue: currentModel, Options: models},
+		model,
 	}
 }
 
@@ -142,6 +147,9 @@ func (a *Agent) sessionSetConfigOption(params json.RawMessage) (any, *rpcstdio.R
 		s.mu.Unlock()
 		utils.LogWithFields(utils.LevelInfo, "acp", "model set", map[string]any{"session_id": s.id, "model": value})
 	case ConfigProfile:
+		if h := a.opts.Harness; h != nil {
+			return nil, fmtErr("this agent serves the %s harness; its profile cannot change", h.Name)
+		}
 		if err := s.switchProfile(value); err != nil {
 			return nil, internalError(err)
 		}

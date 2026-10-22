@@ -30,9 +30,30 @@ type authProbeReport struct {
 	Status int    `json:"status"`
 }
 
+const authUsage = `Usage:
+  ion auth login [--device]   Sign the engine in as its operator (browser, or a device code)
+  ion auth status [--json]    Show who the engine is signed in as
+  ion auth logout             Sign the engine out
+  ion auth verify [--scope SCOPE] [--audience AUDIENCE] [--aws-service SERVICE --aws-region REGION] [--url URL]`
+
 func cmdAuth(positional []string, flags map[string]string) {
-	if len(positional) == 0 || positional[0] != "verify" {
-		fmt.Fprintln(os.Stderr, "Usage: ion auth verify [--scope SCOPE] [--audience AUDIENCE] [--aws-service SERVICE --aws-region REGION] [--url URL]")
+	sub := ""
+	if len(positional) > 0 {
+		sub = positional[0]
+	}
+	switch sub {
+	case "login":
+		cmdAuthLogin(flags["device"] == "true")
+		return
+	case "status":
+		cmdAuthStatus(flags["json"] == "true")
+		return
+	case "logout":
+		cmdAuthLogout()
+		return
+	case "verify":
+	default:
+		fmt.Fprintln(os.Stderr, authUsage)
 		os.Exit(2)
 	}
 	report, exitCode := runAuthVerify(flags)

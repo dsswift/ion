@@ -231,3 +231,32 @@ func (c *acpClient) newSession(cwd string) SessionResponse {
 	}
 	return res
 }
+
+// callErr sends a request that must fail and returns its error code and
+// message, failing the test when it succeeds.
+func (c *acpClient) callErr(method string, params any) (int, string) {
+	c.t.Helper()
+	c.mu.Lock()
+	c.seq++
+	id := c.seq
+	ch := make(chan json.RawMessage, 1)
+	c.waits[id] = ch
+	c.mu.Unlock()
+	c.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+	select {
+	case raw := <-ch:
+		var errWrap struct {
+			Err *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"__error"`
+		}
+		if err := json.Unmarshal(raw, &errWrap); err != nil || errWrap.Err == nil {
+			c.t.Fatalf("%s: expected an error, got %s", method, raw)
+		}
+		return errWrap.Err.Code, errWrap.Err.Message
+	case <-time.After(10 * time.Second):
+		c.t.Fatalf("%s: no response", method)
+		return 0, ""
+	}
+}

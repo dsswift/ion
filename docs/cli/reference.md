@@ -287,14 +287,39 @@ Serve the engine as an Agent Client Protocol agent over stdin and stdout.
 
 ```bash
 ion acp [--profile <name|id>] [--model <id>]
+ion acp --harness <path> [--title <text>] [--model <id>]
 ```
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--profile` | No | none | Engine profile whose extensions every session loads |
+| `--harness` | No | none | One extension every session loads; the agent reports it as itself and offers no profile choice. Exclusive with `--profile` |
+| `--title` | No | the harness name | With `--harness`, the title the client shows |
 | `--model` | No | engine default | Model sessions start on |
 
 An ACP client (T3 Code, Zed) spawns this command as an agent. Every session it opens is an ordinary session in the daemon, which is started when it is not running. Diagnostics go to `engine.jsonl` under `tag=acp`. See [ACP Agent](../deployment/acp-agent.md).
+
+---
+
+### `ion auth`
+
+Sign the engine in to its identity provider (`auth.identityProvider` in `engine.json`) as its operator, or verify a machine identity.
+
+```bash
+ion auth login [--device]
+ion auth status [--json]
+ion auth logout
+ion auth verify [--scope SCOPE] [--audience AUDIENCE] [--aws-service SERVICE --aws-region REGION] [--url URL]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `login` | Starts the engine's operator login and waits for it to complete. The browser flow opens the authorization URL on this machine (and prints it); `--device` prints a verification URL and code to enter on any device. The engine keeps and refreshes the grant. |
+| `status` | Who the engine is signed in as. Exits 1 when signed out. `--json` prints `signedIn`, `requireOperatorIdentity`, `provider`, `subject`, `username`, `name`. |
+| `logout` | Signs the engine out. |
+| `verify` | Proves a configured [machine identity](../deployment/machine-identity.md). |
+
+`login`, `status`, and `logout` are clients of the daemon's `oidc_*` commands and start the daemon when it is not running. An ACP client signs in through the same flow (see [ACP Agent](../deployment/acp-agent.md)).
 
 ---
 

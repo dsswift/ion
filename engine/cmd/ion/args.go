@@ -13,6 +13,7 @@ var boolFlags = map[string]bool{
 	"no-extensions": true,
 	"attach":        true,
 	"no-browser":    true,
+	"device":        true, // `ion auth login --device`
 	// `ion studio` switches (cmd_studio.go). `--relay` is a bare switch for
 	// `studio pair` but takes a URL for `studio install`, so it is not listed:
 	// parseArgs already yields "true" when nothing follows it.
