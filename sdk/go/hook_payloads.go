@@ -299,6 +299,20 @@ type WorkspaceFileChangedInfo struct {
 	Action  string `json:"action"`
 }
 
+// WorkspaceFileRenamedInfo is the payload for workspace_file_renamed. The
+// absolute paths are OS-native; the relative paths are forward-slash
+// separated and relative to the session's working directory.
+//
+// Only files the engine tracks for renames produce the hook: the extensions
+// of the engine's workspace.renameExtensions config, while
+// workspace.trackRenames is enabled.
+type WorkspaceFileRenamedInfo struct {
+	OldPath    string `json:"oldPath"`
+	OldRelPath string `json:"oldRelPath"`
+	NewPath    string `json:"newPath"`
+	NewRelPath string `json:"newRelPath"`
+}
+
 // --- Tasks ---
 
 // TaskLifecycleInfo is the payload for task_created and task_completed, which

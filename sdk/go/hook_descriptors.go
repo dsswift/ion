@@ -231,10 +231,6 @@ var HookWorkspaceFileChanged = Hook[WorkspaceFileChangedInfo, NoResult]{Name: Ho
 // to the workspace_file_changed delete and create for the two paths.
 var HookWorkspaceFileRenamed = Hook[WorkspaceFileRenamedInfo, NoResult]{Name: HookNameWorkspaceFileRenamed}
 
-// HookWikiLinksPropagated fires after the engine rewrote wiki links in
-// response to renames. The files are already written when it fires.
-var HookWikiLinksPropagated = Hook[WikiLinkPropagationReport, NoResult]{Name: HookNameWikiLinksPropagated}
-
 // --- Tasks ---
 
 // HookTaskCreated fires when a turn task is created.
@@ -405,7 +401,7 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookPermissionClassify),
 
 		descriptorOf(HookFileChanged), descriptorOf(HookWorkspaceFileChanged),
-		descriptorOf(HookWorkspaceFileRenamed), descriptorOf(HookWikiLinksPropagated),
+		descriptorOf(HookWorkspaceFileRenamed),
 
 		descriptorOf(HookTaskCreated), descriptorOf(HookTaskCompleted),
 		descriptorOf(HookBackgroundTaskCompleted),
