@@ -74,7 +74,9 @@ type CheckResult struct {
 
 // Check evaluates a tool invocation against the policy.
 // Evaluation order:
-//  1. Dangerous patterns check (bash commands only, deny/ask modes).
+//  1. Dangerous patterns check (bash commands only, deny/ask modes): the
+//     built-in list denies; the policy's dangerousPatterns deny in deny mode
+//     and ask in ask mode.
 //  2. Sensitive path check (tools with path input, deny/ask modes).
 //  3. Read-only path check (write tools, every mode).
 //  4. Tier rule from the permission_classify hook (deny/ask modes).
@@ -121,6 +123,14 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				e.finish(info, result, checkStart)
 				return result
 			}
+		}
+	}
+
+	// Check the policy's own dangerous patterns (deny/ask modes only)
+	if !allowMode {
+		if result := e.checkConfiguredDangerous(info); result != nil {
+			e.finish(info, result, checkStart)
+			return result
 		}
 	}
 
@@ -171,21 +181,15 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 	}
 
 	// Evaluate explicit rules (first match wins -- allows rules to punch holes in deny mode)
-	for i := range e.policy.Rules {
-		rule := &e.policy.Rules[i]
-		if !matchTool(rule.Tool, info.Tool) {
-			continue
+	if rule := e.firstMatchingRule(info); rule != nil {
+		result := &CheckResult{
+			Decision: rule.Decision,
+			Reason:   "matched rule for " + rule.Tool,
+			Rule:     rule,
+			Layer:    "explicit_rule",
 		}
-		if matchRule(rule, info, matchCommandRegex) {
-			result := &CheckResult{
-				Decision: rule.Decision,
-				Reason:   "matched rule for " + rule.Tool,
-				Rule:     rule,
-				Layer:    "explicit_rule",
-			}
-			e.finish(info, result, checkStart)
-			return result
-		}
+		e.finish(info, result, checkStart)
+		return result
 	}
 
 	// Default based on mode
@@ -301,6 +305,17 @@ func (e *Engine) finish(info CheckInfo, result *CheckResult, checkStart time.Tim
 		}
 	}
 	e.audit(info, result, checkStart)
+}
+
+// firstMatchingRule returns the first policy rule that covers the call, or nil.
+func (e *Engine) firstMatchingRule(info CheckInfo) *types.PermissionRule {
+	for i := range e.policy.Rules {
+		rule := &e.policy.Rules[i]
+		if matchTool(rule.Tool, info.Tool) && matchRule(rule, info, matchCommandRegex) {
+			return rule
+		}
+	}
+	return nil
 }
 
 // MatchGrant returns the first grant that covers the call, or nil. A grant
