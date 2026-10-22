@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/watcher"
 )
@@ -21,18 +20,10 @@ import (
 // kernel resources (one inotify watch per directory on Linux) and its own
 // copy of every event.
 //
-// The pool is keyed by (root, ignores-hash, wiki-link settings). Sessions
+// The pool is keyed by (root, ignores-hash, rename settings). Sessions
 // that resolve to the same key share one watcher.Watcher and receive events
 // via fan-out. The pool is refcounted: the underlying watcher closes when the
 // last session releases its handle.
-//
-// Work that must happen once per workspace rather than once per session lives
-// on the entry: a rename rewrites wiki links a single time, and the resulting
-// report is then fanned out to every subscribed session.
-//
-// Renames leave the watcher's event goroutine at once. They are handed to the
-// entry's renameWorker, which notifies subscribers and rewrites links on its
-// own goroutine, so a slow subscriber never stalls filesystem events.
 //
 // A watcher starts on its own goroutine. Its startup walks the tree, and on a
 // large root (a home directory) that takes longer than a client waits for a
@@ -43,23 +34,11 @@ type watcherPool struct {
 	entries map[string]*poolEntry
 }
 
-// watchSubscriber is one session's share of a pooled watcher.
-type watchSubscriber struct {
-	// onEvent receives every filesystem event, renames included. Renames
-	// arrive in the order they were observed.
-	onEvent func(watcher.Info)
-	// onPropagated receives the report of each wiki-link propagation pass.
-	onPropagated func(types.WikiLinkPropagationReport)
-}
-
 type poolEntry struct {
 	w           *watcher.Watcher
 	refCount    int
-	subscribers map[string]watchSubscriber // keyed by session key
+	subscribers map[string]func(watcher.Info) // keyed by session key
 	subMu       sync.RWMutex
-	// renames handles the renames this entry's watcher reports. Nil when the
-	// watcher tracks none.
-	renames *renameWorker
 	// ready closes once the watcher's start has finished, succeeded or not.
 	// startErr holds the failure and is set before ready closes.
 	ready    chan struct{}
@@ -76,47 +55,22 @@ var watcherStart = func(w *watcher.Watcher, onEvent func(watcher.Info)) error {
 	return w.Start(context.Background(), onEvent)
 }
 
-// close tears the entry's watcher and rename worker down, once.
+// close tears the entry's watcher down, once.
 func (e *poolEntry) close() {
 	e.closeOnce.Do(func() {
 		if err := e.w.Close(); err != nil {
 			utils.LogWithFields(utils.LevelError, "session", "watcherpool: close failed", map[string]any{"error": err})
 		}
-		if e.renames != nil {
-			e.renames.close()
-		}
 	})
 }
 
-// handleEvent is the watcher callback: a rename is queued for the rename
-// worker, anything else is delivered to every subscriber directly.
-func (e *poolEntry) handleEvent(info watcher.Info) {
-	if info.Action == watcher.ActionRename {
-		if e.renames != nil {
-			e.renames.enqueue(info)
-		}
-		return
-	}
-	e.fanOutEvent(info)
-}
-
-// fanOutEvent delivers a filesystem event to every subscriber.
+// fanOutEvent delivers a filesystem event, renames included, to every
+// subscriber in the order the watcher observed them.
 func (e *poolEntry) fanOutEvent(info watcher.Info) {
 	e.subMu.RLock()
 	defer e.subMu.RUnlock()
-	for _, sub := range e.subscribers {
-		sub.onEvent(info)
-	}
-}
-
-// fanOutReport delivers a propagation report to every subscriber.
-func (e *poolEntry) fanOutReport(report types.WikiLinkPropagationReport) {
-	e.subMu.RLock()
-	defer e.subMu.RUnlock()
-	for _, sub := range e.subscribers {
-		if sub.onPropagated != nil {
-			sub.onPropagated(report)
-		}
+	for _, onEvent := range e.subscribers {
+		onEvent(info)
 	}
 }
 
@@ -127,14 +81,14 @@ func newWatcherPool() *watcherPool {
 }
 
 // poolKey builds a deterministic key from the root directory, the ignore
-// patterns, and the wiki-link settings. Sorted ignores ensure different
+// patterns, and the rename settings. Sorted ignores ensure different
 // orderings map to the same entry. The settings are part of the key because a
 // watcher built without rename tracking cannot serve a session that needs it.
-func poolKey(root string, ignores []string, links wikiLinkSettings) string {
+func poolKey(root string, ignores []string, renames renameSettings) string {
 	sorted := make([]string, len(ignores))
 	copy(sorted, ignores)
 	sort.Strings(sorted)
-	h := sha256.Sum256([]byte(strings.Join(sorted, "\x00") + "\x01" + links.fingerprint()))
+	h := sha256.Sum256([]byte(strings.Join(sorted, "\x00") + "\x01" + renames.fingerprint()))
 	return fmt.Sprintf("%s::%x", root, h[:8])
 }
 
@@ -143,21 +97,21 @@ func poolKey(root string, ignores []string, links wikiLinkSettings) string {
 // for fan-out and later release. maxDirs caps the directory count of a
 // newly-created watcher (zero = watcher package default); it is only
 // consulted when this acquire creates the watcher, since shared watchers keep
-// the cap they were created with. links decides whether the watcher tracks
-// renames and whether a rename rewrites wiki links.
+// the cap they were created with. renames decides whether the watcher tracks
+// renames and which files it tracks.
 //
 // Returns a release function the caller must invoke when the session stops,
 // and a channel that closes once the watcher has started (or failed to). The
 // release function is idempotent and may run before the start has finished:
 // the start then ends early and the watcher never runs.
-func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, maxDirs int, links wikiLinkSettings, sub watchSubscriber) (release func(), ready <-chan struct{}, err error) {
-	key := poolKey(root, ignores, links)
+func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, maxDirs int, renames renameSettings, onEvent func(watcher.Info)) (release func(), ready <-chan struct{}, err error) {
+	key := poolKey(root, ignores, renames)
 
 	p.mu.Lock()
 	entry, exists := p.entries[key]
 	if exists {
 		entry.subMu.Lock()
-		entry.subscribers[sessionKey] = sub
+		entry.subscribers[sessionKey] = onEvent
 		entry.refCount++
 		refCount := entry.refCount
 		entry.subMu.Unlock()
@@ -167,11 +121,11 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 	}
 
 	// First subscriber: create the watcher and start it in the background.
-	// Rename tracking is requested only when wiki links are enabled, so a
-	// disabled subsystem leaves the watcher holding no per-file state.
+	// Rename tracking is requested only when enabled, so a disabled
+	// subsystem leaves the watcher holding no per-file state.
 	opts := watcher.Options{MaxDirs: maxDirs}
-	if links.enabled {
-		opts.TrackRenames = links.isDocument
+	if renames.enabled {
+		opts.TrackRenames = renames.tracks
 	}
 	w, err := watcher.NewWithOptions(root, ignores, opts)
 	if err != nil {
@@ -182,17 +136,14 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 	entry = &poolEntry{
 		w:           w,
 		refCount:    1,
-		subscribers: map[string]watchSubscriber{sessionKey: sub},
+		subscribers: map[string]func(watcher.Info){sessionKey: onEvent},
 		ready:       make(chan struct{}),
-	}
-	if links.enabled {
-		entry.renames = newRenameWorker(links.options(root, ignores), links.propagate, entry.fanOutEvent, entry.fanOutReport)
 	}
 	p.entries[key] = entry
 	p.mu.Unlock()
 
 	utils.LogWithFields(utils.LevelInfo, "session", "watcherpool.acquire: created, starting in background", map[string]any{
-		"key": key, "session_key": sessionKey, "root": root, "track_renames": links.enabled, "propagate_links": links.propagate,
+		"key": key, "session_key": sessionKey, "root": root, "track_renames": renames.enabled,
 	})
 	go p.startEntry(key, entry, root)
 	return p.releaseFunc(key, sessionKey), entry.ready, nil
@@ -203,7 +154,7 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 // one; a start the last release ended early is not a failure.
 func (p *watcherPool) startEntry(key string, entry *poolEntry, root string) {
 	began := time.Now()
-	err := watcherStart(entry.w, entry.handleEvent)
+	err := watcherStart(entry.w, entry.fanOutEvent)
 	entry.startErr = err
 	if err == nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "watcherpool: watcher started", map[string]any{"key": key, "root": root, "duration_ms": time.Since(began).Milliseconds()})

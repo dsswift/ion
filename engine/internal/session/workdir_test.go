@@ -11,8 +11,9 @@ var (
 )
 
 // testWorkDir returns an empty directory shared by tests that need a working
-// directory but do not care what is in it. Sessions watch their working
-// directory, so tests must not point one at a large shared tree like /tmp.
+// directory but do not care what is in it. A session with extensions
+// loaded watches its working directory, so tests must not point one at a
+// large shared tree like /tmp.
 func testWorkDir() string {
 	testWorkDirOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "ion-test-workdir-")

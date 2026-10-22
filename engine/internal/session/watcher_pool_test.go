@@ -24,8 +24,8 @@ func holdWatcherStart(t *testing.T) (started <-chan struct{}, proceed chan<- str
 	return startedCh, proceedCh
 }
 
-func noopSubscriber() watchSubscriber {
-	return watchSubscriber{onEvent: func(watcher.Info) {}}
+func noopSubscriber() func(watcher.Info) {
+	return func(watcher.Info) {}
 }
 
 // TestWatcherPool_AcquireDoesNotWaitForStart pins the contract that lets a
@@ -47,7 +47,7 @@ func TestWatcherPool_AcquireDoesNotWaitForStart(t *testing.T) {
 	}
 	got := make(chan result, 1)
 	go func() {
-		release, ready, err := p.acquire(root, nil, "s1", 0, wikiLinkSettings{}, noopSubscriber())
+		release, ready, err := p.acquire(root, nil, "s1", 0, renameSettings{}, noopSubscriber())
 		got <- result{release, ready, err}
 	}()
 	var first result
@@ -66,7 +66,7 @@ func TestWatcherPool_AcquireDoesNotWaitForStart(t *testing.T) {
 	default:
 	}
 
-	release2, ready2, err := p.acquire(root, nil, "s2", 0, wikiLinkSettings{}, noopSubscriber())
+	release2, ready2, err := p.acquire(root, nil, "s2", 0, renameSettings{}, noopSubscriber())
 	if err != nil {
 		t.Fatalf("second acquire: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestWatcherPool_ReleaseDuringStartEndsIt(t *testing.T) {
 	p := newWatcherPool()
 	root := t.TempDir()
 
-	release, ready, err := p.acquire(root, nil, "s1", 0, wikiLinkSettings{}, noopSubscriber())
+	release, ready, err := p.acquire(root, nil, "s1", 0, renameSettings{}, noopSubscriber())
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}

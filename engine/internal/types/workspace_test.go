@@ -140,3 +140,40 @@ func TestMergeWorkspace_SessionIdleRelease(t *testing.T) {
 		t.Error("lower layer's releaseIdleSessionOnAbort=false was lost")
 	}
 }
+
+func TestWorkspaceConfigRenameTracking(t *testing.T) {
+	var absent *WorkspaceConfig
+	if !absent.RenameTrackingEnabled() {
+		t.Fatal("absent workspace config must track renames")
+	}
+	if got := absent.RenameFileExtensions(); len(got) != 1 || got[0] != ".md" {
+		t.Fatalf("default rename extensions = %v, want [.md]", got)
+	}
+	off := false
+	if (&WorkspaceConfig{TrackRenames: &off}).RenameTrackingEnabled() {
+		t.Fatal("explicit false must turn rename tracking off")
+	}
+	w := &WorkspaceConfig{RenameExtensions: []string{"MD", " .txt ", "", ".", "txt", ".md"}}
+	got := w.RenameFileExtensions()
+	if len(got) != 2 || got[0] != ".md" || got[1] != ".txt" {
+		t.Fatalf("normalized rename extensions = %v, want [.md .txt]", got)
+	}
+	if got := (&WorkspaceConfig{RenameExtensions: []string{"", "."}}).RenameFileExtensions(); len(got) != 1 || got[0] != ".md" {
+		t.Fatalf("blank-only list = %v, want the default", got)
+	}
+}
+
+func TestMergeWorkspaceRenameTracking(t *testing.T) {
+	off, on := false, true
+	merged := MergeWorkspace(
+		&WorkspaceConfig{TrackRenames: &off, RenameExtensions: []string{".md"}},
+		&WorkspaceConfig{TrackRenames: &on, RenameExtensions: []string{".txt"}},
+	)
+	if !merged.RenameTrackingEnabled() || merged.RenameExtensions[0] != ".txt" {
+		t.Fatalf("later layer must win: %+v", merged)
+	}
+	kept := MergeWorkspace(merged, &WorkspaceConfig{MaxWatchedDirs: 5})
+	if !kept.RenameTrackingEnabled() || kept.RenameExtensions[0] != ".txt" {
+		t.Fatalf("a layer that sets neither must leave both: %+v", kept)
+	}
+}

@@ -58,12 +58,6 @@ func (s *SDK) FireWorkspaceFileRenamed(ctx *Context, info WorkspaceFileRenamedIn
 	s.fire(HookWorkspaceFileRenamed, ctx, info)
 }
 
-// FireWikiLinksPropagated fires the wiki_links_propagated hook with the
-// report of one propagation pass.
-func (s *SDK) FireWikiLinksPropagated(ctx *Context, report WikiLinkPropagationReport) {
-	s.fire(HookWikiLinksPropagated, ctx, report)
-}
-
 // FireTaskCreated fires the task_created hook.
 func (s *SDK) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
 	s.fire(HookTaskCreated, ctx, info)

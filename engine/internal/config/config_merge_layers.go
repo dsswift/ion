@@ -308,15 +308,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Debug = types.MergeDebug(dst.Debug, src.Debug)
 	}
 
-	// Workspace: merge non-zero fields (reap grace window, watcher dir cap)
+	// Workspace: merge non-zero fields (reap grace window, watcher dir cap, rename tracking)
 	if src.Workspace != nil {
 		dst.Workspace = types.MergeWorkspace(dst.Workspace, src.Workspace)
-	}
-
-	// WikiLinks: merge set fields, so a later layer can flip one switch
-	// without restating the others.
-	if src.WikiLinks != nil {
-		dst.WikiLinks = types.MergeWikiLinks(dst.WikiLinks, src.WikiLinks)
 	}
 
 	// ThinkingPolicy: whole-block override. A later layer that sets this

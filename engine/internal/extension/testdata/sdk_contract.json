@@ -711,17 +711,6 @@
       ],
       "result": "asyncVeto"
     },
-    "wiki_links_propagated": {
-      "payloadKind": "object",
-      "payloadFields": [
-        "failed",
-        "files",
-        "renames",
-        "rewriteCount",
-        "root"
-      ],
-      "result": "none"
-    },
     "workspace_file_changed": {
       "payloadKind": "object",
       "payloadFields": [
@@ -792,7 +781,6 @@
     "ext/run_once_check",
     "ext/run_once_complete",
     "ext/sandbox_wrap",
-    "ext/scan_wiki_links",
     "ext/search_history",
     "ext/send_prompt",
     "ext/send_to_session",

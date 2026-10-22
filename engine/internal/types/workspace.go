@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // WorkspaceConfig holds engine-wide limits for the filesystem-watch and
 // session-lifecycle subsystems. Harness engineers override these via
@@ -64,7 +67,22 @@ type WorkspaceConfig struct {
 	// nothing to stop. Nil defaults to enabled. Independent of
 	// SessionIdleReleaseMs.
 	ReleaseIdleSessionOnAbort *bool `json:"releaseIdleSessionOnAbort,omitempty"`
+
+	// TrackRenames controls whether the workspace watcher correlates a removal
+	// and a creation of the same file into one rename, delivered through the
+	// workspace_file_renamed hook. When false the watcher keeps no per-file
+	// state and reports no renames. Nil defaults to enabled. Pointer preserves
+	// an explicit false across layered engine.json merges.
+	TrackRenames *bool `json:"trackRenames,omitempty"`
+
+	// RenameExtensions lists the file extensions whose renames the watcher
+	// reports. Entries are matched case-insensitively; a missing leading dot
+	// is added. Empty means the compiled default ([".md"]).
+	RenameExtensions []string `json:"renameExtensions,omitempty"`
 }
+
+// defaultRenameExtensions is the compiled default for RenameExtensions.
+var defaultRenameExtensions = []string{".md"}
 
 // DefaultSessionIdleRelease is the quiescence duration that releases a
 // session when SessionIdleReleaseMs is unset.
@@ -113,6 +131,41 @@ func (w *WorkspaceConfig) PromptContextEnabled() bool {
 	return w == nil || w.PromptContext == nil || *w.PromptContext
 }
 
+// RenameTrackingEnabled reports whether the watcher reports renames. Default
+// is enabled. Nil-safe.
+func (w *WorkspaceConfig) RenameTrackingEnabled() bool {
+	return w == nil || w.TrackRenames == nil || *w.TrackRenames
+}
+
+// RenameFileExtensions returns the normalized extension list for rename
+// tracking: lower case, leading dot, no blanks, no duplicates. Falls back to
+// the compiled default when the configured list is empty. Nil-safe.
+func (w *WorkspaceConfig) RenameFileExtensions() []string {
+	if w == nil || len(w.RenameExtensions) == 0 {
+		return append([]string(nil), defaultRenameExtensions...)
+	}
+	seen := make(map[string]bool, len(w.RenameExtensions))
+	out := make([]string, 0, len(w.RenameExtensions))
+	for _, raw := range w.RenameExtensions {
+		ext := strings.ToLower(strings.TrimSpace(raw))
+		if ext == "" || ext == "." {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		if seen[ext] {
+			continue
+		}
+		seen[ext] = true
+		out = append(out, ext)
+	}
+	if len(out) == 0 {
+		return append([]string(nil), defaultRenameExtensions...)
+	}
+	return out
+}
+
 // MergeWorkspace copies non-zero fields from src into dst. Both pointers may
 // be nil; returns the merged result (or nil if both are nil). Mirrors
 // MergeTimeouts.
@@ -122,6 +175,7 @@ func MergeWorkspace(dst, src *WorkspaceConfig) *WorkspaceConfig {
 	}
 	if dst == nil {
 		dup := *src
+		dup.RenameExtensions = append([]string(nil), src.RenameExtensions...)
 		return &dup
 	}
 	if src.SessionReapGraceMs != 0 {
@@ -138,6 +192,12 @@ func MergeWorkspace(dst, src *WorkspaceConfig) *WorkspaceConfig {
 	}
 	if src.ReleaseIdleSessionOnAbort != nil {
 		dst.ReleaseIdleSessionOnAbort = src.ReleaseIdleSessionOnAbort
+	}
+	if src.TrackRenames != nil {
+		dst.TrackRenames = src.TrackRenames
+	}
+	if len(src.RenameExtensions) > 0 {
+		dst.RenameExtensions = append([]string(nil), src.RenameExtensions...)
 	}
 	return dst
 }

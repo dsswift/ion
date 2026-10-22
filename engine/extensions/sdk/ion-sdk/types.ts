@@ -2051,16 +2051,6 @@ export interface IonContext extends DispatchControlContext {
   ): Promise<DispatchConversationResult>;
 
   /**
-   * Run the read-only link integrity scan over the session's working
-   * directory. Returns every wiki link (`[[target]]`, `[[target|alias]]`)
-   * that names no single file. Nothing is written.
-   *
-   * Rejects when the engine's `wikiLinks` config turns the scan off, and on
-   * an engine that does not support this RPC.
-   */
-  scanWikiLinks(): Promise<WikiLinkIntegrityReport>;
-
-  /**
    * One-shot lightweight inference call. Fires a single round-trip to
    * the provider — no tools, no agent loop, no fallback chain. The
    * lightweight counterpart to {@link IonContext.dispatchAgent}.
@@ -2864,9 +2854,9 @@ export interface WorkspaceFileChangedInfo {
  * same file. It fires in addition to the `workspace_file_changed` delete and
  * create for the two paths, never instead of them.
  *
- * Only files the engine tracks for renames produce it: the document
- * extensions of the engine's `wikiLinks` config block, and only while that
- * block is enabled.
+ * Only files the engine tracks for renames produce it: the extensions of
+ * the engine's `workspace.renameExtensions` config, and only while
+ * `workspace.trackRenames` is enabled.
  *
  * The absolute paths are OS-native. The relative paths are forward-slash
  * separated and relative to the working directory.
@@ -2876,78 +2866,6 @@ export interface WorkspaceFileRenamedInfo {
   oldRelPath: string;
   newPath: string;
   newRelPath: string;
-}
-
-/** One detected document rename. Paths are workspace-relative. */
-export interface WikiLinkRename {
-  oldPath: string;
-  newPath: string;
-}
-
-/** One rewritten wiki link. */
-export interface WikiLinkRewrite {
-  /** 1-based line the link sits on. */
-  line: number;
-  /** Full link text before the rewrite, brackets included. */
-  oldLink: string;
-  /** Full link text after the rewrite. Alias and `#section` are kept. */
-  newLink: string;
-  /** Workspace-relative path the link resolved to before the rename. */
-  oldTarget: string;
-  /** Workspace-relative path the link resolves to now. */
-  newTarget: string;
-}
-
-/** The links rewritten in one file. `path` is workspace-relative. */
-export interface WikiLinkFileRewrites {
-  path: string;
-  rewrites: WikiLinkRewrite[];
-}
-
-/** A file whose links needed rewriting but could not be written. */
-export interface WikiLinkFileFailure {
-  path: string;
-  error: string;
-}
-
-/**
- * Payload for `wiki_links_propagated`: the complete record of one
- * propagation pass. Fires once per pass, even when no link needed rewriting
- * (`files` is then empty). Observe-only: the files are already written.
- */
-export interface WikiLinkPropagationReport {
-  /** Absolute workspace root the pass was confined to. */
-  root: string;
-  renames: WikiLinkRename[];
-  files: WikiLinkFileRewrites[];
-  /** Total links rewritten across `files`. */
-  rewriteCount: number;
-  failed?: WikiLinkFileFailure[];
-}
-
-/** One wiki link that resolves to no single file. */
-export interface WikiLinkBrokenLink {
-  /** Workspace-relative path of the file holding the link. */
-  path: string;
-  /** 1-based line the link sits on. */
-  line: number;
-  /** Full link text, brackets included. */
-  link: string;
-  /** The link target with any alias and `#section` removed. */
-  target: string;
-  /** `missing`: nothing matches. `ambiguous`: a bare name several files carry. */
-  reason: "missing" | "ambiguous";
-  /** The files an ambiguous target could name. */
-  candidates?: string[];
-}
-
-/** Result of {@link IonContext.scanWikiLinks}. */
-export interface WikiLinkIntegrityReport {
-  /** Absolute workspace root that was scanned. */
-  root: string;
-  documentsScanned: number;
-  linksChecked: number;
-  broken: WikiLinkBrokenLink[];
 }
 
 /** Payload for `task_created` and `task_completed`. */
@@ -3540,7 +3458,6 @@ export interface HookPayloadMap {
   file_changed: FileChangedInfo;
   workspace_file_changed: WorkspaceFileChangedInfo;
   workspace_file_renamed: WorkspaceFileRenamedInfo;
-  wiki_links_propagated: WikiLinkPropagationReport;
 
   // Task
   task_created: TaskLifecycleInfo;

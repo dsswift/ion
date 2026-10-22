@@ -355,16 +355,6 @@ func (g *ExtensionGroup) FireWorkspaceFileRenamed(ctx *Context, info WorkspaceFi
 	}
 }
 
-// FireWikiLinksPropagated fans the wiki_links_propagated hook out to every
-// host in the group.
-func (g *ExtensionGroup) FireWikiLinksPropagated(ctx *Context, report WikiLinkPropagationReport) {
-	ctx, endFanout := g.beginFanout(ctx, "wiki_links_propagated")
-	defer endFanout()
-	for _, h := range g.hosts {
-		h.SDK().FireWikiLinksPropagated(ctx, report)
-	}
-}
-
 // FireBackgroundTaskCompleted fans the background_task_completed hook out to
 // every host in the group. Called when a background bash command started with
 // notify_on_complete reaches a terminal state.

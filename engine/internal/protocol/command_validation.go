@@ -149,7 +149,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNumber(raw, "intervalMs")
 	case "debug_profile":
 		return hasNonEmptyString(raw, "profileKind")
-	case "get_conversation", "scan_wiki_links":
+	case "get_conversation":
 		return hasNonEmptyString(raw, "key")
 	case "load_session_history":
 		return hasNonEmptyString(raw, "key") || hasArray(raw, "sessionIds")

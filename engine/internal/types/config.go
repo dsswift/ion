@@ -444,15 +444,11 @@ type EngineRuntimeConfig struct {
 	// types.ShellConfig.
 	Shell *ShellConfig `json:"shell,omitempty"`
 	// Workspace holds engine-wide filesystem-watch and session-lifecycle
-	// limits (orphaned-session reap grace window, per-watcher directory cap).
+	// limits (orphaned-session reap grace window, per-watcher directory cap,
+	// rename tracking).
 	// Pointer so engine.json can omit the block and inherit the compiled
 	// defaults. See types.WorkspaceConfig.
 	Workspace *WorkspaceConfig `json:"workspace,omitempty"`
-	// WikiLinks controls wiki-link maintenance: rename detection in a watched
-	// workspace, link rewriting on rename, and the link integrity scan.
-	// Pointer so engine.json can omit the block and inherit the compiled
-	// defaults (everything on). See types.WikiLinksConfig.
-	WikiLinks *WikiLinksConfig `json:"wikiLinks,omitempty"`
 	// EarlyStopContinue configures the Claude-Code-style "keep working"
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().

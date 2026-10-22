@@ -47,7 +47,6 @@ import type {
   DispatchConversationResult,
   DispatchEntry,
   DispatchHistoryEntry,
-  WikiLinkIntegrityReport,
   ElicitOptions,
   ElicitResult,
   EngineEvent,
@@ -906,9 +905,6 @@ function buildContext(ctxData: any): IonContext {
         }
         throw err;
       }
-    },
-    async scanWikiLinks(): Promise<WikiLinkIntegrityReport> {
-      return await request("ext/scan_wiki_links", {});
     },
     async discoverAgents(
       opts?: DiscoverAgentsOpts,

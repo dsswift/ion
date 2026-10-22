@@ -664,9 +664,6 @@ var validCommands = map[string]bool{
 	// answers with the file path. Needs no pprof listener; `ion debug
 	// profile` is its CLI.
 	"debug_profile": true,
-	// scan_wiki_links: read-only link integrity scan of a session's working
-	// directory. The result data is a WikiLinkIntegrityReport.
-	"scan_wiki_links": true,
 	// clear_conversation_file: wipes the LLM-visible Messages on a stored
 	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory

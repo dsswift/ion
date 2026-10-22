@@ -132,14 +132,9 @@ const (
 	// removal and a creation to the same file. It fires in addition to the
 	// workspace_file_changed delete and create for the two paths, never
 	// instead of them. Only files the engine tracks for renames produce it:
-	// the document extensions of the wikiLinks config block, and only while
-	// that block is enabled.
+	// the extensions of the workspace config's renameExtensions, and only
+	// while workspace.trackRenames is enabled.
 	HookWorkspaceFileRenamed = "workspace_file_renamed"
-
-	// HookWikiLinksPropagated fires after the engine rewrote wiki links in
-	// response to renames. Observe-only: the files are already written and
-	// the typed engine event already emitted when handlers run.
-	HookWikiLinksPropagated = "wiki_links_propagated"
 
 	// Task lifecycle hooks
 	HookTaskCreated   = "task_created"
