@@ -114,7 +114,7 @@ MCP server tools and extension tools can load on demand instead of riding in eve
 
 ### Plan Mode Tool
 
-`ExitPlanMode` is not registered globally. It is injected by the API backend only when plan mode is active and intercepted before normal tool execution.
+`ExitPlanMode` and `EnterPlanMode` are not registered globally. The API backend adds both to every run's tool list, whatever the mode, and intercepts them before normal tool execution; what a call does depends on the run's mode when it is made ([ADR-038](../architecture/adr/038-mode-invariant-prompt-prefix.md)).
 
 ## LLM Integration
 
