@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -553,8 +554,23 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 	// Log scanner errors explicitly so buffer overflows and I/O failures
 	// are never silently swallowed as "subprocess died".
 	if err := stdout.Err(); err != nil {
+		if stdoutClosedByDispose(h.dead.Load(), err) {
+			// disposeInternal marks the host dead, kills the process tree, then
+			// reaps it with cmd.Wait, and os/exec's Wait closes the stdout pipe
+			// while this loop may still sit in Scan. That close is the teardown
+			// itself, not an I/O failure.
+			utils.LogWithFields(utils.LevelDebug, "extension", "stdout closed by dispose ()", map[string]any{"model": h.name_()})
+			return
+		}
 		utils.LogWithFields(utils.LevelError, "extension", "stdout scanner error ()", map[string]any{"model": h.name_(), "error": err})
 	}
+}
+
+// stdoutClosedByDispose reports whether a scanner error is the stdout pipe
+// being closed under a host already torn down, as opposed to a real I/O
+// failure or an oversized line.
+func stdoutClosedByDispose(dead bool, err error) bool {
+	return dead && errors.Is(err, os.ErrClosed)
 }
 
 // --- Hook forwarders ---
