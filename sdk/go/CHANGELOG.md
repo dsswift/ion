@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0](https://github.com/dsswift/ion/compare/sdk/go/v1.1.0...sdk/go/v1.2.0) (2026-10-23)
+
+### Features
+
+* **sdk:** let an extension tool always load ([a964318](https://github.com/dsswift/ion/commit/a9643183c24c581004b40bc22e6c99b62d3a97d0))
+
 ## [1.1.0](https://github.com/dsswift/ion/compare/sdk/go/v1.0.0...sdk/go/v1.1.0) (2026-10-22)
 
 ### Features

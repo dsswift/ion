@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.2.0](https://github.com/dsswift/ion/compare/engine-v3.1.3...engine-v3.2.0) (2026-10-23)
+
+### Features
+
+* **engine:** load mcp and extension tools on demand ([461056d](https://github.com/dsswift/ion/commit/461056dc65329f0bbed2cdd3b1df8e8782ae0546))
+
 ## [3.1.3](https://github.com/dsswift/ion/compare/engine-v3.1.2...engine-v3.1.3) (2026-10-22)
 
 ### Bug Fixes
