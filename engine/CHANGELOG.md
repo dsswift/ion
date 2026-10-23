@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.2.1](https://github.com/dsswift/ion/compare/engine-v3.2.0...engine-v3.2.1) (2026-10-23)
+
+### Bug Fixes
+
+* **engine:** log dispose's stdout close as teardown ([679e401](https://github.com/dsswift/ion/commit/679e4010727cbe8f644c1509bc39c0ffa2472741))
+
 ## [3.2.0](https://github.com/dsswift/ion/compare/engine-v3.1.3...engine-v3.2.0) (2026-10-23)
 
 ### Features
