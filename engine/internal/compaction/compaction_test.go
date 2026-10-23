@@ -847,48 +847,6 @@ func TestCompactPartialInvalidDirection(t *testing.T) {
 	}
 }
 
-// ─── PostCompactRestore ───
-
-func TestPostCompactRestore(t *testing.T) {
-	msg := PostCompactRestore(nil, []string{"/a.go", "/b.go"}, []string{"bash"})
-	text := ""
-	if blocks, ok := msg.Content.([]types.LlmContentBlock); ok && len(blocks) > 0 {
-		text = blocks[0].Text
-	}
-	if !strings.Contains(text, "/a.go") {
-		t.Error("expected file paths in restore message")
-	}
-	if !strings.Contains(text, "bash") {
-		t.Error("expected deferred tools in restore message")
-	}
-}
-
-func TestPostCompactRestoreCreatesSystemMessage(t *testing.T) {
-	msg := PostCompactRestore(nil, []string{"/x.go"}, nil)
-	if msg.Role != "user" {
-		t.Errorf("expected role=user, got %q", msg.Role)
-	}
-	blocks, ok := msg.Content.([]types.LlmContentBlock)
-	if !ok || len(blocks) == 0 {
-		t.Fatal("expected content blocks")
-	}
-	if !strings.Contains(blocks[0].Text, "[Post-compaction context restore]") {
-		t.Errorf("expected context restore header, got: %s", blocks[0].Text)
-	}
-}
-
-func TestPostCompactRestoreEmpty(t *testing.T) {
-	msg := PostCompactRestore(nil, nil, nil)
-	blocks, ok := msg.Content.([]types.LlmContentBlock)
-	if !ok || len(blocks) == 0 {
-		t.Fatal("expected content blocks")
-	}
-	// With no files and no tools, should just have the header.
-	if blocks[0].Text != "[Post-compaction context restore]" {
-		t.Errorf("expected just the header, got: %s", blocks[0].Text)
-	}
-}
-
 // ─── ExtractRecentFiles ───
 
 func TestExtractRecentFiles(t *testing.T) {

@@ -203,32 +203,6 @@ func CompactPartial(conv *conversation.Conversation, pivotEntryID string, direct
 	return nil
 }
 
-// PostCompactRestore creates a system message summarizing what was preserved
-// after compaction, including recent file paths and deferred tool mentions.
-func PostCompactRestore(conv *conversation.Conversation, recentFiles []string, deferredTools []string) types.LlmMessage {
-	var parts []string
-
-	if len(recentFiles) > 0 {
-		parts = append(parts, "Recently modified files: "+strings.Join(recentFiles, ", "))
-	}
-	if len(deferredTools) > 0 {
-		parts = append(parts, "Deferred tool calls: "+strings.Join(deferredTools, ", "))
-	}
-
-	text := "[Post-compaction context restore]"
-	if len(parts) > 0 {
-		text += "\n" + strings.Join(parts, "\n")
-	}
-
-	return types.LlmMessage{
-		Role: "user",
-		Content: []types.LlmContentBlock{{
-			Type: "text",
-			Text: text,
-		}},
-	}
-}
-
 // ExtractRecentFiles scans messages for file paths mentioned in tool results.
 func ExtractRecentFiles(messages []types.LlmMessage) []string {
 	seen := make(map[string]bool)
