@@ -107,6 +107,7 @@ type wireToolDecl struct {
 	Description  string         `json:"description"`
 	Parameters   map[string]any `json:"parameters"`
 	PlanModeSafe bool           `json:"planModeSafe,omitempty"`
+	AlwaysLoad   bool           `json:"alwaysLoad,omitempty"`
 }
 
 // wireCommand is a command as the engine reads it at init.
@@ -148,6 +149,7 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 			Description:  t.Description,
 			Parameters:   t.Parameters,
 			PlanModeSafe: t.PlanModeSafe,
+			AlwaysLoad:   t.AlwaysLoad,
 		})
 	}
 	commands := make(map[string]wireCommand, len(s.commands))

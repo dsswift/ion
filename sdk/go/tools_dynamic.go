@@ -18,6 +18,7 @@ type ToolDeclaration struct {
 	Description  string         `json:"description"`
 	Parameters   map[string]any `json:"parameters"`
 	PlanModeSafe bool           `json:"planModeSafe,omitempty"`
+	AlwaysLoad   bool           `json:"alwaysLoad,omitempty"`
 }
 
 // DeregisterTool removes a locally registered tool. It returns whether it existed.
@@ -39,7 +40,7 @@ func (s *SDK) SyncTools(ctx context.Context) (int64, error) {
 	s.mu.RLock()
 	snapshot := ToolRegistrySnapshot{Revision: s.toolRevision, Tools: make([]ToolDeclaration, 0, len(s.tools))}
 	for _, tool := range s.tools {
-		snapshot.Tools = append(snapshot.Tools, ToolDeclaration{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe})
+		snapshot.Tools = append(snapshot.Tools, ToolDeclaration{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe, AlwaysLoad: tool.AlwaysLoad})
 	}
 	s.mu.RUnlock()
 	sort.Slice(snapshot.Tools, func(i, j int) bool { return snapshot.Tools[i].Name < snapshot.Tools[j].Name })

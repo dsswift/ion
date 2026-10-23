@@ -331,6 +331,7 @@ func TestInitResultCarriesRegistrations(t *testing.T) {
 		Description:  "first alphabetically",
 		Parameters:   map[string]any{"type": "object"},
 		PlanModeSafe: true,
+		AlwaysLoad:   true,
 	})
 	fe.sdk.RegisterCommand("greet", CommandDef{Description: "say hello"})
 	OnHook(fe.sdk, HookTurnEnd, func(_ *Context, _ TurnInfo) (NoResult, error) {
@@ -363,6 +364,12 @@ func TestInitResultCarriesRegistrations(t *testing.T) {
 	second, _ := tools[1].(map[string]any)
 	if second["planModeSafe"] != nil {
 		t.Errorf("beta_tool.planModeSafe = %v, want it omitted when false", second["planModeSafe"])
+	}
+	if first["alwaysLoad"] != true {
+		t.Errorf("alpha_tool.alwaysLoad = %v, want true", first["alwaysLoad"])
+	}
+	if second["alwaysLoad"] != nil {
+		t.Errorf("beta_tool.alwaysLoad = %v, want it omitted when false", second["alwaysLoad"])
 	}
 
 	commands, ok := result["commands"].(map[string]any)

@@ -134,6 +134,10 @@ type ToolDef struct {
 	// PlanModeSafe marks a tool as callable while the session is in plan
 	// mode. Read-only tools set it; anything that mutates state must not.
 	PlanModeSafe bool `json:"planModeSafe,omitempty"`
+	// AlwaysLoad keeps the tool in the model's tool list when tool search
+	// defers the rest. Set it on the few tools the model needs on every
+	// turn; leave it false so the tool loads on demand.
+	AlwaysLoad bool `json:"alwaysLoad,omitempty"`
 	// Execute runs the tool. input is the raw JSON arguments, so a handler
 	// can unmarshal into its own typed struct. The context.Context carries
 	// the invocation's cancellation.
