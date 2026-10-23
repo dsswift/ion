@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.2.2](https://github.com/dsswift/ion/compare/engine-v3.2.1...engine-v3.2.2) (2026-10-23)
+
+### Bug Fixes
+
+* **engine:** build with go 1.27.3 for the x509 fix ([9e70521](https://github.com/dsswift/ion/commit/9e70521a380361f4c59d9cbcbb60f9f0f0e9e7d8))
+* **engine:** test the webhook server on a free port ([b4a4c1d](https://github.com/dsswift/ion/commit/b4a4c1d47012abbe9a2be1851b34f33ffc6bdf8f))
+
 ## [3.2.1](https://github.com/dsswift/ion/compare/engine-v3.2.0...engine-v3.2.1) (2026-10-23)
 
 ### Bug Fixes
