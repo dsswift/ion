@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -207,8 +208,18 @@ func TestDecodeHandlerResponse(t *testing.T) {
 	}
 }
 
-func TestServer_StartStopOnEphemeralPort(t *testing.T) {
-	s := New(Config{Port: 0, BindInterface: "127.0.0.1"})
+// Port 0 means DefaultPort, which a running engine on the same machine
+// already holds, so the test asks the kernel for a free port first.
+func TestServer_StartStopOnAFreePort(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("finding a free port: %v", err)
+	}
+	port := probe.Addr().(*net.TCPAddr).Port
+	if err := probe.Close(); err != nil {
+		t.Fatalf("releasing the probe: %v", err)
+	}
+	s := New(Config{Port: port, BindInterface: "127.0.0.1"})
 	if err := s.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
