@@ -219,6 +219,7 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 				Description:  t.Description,
 				InputSchema:  t.Parameters,
 				PlanModeSafe: t.PlanModeSafe,
+				Deferrable:   !t.AlwaysLoad,
 			})
 		}
 	}
@@ -228,8 +229,14 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 				Name:        "mcp__" + conn.Name() + "__" + t.Name,
 				Description: t.Description,
 				InputSchema: t.InputSchema,
+				Deferrable:  true,
 			})
 		}
+	}
+	// An engine-owned run sends only what tool search keeps, so count that.
+	// A native session's CLI defers on its own terms (claudeToolSearchEnv).
+	if !isNativeSession {
+		toolDefs = backend.ToolListAfterToolSearch(toolDefs, opts.ToolSearchMode, opts.Model)
 	}
 
 	// Build the LlmStreamOptions that BuildContextBreakdown expects.

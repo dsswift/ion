@@ -21,7 +21,12 @@ import (
 type activeRun struct {
 	mu        sync.Mutex
 	requestID string
-	conv      *conversation.Conversation
+	// deferredTools are the tools tool search left out of this run's tool
+	// list, by name. Set once by buildToolDefs before the first tool call
+	// and read-only after; nil when nothing is deferred. ToolSearch answers
+	// from it and ToolCall resolves against it (runloop_tool_search.go).
+	deferredTools map[string]types.LlmToolDef
+	conv          *conversation.Conversation
 	// releaseLive ends this run's in-memory ownership of conv (see
 	// conversation.RegisterLive). removeRun calls it rather than a defer in
 	// runLoop, so ownership ends exactly when the run leaves activeRuns:

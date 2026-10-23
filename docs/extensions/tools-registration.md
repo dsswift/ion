@@ -86,6 +86,7 @@ interface ToolDef {
   description: string // shown to the LLM to decide when to use the tool
   parameters: any     // JSON Schema object describing the input
   planModeSafe?: boolean // if true, tool is available during plan mode
+  alwaysLoad?: boolean   // if true, stays loaded when tool search defers the rest
   execute: (params: any, ctx: IonContext) => Promise<ToolResult>
 }
 ```
@@ -98,6 +99,7 @@ type ToolDefinition struct {
     Description  string
     Parameters   map[string]interface{}
     PlanModeSafe bool
+    AlwaysLoad   bool
     Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
 }
 ```
@@ -217,3 +219,7 @@ sdk.registerTool({
 ```
 
 Tools without `planModeSafe` are still available normally outside of plan mode. The flag is purely additive -- it only widens access in plan mode, it does not restrict access in normal mode.
+
+## Loading on demand
+
+Under [tool search](../tools/tool-search.md), an extension tool reaches the model by name and loads when the model searches for it. Set `alwaysLoad: true` (TypeScript) or `AlwaysLoad: true` (Go) on the few tools the model needs on every turn; they stay in the tool list. Every always-load tool is read on every turn, so leave the rest unset.

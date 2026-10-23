@@ -240,6 +240,11 @@ type LlmToolDef struct {
 	Description  string         `json:"description"`
 	InputSchema  map[string]any `json:"input_schema"`
 	PlanModeSafe bool           `json:"planModeSafe,omitempty"`
+	// Deferrable marks a tool the run may leave out of its tool list and
+	// announce by name only (tool search). MCP server tools and extension
+	// tools not marked always-load are deferrable; built-in, client, and
+	// capability tools are not. Engine-side routing metadata, never sent.
+	Deferrable bool `json:"-"`
 }
 
 // LlmUsage tracks token counts from the LLM provider.

@@ -92,14 +92,14 @@ func (m *Manager) wireCliShellToolServer(s *engineSession, key string, opts *typ
 	stamp := m.cliToolContextStamper(s, key)
 
 	bashDef := tools.BashTool()
-	ts.RegisterTool("Bash", m.guardBridgedTool("Bash", permEng, key, buildCliEngineToolHandler(stamp, "Bash", cwd)), bashDef.Description, bashDef.InputSchema)
+	ts.RegisterAlwaysLoadTool("Bash", m.guardBridgedTool("Bash", permEng, key, buildCliEngineToolHandler(stamp, "Bash", cwd)), bashDef.Description, bashDef.InputSchema)
 
 	// Poll is guarded for the same reason Bash is, and the reason is concrete:
 	// its check_command is an arbitrary shell string the engine runs before each
 	// attempt. An unguarded Poll would be a second, unpoliced shell standing
 	// beside the policed one.
 	pollDef := tools.PollTool()
-	ts.RegisterTool("Poll", m.guardBridgedTool("Poll", permEng, key, buildCliEngineToolHandler(stamp, "Poll", cwd)), pollDef.Description, pollDef.InputSchema)
+	ts.RegisterAlwaysLoadTool("Poll", m.guardBridgedTool("Poll", permEng, key, buildCliEngineToolHandler(stamp, "Poll", cwd)), pollDef.Description, pollDef.InputSchema)
 
 	// TaskGet and TaskStop are registered from their ToolDefs directly rather
 	// than through the global registry. They are harness opt-in there
@@ -107,9 +107,9 @@ func (m *Manager) wireCliShellToolServer(s *engineSession, key string, opts *typ
 	// would hand them to every API run on the machine as a side effect of
 	// wiring one CLI session.
 	taskGetDef := tools.TaskGetTool()
-	ts.RegisterTool("TaskGet", m.guardBridgedTool("TaskGet", permEng, key, buildCliToolDefHandler(stamp, taskGetDef, cwd)), taskGetDef.Description, taskGetDef.InputSchema)
+	ts.RegisterAlwaysLoadTool("TaskGet", m.guardBridgedTool("TaskGet", permEng, key, buildCliToolDefHandler(stamp, taskGetDef, cwd)), taskGetDef.Description, taskGetDef.InputSchema)
 	taskStopDef := tools.TaskStopTool()
-	ts.RegisterTool("TaskStop", m.guardBridgedTool("TaskStop", permEng, key, buildCliToolDefHandler(stamp, taskStopDef, cwd)), taskStopDef.Description, taskStopDef.InputSchema)
+	ts.RegisterAlwaysLoadTool("TaskStop", m.guardBridgedTool("TaskStop", permEng, key, buildCliToolDefHandler(stamp, taskStopDef, cwd)), taskStopDef.Description, taskStopDef.InputSchema)
 
 	if needsStart {
 		if err := ts.Start(); err != nil {

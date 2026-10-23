@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -118,6 +119,13 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 		} else {
 			allowedTools = []string{"Read", "Glob", "Grep", "LS", "Agent", "WebSearch", "WebFetch"}
 		}
+	}
+	// ToolSearch is how the CLI loads a deferred MCP tool. It only reads tool
+	// definitions, so it is allowed whatever list the run started from; a
+	// permission mode that honors this list would otherwise leave every
+	// deferred tool unreachable.
+	if !slices.Contains(allowedTools, toolSearchName) {
+		allowedTools = append(allowedTools, toolSearchName)
 	}
 	// When an MCP ToolServer is wired, add the wildcard allowlist entry so the
 	// CLI offers every ion-extensions tool (including the plan-mode ExitPlanMode)

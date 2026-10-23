@@ -175,7 +175,13 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 			ctx := m.newExtContext(s, key)
 			return capturedTool.Execute(input, ctx)
 		}
-		ts.RegisterTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
+		// An extension tool loads on demand under the CLI's tool search
+		// unless the extension marked it always-load.
+		if capturedTool.AlwaysLoad {
+			ts.RegisterAlwaysLoadTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
+		} else {
+			ts.RegisterTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
+		}
 		registered = append(registered, capturedTool.Name)
 	}
 	if needsStart {
@@ -233,12 +239,12 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 	// pin test prompt_cli_hooks_agent_schema_test.go guards against
 	// the canonical schema accidentally dropping a property.
 	agentDef := tools.AgentTool()
-	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key, opts.Model),
+	ts.RegisterAlwaysLoadTool("ion_agent", m.buildAgentToolHandler(s, key, opts.Model),
 		agentDef.Description,
 		agentDef.InputSchema,
 	)
 	statusDef := tools.AgentStatusTool()
-	ts.RegisterTool("ion_agent_status", buildAgentStatusToolHandler(s.dispatchRegistry),
+	ts.RegisterAlwaysLoadTool("ion_agent_status", buildAgentStatusToolHandler(s.dispatchRegistry),
 		statusDef.Description,
 		statusDef.InputSchema,
 	)
@@ -303,10 +309,10 @@ func (m *Manager) wirePlanToolServer(s *engineSession, key string, opts *types.R
 	}
 
 	enterDef := tools.EnterPlanModeToolWithDescription(opts.EnterPlanModeDescription)
-	ts.RegisterTool(enterDef.Name, enterPlanModeToolHandler(m, key), enterDef.Description, enterDef.InputSchema)
+	ts.RegisterAlwaysLoadTool(enterDef.Name, enterPlanModeToolHandler(m, key), enterDef.Description, enterDef.InputSchema)
 
 	exitName, exitDesc, exitSchema := backend.CliExitPlanModeTool()
-	ts.RegisterTool(exitName, planModeExitToolHandler(m, key), exitDesc, exitSchema)
+	ts.RegisterAlwaysLoadTool(exitName, planModeExitToolHandler(m, key), exitDesc, exitSchema)
 
 	planToolNames := m.registerPlanFileTools(ts, key)
 
@@ -464,7 +470,7 @@ func (m *Manager) wireQuestionToolServer(s *engineSession, key string, opts *typ
 	}
 
 	ask := tools.AskUserQuestionTool()
-	ts.RegisterTool(ask.Name, questionAckToolHandler(key, ask.Name), ask.Description, ask.InputSchema)
+	ts.RegisterAlwaysLoadTool(ask.Name, questionAckToolHandler(key, ask.Name), ask.Description, ask.InputSchema)
 
 	if needsStart {
 		if err := ts.Start(); err != nil {
@@ -538,7 +544,7 @@ func (m *Manager) wireClientToolServer(s *engineSession, key string, opts *types
 		if ct.HumanWait {
 			if kind == "claude-code" {
 				name := ct.Name
-				ts.RegisterTool(name, questionAckToolHandler(key, name), ct.Description, ct.InputSchema)
+				ts.RegisterAlwaysLoadTool(name, questionAckToolHandler(key, name), ct.Description, ct.InputSchema)
 				registered = append(registered, name)
 				continue
 			}
@@ -557,7 +563,7 @@ func (m *Manager) wireClientToolServer(s *engineSession, key string, opts *types
 			continue
 		}
 		name := ct.Name
-		ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+		ts.RegisterAlwaysLoadTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			// The router never returns nil and encodes failures as tool
 			// errors; the MCP ctx makes teardown cancel a blocked human wait.
 			return router(ctx, name, input), nil

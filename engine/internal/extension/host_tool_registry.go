@@ -23,6 +23,7 @@ type toolRegistryTool struct {
 	Description  string         `json:"description"`
 	Parameters   map[string]any `json:"parameters"`
 	PlanModeSafe bool           `json:"planModeSafe,omitempty"`
+	AlwaysLoad   bool           `json:"alwaysLoad,omitempty"`
 }
 
 // hostToolRegistry keeps the accepted subprocess declaration as one atomic snapshot.
@@ -122,7 +123,7 @@ func (h *Host) rpcToolRegistrySnapshot(_ *Context, id int64, raw []byte) {
 
 func (h *Host) dynamicToolDefinition(tool toolRegistryTool) ToolDefinition {
 	name := tool.Name
-	return ToolDefinition{Name: name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe,
+	return ToolDefinition{Name: name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe, AlwaysLoad: tool.AlwaysLoad,
 		Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
 			if !h.hasAcceptedTool(name) {
 				return &types.ToolResult{Content: fmt.Sprintf("extension tool %q is no longer registered", name), IsError: true}, nil

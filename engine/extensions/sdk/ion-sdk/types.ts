@@ -2501,6 +2501,12 @@ export interface ToolDef {
   description: string;
   parameters: any; // JSON Schema
   planModeSafe?: boolean;
+  /**
+   * Keeps the tool in the model's tool list when tool search defers the
+   * rest. Set it on the few tools the model needs on every turn; leave it
+   * unset so the tool loads on demand.
+   */
+  alwaysLoad?: boolean;
   execute: (params: any, ctx: IonContext) => Promise<ToolResult>;
 }
 

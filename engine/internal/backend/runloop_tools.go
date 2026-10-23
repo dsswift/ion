@@ -149,6 +149,11 @@ func (b *ApiBackend) executeTools(
 		// emit without correlation.
 		defer installAmbientLogging(gCtx)()
 
+		// A ToolCall becomes the deferred tool it names (runloop_tool_search.go).
+		if b.resolveToolCall(run, &block, results, i) {
+			return nil
+		}
+
 		// Validate client-declared tool input before any engine policy,
 		// hook, parking, or client routing can act on the call.
 		if b.validateClientToolCall(run, block, results, i) {
@@ -335,100 +340,7 @@ func (b *ApiBackend) executeTools(
 			return nil
 		}
 
-		// Intercept AskUserQuestion sentinel — available in all runs, not
-		// just plan mode. Record a PermissionDenial so consumers can surface
-		// the question, then terminate the run. The user's answer arrives
-		// as the next prompt in the same session.
-		if block.Name == tools.AskUserQuestionName {
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user", map[string]any{
-				"run_id":   run.requestID,
-				"question": block.Input["question"],
-			})
-
-			// If this run has a ChildElicitFn, it is a dispatched child.
-			// Route the question to the dispatcher via elicitation (blocks
-			// until answered). This is the "AskUserQuestion symmetrization":
-			// dispatched children block-and-resume like elicitations instead
-			// of terminating the run.
-			if run.cfg != nil && run.cfg.ChildElicitFn != nil {
-				question, _ := block.Input["question"].(string) //nolint:errcheck // missing arg -> empty string
-				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user routing to dispatcher via ChildElicitFn", map[string]any{
-					"run_id": run.requestID,
-				})
-				answer, cancelled, err := run.cfg.ChildElicitFn(question)
-				if err != nil || cancelled {
-					// Dispatcher couldn't answer (session torn down or
-					// cancelled). Terminate the child run via the standard
-					// PermissionDenial path so consumers see a uniform
-					// outcome.
-					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher unavailable ; terminating", map[string]any{
-						"run_id":    run.requestID,
-						"cancelled": cancelled,
-						"error":     utils.ErrStr(err),
-					})
-					run.mu.Lock()
-					run.exitPlanMode = true
-					run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
-						ToolName:  block.Name,
-						ToolUseID: block.ID,
-						ToolInput: block.Input,
-					})
-					run.mu.Unlock()
-					results[i] = conversation.ToolResultEntry{
-						ToolUseID: block.ID,
-						Content:   "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
-						IsError:   false,
-					}
-					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-						ToolID:  block.ID,
-						Content: "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
-						IsError: false,
-					}})
-					return nil
-				}
-				// Dispatcher answered. Inject the answer as the tool result.
-				// The child run CONTINUES (no PermissionDenial, no terminate).
-				content := answer
-				if content == "" {
-					content = "(no answer provided — proceed with best judgment)"
-				}
-				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher answered; injecting result and continuing", map[string]any{
-					"run_id": run.requestID,
-				})
-				results[i] = conversation.ToolResultEntry{
-					ToolUseID: block.ID,
-					Content:   content,
-					IsError:   false,
-				}
-				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-					ToolID:  block.ID,
-					Content: content,
-					IsError: false,
-				}})
-				return nil
-			}
-
-			// Standard path: record a PermissionDenial so consumers can
-			// surface the question, then terminate the run. The user's
-			// answer arrives as the next prompt in the same session.
-			run.mu.Lock()
-			run.exitPlanMode = true
-			run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
-				ToolName:  block.Name,
-				ToolUseID: block.ID,
-				ToolInput: block.Input,
-			})
-			run.mu.Unlock()
-			results[i] = conversation.ToolResultEntry{
-				ToolUseID: block.ID,
-				Content:   "Question sent to user. Awaiting response.",
-				IsError:   false,
-			}
-			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-				ToolID:  block.ID,
-				Content: "Question sent to user. Awaiting response.",
-				IsError: false,
-			}})
+		if b.interceptAskUserQuestion(run, block, results, i) {
 			return nil
 		}
 
@@ -535,7 +447,9 @@ func (b *ApiBackend) executeTools(
 		// double-emitting for the same failure.
 		failureEmitted := false
 
-		if tools.GetTool(block.Name) != nil {
+		if found, ok := run.searchDeferred(block); ok {
+			toolResult = found
+		} else if tools.GetTool(block.Name) != nil {
 			toolCtx = tools.WithBackgroundToolID(toolCtx, block.ID)
 			toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
 		} else if mcpRouter != nil {

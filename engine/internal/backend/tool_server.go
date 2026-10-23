@@ -72,6 +72,7 @@ type toolEntry struct {
 	handler     ToolHandler
 	description string
 	inputSchema map[string]interface{}
+	alwaysLoad  bool
 }
 
 // ToolHandler executes a tool call and returns the result. ctx is the MCP
@@ -133,14 +134,32 @@ func newNamedToolServer(sessionID, name, token string) *ToolServer {
 	}
 }
 
-// RegisterTool adds a tool to the server with its full MCP metadata.
+// AlwaysLoadMetaKey is the tools/list `_meta` key that asks the Claude Code
+// CLI to load a tool upfront when its tool search defers the rest.
+const AlwaysLoadMetaKey = "anthropic/alwaysLoad"
+
+// RegisterTool adds a tool to the server with its full MCP metadata. The tool
+// is deferrable: under the CLI's tool search it reaches the model by name and
+// loads when the model searches for it.
 func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description string, inputSchema map[string]interface{}) {
+	ts.registerTool(name, handler, description, inputSchema, false)
+}
+
+// RegisterAlwaysLoadTool adds a tool the model needs on every turn. Its
+// tools/list entry carries `_meta["anthropic/alwaysLoad"] = true`, so the
+// CLI keeps it in the tool list when tool search defers the rest.
+func (ts *ToolServer) RegisterAlwaysLoadTool(name string, handler ToolHandler, description string, inputSchema map[string]interface{}) {
+	ts.registerTool(name, handler, description, inputSchema, true)
+}
+
+func (ts *ToolServer) registerTool(name string, handler ToolHandler, description string, inputSchema map[string]interface{}, alwaysLoad bool) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	ts.tools[name] = toolEntry{
 		handler:     handler,
 		description: description,
 		inputSchema: inputSchema,
+		alwaysLoad:  alwaysLoad,
 	}
 
 	schema := inputSchema
@@ -221,16 +240,21 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 		}
 	}(handler)
 
-	ts.server.AddTool(&mcp.Tool{
+	tool := &mcp.Tool{
 		Name:        name,
 		Description: desc,
 		InputSchema: schema,
-	}, wrappedHandler)
+	}
+	if alwaysLoad {
+		tool.Meta = mcp.Meta{AlwaysLoadMetaKey: true}
+	}
+	ts.server.AddTool(tool, wrappedHandler)
 
-	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "registered tool ( chars, )", map[string]any{
-		"name":   name,
-		"desc":   len(description),
-		"schema": inputSchema != nil,
+	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "registered tool", map[string]any{
+		"name":        name,
+		"desc":        len(description),
+		"schema":      inputSchema != nil,
+		"always_load": alwaysLoad,
 	})
 }
 
@@ -402,6 +426,14 @@ func (ts *ToolServer) HasTool(name string) bool {
 	defer ts.mu.Unlock()
 	_, ok := ts.tools[name]
 	return ok
+}
+
+// AlwaysLoads reports whether a registered tool loads upfront under the CLI's
+// tool search (RegisterAlwaysLoadTool). False for a deferrable or unknown tool.
+func (ts *ToolServer) AlwaysLoads(name string) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.tools[name].alwaysLoad
 }
 
 // InvokeTool runs a registered tool's handler directly, exactly as an inbound

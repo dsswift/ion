@@ -786,6 +786,7 @@ interface ToolDef {
   description: string
   parameters: any                    // JSON Schema
   planModeSafe?: boolean             // if true, available during plan mode
+  alwaysLoad?: boolean               // if true, stays loaded under tool search
   execute: (params: any, ctx: IonContext) => Promise<ToolResult>
 }
 ```

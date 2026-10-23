@@ -24,6 +24,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
 | `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
 | `protectedOperations` | object | omitted | Named outbound calls whose secret the engine injects. Global file and enterprise config only. See [protectedOperations](#protectedoperations). |
+| `toolSearch` | object | omitted | How MCP and extension tools load: upfront or on demand. See [toolSearch](#toolsearch). |
 
 ## slashModelTier
 
@@ -785,6 +786,20 @@ Context window compaction controls how the engine manages conversation length. T
     "memoryUpdateMinTurns": 5,
     "memoryMaxTokens": 8192
   }
+}
+```
+
+## toolSearch
+
+Selects how deferrable tools (MCP server tools, and extension tools not marked `alwaysLoad`) load. One setting governs the API and claude-code backends. Full behavior: [Tool Search](../tools/tool-search.md).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | omitted | `"on"`, `"off"`, `"auto"`, or `"auto:N"` (N from 0 to 100). Omitted: `auto` at 10% on the API backend; the Claude Code CLI's own default on claude-code. |
+
+```json
+{
+  "toolSearch": { "mode": "auto:5" }
 }
 ```
 

@@ -108,6 +108,10 @@ Require explicit opt-in via `RegisterTaskTools()`. See [Task Tools](task-tools.m
 | TaskGet | Check task status and results |
 | TaskStop | Stop a running task |
 
+### Tool Search
+
+MCP server tools and extension tools can load on demand instead of riding in every request. See [Tool Search](tool-search.md).
+
 ### Plan Mode Tool
 
 `ExitPlanMode` is not registered globally. It is injected by the API backend only when plan mode is active and intercepted before normal tool execution.

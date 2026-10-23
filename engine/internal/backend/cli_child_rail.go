@@ -119,7 +119,7 @@ func registerChildPlanTools(ts *ToolServer, runID string, opts *types.RunOptions
 	}
 
 	exitName, exitDesc, exitSchema := CliExitPlanModeTool()
-	ts.RegisterTool(exitName, func(_ context.Context, _ map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterAlwaysLoadTool(exitName, func(_ context.Context, _ map[string]interface{}) (*types.ToolResult, error) {
 		utils.LogWithFields(utils.LevelInfo, "backend.cli_child_tools", "ExitPlanMode invoked by delegated-CLI child", map[string]any{"run_id": runID, "planning": planning})
 		if !planning {
 			return &types.ToolResult{Content: "Plan mode is not active, so there is no plan to present. Continue with the task."}, nil
@@ -138,7 +138,7 @@ func registerChildPlanTools(ts *ToolServer, runID string, opts *types.RunOptions
 	}
 
 	writeName, writeDesc, writeSchema := CliWritePlanTool()
-	ts.RegisterTool(writeName, func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterAlwaysLoadTool(writeName, func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		if !planning || planFilePath == "" {
 			return notPlanning(writeName), nil
 		}
@@ -150,7 +150,7 @@ func registerChildPlanTools(ts *ToolServer, runID string, opts *types.RunOptions
 	}, writeDesc, writeSchema)
 
 	editName, editDesc, editSchema := CliEditPlanTool()
-	ts.RegisterTool(editName, func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+	ts.RegisterAlwaysLoadTool(editName, func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 		if !planning || planFilePath == "" {
 			return notPlanning(editName), nil
 		}

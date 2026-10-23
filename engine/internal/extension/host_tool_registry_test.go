@@ -27,3 +27,29 @@ func TestHostToolRegistryRejectsStaleAndInvalidSnapshots(t *testing.T) {
 		t.Fatal("invalid snapshot changed accepted registry")
 	}
 }
+
+// A tool's always-load mark survives the init handshake and a later registry
+// snapshot, so the session can keep it loaded under tool search.
+func TestHostToolRegistryCarriesAlwaysLoad(t *testing.T) {
+	host := NewHost()
+	raw := []byte(`{"tools":[{"name":"core","description":"core","parameters":{"type":"object"},"alwaysLoad":true},{"name":"lazy","description":"lazy","parameters":{"type":"object"}}]}`)
+	if err := host.parseInitResult(raw); err != nil {
+		t.Fatalf("parse init: %v", err)
+	}
+	always := map[string]bool{}
+	for _, tool := range host.SDK().Tools() {
+		always[tool.Name] = tool.AlwaysLoad
+	}
+	if !always["core"] || always["lazy"] {
+		t.Fatalf("init always-load = %v, want core only", always)
+	}
+
+	if err := host.applyToolSnapshot(toolRegistrySnapshot{Revision: 1, Tools: []toolRegistryTool{{Name: "core", Description: "core", Parameters: map[string]any{"type": "object"}, AlwaysLoad: true}}}, false); err != nil {
+		t.Fatalf("apply snapshot: %v", err)
+	}
+	for _, tool := range host.SDK().Tools() {
+		if tool.Name == "core" && !tool.AlwaysLoad {
+			t.Fatal("the snapshot dropped core's always-load mark")
+		}
+	}
+}

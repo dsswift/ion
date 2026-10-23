@@ -712,7 +712,10 @@ type ToolDefinition struct {
 	Description  string
 	Parameters   map[string]interface{}
 	PlanModeSafe bool
-	Execute      func(params interface{}, ctx *Context) (*types.ToolResult, error)
+	// AlwaysLoad keeps the tool in the model's tool list when tool search
+	// defers the rest. Zero leaves it deferrable.
+	AlwaysLoad bool
+	Execute    func(params interface{}, ctx *Context) (*types.ToolResult, error)
 }
 
 // CommandDefinition describes a slash command registered by an extension.

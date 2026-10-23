@@ -1194,6 +1194,7 @@ async function handleRequest(
           description: t.description,
           parameters: t.parameters,
           ...(t.planModeSafe && { planModeSafe: true }),
+          ...(t.alwaysLoad && { alwaysLoad: true }),
         })),
         commands: Object.fromEntries(
           Array.from(commands.entries()).map(([name, def]) => [

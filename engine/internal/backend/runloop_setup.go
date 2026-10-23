@@ -480,6 +480,10 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		}}
 	}
 
+	// Tool search: deferrable tools above the configured threshold leave the
+	// list for ToolSearch and ToolCall (runloop_tool_search.go).
+	toolDefs = applyToolSearch(run, toolDefs, opts.ToolSearchMode, opts.Model)
+
 	sortToolDefs(toolDefs)
 	return toolDefs, serverTools
 }

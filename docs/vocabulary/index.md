@@ -46,6 +46,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Account Policy](#term-account-policy)
 - [Active path](#term-active-path)
 - [Agent](#term-agent)
+- [Always-Load Tool](#term-always-load-tool)
 - [Application Config](#term-application-config)
 - [Async delivery](#term-async-delivery)
 - [Backend](#term-backend)
@@ -117,6 +118,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Telemetry Health](#term-telemetry-health)
 - [Tool](#term-tool)
 - [Tool Execution Boundary](#term-tool-execution-boundary)
+- [Tool Search](#term-tool-search)
 - [Transport](#term-transport)
 - [Turn](#term-turn)
 - [Vocabulary registry](#term-vocabulary-registry)
@@ -888,6 +890,21 @@ A per-principal backstop that refuses a tool call whose path falls outside the s
   - `engine` / `code` / `go`: `func New` in `engine/internal/principalboundary/checker.go`
   - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/policy_checks.go`
 
+#### Tool Search {#term-tool-search}
+
+How a run keeps deferrable tools (MCP server tools, and extension tools not marked always-load) out of its tool list and loads one when the model looks it up. On the API backend the engine's ToolSearch tool returns definitions and its ToolCall tool runs a deferred tool; on the claude-code backend the CLI's own tool search applies, with the engine's bridged tools marked always-load. One engine.json setting, toolSearch.mode, governs both.
+
+- **ID:** `tool-search`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ToolSearchConfig struct` in `engine/internal/types/tool_search.go`
+  - `engine` / `code` / `go`: `func applyToolSearch` in `engine/internal/backend/runloop_tool_search.go`
+  - `engine` / `code` / `go`: `func claudeToolSearchEnv` in `engine/internal/backend/claude_code_tool_search.go`
+
 #### Webhook {#term-webhook}
 
 An inbound HTTP route that the engine hosts. The engine owns the listening and the routing. The extension owns the action.
@@ -1233,6 +1250,21 @@ An outbound HTTP call the operator declares by name in the global engine.json or
   - `sdk` / `code` / `typescript`: `protectedOperation(` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 ### public-contract
+
+#### Always-Load Tool {#term-always-load-tool}
+
+A tool that stays in the model's tool list when tool search defers the rest. The engine's own tools always load; an extension opts a tool in with alwaysLoad. On the claude-code backend the mark travels as _meta["anthropic/alwaysLoad"] in the engine MCP server's tools/list.
+
+- **ID:** `always-load-tool`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (ts *ToolServer) RegisterAlwaysLoadTool` in `engine/internal/backend/tool_server.go`
+  - `sdk` / `code` / `go`: `type ToolDef struct` in `sdk/go/types.go`
+  - `sdk` / `code` / `typescript`: `export interface ToolDef` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 #### Application Config {#term-application-config}
 

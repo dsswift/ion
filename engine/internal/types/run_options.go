@@ -286,6 +286,9 @@ type RunOptions struct {
 	CapabilityTools          []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt         string       `json:"-"` // capability prompt content injected by session manager
 	WebSearchMode            string       `json:"-"` // "auto", "client", or "server", propagated from config
+	// ToolSearchMode is EngineRuntimeConfig.ToolSearch.Mode, propagated from
+	// config. Parsed where it is used (types.ParseToolSearchMode).
+	ToolSearchMode string `json:"-"`
 
 	// --- Early-stop continuation (Claude-Code-style "keep working" nudge) ---
 	//

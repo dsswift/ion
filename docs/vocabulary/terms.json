@@ -142,6 +142,38 @@
       "notes": "The engine emits a complete agent roster snapshot. Consumers replace local state with the payload."
     },
     {
+      "id": "always-load-tool",
+      "term": "Always-Load Tool",
+      "definition": "A tool that stays in the model's tool list when tool search defers the rest. The engine's own tools always load; an extension opts a tool in with alwaysLoad. On the claude-code backend the mark travels as _meta[\"anthropic/alwaysLoad\"] in the engine MCP server's tools/list.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (ts *ToolServer) RegisterAlwaysLoadTool",
+          "path": "engine/internal/backend/tool_server.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ToolDef struct",
+          "path": "sdk/go/types.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ToolDef",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "application-config",
       "term": "Application Config",
       "definition": "Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and gives each extension the common section plus its own allowlist-keyed section. Secret values stay in the engine. Every read carries a lifecycle state, so not ready is distinct from not found.",
@@ -2025,6 +2057,38 @@
           "language": "go",
           "symbol": "func IsToolAllowedFor",
           "path": "engine/internal/config/policy_checks.go"
+        }
+      ]
+    },
+    {
+      "id": "tool-search",
+      "term": "Tool Search",
+      "definition": "How a run keeps deferrable tools (MCP server tools, and extension tools not marked always-load) out of its tool list and loads one when the model looks it up. On the API backend the engine's ToolSearch tool returns definitions and its ToolCall tool runs a deferred tool; on the claude-code backend the CLI's own tool search applies, with the engine's bridged tools marked always-load. One engine.json setting, toolSearch.mode, governs both.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ToolSearchConfig struct",
+          "path": "engine/internal/types/tool_search.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func applyToolSearch",
+          "path": "engine/internal/backend/runloop_tool_search.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func claudeToolSearchEnv",
+          "path": "engine/internal/backend/claude_code_tool_search.go"
         }
       ]
     },

@@ -480,6 +480,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if cfg.WebSearch != nil && cfg.WebSearch.Mode != "" {
 		opts.WebSearchMode = cfg.WebSearch.Mode
 	}
+	if cfg.ToolSearch != nil && cfg.ToolSearch.Mode != "" {
+		opts.ToolSearchMode = cfg.ToolSearch.Mode
+	}
 }
 
 // resolveModelTier resolves model tier aliases (e.g. "fast" -> configured fast model)

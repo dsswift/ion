@@ -679,6 +679,7 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 					Name:        "mcp__" + conn.Name() + "__" + tool.Name,
 					Description: tool.Description,
 					InputSchema: tool.InputSchema,
+					Deferrable:  true,
 				})
 			}
 		}
@@ -709,6 +710,7 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 				Description:  tool.Description,
 				InputSchema:  tool.Parameters,
 				PlanModeSafe: tool.PlanModeSafe,
+				Deferrable:   !tool.AlwaysLoad,
 			})
 		}
 	} else {

@@ -120,12 +120,19 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 	for _, td := range cfg.ExternalTools {
 		name := td.Name
 		router := cfg.McpToolRouter
-		ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+		handler := func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			if router == nil {
 				return &types.ToolResult{Content: "tool router unavailable for dispatched CLI child", IsError: true}, nil
 			}
 			return router(ctx, name, input)
-		}, td.Description, td.InputSchema)
+		}
+		// A deferrable tool (MCP, or an extension tool not marked
+		// always-load) loads on demand under the CLI's tool search.
+		if td.Deferrable {
+			ts.RegisterTool(name, handler, td.Description, td.InputSchema)
+		} else {
+			ts.RegisterAlwaysLoadTool(name, handler, td.Description, td.InputSchema)
+		}
 	}
 
 	// Client tools are already part of ExternalTools when an API child runs,
@@ -139,7 +146,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 			}
 			name := clientTool.Name
 			router := opts.ClientToolRouter
-			ts.RegisterTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+			ts.RegisterAlwaysLoadTool(name, func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 				return router(ctx, name, input), nil
 			}, clientTool.Description, clientTool.InputSchema)
 		}
@@ -152,7 +159,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		agentDef := tools.AgentTool()
 		spawner := cfg.AgentSpawner
 		cwd := opts.ProjectPath
-		ts.RegisterTool("ion_agent", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+		ts.RegisterAlwaysLoadTool("ion_agent", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			prompt, _ := input["prompt"].(string)           //nolint:errcheck // missing arg -> empty string, validated below
 			name, _ := input["name"].(string)               //nolint:errcheck // missing arg -> empty string
 			description, _ := input["description"].(string) //nolint:errcheck // missing arg -> empty string
@@ -171,7 +178,7 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 	if cfg.AgentStatus != nil {
 		statusDef := tools.AgentStatusTool()
 		getter := cfg.AgentStatus
-		ts.RegisterTool("ion_agent_status", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
+		ts.RegisterAlwaysLoadTool("ion_agent_status", func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
 			return tools.ExecuteTool(tools.WithAgentStatusGetter(ctx, getter), tools.AgentStatusToolName, input, "")
 		}, statusDef.Description, statusDef.InputSchema)
 	}

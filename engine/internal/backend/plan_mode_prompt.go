@@ -16,7 +16,11 @@ import (
 // used to smuggle a mutating tool into plan mode. Omitting Skill disabled the
 // entire skill system precisely in the mode where codebase-investigation skills
 // are most useful, and the model silently fell back to raw Grep/Read sweeps.
-var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "AgentStatus", "WebFetch", "WebSearch", "Skill"}
+//
+// ToolSearch is in the set for the same reason: it returns tool definitions and
+// runs nothing, and without it a planning model could not reach a deferred
+// read-only tool.
+var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "AgentStatus", "WebFetch", "WebSearch", "Skill", "ToolSearch"}
 
 // DefaultPlanModeTools returns a copy of the read-only tool set a plan policy
 // allows when the harness supplies no list of its own.

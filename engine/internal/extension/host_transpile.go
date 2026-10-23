@@ -193,6 +193,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 			Description  string                 `json:"description"`
 			Parameters   map[string]interface{} `json:"parameters"`
 			PlanModeSafe bool                   `json:"planModeSafe"`
+			AlwaysLoad   bool                   `json:"alwaysLoad"`
 		} `json:"tools"`
 		Commands map[string]struct {
 			Description string `json:"description"`
@@ -240,7 +241,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 
 	toolDeclarations := make([]toolRegistryTool, 0, len(result.Tools))
 	for _, tool := range result.Tools {
-		toolDeclarations = append(toolDeclarations, toolRegistryTool{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe})
+		toolDeclarations = append(toolDeclarations, toolRegistryTool{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe, AlwaysLoad: tool.AlwaysLoad})
 	}
 	// An engine host keeps only what the engine can ever call on it.
 	toolDeclarations, result.Commands, result.Hooks = h.filterEngineHostInit(toolDeclarations, result.Commands, result.Hooks)

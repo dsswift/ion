@@ -32,10 +32,10 @@ import (
 // same authoring surface whichever way the session reached plan mode.
 func (m *Manager) registerPlanFileTools(ts *backend.ToolServer, key string) []string {
 	writeName, writeDesc, writeSchema := backend.CliWritePlanTool()
-	ts.RegisterTool(writeName, writePlanToolHandler(m, key), writeDesc, writeSchema)
+	ts.RegisterAlwaysLoadTool(writeName, writePlanToolHandler(m, key), writeDesc, writeSchema)
 
 	editName, editDesc, editSchema := backend.CliEditPlanTool()
-	ts.RegisterTool(editName, editPlanToolHandler(m, key), editDesc, editSchema)
+	ts.RegisterAlwaysLoadTool(editName, editPlanToolHandler(m, key), editDesc, editSchema)
 
 	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "plan-file authoring tools registered on ToolServer", map[string]any{
 		"key": key, "tools": []string{writeName, editName},

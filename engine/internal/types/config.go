@@ -436,6 +436,9 @@ type EngineRuntimeConfig struct {
 	// means every one is off. See types.DebugConfig.
 	Debug     *DebugConfig     `json:"debug,omitempty"`
 	WebSearch *WebSearchConfig `json:"webSearch,omitempty"`
+	// ToolSearch selects how deferrable tools load on every backend. Nil
+	// leaves each backend's default. See types.ToolSearchConfig.
+	ToolSearch *ToolSearchConfig `json:"toolSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
