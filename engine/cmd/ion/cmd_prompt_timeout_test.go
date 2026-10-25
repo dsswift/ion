@@ -24,7 +24,7 @@ func TestPromptTimeoutCleanupHelper(t *testing.T) {
 }
 
 // TestPromptTimeoutCleanupStopsEphemeralSessionWithoutAbort exercises the CLI
-// against a socket peer that never emits an idle event. The prompt must time
+// against a socket peer that accepts the prompt and never emits an idle event. The prompt must time
 // out, stop its ephemeral session, and exit instead of waiting for a response
 // to the fire-and-forget abort command.
 func TestPromptTimeoutCleanupStopsEphemeralSessionWithoutAbort(t *testing.T) {
@@ -158,5 +158,12 @@ func servePromptTimeoutConnection(t *testing.T, conn net.Conn, commands chan<- s
 	}
 	if _, err := conn.Write(append(response, '\n')); err != nil {
 		t.Errorf("write response: %v", err)
+		return
+	}
+	// The engine streams a run on its prompt's connection and never sends this
+	// one an idle event: hold it open until the CLI closes it.
+	if request.Command == "send_prompt" {
+		for scanner.Scan() {
+		}
 	}
 }

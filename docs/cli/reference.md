@@ -95,7 +95,9 @@ When no positional argument is given and stdin is an interactive terminal, Ion r
 
 #### Output formats
 
-**`text`** (default): Streams text deltas to stdout as the LLM generates them. Prints a final newline when the session goes idle. For ephemeral prompts, cleans up the session and daemon afterward. Exits 1 when the engine reports an error for the run, or the stream closes before the session goes idle.
+**`text`** (default): Streams text deltas to stdout as the LLM generates them. Prints a final newline when the session goes idle. For ephemeral prompts, cleans up the session and daemon afterward. Exits 1 when the engine reports an error for the run, the session dies (`engine_dead`), or the stream closes before the session goes idle.
+
+The `text` and `stream-json` formats stream the run on the same connection that sent the prompt. That connection owns the session, so the engine's orphaned-session reaper leaves the session alone while the CLI waits on it.
 
 **`json`**: Returns the raw command response as indented JSON. Does not stream.
 

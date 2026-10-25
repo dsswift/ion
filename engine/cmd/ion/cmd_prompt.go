@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -185,16 +186,9 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	}
 
 	if ephemeral && outputMode == "text" {
-		result, err := connectAndSend(sock, msg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			exitPrompt(1)
-		}
-		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
-			exitPrompt(1)
-		}
-		end := streamUntilIdle(sock, key, timeout)
+		stream := openPromptStreamOrExit(sock, msg, timeout)
+		end := streamUntilIdle(stream, key)
+		stream.close()
 		cleanupEphemeralPrompt(sock, key, spawned)
 		if code := end.exitCode(); code != 0 {
 			exitPrompt(code)
@@ -203,21 +197,24 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	}
 
 	if outputMode == "stream-json" {
-		result, err := connectAndSend(sock, msg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			exitPrompt(1)
-		}
-		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
-			exitPrompt(1)
-		}
-		timedOut := attachStream(sock, key, timeout)
+		stream := openPromptStreamOrExit(sock, msg, timeout)
+		timedOut := printStream(stream)
+		stream.close()
 		if timedOut {
 			if ephemeral {
 				cleanupEphemeralPrompt(sock, key, spawned)
 			}
 			exitPrompt(124)
+		}
+		return
+	}
+
+	if outputMode != "json" && flags["attach"] == "true" {
+		stream := openPromptStreamOrExit(sock, msg, timeout)
+		code := streamUntilIdle(stream, key).exitCode()
+		stream.close()
+		if code != 0 {
+			exitPrompt(code)
 		}
 		return
 	}
@@ -239,15 +236,24 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		exitPrompt(1)
 	}
 	if ok, _ := result["ok"].(bool); ok { //nolint:errcheck // missing/!bool ok treated as failure -> prints result JSON
-		if flags["attach"] == "true" {
-			if code := streamUntilIdle(sock, key, timeout).exitCode(); code != 0 {
-				exitPrompt(code)
-			}
-		} else {
-			fmt.Println("Prompt sent. Use `ion attach` to stream output.")
-		}
+		fmt.Println("Prompt sent. Use `ion attach` to stream output.")
 	} else {
 		data := mustMarshalCLI(result)
 		fmt.Println(string(data))
 	}
+}
+
+// openPromptStreamOrExit sends the prompt and returns the connection that
+// streams its run, or exits: 124 when the deadline fired first, 1 otherwise.
+func openPromptStreamOrExit(sock string, msg map[string]interface{}, timeout time.Duration) *promptStream {
+	stream, err := openPromptStream(sock, msg, timeout)
+	if errors.Is(err, errPromptNotAccepted) {
+		fmt.Fprintf(os.Stderr, "Timeout: %s\n", err)
+		exitPrompt(124)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		exitPrompt(1)
+	}
+	return stream
 }
