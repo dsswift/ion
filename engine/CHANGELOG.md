@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.2.3](https://github.com/dsswift/ion/compare/engine-v3.2.2...engine-v3.2.3) (2026-10-25)
+
+### Bug Fixes
+
+* **engine:** keep the prompt's session owned while attached ([72376f4](https://github.com/dsswift/ion/commit/72376f4559763cd04df36a1757190d07305c59b6))
+
 ## [3.2.2](https://github.com/dsswift/ion/compare/engine-v3.2.1...engine-v3.2.2) (2026-10-23)
 
 ### Bug Fixes
