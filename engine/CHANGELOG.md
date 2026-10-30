@@ -18,6 +18,17 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.4.0](https://github.com/dsswift/ion/compare/engine-v3.3.0...engine-v3.4.0) (2026-10-30)
+
+### Features
+
+* **engine:** accept a client's mcp servers per session ([c7895f1](https://github.com/dsswift/ion/commit/c7895f199fa437a448eaeb89b0e864a7f752776d))
+* **engine:** keep acp turns whole and tool cards native ([987fc2a](https://github.com/dsswift/ion/commit/987fc2a8d0a008942d0fdff8e174d4d214b4ae6e))
+
+### Bug Fixes
+
+* **engine:** pair streamed tool input with its tool id ([14306f3](https://github.com/dsswift/ion/commit/14306f323cfcc2c4da5d04739992520f244bd0ac))
+
 ## [3.3.0](https://github.com/dsswift/ion/compare/engine-v3.2.3...engine-v3.3.0) (2026-10-30)
 
 ### Features
