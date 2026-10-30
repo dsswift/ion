@@ -2,6 +2,7 @@ package acpagent
 
 import (
 	"github.com/dsswift/ion/engine/internal/utils"
+	"time"
 )
 
 // translate maps one engine event onto the ACP surface. Events the client
@@ -187,6 +188,7 @@ func (s *Session) status(e map[string]any) {
 		return
 	}
 	state := str(fields, "state")
+	utils.LogWithFields(utils.LevelDebug, "acp", "engine status", map[string]any{"session_id": s.id, "state": state, "run_epoch": fields["runEpoch"], "pending": fields["hasPendingWork"], "background_shells": num(fields, "backgroundShells"), "polls": num(fields, "pollsWaiting"), "background_agents": num(fields, "backgroundAgents"), "completion": str(fields, "completionReason")})
 	if !s.observeRunEpoch(fields, state) || state != "idle" {
 		return
 	}
@@ -219,12 +221,20 @@ func (s *Session) status(e map[string]any) {
 	if holds {
 		t.hold()
 	}
+	releasing := !holds && t.holding
+	if releasing && t.release == nil {
+		t.release = time.AfterFunc(heldTurnGrace, func() { s.releaseHeldTurn(t) })
+	}
 	s.mu.Unlock()
 	if awaiting {
 		return
 	}
 	if holds {
 		utils.LogWithFields(utils.LevelInfo, "acp", "turn held open for the engine's pending work", map[string]any{"session_id": s.id, "background_shells": num(fields, "backgroundShells"), "polls": num(fields, "pollsWaiting"), "background_agents": num(fields, "backgroundAgents")})
+		return
+	}
+	if releasing {
+		utils.LogWithFields(utils.LevelInfo, "acp", "held turn sees no work left; waiting for the engine's next run", map[string]any{"session_id": s.id, "grace_ms": heldTurnGrace.Milliseconds()})
 		return
 	}
 	switch str(fields, "completionReason") {
@@ -237,15 +247,32 @@ func (s *Session) status(e map[string]any) {
 	}
 }
 
-// idleHoldsWork reports whether an idle status says the engine will run
-// again on its own for this session: it is parked on background commands,
-// waiting on polls, or has agents working that will deliver into a run.
+// heldTurnGrace is how long a held turn waits, after the engine reports its
+// pending work gone, for the run that delivers it. The engine announces
+// that run within milliseconds; a turn that sees no run by then ends.
+var heldTurnGrace = 3 * time.Second
+
+// releaseHeldTurn ends a held turn whose engine never started the run it
+// waited for. A turn that moved on (a run started, or it already ended)
+// is left alone.
+func (s *Session) releaseHeldTurn(t *turn) {
+	s.mu.Lock()
+	stale := s.turn != t || !t.holding
+	s.mu.Unlock()
+	if stale {
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "acp", "held turn released; the engine started no run", map[string]any{"session_id": s.id})
+	s.finishTurn(StopEndTurn, nil)
+}
+
+// idleHoldsWork reports whether an idle status says the engine still holds
+// accepted work for this session: a park on background commands, polls or
+// agents in flight, a completion it owes a run, a queued prompt. The engine
+// publishes that as one flag, and an idle that carries it is not terminal.
 func idleHoldsWork(fields map[string]any) bool {
 	pending, _ := fields["hasPendingWork"].(bool) //nolint:errcheck // absent means none
-	if !pending {
-		return false
-	}
-	return num(fields, "backgroundShells") > 0 || num(fields, "pollsWaiting") > 0 || num(fields, "backgroundAgents") > 0
+	return pending
 }
 
 // observeRunEpoch records the status's run epoch and reports whether the
@@ -281,6 +308,7 @@ func (s *Session) observeRunEpoch(fields map[string]any, state string) bool {
 	if state == "running" {
 		t.started = true
 		t.holding = false
+		t.disarmRelease()
 	}
 	return true
 }

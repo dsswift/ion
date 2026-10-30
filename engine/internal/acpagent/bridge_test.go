@@ -203,6 +203,49 @@ func TestIdleWithPendingWorkHoldsTheTurn(t *testing.T) {
 	}
 }
 
+// The engine reports a parked session's work gone the moment a command
+// finishes, then starts the run that delivers it. A held turn survives that
+// gap and ends on the delivering run's idle; with no run coming, it ends
+// once the grace window passes.
+func TestHeldTurnSurvivesTheGapBeforeTheWakeRun(t *testing.T) {
+	prev := heldTurnGrace
+	heldTurnGrace = 200 * time.Millisecond
+	defer func() { heldTurnGrace = prev }()
+	f := newFakeEngine(t)
+	defer f.close()
+	_, c := startAgent(t, f, Options{})
+	c.initialize(ClientCapabilities{})
+	key := openSession(t, f, c, 1)
+	done := c.sendPrompt(PromptRequest{SessionID: key, Prompt: []ContentBlock{{Type: "text", Text: "build"}}})
+	f.waitCmd("send_prompt")
+	f.emit(key, statusAt("running", 2))
+	f.emit(key, snapshot("idle", 2, map[string]any{"hasPendingWork": true, "backgroundShells": 1}))
+	assertPending(t, done)
+	f.emit(key, snapshot("idle", 2, nil))
+	assertPending(t, done)
+	f.emit(key, statusAt("running", 3))
+	time.Sleep(300 * time.Millisecond)
+	assertPending(t, done)
+	f.emit(key, map[string]any{"type": "engine_text_delta", "text": "Finished."})
+	f.emit(key, snapshot("idle", 3, map[string]any{"completionReason": "normal"}))
+	if u := c.next(UpdateAgentMessageChunk); u.Content.Text != "Finished." {
+		t.Fatalf("wake text = %+v", u)
+	}
+	if r := assertEnded(t, done); r.StopReason != StopEndTurn {
+		t.Fatalf("turn = %+v", r)
+	}
+
+	done = c.sendPrompt(PromptRequest{SessionID: key, Prompt: []ContentBlock{{Type: "text", Text: "again"}}})
+	f.waitCmd("send_prompt")
+	f.emit(key, statusAt("running", 4))
+	f.emit(key, snapshot("idle", 4, map[string]any{"hasPendingWork": true, "backgroundShells": 1}))
+	f.emit(key, snapshot("idle", 4, nil))
+	assertPending(t, done)
+	if r := assertEnded(t, done); r.StopReason != StopEndTurn {
+		t.Fatalf("released held turn = %+v", r)
+	}
+}
+
 // A plan the model proposes is shown as a plan, offered for approval, and
 // on approval the session leaves plan mode and the turn continues with the
 // go-ahead; a refusal ends the turn still in plan mode.

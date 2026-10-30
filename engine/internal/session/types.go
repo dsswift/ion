@@ -729,6 +729,13 @@ type engineSession struct {
 	// "idle": a parked session has work in flight and will resume on its own.
 	parked *parkedRun
 
+	// wakesOwed counts background completions this session has claimed for
+	// delivery whose run has not started yet. A completion clears the park
+	// and drains its task before the run begins, so without this count the
+	// status in between would read idle with nothing pending, which a client
+	// takes as the end of the work. Guarded by Manager.mu.
+	wakesOwed int
+
 	// pendingBackgroundCompletions holds completions that arrived under the
 	// "queue" delivery mode (or while a wake could not start a run). They ride
 	// along with the next run the session starts for any other reason.

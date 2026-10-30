@@ -167,6 +167,9 @@ func (s *Session) finishTurn(reason string, err error) {
 	s.mu.Lock()
 	t := s.turn
 	s.turn = nil
+	if t != nil {
+		t.disarmRelease()
+	}
 	s.mu.Unlock()
 	if t == nil {
 		return

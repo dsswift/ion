@@ -447,3 +447,42 @@ func TestBackgroundWake_ParkRefusedWithNoActiveRun(t *testing.T) {
 		t.Error("ParkMainLoop should refuse when there is no active run")
 	}
 }
+
+// Between a completion and the run it wakes, the session still owes work:
+// no status in that window may read idle with nothing pending, or a client
+// holding a turn open for the park takes it as the end.
+func TestBackgroundWake_StatusKeepsPendingWorkUntilTheRunStarts(t *testing.T) {
+	key := "wake-pending-window"
+	mgr, _, ec := newWakeManager(t, key, types.BackgroundDeliveryWake)
+	mgr.registerOutstandingBackgroundTask(key, "bash-1", "sleep 1")
+	mgr.markSessionParked(key, []string{"bash-1"})
+	before := ec.count()
+
+	mgr.onBackgroundTaskComplete(testCompletion(key, "bash-1", "sleep 1"))
+
+	ec.mu.Lock()
+	events := append([]keyedEvent(nil), ec.events[before:]...)
+	ec.mu.Unlock()
+	sawRunning := false
+	for _, e := range events {
+		if e.event.Type != "engine_status" || e.event.Fields == nil {
+			continue
+		}
+		if e.event.Fields.State == "running" {
+			sawRunning = true
+			break
+		}
+		if !e.event.Fields.HasPendingWork {
+			t.Fatalf("status before the wake run reads idle with no pending work: %+v", e.event.Fields)
+		}
+	}
+	if !sawRunning {
+		t.Fatal("expected the completion to start a run")
+	}
+	mgr.mu.RLock()
+	owed := mgr.sessions[key].wakesOwed
+	mgr.mu.RUnlock()
+	if owed != 0 {
+		t.Fatalf("wakesOwed = %d after delivery, want 0", owed)
+	}
+}

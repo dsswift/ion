@@ -143,7 +143,16 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 		s.parked = nil
 		claimedPark = true
 	}
+	// The session owes this completion a run until delivery settles it:
+	// every status emitted in between must still report pending work.
+	owed := tracked && !runActive && dispatchOwner == ""
+	if owed {
+		s.wakesOwed++
+	}
 	m.mu.Unlock()
+	if owed {
+		defer m.settleWakeOwed(key)
+	}
 
 	remainingIDs := make([]string, 0, len(remaining))
 	for _, t := range remaining {
@@ -460,7 +469,9 @@ func (m *Manager) onParkTimeout(key string) {
 	stuck := outstandingSnapshotLocked(s)
 	parkedFor := time.Since(s.parked.ParkedAt)
 	s.parked = nil
+	s.wakesOwed++
 	m.mu.Unlock()
+	defer m.settleWakeOwed(key)
 
 	mode := m.backgroundTasksConfig().Delivery
 	if mode != types.BackgroundDeliveryWake {
@@ -584,4 +595,16 @@ func (m *Manager) ParkMainLoop(key string) bool {
 		"session_id": key, "run_id": rid, "count": len(outstanding), "task_ids": outstanding,
 	})
 	return true
+}
+
+// settleWakeOwed releases one owed wake once its delivery settled: the run
+// started (and announced itself with a running status), the completion was
+// queued, or delivery was suppressed. Any of those leaves the session's
+// pending-work inventory telling the truth on its own.
+func (m *Manager) settleWakeOwed(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.sessions[key]; ok && s.wakesOwed > 0 {
+		s.wakesOwed--
+	}
 }

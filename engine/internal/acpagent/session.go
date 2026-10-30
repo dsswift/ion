@@ -75,6 +75,10 @@ type turn struct {
 	// background commands, polls, or agents the engine still waits on
 	// will start a further run that belongs to this turn.
 	holding bool
+	// release is armed when a held turn sees an idle with no work left. The
+	// engine starts the run that delivers a completion moments after it
+	// reports the work gone; the turn ends only if no run starts in time.
+	release *time.Timer
 	// asks counts the client answers the turn is waiting on (a question
 	// card, a plan approval); the turn cannot end while one is open.
 	asks int
@@ -84,7 +88,18 @@ type turn struct {
 }
 
 // hold records that an idle engine still owes this turn a run.
-func (t *turn) hold() { t.holding = true }
+func (t *turn) hold() {
+	t.holding = true
+	t.disarmRelease()
+}
+
+// disarmRelease cancels a pending release of a held turn. Caller holds s.mu.
+func (t *turn) disarmRelease() {
+	if t.release != nil {
+		t.release.Stop()
+		t.release = nil
+	}
+}
 
 // awaiting reports whether a client answer is outstanding.
 func (t *turn) awaiting() bool { return t.asks > 0 }
