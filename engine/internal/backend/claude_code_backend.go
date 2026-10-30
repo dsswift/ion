@@ -424,8 +424,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		}
 	}()
 
-	// Parse NDJSON from stdout and normalize events
+	// Parse NDJSON from stdout and normalize events. One normalizer per
+	// run: it pairs each streamed tool input delta with the tool_use block
+	// that opened at its content index.
 	var sessionID string
+	streamNormalizer := normalizer.New()
 	parser := stream.NewParser(stdout)
 	for {
 		raw, ok := parser.Next()
@@ -455,7 +458,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		if t := b.telem.get(run.requestID); t != nil {
 			t.claudeStreamLine(raw)
 		}
-		events := normalizer.Normalize(raw)
+		events := streamNormalizer.Normalize(raw)
 		for _, ev := range events {
 			// Track sessionID from init or result events
 			switch e := ev.Data.(type) {

@@ -19,8 +19,29 @@ func logDecodeFailure(kind string, err error) {
 	})
 }
 
+// Normalizer converts one run's CLI stream. It remembers which tool_use
+// block is open at each content index, so the input_json_delta events that
+// follow a content_block_start carry the tool id they belong to: the CLI's
+// delta names only the index, never the id.
+type Normalizer struct {
+	// toolIDs maps an open tool_use block's content index to its tool id.
+	toolIDs map[int]string
+}
+
+// New returns a Normalizer for one run's stream.
+func New() *Normalizer {
+	return &Normalizer{toolIDs: map[int]string{}}
+}
+
 // Normalize parses a raw JSON event and returns zero or more NormalizedEvents.
+// It keeps no state between lines: a tool input delta it returns carries no
+// tool id. A run that needs the id uses a Normalizer.
 func Normalize(raw json.RawMessage) []types.NormalizedEvent {
+	return New().Normalize(raw)
+}
+
+// Normalize parses a raw JSON event and returns zero or more NormalizedEvents.
+func (n *Normalizer) Normalize(raw json.RawMessage) []types.NormalizedEvent {
 	var peek struct {
 		Type    string `json:"type"`
 		Subtype string `json:"subtype"`
@@ -34,7 +55,7 @@ func Normalize(raw json.RawMessage) []types.NormalizedEvent {
 	case "system":
 		return normalizeSystem(raw, peek.Subtype)
 	case "stream_event":
-		return normalizeStreamEvent(raw)
+		return n.normalizeStreamEvent(raw)
 	case "assistant":
 		return normalizeAssistant(raw)
 	case "result":
@@ -90,7 +111,7 @@ func normalizeSystem(raw json.RawMessage, subtype string) []types.NormalizedEven
 	}}
 }
 
-func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
+func (n *Normalizer) normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 	var se types.StreamEvent
 	if err := json.Unmarshal(raw, &se); err != nil {
 		logDecodeFailure("stream_event", err)
@@ -116,6 +137,7 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 	case "content_block_start":
 		if sub.ContentBlock != nil && sub.Index != nil {
 			if sub.ContentBlock.Type == "tool_use" {
+				n.toolIDs[*sub.Index] = sub.ContentBlock.ID
 				events = append(events, types.NormalizedEvent{
 					Data: &types.ToolCallEvent{
 						ToolName: sub.ContentBlock.Name,
@@ -137,8 +159,12 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 				}
 			case "input_json_delta":
 				if sub.Delta.PartialJSON != "" {
+					// The delta names the content index; the id is the one
+					// the block's content_block_start recorded for it.
 					toolID := ""
-					// We don't have toolID in delta; upstream correlates by index.
+					if sub.Index != nil {
+						toolID = n.toolIDs[*sub.Index]
+					}
 					events = append(events, types.NormalizedEvent{
 						Data: &types.ToolCallUpdateEvent{
 							ToolID:       toolID,
@@ -151,6 +177,7 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 
 	case "content_block_stop":
 		if sub.Index != nil {
+			delete(n.toolIDs, *sub.Index)
 			events = append(events, types.NormalizedEvent{
 				Data: &types.ToolCallCompleteEvent{Index: *sub.Index},
 			})

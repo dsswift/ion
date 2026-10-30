@@ -258,3 +258,38 @@ func TestNormalizeRateLimitWindows(t *testing.T) {
 		t.Errorf("five_hour window = %+v", got)
 	}
 }
+
+// A tool input delta names only its content index; a Normalizer pairs it
+// with the tool_use block opened at that index, and forgets the pairing when
+// the block closes.
+func TestNormalizerPairsInputDeltasWithTheirToolID(t *testing.T) {
+	n := New()
+	idx := 1
+	start := n.Normalize(mustJSON(map[string]any{"type": "stream_event", "event": map[string]any{
+		"type": "content_block_start", "index": idx, "content_block": map[string]any{"type": "tool_use", "id": "toolu_1", "name": "Bash"},
+	}}))
+	if call, ok := start[0].Data.(*types.ToolCallEvent); !ok || call.ToolID != "toolu_1" {
+		t.Fatalf("start = %+v", start[0].Data)
+	}
+	delta := n.Normalize(mustJSON(map[string]any{"type": "stream_event", "event": map[string]any{
+		"type": "content_block_delta", "index": idx, "delta": map[string]any{"type": "input_json_delta", "partial_json": `{"command":"ls"}`},
+	}}))
+	update, ok := delta[0].Data.(*types.ToolCallUpdateEvent)
+	if !ok || update.ToolID != "toolu_1" || update.PartialInput != `{"command":"ls"}` {
+		t.Fatalf("delta = %+v", delta[0].Data)
+	}
+	n.Normalize(mustJSON(map[string]any{"type": "stream_event", "event": map[string]any{"type": "content_block_stop", "index": idx}}))
+	late := n.Normalize(mustJSON(map[string]any{"type": "stream_event", "event": map[string]any{
+		"type": "content_block_delta", "index": idx, "delta": map[string]any{"type": "input_json_delta", "partial_json": `x`},
+	}}))
+	if update, ok := late[0].Data.(*types.ToolCallUpdateEvent); !ok || update.ToolID != "" {
+		t.Fatalf("a delta after the block closed should carry no id: %+v", late[0].Data)
+	}
+	// The stateless entry point keeps its contract: no id on a delta.
+	bare := Normalize(mustJSON(map[string]any{"type": "stream_event", "event": map[string]any{
+		"type": "content_block_delta", "index": idx, "delta": map[string]any{"type": "input_json_delta", "partial_json": `x`},
+	}}))
+	if update, ok := bare[0].Data.(*types.ToolCallUpdateEvent); !ok || update.ToolID != "" {
+		t.Fatalf("stateless delta = %+v", bare[0].Data)
+	}
+}
