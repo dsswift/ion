@@ -18,6 +18,16 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.3.0](https://github.com/dsswift/ion/compare/engine-v3.2.3...engine-v3.3.0) (2026-10-30)
+
+### Features
+
+* **engine:** announce engine-initiated session release ([1dc5796](https://github.com/dsswift/ion/commit/1dc5796f2b3a0e7de313d0377c1b13d9c5a113d8))
+
+### Bug Fixes
+
+* **engine:** reopen acp sessions the engine released ([f26fc67](https://github.com/dsswift/ion/commit/f26fc67d523ea514945ce5452ea0c1d74d64bc3b))
+
 ## [3.2.3](https://github.com/dsswift/ion/compare/engine-v3.2.2...engine-v3.2.3) (2026-10-25)
 
 ### Bug Fixes
