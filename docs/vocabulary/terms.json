@@ -1731,7 +1731,7 @@
     {
       "id": "session-idle-release",
       "term": "Idle release",
-      "definition": "The engine releasing a quiescent session, one that has no run, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook.",
+      "definition": "The engine releasing a quiescent session, one that has no run, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook. The engine then emits engine_session_released, so a client still holding the key can resume the session.",
       "domain": "engine",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -1746,6 +1746,13 @@
           "language": "go",
           "symbol": "func (m *Manager) evaluateIdleRelease",
           "path": "engine/internal/session/idle_release.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type SessionReleasedEvent struct",
+          "path": "engine/internal/types/normalized_event_session_release.go"
         },
         {
           "platform": "engine",

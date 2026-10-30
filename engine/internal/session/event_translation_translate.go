@@ -228,6 +228,13 @@ func translateEventData(event types.NormalizedEvent, contextWindow int) types.En
 			StderrTail: e.StderrTail,
 		}
 
+	case *types.SessionReleasedEvent:
+		return types.EngineEvent{
+			Type:                         "engine_session_released",
+			SessionReleaseReason:         e.Reason,
+			SessionReleaseConversationID: e.ConversationID,
+		}
+
 	case *types.PermissionRequestEvent:
 		return types.EngineEvent{
 			Type:          "engine_permission_request",

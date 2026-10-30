@@ -250,6 +250,11 @@ func (m *Manager) releaseQuiescentSession(key string, s *engineSession, reason s
 	}
 
 	utils.LogWithFields(utils.LevelInfo, idleReleaseLogTag, "session released", fields)
+	// No stop_session came over the wire, so a client still holding the key
+	// learns of the release only from this event.
+	m.emit(key, translateToEngineEvent(types.NormalizedEvent{Data: &types.SessionReleasedEvent{
+		Reason: reason, ConversationID: s.conversationID,
+	}}, 0))
 	m.mu.RLock()
 	released := m.onSessionReleased
 	m.mu.RUnlock()

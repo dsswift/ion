@@ -9,16 +9,18 @@ package types
 
 // NormalizedEventType enumerates the canonical event kinds.
 const (
-	EventSessionInit       = "session_init"
-	EventTextChunk         = "text_chunk"
-	EventToolCall          = "tool_call"
-	EventToolCallUpdate    = "tool_call_update"
-	EventToolCallComplete  = "tool_call_complete"
-	EventToolResult        = "tool_result"
-	EventTaskUpdate        = "task_update"
-	EventTaskComplete      = "task_complete"
-	EventError             = "error"
-	EventSessionDead       = "session_dead"
+	EventSessionInit      = "session_init"
+	EventTextChunk        = "text_chunk"
+	EventToolCall         = "tool_call"
+	EventToolCallUpdate   = "tool_call_update"
+	EventToolCallComplete = "tool_call_complete"
+	EventToolResult       = "tool_result"
+	EventTaskUpdate       = "task_update"
+	EventTaskComplete     = "task_complete"
+	EventError            = "error"
+	EventSessionDead      = "session_dead"
+	// EventSessionReleased reports an engine-initiated session release.
+	EventSessionReleased   = "session_released"
 	EventRateLimit         = "rate_limit"
 	EventUsage             = "usage"
 	EventPermissionRequest = "permission_request"

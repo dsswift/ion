@@ -61,6 +61,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventTaskComplete:            &TaskCompleteEvent{},
 		EventError:                   &ErrorEvent{},
 		EventSessionDead:             &SessionDeadEvent{},
+		EventSessionReleased:         &SessionReleasedEvent{},
 		EventRateLimit:               &RateLimitNormalizedEvent{},
 		EventUsage:                   &UsageEvent{},
 		EventPermissionRequest:       &PermissionRequestEvent{},

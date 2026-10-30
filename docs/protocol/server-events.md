@@ -546,6 +546,16 @@ rationale and migration impact.
 | `signal`     | string or null | Signal that killed the process |
 | `stderrTail` | string[] | Last lines of stderr output         |
 
+#### engine_session_released
+
+Signals that the engine released the session on its own, without a `stop_session` command: it stayed quiescent past `workspace.sessionIdleReleaseMs`, or an `abort` found nothing to stop. It follows the teardown's `engine_dead`. The key no longer names a live session. The conversation stays on disk and the key keeps its binding, so a `start_session` for the same key without `forceNewConversation` resumes it. A client's own `stop_session` never emits this event. See [Idle release](../sessions/lifecycle.md#idle-release).
+
+| Field                          | Type   | Description |
+|--------------------------------|--------|-------------|
+| `type`                         | `"engine_session_released"` | Event type |
+| `sessionReleaseReason`         | string | `idle_timeout` or `idle_abort`. New values may be added; treat an unknown one as a release |
+| `sessionReleaseConversationId` | string | The conversation the session was bound to |
+
 #### engine_permission_request
 
 A permission request from the engine (engine-level, separate from the LLM provider's PermissionEvent).

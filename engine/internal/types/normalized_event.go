@@ -85,6 +85,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ErrorEvent{}
 	case EventSessionDead:
 		target = &SessionDeadEvent{}
+	case EventSessionReleased:
+		target = &SessionReleasedEvent{}
 	case EventRateLimit:
 		target = &RateLimitNormalizedEvent{}
 	case EventUsage:

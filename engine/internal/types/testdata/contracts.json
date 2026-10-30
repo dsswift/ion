@@ -232,6 +232,10 @@
       "tools",
       "version"
     ],
+    "session_released": [
+      "conversationId",
+      "reason"
+    ],
     "session_work_stopped": [
       "cancelledRunId",
       "killedAgentProcessCount",
@@ -554,6 +558,8 @@
     "runStalledDuration",
     "runStalledLastActivity",
     "schema",
+    "sessionReleaseConversationId",
+    "sessionReleaseReason",
     "sessionStatus",
     "sessionWorkStopped",
     "signal",

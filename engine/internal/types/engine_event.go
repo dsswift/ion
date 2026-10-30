@@ -408,6 +408,11 @@ type EngineEvent struct {
 	// engine_plan_mode_change_rejected.
 	PlanModeSource string `json:"planModeSource,omitempty"`
 
+	// engine_session_released: SessionReleasedEvent.Reason and
+	// SessionReleasedEvent.ConversationID.
+	SessionReleaseReason         string `json:"sessionReleaseReason,omitempty"`
+	SessionReleaseConversationID string `json:"sessionReleaseConversationId,omitempty"`
+
 	// engine_plan_mode_change_rejected
 	PlanModeRequestedEnabled bool   `json:"planModeRequestedEnabled,omitempty"`
 	PlanModeRejectReason     string `json:"planModeRejectReason,omitempty"`
