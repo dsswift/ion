@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.4.2](https://github.com/dsswift/ion/compare/engine-v3.4.1...engine-v3.4.2) (2026-10-30)
+
+### Bug Fixes
+
+* **engine:** fill acp tool cards when input names no tool ([4ad6bf6](https://github.com/dsswift/ion/commit/4ad6bf62e4bfb7fd35441bb02f82f2775f1ae368))
+
 ## [3.4.1](https://github.com/dsswift/ion/compare/engine-v3.4.0...engine-v3.4.1) (2026-10-30)
 
 ### Bug Fixes
