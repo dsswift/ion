@@ -41,6 +41,8 @@ func (s *Session) translate(ev EngineEvent) {
 		s.commandResult(e)
 	case "engine_error":
 		s.engineError(e)
+	case "engine_session_released":
+		s.markReleased(e)
 	case "engine_permission_request":
 		go s.permissionRequest(e)
 	case "engine_elicitation_request":

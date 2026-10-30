@@ -33,6 +33,12 @@ type Session struct {
 	// runEpoch is the last run epoch an engine status reported for this
 	// session (StatusFields.RunEpoch).
 	runEpoch int64
+	// released is set when the engine released the session on its own; the
+	// next command that needs it reopens it first.
+	released bool
+	// reopenMu serialises reopening, so concurrent requests open the
+	// engine session once.
+	reopenMu sync.Mutex
 }
 
 // turn is one session/prompt in flight: the loop settles it when the run
@@ -114,6 +120,16 @@ func (a *Agent) sessionLoad(params json.RawMessage) (any, *rpcstdio.RPCError) {
 // conversation is reused; otherwise the engine mints a new one.
 func (s *Session) start(ctx context.Context, resume bool) error {
 	s.agent.engine.Subscribe(s.id)
+	if err := s.open(ctx, resume); err != nil {
+		s.agent.engine.Unsubscribe(s.id)
+		return err
+	}
+	go s.loop()
+	return nil
+}
+
+// open sends start_session for the session's key with its current config.
+func (s *Session) open(ctx context.Context, resume bool) error {
 	config := map[string]any{"workingDirectory": s.cwd}
 	if model := s.effectiveModel(); model != "" {
 		config["model"] = model
@@ -134,13 +150,11 @@ func (s *Session) start(ctx context.Context, resume bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	if res, err := s.agent.engine.Send(ctx, map[string]any{"cmd": "start_session", "key": s.id, "config": config}); err != nil {
-		s.agent.engine.Unsubscribe(s.id)
 		if str(res, "policyFailure") == types.PolicyFailureAuthenticationFailed {
 			return fmt.Errorf("%w: %w", errAuthRequired, err)
 		}
 		return err
 	}
-	go s.loop()
 	return nil
 }
 
@@ -207,6 +221,9 @@ func (a *Agent) sessionSetMode(params json.RawMessage) (any, *rpcstdio.RPCError)
 	s, rpcErr := a.session(req.SessionID)
 	if rpcErr != nil {
 		return nil, rpcErr
+	}
+	if err := s.ensureOpen(context.Background()); err != nil {
+		return nil, internalError(err)
 	}
 	var enabled bool
 	switch req.ModeID {

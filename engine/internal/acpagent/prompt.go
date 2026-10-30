@@ -28,6 +28,9 @@ func (a *Agent) sessionPrompt(params json.RawMessage) (any, *rpcstdio.RPCError) 
 	if strings.TrimSpace(text) == "" && len(attachments) == 0 {
 		return nil, fmtErr("prompt has no text")
 	}
+	if err := s.ensureOpen(context.Background()); err != nil {
+		return nil, internalError(err)
+	}
 	cmd := s.promptCommand(text, s.effectiveModel(), attachments)
 	t := &turn{done: make(chan struct{}), command: cmd["cmd"] == "command"}
 	s.mu.Lock()
