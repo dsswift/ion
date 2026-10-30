@@ -79,6 +79,8 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 Work happens on `main`. Never create or switch branches unless the task is branch work. Every push to `main` is versioned and built by the delivery pipeline, which publishes each release once its tests pass ([`docs/contributing/delivery-pipeline.md`](docs/contributing/delivery-pipeline.md)). Land finished work yourself, once the whole request is done and every gate is green: `make land` (`release-damnit land`). It rebases your commits onto the remote `main`, checks every commit, pushes, and retries when the pipeline's version commit moved `main`. Never force push. In a worktree the operator created, commit only; the operator lands it with `release-damnit land <branch>`.
 
+An engine change is not done until the local daemon runs it. After landing, run `make engine` from the repo root: it rebuilds, installs `~/.ion/bin/ion`, and restarts the engine LaunchAgent. The operator never manages that by hand.
+
 ## Commits
 
 - `type(scope): subject`. Types: `feat`, `fix`, `chore`, `docs`; a breaking change is `feat(scope)!:`. Subject lowercase, imperative, no period, ≤ 65 chars.
