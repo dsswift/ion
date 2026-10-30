@@ -3,7 +3,6 @@ package acpagent
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -339,15 +338,17 @@ func mcpToolParts(name string) (server, tool string, ok bool) {
 }
 
 // displayPath shows a path inside the working directory relative to it.
+// Paths are compared as the model wrote them, with either separator, so
+// the result is the same on every platform.
 func displayPath(path, cwd string) string {
-	if cwd == "" || !filepath.IsAbs(path) {
+	cwd = strings.TrimRight(cwd, `/\`)
+	if cwd == "" || path == cwd {
 		return path
 	}
-	rel, err := filepath.Rel(cwd, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return path
+	if rest, ok := strings.CutPrefix(path, cwd); ok && (rest[0] == '/' || rest[0] == '\\') {
+		return rest[1:]
 	}
-	return rel
+	return path
 }
 
 func firstString(input map[string]any, keys ...string) string {
