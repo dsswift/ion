@@ -253,10 +253,8 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			m.mu.Unlock()
 
 		case *types.ToolCallUpdateEvent:
-			// Accumulate partial input for tool_call hook.
-			// ToolCallUpdateEvent.ToolID is always "" from the normalizer because
-			// content_block_delta events don't carry a toolID. Fall back to the
-			// last-started tool so the input accumulates under the right key.
+			// Accumulate partial input for tool_call hook. An update that
+			// names no tool belongs to the last-started one.
 			m.mu.Lock()
 			if s.cliToolInputs != nil {
 				key := e.ToolID

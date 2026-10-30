@@ -273,6 +273,26 @@ func TestPlanProposalAsksForApproval(t *testing.T) {
 // Tool cards carry what a client renders natively: a diff for an edit, the
 // files a call touches, a plan for a TodoWrite, and the server and tool of
 // an MCP call.
+func TestToolInputWithoutAnIDFillsTheNewestCard(t *testing.T) {
+	f := newFakeEngine(t)
+	defer f.close()
+	_, c := startAgent(t, f, Options{})
+	c.initialize(ClientCapabilities{})
+	key := openSession(t, f, c, 1)
+
+	f.emit(key, map[string]any{"type": "engine_tool_start", "toolName": "Bash", "toolId": "b1"})
+	f.emit(key, map[string]any{"type": "engine_tool_update", "toolId": "", "partialInput": `{"command":"ls`})
+	f.emit(key, map[string]any{"type": "engine_tool_update", "toolId": "", "partialInput": ` -la"}`})
+	c.next(UpdateToolCall)
+	if u := c.next(UpdateToolCallUpdate); u.ToolCallID != "b1" || u.Title != "ls -la" || string(u.RawInput) != `{"command":"ls -la"}` {
+		t.Fatalf("bash card = %+v", u)
+	}
+	f.emit(key, map[string]any{"type": "engine_tool_end", "toolId": "b1", "result": "total 0"})
+	if u := c.next(UpdateToolCallUpdate); u.Status != "completed" {
+		t.Fatalf("bash end = %+v", u)
+	}
+}
+
 func TestToolCardsDescribeTheirInput(t *testing.T) {
 	f := newFakeEngine(t)
 	defer f.close()

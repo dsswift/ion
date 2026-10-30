@@ -38,17 +38,22 @@ func (s *Session) toolStart(e map[string]any) {
 		s.tools = map[string]*toolCard{}
 	}
 	s.tools[id] = &toolCard{name: name}
+	s.lastToolID = id
 	s.mu.Unlock()
 	bare := bareToolName(name)
 	s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateToolCall, ToolCallID: id, Title: bare, Name: name, Kind: toolKind(name), Status: "in_progress", Meta: toolMeta(name)})
 }
 
 // toolUpdate appends streamed input. The moment the input is whole JSON the
-// client learns what the call is, while the tool still runs.
+// client learns what the call is, while the tool still runs. An update that
+// names no tool fills the most recently started one.
 func (s *Session) toolUpdate(e map[string]any) {
 	id := str(e, "toolId")
 	partial := str(e, "partialInput")
 	s.mu.Lock()
+	if id == "" {
+		id = s.lastToolID
+	}
 	card, ok := s.tools[id]
 	if ok {
 		card.input.WriteString(partial)

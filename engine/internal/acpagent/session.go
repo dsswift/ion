@@ -36,6 +36,10 @@ type Session struct {
 	// tools holds every tool call in flight, by id, with the input streamed
 	// for it so far.
 	tools map[string]*toolCard
+	// lastToolID is the most recently started tool call. A streamed input
+	// delta that names no tool belongs to it: a CLI stream opens one tool
+	// block at a time, so the newest open card is the one being filled.
+	lastToolID string
 	// dispatches holds every sub-agent dispatch in flight, by dispatch id,
 	// with the transcript streamed for it so far.
 	dispatches map[string]*dispatchCard
