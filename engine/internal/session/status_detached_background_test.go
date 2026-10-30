@@ -17,7 +17,7 @@ import (
 )
 
 // REPORTED DEFECT: a `Bash({ run_in_background: true })` command started
-// WITHOUT `notify_on_complete` ran for 96 seconds while every consumer surface
+// with `notify_on_complete: false` ran for 96 seconds while every consumer surface
 // except the transcript's Bash operation group reported the conversation
 // finished.
 //
@@ -48,8 +48,9 @@ func startDetachedCommand(t *testing.T, key string) string {
 	// without waiting, and Windows cannot remove a directory that is still a
 	// live process's working directory.
 	result, err := bash.Execute(ctx, map[string]any{
-		"command":           `sh -c "sleep 30"`,
-		"run_in_background": true,
+		"command":            `sh -c "sleep 30"`,
+		"run_in_background":  true,
+		"notify_on_complete": false,
 	}, os.TempDir())
 	if err != nil {
 		t.Fatalf("Bash run_in_background: %v", err)

@@ -225,16 +225,17 @@ func TestBackgroundNotifier_StopNotifiesExactlyOnce(t *testing.T) {
 	}
 }
 
-// A task started WITHOUT notify_on_complete never notifies. This is the
-// no-regression pin: existing background usage is untouched.
-func TestBackgroundNotifier_NotRequestedDoesNotNotify(t *testing.T) {
+// A task started with notify_on_complete false never notifies: the model
+// opted out of the result.
+func TestBackgroundNotifier_OptedOutDoesNotNotify(t *testing.T) {
 	clearBashTasks(t)
 	rec := installRecorder(t)
 
 	ctx := WithBackgroundTaskOwner(context.Background(), "sess-quiet")
 	res, err := executeBash(ctx, map[string]any{
-		"command":           "echo quiet",
-		"run_in_background": true,
+		"command":            "echo quiet",
+		"run_in_background":  true,
+		"notify_on_complete": false,
 	}, t.TempDir())
 	if err != nil {
 		t.Fatalf("executeBash returned error: %v", err)
@@ -243,7 +244,30 @@ func TestBackgroundNotifier_NotRequestedDoesNotNotify(t *testing.T) {
 	waitForTaskStatus(t, taskID, "completed", 5*time.Second)
 
 	if got := rec.all(); len(got) != 0 {
-		t.Errorf("expected no notifications for a non-notifying task, got %+v", got)
+		t.Errorf("expected no notifications for an opted-out task, got %+v", got)
+	}
+}
+
+// A background task that says nothing about notification notifies: the
+// result reaches the session unless the model opts out.
+func TestBackgroundNotifier_DefaultNotifies(t *testing.T) {
+	clearBashTasks(t)
+	rec := installRecorder(t)
+
+	ctx := WithBackgroundTaskOwner(context.Background(), "sess-default")
+	res, err := executeBash(ctx, map[string]any{
+		"command":           "echo default",
+		"run_in_background": true,
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("executeBash returned error: %v", err)
+	}
+	taskID := extractTaskID(t, res.Content)
+	waitForTaskStatus(t, taskID, "completed", 5*time.Second)
+
+	got := rec.all()
+	if len(got) != 1 || got[0].TaskID != taskID {
+		t.Fatalf("expected one notification for %s, got %+v", taskID, got)
 	}
 }
 
@@ -309,8 +333,9 @@ func TestBackgroundNotifier_RegistersWithOutstandingSet(t *testing.T) {
 	notifyingID := extractTaskID(t, res.Content)
 
 	plain, err := executeBash(ctx, map[string]any{
-		"command":           "echo untracked",
-		"run_in_background": true,
+		"command":            "echo untracked",
+		"run_in_background":  true,
+		"notify_on_complete": false,
 	}, t.TempDir())
 	if err != nil {
 		t.Fatalf("executeBash returned error: %v", err)
@@ -324,7 +349,7 @@ func TestBackgroundNotifier_RegistersWithOutstandingSet(t *testing.T) {
 	}
 	for _, id := range registered {
 		if id == plainID {
-			t.Errorf("plain background task %s must not join the outstanding set", plainID)
+			t.Errorf("opted-out background task %s must not join the outstanding set", plainID)
 		}
 	}
 }

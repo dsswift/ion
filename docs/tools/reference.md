@@ -56,7 +56,7 @@ Execute a bash command and return its output.
 | `command` | string | yes | The bash command to execute |
 | `timeout` | number | no | Timeout in milliseconds (default: 120000). Values above `timeouts.bashMaxMs` (default 600000) are clamped, and the clamp is reported on the result. Ignored when `run_in_background` is true |
 | `run_in_background` | boolean | no | Run the command in the background and return immediately with a task ID and output-file path |
-| `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`. Deliver the command's result back to the session when it finishes, instead of requiring polling. When the command is the only remaining work, end the turn so the engine can park the session and resume it on completion |
+| `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`, where it defaults to `true`. Deliver the command's result back to the session when it finishes, instead of requiring polling; `false` opts out. When the command is the only remaining work, end the turn so the engine can park the session and resume it on completion |
 
 Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux). A command killed for exceeding its timeout is reported as such — the result names the deadline and the background alternative rather than surfacing a bare `signal: killed` — and any output produced before the kill is preserved.
 
@@ -64,7 +64,7 @@ A **leading** `sleep N` is refused rather than executed when the command runs in
 
 With `run_in_background: true`, the command starts detached from the tool call in its own process group and the tool returns immediately with a `bash-<n>` task ID and an output file under `~/.ion/tasks/` capturing interleaved stdout+stderr. Read the output file for an explicit progress inspection. `TaskGet` and `TaskStop` are available only when a harness registered the optional Task tools. A bare long `sleep` is refused in foreground and background modes; use `Poll` for inference-driven wait-and-recheck work. When the owning session stops, its running background tasks are killed. Backends advertise support via the `BackgroundBashOperations` capability interface; only the local backend implements it today, and unsupported backends return a clean error.
 
-With `notify_on_complete: true` the command additionally joins the session's **outstanding set**, and the engine takes responsibility for delivering its result — the model does not poll. Three consequences follow:
+Unless `notify_on_complete` is `false`, the command additionally joins the session's **outstanding set**, and the engine takes responsibility for delivering its result — the model does not poll. Three consequences follow:
 
 - **The model may keep working.** Starting a notifying command does not commit the session to waiting. It can start more commands or do other useful work. When the command is the only remaining work, it ends its turn rather than polling or starting a blocking wait.
 - **The engine parks the session at the turn boundary.** When the model finishes its turn with commands still outstanding, the run ends without completing (`engine_task_suspended` carrying `awaitingTaskIds`) and the session consumes no tokens while it waits. A session with an empty outstanding set completes exactly as it always has.

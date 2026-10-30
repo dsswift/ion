@@ -40,8 +40,8 @@ func BashTool() *types.ToolDef {
 			"properties": map[string]any{
 				"command":            map[string]any{"type": "string", "description": bashCommandDescription()},
 				"timeout":            map[string]any{"type": "number", "description": "Timeout in milliseconds (default: 120000). Values above the engine's configured maximum are clamped. Ignored when run_in_background is true."},
-				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Set notify_on_complete with it unless you truly never need the result. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
-				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. This is the cheapest way to wait: it costs no inference, unlike Poll. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
+				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Its result is delivered back to the session when it finishes unless notify_on_complete is false. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
+				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background, where it defaults to true. Deliver this command's result back to the session when it finishes, instead of requiring polling; set it to false only when the result is never needed. This is the cheapest way to wait: it costs no inference, unlike Poll. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
 			},
 			"required": []string{"command"},
 		},
@@ -70,7 +70,12 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 	}
 
 	if background, _ := input["run_in_background"].(bool); background { //nolint:errcheck // absent/non-bool means foreground
-		notify, _ := input["notify_on_complete"].(bool) //nolint:errcheck // absent/non-bool means no notification
+		// A background command delivers its result unless the model opts
+		// out: an absent flag means the session is told when it finishes.
+		notify := true
+		if v, ok := input["notify_on_complete"].(bool); ok {
+			notify = v
+		}
 		return executeBashBackground(ctx, command, cwd, notify)
 	}
 

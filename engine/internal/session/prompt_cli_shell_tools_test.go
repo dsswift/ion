@@ -181,8 +181,9 @@ func TestCliShellTools_NonNotifyingBashStaysUntracked(t *testing.T) {
 
 	ctx := mgr.cliToolContextStamper(sessionFor(t, mgr, key), key)(context.Background())
 	res, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
-		"command":           "echo detached",
-		"run_in_background": true,
+		"command":            "echo detached",
+		"run_in_background":  true,
+		"notify_on_complete": false,
 	}, dir)
 	if err != nil {
 		t.Fatalf("Bash: %v", err)
