@@ -689,6 +689,7 @@
       "extensions",
       "forceNewConversation",
       "maxTokens",
+      "mcpServers",
       "model",
       "parentConversationId",
       "pinned",

@@ -102,6 +102,7 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 		// enterprise enforcement, so denylisted and non-allowlisted servers are
 		// already pruned here.
 		mcpServers := ionconfig.ResolveMcpServers(s.config.WorkingDirectory, s.principal)
+		mcpServers = withSessionMcpServers(key, mcpServers, s.config.McpServers)
 		if len(mcpServers) == 0 {
 			return
 		}
@@ -159,6 +160,38 @@ func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
 			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected", map[string]any{"serverName": name, "key": key, "toolCount": len(conn.Tools()), "toolNames": mcpToolNames(conn)})
 		}
 	})
+}
+
+// withSessionMcpServers adds the servers the session's config brought
+// (EngineConfig.McpServers) to the configured set. A server is refused, and
+// logged, when its name cannot be addressed, when a configured server already
+// holds the name, or when enterprise policy denies it; the rest connect
+// exactly like configured servers. The configured map is not modified.
+func withSessionMcpServers(key string, configured, session map[string]types.McpServerConfig) map[string]types.McpServerConfig {
+	if len(session) == 0 {
+		return configured
+	}
+	merged := make(map[string]types.McpServerConfig, len(configured)+len(session))
+	for name, cfg := range configured {
+		merged[name] = cfg
+	}
+	for name, cfg := range session {
+		var reason string
+		if _, taken := configured[name]; taken {
+			reason = "a configured server already uses this name"
+		} else if err := ionconfig.ValidateMcpServerName(name); err != nil {
+			reason = err.Error()
+		} else if err := ionconfig.CheckMcpServerAllowed(name, cfg); err != nil {
+			reason = err.Error()
+		}
+		if reason != "" {
+			utils.LogWithFields(utils.LevelWarn, "session", "session mcp server refused", map[string]any{"key": key, "serverName": name, "reason": reason})
+			continue
+		}
+		merged[name] = cfg
+		utils.LogWithFields(utils.LevelInfo, "session", "session mcp server accepted", map[string]any{"key": key, "serverName": name, "transport": cfg.Type})
+	}
+	return merged
 }
 
 func mcpToolNames(conn *mcp.Connection) []string {

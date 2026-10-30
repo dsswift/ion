@@ -70,6 +70,12 @@ func (e *McpServerNameError) Error() string {
 	return fmt.Sprintf("invalid MCP server name %q: %s", e.Name, e.Reason)
 }
 
+// ValidateMcpServerName reports whether a server name can be addressed: not
+// empty, not padded, no whitespace, and no "__", the MCP tool-name separator.
+func ValidateMcpServerName(name string) error {
+	return validateMcpServerName(name)
+}
+
 // validateMcpServerName rejects names that would corrupt the config or collide
 // with the tool-name prefixing scheme.
 //

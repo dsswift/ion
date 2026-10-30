@@ -104,6 +104,14 @@ type EngineConfig struct {
 	// every consumer that does not ask. See types/tool_gate.go.
 	ToolGate *ToolGateConfig `json:"toolGate,omitempty"`
 
+	// McpServers are MCP servers the client brings to this one session, by
+	// name, beside the ones the engine's configuration resolves. They
+	// connect at the session's first prompt like configured servers, under
+	// the same enterprise policy, and their tools reach the model under the
+	// same mcp__<server>__<tool> names. A name a configured server already
+	// uses is refused, so a client cannot shadow the operator's server.
+	McpServers map[string]McpServerConfig `json:"mcpServers,omitempty"`
+
 	// ClientWorkspaceContext is a client-supplied workspace descriptor that
 	// the engine routes through system_inject and context_inject hooks in
 	// place of its own worktree-registry-derived context. Nil means the
@@ -771,30 +779,4 @@ type SessionMessageAttachment struct {
 	Path        string `json:"path"`
 	MediaType   string `json:"mimeType,omitempty"`
 	ContentHash string `json:"contentHash,omitempty"`
-}
-
-// PermissionDenialEntry is the wire format for permission denials in ResultEvent.
-type PermissionDenialEntry struct {
-	ToolName  string `json:"tool_name"`
-	ToolUseID string `json:"tool_use_id"`
-}
-
-// PermissionDenial records a tool invocation that was denied.
-// Wire format uses camelCase to match the NormalizedEvent JSON convention.
-type PermissionDenial struct {
-	ToolName  string         `json:"toolName"`
-	ToolUseID string         `json:"toolUseId"`
-	ToolInput map[string]any `json:"toolInput,omitempty"`
-}
-
-// EnrichedError carries detailed context about a failed run.
-type EnrichedError struct {
-	Message              string             `json:"message"`
-	StderrTail           []string           `json:"stderrTail"`
-	StdoutTail           []string           `json:"stdoutTail,omitempty"`
-	ExitCode             *int               `json:"exitCode"`
-	ElapsedMs            int64              `json:"elapsedMs"`
-	ToolCallCount        int                `json:"toolCallCount"`
-	SawPermissionRequest bool               `json:"sawPermissionRequest,omitempty"`
-	PermissionDenials    []PermissionDenial `json:"permissionDenials,omitempty"`
 }
