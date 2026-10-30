@@ -65,6 +65,41 @@ func (a *Agent) sessionPrompt(params json.RawMessage) (any, *rpcstdio.RPCError) 
 	return PromptResponse{StopReason: t.reason}, nil
 }
 
+// continueTurn sends a further prompt inside the turn the client is still
+// waiting on: the answer to a question, or the go-ahead after a plan. The
+// ask the answer closes ends in the same step as the turn's baseline moves
+// to the current epoch, so no idle can slip between them: only the run this
+// prompt starts can end the turn. A turn that already ended is left alone.
+func (s *Session) continueTurn(t *turn, a *ask, text, injectionKind string) {
+	model := s.effectiveModel()
+	s.mu.Lock()
+	if s.turn != t {
+		s.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "acp", "turn continuation dropped; the turn already ended", map[string]any{"session_id": s.id})
+		return
+	}
+	a.once.Do(func() { t.asks-- })
+	t.baseline = s.runEpoch
+	t.started = false
+	t.holding = false
+	s.mu.Unlock()
+	cmd := map[string]any{"cmd": "send_prompt", "key": s.id, "text": text}
+	if model != "" {
+		cmd["model"] = model
+	}
+	if injectionKind != "" {
+		cmd["injectionKind"] = injectionKind
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := s.agent.engine.Send(ctx, cmd); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "acp", "turn continuation not sent", map[string]any{"session_id": s.id, "error": err.Error()})
+		s.finishTurn(StopEndTurn, err)
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "acp", "turn continued", map[string]any{"session_id": s.id, "kind": injectionKind, "chars": len(text)})
+}
+
 // promptCommand picks the engine command for the text: a leading slash that
 // names a registered extension command dispatches as `command`, anything
 // else as `send_prompt`.

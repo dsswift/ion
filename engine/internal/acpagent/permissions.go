@@ -30,10 +30,11 @@ func (s *Session) permissionRequest(e map[string]any) {
 	if input, ok := e["permToolInput"].(map[string]any); ok && len(input) > 0 {
 		if raw, err := json.Marshal(input); err == nil {
 			req.ToolCall.RawInput = raw
-			if title := toolTitle(toolName, string(raw)); title != "" {
-				req.ToolCall.Title = title
-			}
 		}
+		desc := describeTool(bareToolName(toolName), s.cwd, input)
+		req.ToolCall.Title = desc.title
+		req.ToolCall.Locations = desc.locations
+		req.ToolCall.Content = desc.content
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), clientAnswerTimeout)
 	defer cancel()

@@ -53,6 +53,12 @@ const (
 	UpdateConfigOption      = "config_option_update"
 	UpdateUsage             = "usage_update"
 	UpdateNotice            = "notice"
+	// UpdatePlan is the entry-list plan (a TodoWrite); UpdatePlanUpdate
+	// carries a whole plan by id (the plan-mode file as markdown).
+	UpdatePlan       = "plan"
+	UpdatePlanUpdate = "plan_update"
+	// UpdateCompaction reports a context compaction starting or ending.
+	UpdateCompaction = "compaction_update"
 )
 
 // Stop reasons a prompt turn ends with.
@@ -154,18 +160,37 @@ type InitializeResponse struct {
 	AgentInfo         Implementation    `json:"agentInfo"`
 }
 
-// NewSessionRequest is the "session/new" params. McpServers are accepted and
-// ignored: the engine's own MCP configuration governs a session.
+// NewSessionRequest is the "session/new" params. McpServers are the servers
+// the client brings to the session; they connect beside the engine's own.
 type NewSessionRequest struct {
-	Cwd        string            `json:"cwd"`
-	McpServers []json.RawMessage `json:"mcpServers"`
+	Cwd        string          `json:"cwd"`
+	McpServers []McpServerSpec `json:"mcpServers"`
 }
 
 // LoadSessionRequest is the "session/load" params.
 type LoadSessionRequest struct {
-	SessionID  string            `json:"sessionId"`
-	Cwd        string            `json:"cwd"`
-	McpServers []json.RawMessage `json:"mcpServers"`
+	SessionID  string          `json:"sessionId"`
+	Cwd        string          `json:"cwd"`
+	McpServers []McpServerSpec `json:"mcpServers"`
+}
+
+// McpServerSpec is one MCP server a client names on session/new or
+// session/load: a stdio server (command, args, env) when Type is empty or
+// "stdio", else an "http" or "sse" server (url, headers).
+type McpServerSpec struct {
+	Name    string     `json:"name"`
+	Type    string     `json:"type,omitempty"`
+	Command string     `json:"command,omitempty"`
+	Args    []string   `json:"args,omitempty"`
+	Env     []NamedVar `json:"env,omitempty"`
+	URL     string     `json:"url,omitempty"`
+	Headers []NamedVar `json:"headers,omitempty"`
+}
+
+// NamedVar is one environment variable or HTTP header of an McpServerSpec.
+type NamedVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // SessionMode is one selectable mode.
@@ -259,10 +284,44 @@ type CancelNotification struct {
 	SessionID string `json:"sessionId"`
 }
 
-// ToolCallContent is one output block of a tool call.
+// ToolCallContent is one output block of a tool call: a content block
+// (Type "content"), or a file diff (Type "diff") with the path and the text
+// before and after. OldText is nil for a file the call creates.
 type ToolCallContent struct {
-	Type    string       `json:"type"`
-	Content ContentBlock `json:"content"`
+	Type    string        `json:"type"`
+	Content *ContentBlock `json:"content,omitempty"`
+	Path    string        `json:"path,omitempty"`
+	OldText *string       `json:"oldText,omitempty"`
+	NewText *string       `json:"newText,omitempty"`
+}
+
+// textContent is a tool output block carrying text.
+func textContent(text string) ToolCallContent {
+	return ToolCallContent{Type: "content", Content: &ContentBlock{Type: "text", Text: text}}
+}
+
+// ToolLocation is a file a tool call touches, with the line it starts at
+// when known.
+type ToolLocation struct {
+	Path string `json:"path"`
+	Line *int   `json:"line,omitempty"`
+}
+
+// PlanEntry is one step of an entry-list plan.
+type PlanEntry struct {
+	Content  string `json:"content"`
+	Status   string `json:"status"`
+	Priority string `json:"priority,omitempty"`
+}
+
+// PlanPayload is a whole plan carried by plan_update: markdown content, a
+// file by uri, or a list of entries, by Type.
+type PlanPayload struct {
+	PlanID  string      `json:"planId"`
+	Type    string      `json:"type"`
+	Content string      `json:"content,omitempty"`
+	URI     string      `json:"uri,omitempty"`
+	Entries []PlanEntry `json:"entries,omitempty"`
 }
 
 // AvailableCommand is one slash command the session accepts.
@@ -281,6 +340,9 @@ type Cost struct {
 // variant and the other fields are set per variant.
 type SessionUpdate struct {
 	SessionUpdate string `json:"sessionUpdate"`
+	// Meta is the update's _meta: provider hints a client may read, such as
+	// claudeCode.toolName on a tool call.
+	Meta map[string]any `json:"_meta,omitempty"`
 	// user_message_chunk, agent_message_chunk, agent_thought_chunk
 	Content *ContentBlock `json:"content,omitempty"`
 	// tool_call, tool_call_update
@@ -291,6 +353,13 @@ type SessionUpdate struct {
 	Status      string            `json:"status,omitempty"`
 	ToolContent []ToolCallContent `json:"-"`
 	RawInput    json.RawMessage   `json:"rawInput,omitempty"`
+	Locations   []ToolLocation    `json:"locations,omitempty"`
+	// plan (entries), plan_update (plan)
+	Entries []PlanEntry  `json:"entries,omitempty"`
+	Plan    *PlanPayload `json:"plan,omitempty"`
+	// compaction_update: CompactionID with Status and Summary
+	CompactionID string         `json:"compactionId,omitempty"`
+	Summary      []ContentBlock `json:"summary,omitempty"`
 	// available_commands_update
 	AvailableCommands []AvailableCommand `json:"availableCommands,omitempty"`
 	// current_mode_update
@@ -356,10 +425,13 @@ func (u *SessionUpdate) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// SessionNotification is the "session/update" params.
+// SessionNotification is the "session/update" params. Meta marks a replayed
+// update (isReplay) so a client loading a session tells history from live
+// output.
 type SessionNotification struct {
-	SessionID string        `json:"sessionId"`
-	Update    SessionUpdate `json:"update"`
+	SessionID string         `json:"sessionId"`
+	Update    SessionUpdate  `json:"update"`
+	Meta      map[string]any `json:"_meta,omitempty"`
 }
 
 // PermissionOption is one approval choice.
@@ -369,12 +441,15 @@ type PermissionOption struct {
 	Kind     string `json:"kind"`
 }
 
-// ToolCallRef identifies the tool call an approval gates.
+// ToolCallRef identifies the tool call an approval gates, with the content
+// and files the client shows beside the choice.
 type ToolCallRef struct {
-	ToolCallID string          `json:"toolCallId"`
-	Title      string          `json:"title,omitempty"`
-	Kind       string          `json:"kind,omitempty"`
-	RawInput   json.RawMessage `json:"rawInput,omitempty"`
+	ToolCallID string            `json:"toolCallId"`
+	Title      string            `json:"title,omitempty"`
+	Kind       string            `json:"kind,omitempty"`
+	RawInput   json.RawMessage   `json:"rawInput,omitempty"`
+	Content    []ToolCallContent `json:"content,omitempty"`
+	Locations  []ToolLocation    `json:"locations,omitempty"`
 }
 
 // RequestPermissionRequest is the "session/request_permission" params.

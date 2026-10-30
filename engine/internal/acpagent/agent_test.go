@@ -104,8 +104,14 @@ func TestPromptStreamsTheRunAndEndsOnIdle(t *testing.T) {
 	if u := c.next(UpdateToolCall); u.ToolCallID != "t1" || u.Kind != "execute" || u.Status != "in_progress" {
 		t.Fatalf("tool_call = %+v", u)
 	}
+	// The input completes before the tool ends: the client learns the
+	// command while the tool still runs, then the result closes the card.
+	described := c.next(UpdateToolCallUpdate)
+	if described.Status != "" || described.Title != "ls -la" || string(described.RawInput) != `{"command":"ls -la"}` || described.Meta["claudeCode"].(map[string]any)["toolName"] != "Bash" {
+		t.Fatalf("described tool_call_update = %+v raw=%s", described, described.RawInput)
+	}
 	end := c.next(UpdateToolCallUpdate)
-	if end.Status != "completed" || end.Title != "Bash: ls -la" || string(end.RawInput) != `{"command":"ls -la"}` {
+	if end.Status != "completed" || end.ToolCallID != "t1" {
 		t.Fatalf("tool_call_update = %+v raw=%s", end, end.RawInput)
 	}
 	raw, _ := json.Marshal(end)
@@ -209,7 +215,7 @@ func TestPermissionRoundTrip(t *testing.T) {
 		"permToolInput": map[string]any{"command": "rm -rf build"},
 		"permOptions":   []map[string]any{{"id": "allow", "label": "Allow once"}, {"id": "allow-session", "label": "Allow for this session"}, {"id": "deny", "label": "Deny"}}})
 	req := <-asked
-	if req.SessionID != key || req.ToolCall.ToolCallID != "q1" || req.ToolCall.Title != "Bash: rm -rf build" || req.ToolCall.Kind != "execute" {
+	if req.SessionID != key || req.ToolCall.ToolCallID != "q1" || req.ToolCall.Title != "rm -rf build" || req.ToolCall.Kind != "execute" {
 		t.Fatalf("permission request = %+v", req)
 	}
 	kinds := map[string]string{}
@@ -348,7 +354,7 @@ func TestSessionLoadResumesAndReplaysHistory(t *testing.T) {
 	if u := c.next(UpdateUserMessageChunk); u.Content.Text != "first" {
 		t.Fatalf("user chunk = %+v", u)
 	}
-	if u := c.next(UpdateToolCall); u.ToolCallID != "r1" || u.Kind != "read" || u.Title != "Read: /a.go" || u.Status != "completed" {
+	if u := c.next(UpdateToolCall); u.ToolCallID != "r1" || u.Kind != "read" || u.Title != "Read /a.go" || u.Status != "completed" || len(u.Locations) != 1 || u.Locations[0].Path != "/a.go" {
 		t.Fatalf("replayed tool call = %+v", u)
 	}
 	if u := c.next(UpdateAgentMessageChunk); u.Content.Text != "done" {

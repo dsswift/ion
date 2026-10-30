@@ -1,9 +1,6 @@
 package acpagent
 
 import (
-	"encoding/json"
-	"strings"
-
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -33,6 +30,10 @@ func (s *Session) translate(ev EngineEvent) {
 		s.commandRegistry(e)
 	case "engine_plan_mode_changed":
 		s.planModeChanged(e)
+	case "engine_plan_proposal":
+		s.planProposal(e)
+	case "engine_plan_file_written":
+		s.planFileWritten(e)
 	case "engine_message_end":
 		s.usage(e)
 	case "engine_status":
@@ -41,6 +42,8 @@ func (s *Session) translate(ev EngineEvent) {
 		s.commandResult(e)
 	case "engine_error":
 		s.engineError(e)
+	case "engine_dead":
+		s.engineDead(e)
 	case "engine_session_released":
 		s.markReleased(e)
 	case "engine_permission_request":
@@ -49,6 +52,34 @@ func (s *Session) translate(ev EngineEvent) {
 		go s.elicitationRequest(e)
 	case "engine_dialog":
 		go s.dialogRequest(e)
+	case "engine_dispatch_start":
+		s.dispatchStart(e)
+	case "engine_dispatch_activity":
+		s.dispatchActivity(e)
+	case "engine_dispatch_end":
+		s.dispatchEnd(e)
+	case "engine_dispatch_lost":
+		s.dispatchLost(e)
+	case "engine_compacting":
+		s.compacting(e)
+	case "engine_native_compaction":
+		s.nativeCompaction(e)
+	case "engine_prompt_injected":
+		s.promptInjected(e)
+	case "engine_background_task_complete":
+		s.backgroundTaskComplete(e)
+	case "engine_notification":
+		s.notification(e)
+	case "engine_intercept":
+		s.intercept(e)
+	case "engine_model_fallback":
+		s.modelFallback(e)
+	case "engine_capability_unsupported":
+		s.capabilityUnsupported(e)
+	case "engine_run_stalled":
+		s.runStalled(e)
+	case "engine_rate_limit":
+		s.rateLimit(e)
 	default:
 		utils.TraceWithFields("acp", "event not surfaced", map[string]any{"session_id": s.id, "event_type": ev.Type})
 	}
@@ -64,7 +95,13 @@ func (s *Session) chunk(kind, text string) {
 // notice sends a notice when the client renders them, else an agent chunk
 // so the text is not lost.
 func (s *Session) notice(level, message string) {
-	if message == "" {
+	s.noticeDetail(level, message, "")
+}
+
+// noticeDetail is notice with a description under the title. A client
+// without notices gets the title and the description as text.
+func (s *Session) noticeDetail(level, title, description string) {
+	if title == "" {
 		return
 	}
 	severity := "info"
@@ -75,69 +112,14 @@ func (s *Session) notice(level, message string) {
 		severity = "error"
 	}
 	if s.agent.clientSupportsNotices() {
-		s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateNotice, Severity: severity, Title: message})
+		s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateNotice, Severity: severity, Title: title, Description: description})
 		return
 	}
-	s.chunk(UpdateAgentMessageChunk, "\n"+message+"\n")
-}
-
-// toolInputs accumulates a tool call's streamed partial input by tool id so
-// the completed update can carry the parsed rawInput.
-func (s *Session) toolStart(e map[string]any) {
-	name := str(e, "toolName")
-	id := str(e, "toolId")
-	s.mu.Lock()
-	if s.toolInput == nil {
-		s.toolInput = map[string]*strings.Builder{}
+	text := "\n" + title + "\n"
+	if description != "" {
+		text += description + "\n"
 	}
-	s.toolInput[id] = &strings.Builder{}
-	s.mu.Unlock()
-	s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateToolCall, ToolCallID: id, Title: bareToolName(name), Name: name, Kind: toolKind(name), Status: "in_progress"})
-}
-
-func (s *Session) toolUpdate(e map[string]any) {
-	id := str(e, "toolId")
-	partial := str(e, "partialInput")
-	s.mu.Lock()
-	if b, ok := s.toolInput[id]; ok {
-		b.WriteString(partial)
-	}
-	s.mu.Unlock()
-}
-
-func (s *Session) toolEnd(e map[string]any) {
-	id := str(e, "toolId")
-	s.mu.Lock()
-	var raw string
-	if b, ok := s.toolInput[id]; ok {
-		raw = b.String()
-		delete(s.toolInput, id)
-	}
-	s.mu.Unlock()
-	status := "completed"
-	if isErr, _ := e["isError"].(bool); isErr { //nolint:errcheck // absent means success
-		status = "failed"
-	}
-	update := SessionUpdate{SessionUpdate: UpdateToolCallUpdate, ToolCallID: id, Status: status}
-	if raw == "" {
-		// A delegated-CLI run streams no partial input; the end event
-		// carries the whole input instead.
-		if input, ok := e["toolInput"].(map[string]any); ok && len(input) > 0 {
-			if encoded, err := json.Marshal(input); err == nil {
-				raw = string(encoded)
-			}
-		}
-	}
-	if raw != "" && json.Valid([]byte(raw)) {
-		update.RawInput = json.RawMessage(raw)
-		if title := toolTitle(bareToolName(str(e, "toolName")), raw); title != "" {
-			update.Title = title
-		}
-	}
-	if result := str(e, "result"); result != "" {
-		update.ToolContent = []ToolCallContent{{Type: "content", Content: ContentBlock{Type: "text", Text: result}}}
-	}
-	s.agent.notify(s.id, update)
+	s.chunk(UpdateAgentMessageChunk, text)
 }
 
 func (s *Session) imageContent(e map[string]any) {
@@ -147,7 +129,7 @@ func (s *Session) imageContent(e map[string]any) {
 	}
 	block := ContentBlock{Type: "resource_link", URI: "file://" + path, MimeType: str(e, "imageMediaType")}
 	if toolID := str(e, "imageToolId"); toolID != "" {
-		s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateToolCallUpdate, ToolCallID: toolID, ToolContent: []ToolCallContent{{Type: "content", Content: block}}})
+		s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateToolCallUpdate, ToolCallID: toolID, ToolContent: []ToolCallContent{{Type: "content", Content: &block}}})
 		return
 	}
 	s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateAgentMessageChunk, Content: &block})
@@ -195,8 +177,10 @@ func (s *Session) usage(e map[string]any) {
 	s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateUsage, Used: &used, Size: &size})
 }
 
-// status ends the prompt turn on the idle that ends its run. The completion
-// reason the run carried picks the ACP stop reason.
+// status ends the prompt turn on the idle that ends its run, unless the
+// idle owes the turn more: a question the client must answer, a plan
+// approval in flight, or background work the engine will resume on. The
+// completion reason the run carried picks the ACP stop reason.
 func (s *Session) status(e map[string]any) {
 	fields, _ := e["fields"].(map[string]any) //nolint:errcheck // a status without fields carries no state
 	if fields == nil {
@@ -213,6 +197,36 @@ func (s *Session) status(e map[string]any) {
 			s.agent.notify(s.id, SessionUpdate{SessionUpdate: UpdateUsage, Used: &used, Size: &window, Cost: &Cost{Amount: cost, Currency: "USD"}})
 		}
 	}
+	s.mu.Lock()
+	t := s.turn
+	sawEpoch := s.sawEpoch
+	s.mu.Unlock()
+	if t == nil {
+		return
+	}
+	if _, hasEpoch := fields["runEpoch"]; !hasEpoch && sawEpoch {
+		// The run's completion idle carries no epoch and no work inventory;
+		// the snapshot the engine emits right after it carries both, and
+		// the turn is settled on that one.
+		return
+	}
+	if s.askPendingQuestions(t, fields) {
+		return
+	}
+	s.mu.Lock()
+	awaiting := t.awaiting()
+	holds := idleHoldsWork(fields)
+	if holds {
+		t.hold()
+	}
+	s.mu.Unlock()
+	if awaiting {
+		return
+	}
+	if holds {
+		utils.LogWithFields(utils.LevelInfo, "acp", "turn held open for the engine's pending work", map[string]any{"session_id": s.id, "background_shells": num(fields, "backgroundShells"), "polls": num(fields, "pollsWaiting"), "background_agents": num(fields, "backgroundAgents")})
+		return
+	}
 	switch str(fields, "completionReason") {
 	case "aborted":
 		s.finishTurn(StopCancelled, nil)
@@ -221,6 +235,17 @@ func (s *Session) status(e map[string]any) {
 	default:
 		s.finishTurn(StopEndTurn, nil)
 	}
+}
+
+// idleHoldsWork reports whether an idle status says the engine will run
+// again on its own for this session: it is parked on background commands,
+// waiting on polls, or has agents working that will deliver into a run.
+func idleHoldsWork(fields map[string]any) bool {
+	pending, _ := fields["hasPendingWork"].(bool) //nolint:errcheck // absent means none
+	if !pending {
+		return false
+	}
+	return num(fields, "backgroundShells") > 0 || num(fields, "pollsWaiting") > 0 || num(fields, "backgroundAgents") > 0
 }
 
 // observeRunEpoch records the status's run epoch and reports whether the
@@ -237,6 +262,7 @@ func (s *Session) observeRunEpoch(fields map[string]any, state string) bool {
 	epoch := int64(raw)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.sawEpoch = true
 	t := s.turn
 	if t != nil && epoch < s.runEpoch {
 		t.baseline = epoch
@@ -254,6 +280,7 @@ func (s *Session) observeRunEpoch(fields map[string]any, state string) bool {
 	}
 	if state == "running" {
 		t.started = true
+		t.holding = false
 	}
 	return true
 }
@@ -296,6 +323,26 @@ func (s *Session) engineError(e map[string]any) {
 	s.finishTurn(StopEndTurn, &engineError{msg: msg, code: str(e, "errorCode")})
 }
 
+// engineDead ends the turn: the run's process died abnormally and no idle
+// for it is coming.
+func (s *Session) engineDead(e map[string]any) {
+	detail := "the run's process died"
+	if code, ok := e["exitCode"].(float64); ok {
+		detail += " (exit " + itoa(int(code)) + ")"
+	}
+	if signal := str(e, "signal"); signal != "" {
+		detail += " (" + signal + ")"
+	}
+	s.mu.Lock()
+	inTurn := s.turn != nil
+	s.mu.Unlock()
+	if !inTurn {
+		s.notice("error", detail)
+		return
+	}
+	s.finishTurn(StopEndTurn, &engineError{msg: detail, code: "engine_dead"})
+}
+
 type engineError struct{ msg, code string }
 
 func (e *engineError) Error() string {
@@ -303,56 +350,6 @@ func (e *engineError) Error() string {
 		return e.code + ": " + e.msg
 	}
 	return e.msg
-}
-
-// toolKind maps an engine tool name onto the ACP tool kind vocabulary. A
-// delegated-CLI run names Ion's tools through its MCP bridge
-// (`mcp__ion-extensions__Bash`); the bare name decides the kind.
-func toolKind(name string) string {
-	switch bareToolName(name) {
-	case "Read", "NotebookRead":
-		return "read"
-	case "Glob", "Grep", "WorktreeList", "WorktreeCommits", "WorktreeDiff":
-		return "search"
-	case "Edit", "Write", "MultiEdit", "NotebookEdit":
-		return "edit"
-	case "Bash", "BashOutput", "KillShell":
-		return "execute"
-	case "WebFetch", "WebSearch":
-		return "fetch"
-	case "EnterPlanMode", "ExitPlanMode":
-		return "switch_mode"
-	}
-	return "other"
-}
-
-// bareToolName strips the MCP bridge prefix a delegated CLI puts on Ion's
-// own tools, leaving third-party MCP tool names untouched.
-func bareToolName(name string) string {
-	const bridge = "mcp__ion-extensions__"
-	if strings.HasPrefix(name, bridge) {
-		return strings.TrimPrefix(name, bridge)
-	}
-	return name
-}
-
-// toolTitle derives a one-line title from a tool's parsed input: the
-// command for a shell, the path for a file tool, the pattern for a search.
-func toolTitle(name, rawInput string) string {
-	var input map[string]any
-	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
-		return ""
-	}
-	for _, key := range []string{"command", "file_path", "path", "pattern", "query", "url", "description", "prompt"} {
-		if v := str(input, key); v != "" {
-			line := strings.SplitN(v, "\n", 2)[0]
-			if len(line) > 120 {
-				line = line[:117] + "..."
-			}
-			return name + ": " + line
-		}
-	}
-	return name
 }
 
 func str(m map[string]any, key string) string {

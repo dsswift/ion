@@ -33,6 +33,9 @@ type fakeEngine struct {
 	failStart string
 	// loginURL is what oidc_begin_login answers with.
 	loginURL string
+	// conversationID is the conversation start_session reports the key
+	// bound to.
+	conversationID string
 }
 
 func newFakeEngine(t *testing.T) *fakeEngine {
@@ -97,6 +100,8 @@ func (f *fakeEngine) answer(conn net.Conn, cmd map[string]any) {
 			res["ok"] = false
 			res["error"] = "refused: " + failure
 			res["policyFailure"] = failure
+		} else if f.conversationID != "" {
+			res["data"] = map[string]any{"existed": true, "conversationId": f.conversationID}
 		}
 	case "oidc_identity":
 		res["data"] = map[string]any{"signedIn": false, "requireOperatorIdentity": true}

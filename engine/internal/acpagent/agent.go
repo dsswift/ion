@@ -197,7 +197,7 @@ func (a *Agent) initialize(params json.RawMessage) (any, *rpcstdio.RPCError) {
 		AgentCapabilities: AgentCapabilities{
 			LoadSession:         true,
 			PromptCapabilities:  PromptCapabilities{Image: true, EmbeddedContext: true},
-			McpCapabilities:     map[string]bool{"http": false, "sse": false},
+			McpCapabilities:     map[string]bool{"http": true, "sse": true},
 			SessionCapabilities: map[string]any{},
 			Auth:                a.opts.authCapabilities(),
 		},
@@ -220,7 +220,12 @@ func (a *Agent) clientSupportsForms() bool {
 
 // notify sends one session/update to the client.
 func (a *Agent) notify(sessionID string, update SessionUpdate) {
-	if err := a.rpc.Notify(NotifSessionUpdate, SessionNotification{SessionID: sessionID, Update: update}); err != nil {
+	a.notifyMeta(sessionID, update, nil)
+}
+
+// notifyMeta sends one session/update with notification-level _meta.
+func (a *Agent) notifyMeta(sessionID string, update SessionUpdate, meta map[string]any) {
+	if err := a.rpc.Notify(NotifSessionUpdate, SessionNotification{SessionID: sessionID, Update: update, Meta: meta}); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "acp", "session update not delivered", map[string]any{"session_id": sessionID, "update": update.SessionUpdate, "error": err.Error()})
 	}
 }

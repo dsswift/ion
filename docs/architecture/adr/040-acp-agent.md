@@ -27,6 +27,10 @@ The engine already speaks ACP as a client (`internal/acp`, for the Cursor and Gr
 
 **Everything else is translation.** Text and thinking deltas, tool calls with input and result, harness messages, notices, usage, extension slash commands, elicitation forms, and session load with a replayed transcript all map one engine event to one ACP update. What ACP has no shape for (resources, Studio panels) is not surfaced.
 
+**The turn is the client's unit of work, so the agent keeps it whole.** The engine ends a run where it pauses: a question for the person, a plan awaiting approval, a park on background work. None of those is the end of what the person asked for. The agent keeps the prompt open across them: a question becomes a form and its answer the next prompt, a plan proposal becomes an approval and its go-ahead the next prompt, a parked run is waited on until the engine resumes it. The turn ends on the idle snapshot of the last run, so the client always receives the report that follows the pause.
+
+**The client's servers are the session's.** The MCP servers a client names on `session/new` go to the engine as the session's own (`EngineConfig.mcpServers`) and connect beside the configured ones, so a client's tools reach the model under the names the client expects.
+
 ## Consequences
 
 - Any ACP editor gets Ion's harnesses: a Chief of Staff conversation in T3 Code loads the same extension, hooks, tools, and schedules as it did in Studio.
