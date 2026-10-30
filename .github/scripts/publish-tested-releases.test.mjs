@@ -283,8 +283,8 @@ test('a permanent GitHub error is not retried', () => {
   assert.equal(calls, 1);
 });
 
-test('transient covers 5xx, timeouts, and dropped connections only', () => {
-  for (const s of ['gh: Server Error (HTTP 502)', 'HTTP 504: Gateway Timeout', 'read: connection reset by peer', 'unexpected EOF', 'i/o timeout']) {
+test('transient covers 5xx, timeouts, dropped connections, and empty bodies only', () => {
+  for (const s of ['gh: Server Error (HTTP 502)', 'HTTP 504: Gateway Timeout', 'read: connection reset by peer', 'unexpected EOF', 'i/o timeout', 'unexpected end of JSON input']) {
     assert.ok(isTransient(ghError(s)), s);
   }
   for (const s of ['gh: Not Found (HTTP 404)', 'HTTP 422: Validation Failed', 'HTTP 401: Bad credentials']) {

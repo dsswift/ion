@@ -257,19 +257,21 @@ export function makeSweeper({ api, apiLines, gh, git, docker, log, repo }) {
   };
 }
 
-// A GitHub failure worth retrying: a 5xx answer, a timeout, or a dropped
-// connection. Anything else (404, 422, a bad argument) fails the same way on
+// A GitHub failure worth retrying: a 5xx answer, a timeout, a dropped
+// connection, or an empty body (gh reports one as unexpected end of JSON
+// input). Anything else (404, 422, a bad argument) fails the same way on
 // every try.
-const TRANSIENT = /HTTP 5\d\d|timed? ?out|connection reset|ECONNRESET|unexpected EOF/i;
+const TRANSIENT = /HTTP 5\d\d|timed? ?out|connection reset|ECONNRESET|unexpected EOF|unexpected end of JSON input/i;
 
 export function isTransient(err) {
   return TRANSIENT.test(`${err?.stderr ?? ''}\n${err?.message ?? ''}`);
 }
 
-// withRetry runs fn, retrying a transient failure with doubling backoff. Only
+// withRetry runs fn, retrying a transient failure with doubling backoff: six
+// attempts span about a minute, the length of a typical GitHub blip. Only
 // wrap calls that are safe to repeat: a request the server took before
 // answering 5xx runs again.
-export function withRetry(fn, { attempts = 4, baseDelayMs = 2000, sleep, log }) {
+export function withRetry(fn, { attempts = 6, baseDelayMs = 2000, sleep, log }) {
   return (...args) => {
     for (let attempt = 1; ; attempt++) {
       try {
