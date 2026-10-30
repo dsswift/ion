@@ -18,6 +18,16 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.5.0](https://github.com/dsswift/ion/compare/engine-v3.4.2...engine-v3.5.0) (2026-10-30)
+
+### Features
+
+* **engine:** deliver background command results by default ([67a0c5e](https://github.com/dsswift/ion/commit/67a0c5ebbff63b7005d22ea68a67dba73f81a3e0))
+
+### Bug Fixes
+
+* **engine:** keep acp turns open across background wakes ([9309833](https://github.com/dsswift/ion/commit/93098332a4249b3dac645b888a6524f6d4854c7b))
+
 ## [3.4.2](https://github.com/dsswift/ion/compare/engine-v3.4.1...engine-v3.4.2) (2026-10-30)
 
 ### Bug Fixes
