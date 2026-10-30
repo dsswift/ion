@@ -235,18 +235,26 @@ export function makeSweeper({ api, apiLines, gh, git, docker, log, repo }) {
         log(`held ${rel.tag}: its target ${rel.sha} is not a commit, so it has no test verdict`);
         continue;
       }
-      const built = builtStatus(rel.component, rel.sha, rel.tag);
-      if (!built) {
-        log(`held ${rel.tag}: build not finished for ${rel.sha.slice(0, 9)}`);
-        continue;
-      }
-      if (built.bundles && !isPublic(built.bundles)) {
-        log(`held ${rel.tag}: it bundles ${built.bundles}, which is not public`);
-        continue;
-      }
-      const tests = testVerdict(rel.component, rel.sha);
-      if (!tests.ok) {
-        log(`held ${rel.tag}: ${tests.why}`);
+      // One release GitHub cannot answer for stays held for the next sweep;
+      // it must not take the releases behind it down with it.
+      try {
+        const built = builtStatus(rel.component, rel.sha, rel.tag);
+        if (!built) {
+          log(`held ${rel.tag}: build not finished for ${rel.sha.slice(0, 9)}`);
+          continue;
+        }
+        if (built.bundles && !isPublic(built.bundles)) {
+          log(`held ${rel.tag}: it bundles ${built.bundles}, which is not public`);
+          continue;
+        }
+        const tests = testVerdict(rel.component, rel.sha);
+        if (!tests.ok) {
+          log(`held ${rel.tag}: ${tests.why}`);
+          continue;
+        }
+      } catch (err) {
+        if (!isTransient(err)) throw err;
+        log(`held ${rel.tag}: GitHub did not answer (${String(err.stderr || err.message).trim().split('\n')[0]}); the next sweep retries`);
         continue;
       }
       publish(rel, newest);

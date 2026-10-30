@@ -102,6 +102,21 @@ test('publishes a built release whose gating jobs all passed', () => {
   assert.deepEqual(edits(w), [`release edit engine-v1.0.0 --draft=false --latest -R ${REPO}`]);
 });
 
+test('a release GitHub cannot answer for stays held; the sweep goes on', () => {
+  const w = world();
+  release(w, 'engine-v1.0.0', A);
+  built(w, A, 'engine', 'engine-v1.0.0');
+  quality(w, A, 1, allPass('engine'));
+  release(w, 'engine-v1.1.0', B);
+  built(w, B, 'engine', 'engine-v1.1.0');
+  quality(w, B, 2, allPass('engine'));
+  const sweep = sweeper(w);
+  w.jobs[1] = new Proxy([], { get() { throw Object.assign(new Error('Command failed: gh api'), { stderr: 'gh: Server Error (HTTP 502)\n' }); } });
+  sweep();
+  assert.deepEqual(edits(w), [`release edit engine-v1.1.0 --draft=false --latest -R ${REPO}`]);
+  assert.match(w.logs.join('\n'), /held engine-v1\.0\.0: GitHub did not answer \(gh: Server Error \(HTTP 502\)\); the next sweep retries/);
+});
+
 test('holds a release when a gating job failed', () => {
   const w = world();
   release(w, 'engine-v1.0.0', B);
