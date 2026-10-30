@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.4.1](https://github.com/dsswift/ion/compare/engine-v3.4.0...engine-v3.4.1) (2026-10-30)
+
+### Bug Fixes
+
+* **engine:** show acp tool paths the same on windows ([9465f8b](https://github.com/dsswift/ion/commit/9465f8bf3b65fa89b3eaf8e09528afafa39d2d08))
+
 ## [3.4.0](https://github.com/dsswift/ion/compare/engine-v3.3.0...engine-v3.4.0) (2026-10-30)
 
 ### Features
