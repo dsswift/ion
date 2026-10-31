@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.5.1](https://github.com/dsswift/ion/compare/engine-v3.5.0...engine-v3.5.1) (2026-10-31)
+
+### Bug Fixes
+
+* **engine:** keep pending work in extension respawn status ([aea1835](https://github.com/dsswift/ion/commit/aea1835cbac56e27b6fcabf9e393c71478815263))
+
 ## [3.5.0](https://github.com/dsswift/ion/compare/engine-v3.4.2...engine-v3.5.0) (2026-10-30)
 
 ### Features
