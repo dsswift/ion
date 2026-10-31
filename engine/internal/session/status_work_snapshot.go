@@ -62,11 +62,10 @@ func sessionHasPendingWork(s *engineSession, activeDispatches int) bool {
 // process into wire shape, notifying or detached.
 //
 // Separate from buildStatusFields because the hand-built status snapshots
-// (run start in prompt_dispatch.go, extension restart and idle in
-// host_death.go, clear in clear_core.go) need the same inventory. Those
-// snapshots are complete-replacement events by contract, so a snapshot that
-// omitted this field told every consumer that a live command had disappeared —
-// the next status emission after a detached command started erased it from the
+// (run start, clear) need the same inventory. Those snapshots are
+// complete-replacement events by contract, so a snapshot that omitted this
+// field told every consumer that a live command had disappeared — the next
+// status emission after a detached command started erased it from the
 // client's view even though the process was still running.
 func liveBackgroundTaskStates(owner string) []types.BackgroundTaskState {
 	activeTasks := tools.BackgroundTasksForOwner(owner)

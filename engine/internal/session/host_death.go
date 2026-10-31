@@ -112,6 +112,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 	ctx := m.newExtContext(s, key)
 	m.mu.RUnlock()
 
+	handled := false
 	for _, h := range hosts {
 		if !h.Dead() {
 			continue
@@ -120,25 +121,14 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		prevExitCode, prevSignal := h.LastExit()
 		hadTurnInFlight := h.TurnInFlightAtDeath()
 
-		m.emit(key, types.EngineEvent{
-			Type: "engine_status",
-			Fields: &types.StatusFields{
-				Label: key, State: "extension_restarting",
-				// Hand-built snapshot: stamp the epoch explicitly, or this
-				// emission would publish an absent (zero) epoch and read to a
-				// consumer as older than a prompt already in flight.
-				RunEpoch:       s.runEpoch,
-				ContextPercent: s.lastContextPct,
-				ContextWindow:  s.lastContextWindow,
-				ContextTokens:  s.lastContextTokens,
-				Model:          s.lastModel,
-				RunCostUsd:     s.lastTotalCost,
-				// Complete-snapshot contract: an extension restart does not kill
-				// the session's background Bash processes, so they must survive
-				// this emission rather than be erased from every consumer.
-				ActiveBackgroundTasks: liveBackgroundTaskStates(key),
-			},
-		})
+		handled = true
+		// Complete-snapshot contract: an extension restart does not touch the
+		// session's background commands, polls, or agents, so the restarting
+		// status carries the same work inventory as any other snapshot.
+		if fields, ok := m.buildStatusFields(key); ok {
+			fields.State = "extension_restarting"
+			m.emit(key, types.EngineEvent{Type: "engine_status", Fields: fields})
+		}
 
 		attempt, err := h.Respawn()
 		if err != nil {
@@ -210,38 +200,13 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		})
 	}
 
-	// Settle status back to idle once all hosts have been processed.
-	m.mu.RLock()
-	var idlePct, idleCW, idleTokens int
-	var idleModel string
-	var idleCost, idleConvCost float64
-	var idleEpoch int64
-	if sess, ok2 := m.sessions[key]; ok2 {
-		idlePct = sess.lastContextPct
-		idleCW = sess.lastContextWindow
-		idleTokens = sess.lastContextTokens
-		idleModel = sess.lastModel
-		idleCost = sess.lastTotalCost
-		idleConvCost = sess.lastConvCost
-		idleEpoch = sess.runEpoch
+	// Settle the status once a host was handled. The settle is the
+	// authoritative snapshot, so the outstanding background work, polls, and
+	// agents it carries keep a parked session from reading as finished. With
+	// no dead host there is nothing to settle, so nothing is emitted.
+	if handled {
+		m.emitSessionStatus(key, "extension_respawn")
 	}
-	m.mu.RUnlock()
-	m.emit(key, types.EngineEvent{
-		Type: "engine_status",
-		Fields: &types.StatusFields{
-			Label: key, State: "idle",
-			// Hand-built snapshot: stamp the epoch explicitly. An idle that
-			// omits it reads as pre-dispatch to an ordering-aware consumer,
-			// which is exactly the false-completion shape RunEpoch prevents.
-			RunEpoch:       idleEpoch,
-			ContextPercent: idlePct, ContextWindow: idleCW, ContextTokens: idleTokens,
-			Model: idleModel, RunCostUsd: idleCost, ConversationCostUsd: idleConvCost,
-			// Complete-snapshot contract: idle is not proof the session's
-			// background Bash processes stopped. Omitting them here reported a
-			// terminal-looking idle while real processes ran.
-			ActiveBackgroundTasks: liveBackgroundTaskStates(key),
-		},
-	})
 }
 
 // firePeerExtensionDied fires peer_extension_died on every Host in the
