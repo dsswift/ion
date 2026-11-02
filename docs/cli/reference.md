@@ -450,6 +450,45 @@ Full configuration reference: [MCP Configuration](../mcp/configuration.md).
 
 ---
 
+### `ion plugin`
+
+Install Claude Code plugins. A plugin brings skills, hooks, and MCP servers.
+New conversations load it; the engine needs no restart. Plugins are fetched
+with `git`, using the credentials your git already has, so a private
+repository works the same as a public one.
+
+#### `ion plugin install <source> [plugin]`
+
+`source` is `owner/repo` on GitHub (tried over HTTPS, then SSH) or any git URL.
+A repository with `.claude-plugin/plugin.json` at its root installs that
+plugin. A repository whose `.claude-plugin/marketplace.json` lists several
+takes the name of the one to install.
+
+```bash
+ion plugin install dsswift/vantage
+ion plugin install git@gitlab.example.com:team/plugins.git reviewer
+```
+
+The output names the skills and MCP servers the plugin brings. A plugin's
+MCP servers come from its `.mcp.json` and the `mcpServers` field of its
+manifest. `${CLAUDE_PLUGIN_ROOT}` there becomes the plugin's directory. A
+server in `engine.json` with the same name wins.
+
+#### `ion plugin update [name]`
+
+Fetch the latest commit of one plugin, or of every plugin when no name is
+given.
+
+#### `ion plugin list`
+
+List installed plugins with their source, commit, and directory.
+
+#### `ion plugin remove <name>`
+
+Remove a plugin and its files.
+
+---
+
 ### `ion version`
 
 Print the engine version.

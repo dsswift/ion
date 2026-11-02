@@ -1340,19 +1340,38 @@ Look up the subscriptions again now, for example after a key rotated.
 
 ### plugin_install
 
-Download and install a Claude Code-compatible plugin from a GitHub source (`"owner/repo"`). The `source` field carries the repo path.
+Fetch and install a Claude Code-compatible plugin with `git`. Git signs in with the credentials it already has, so a private repository installs like a public one. A new session loads the plugin's skills, hooks, and MCP servers.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `cmd` | `"plugin_install"` | yes | Command discriminator |
-| `source` | string | yes | GitHub source path (`"owner/repo"`) |
+| `source` | string | yes | `"owner/repo"` on GitHub (HTTPS first, then SSH), or any git URL |
+| `label` | string | no | The plugin to take from a repository whose `.claude-plugin/marketplace.json` lists several |
 | `requestId` | string | no | Correlates with ServerResult |
 
 ```json
 {"cmd":"plugin_install","source":"owner/repo","requestId":"r44"}
 ```
 
-**Response:** `ServerResult` with `data: { name, source, version }` describing the installed plugin.
+**Response:** `ServerResult` with `data: { name, source, version, path }` describing the installed plugin. `source` is the plugin's id: `"owner/repo"` for GitHub however the source was written, `"host/path"` for another git host. Plugin policy matches on it.
+
+---
+
+### plugin_update
+
+Fetch the current commit of an installed plugin from where it was installed. The `label` field carries the plugin name.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"plugin_update"` | yes | Command discriminator |
+| `label` | string | yes | Name of the plugin to update |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"plugin_update","label":"my-plugin","requestId":"r47"}
+```
+
+**Response:** `ServerResult` with `data: { name, source, version, path, changed }`. `changed` is false when the plugin was already at the current commit.
 
 ---
 

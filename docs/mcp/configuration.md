@@ -268,6 +268,21 @@ authorization state separately — an authorized server that is still not
 connecting means the stored token is being refused, which `ion mcp logout` then
 `ion mcp login` resolves.
 
+## Servers from plugins
+
+A plugin installed with `ion plugin install` brings its own MCP servers, from
+the `.mcp.json` at its root and the `mcpServers` field of its
+`.claude-plugin/plugin.json`, in Claude Code's format. They join the
+configured set for every session without an entry in `engine.json`:
+
+- `${CLAUDE_PLUGIN_ROOT}` in a command, argument, URL, header, or environment
+  value becomes the plugin's directory, and a stdio server also gets it as
+  `CLAUDE_PLUGIN_ROOT` and `ION_PLUGIN_ROOT`.
+- A server with no `type` is `stdio` when it has a `command`, and `http` when
+  it has only a `url`.
+- A configured server keeps its name over a plugin's. Plugin servers follow
+  the same name rules and enterprise MCP policy as any other server.
+
 ## Config layers
 
 MCP server configuration follows the standard four-layer merge. Servers defined in project config override servers with the same name in user config. Enterprise config can restrict which servers are allowed via allowlists and denylists.
