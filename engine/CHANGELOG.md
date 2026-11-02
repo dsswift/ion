@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.5.2](https://github.com/dsswift/ion/compare/engine-v3.5.1...engine-v3.5.2) (2026-11-02)
+
+### Bug Fixes
+
+* **engine:** keep the session when an acp cancel aborts ([f71f494](https://github.com/dsswift/ion/commit/f71f49405019b91b0c325946d4382c08e53e3dc3))
+
 ## [3.5.1](https://github.com/dsswift/ion/compare/engine-v3.5.0...engine-v3.5.1) (2026-10-31)
 
 ### Bug Fixes
