@@ -25,6 +25,8 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
+  # build.yml signs its images keyless with this run's OIDC token.
+  id-token: write
   issues: write
   statuses: write
   actions: write

@@ -9,8 +9,9 @@ name: Build
 # published release with files missing. Tests do not run here: the Quality
 # workflow is the test lane and runs beside this one.
 #
-# Images push only their version tags here. `:latest` moves when the release
-# goes public.
+# Images push only their version tags here, each signed with cosign keyless
+# as this workflow's GitHub identity, with a syft SBOM attested to it.
+# `:latest` moves when the release goes public.
 #
 # A dry run builds and verifies everything a release would from any ref, and
 # publishes nothing: no release upload, no image push, no checksums, no
@@ -255,6 +256,11 @@ jobs:
   build-engine-image:
     if: contains(fromJSON(inputs.release_report).components, 'engine')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Needed to get an OIDC token for keyless signing.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -279,6 +285,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: engine
@@ -290,6 +297,38 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             ghcr.io/${{ github.repository }}/engine:${{ steps.version.outputs.version }}
+
+      - uses: sigstore/cosign-installer@v3
+        if: ${{ !inputs.dry_run }}
+      - uses: anchore/sbom-action/download-syft@v0
+        if: ${{ !inputs.dry_run }}
+      # Sign and attest by digest, never by tag: a tag can move.
+      - name: Sign the image
+        if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/engine
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      - name: Attest the SBOM
+        if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/engine
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          syft "${IMAGE}@${DIGEST}" -o spdx-json > sbom.spdx.json
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson "${IMAGE}@${DIGEST}"
+      - name: Verify what was published
+        if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/engine
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp '^https://github.com/${{ github.repository }}/'
+          cosign verify-attestation "${IMAGE}@${DIGEST}" --type spdxjson \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp '^https://github.com/${{ github.repository }}/' > /dev/null
 
   ready-engine:
     if: always() && !inputs.dry_run && contains(fromJSON(inputs.release_report).components, 'engine') && needs.build-engine.result == 'success' && needs.engine-checksums.result == 'success' && needs.build-engine-image.result == 'success'
