@@ -71,6 +71,10 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 		utils.LogWithFields(utils.LevelInfo, "config", "extensionhosts block accepted", map[string]any{"count": len(merged.ExtensionHosts.Extensions), "working_directory": merged.ExtensionHosts.Session.WorkingDirectory, "run_as": merged.ExtensionHosts.RunAs != nil})
 	}
 
+	if len(merged.SessionExtensions) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "config", "session extensions configured", map[string]any{"count": len(merged.SessionExtensions)})
+	}
+
 	// Apply log level from config
 	if merged.LogLevel != "" {
 		utils.SetLevelFromString(merged.LogLevel)

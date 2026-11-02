@@ -632,3 +632,15 @@ func TestLoadConfig_ExtensionHostsRejectedBlockIsDropped(t *testing.T) {
 		t.Fatalf("valid extensionHosts not loaded: %+v", cfg.ExtensionHosts)
 	}
 }
+
+func TestMergeInto_SessionExtensions(t *testing.T) {
+	dst := &types.EngineRuntimeConfig{SessionExtensions: []string{"/global/ledger"}}
+	mergeInto(dst, &types.EngineRuntimeConfig{})
+	if len(dst.SessionExtensions) != 1 || dst.SessionExtensions[0] != "/global/ledger" {
+		t.Fatalf("a layer without the field changed it: %v", dst.SessionExtensions)
+	}
+	mergeInto(dst, &types.EngineRuntimeConfig{SessionExtensions: []string{"/project/audit"}})
+	if len(dst.SessionExtensions) != 1 || dst.SessionExtensions[0] != "/project/audit" {
+		t.Fatalf("a more specific layer did not replace the list: %v", dst.SessionExtensions)
+	}
+}

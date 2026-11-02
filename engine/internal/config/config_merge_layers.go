@@ -210,6 +210,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.ExtensionHosts != nil {
 		dst.ExtensionHosts = src.ExtensionHosts
 	}
+	if len(src.SessionExtensions) > 0 {
+		dst.SessionExtensions = append([]string(nil), src.SessionExtensions...)
+	}
 	mergeProtectedOperations(dst, src)
 	// Background task, Poll, and dispatch history blocks are engine-owned operational
 	// configuration. A more-specific layer replaces the complete policy block,

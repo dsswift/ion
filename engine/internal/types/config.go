@@ -493,6 +493,11 @@ type EngineRuntimeConfig struct {
 	// session template their fires run in. Pointer so engine.json can omit
 	// the block; no block means no engine hosts. See types.ExtensionHostsConfig.
 	ExtensionHosts *ExtensionHostsConfig `json:"extensionHosts,omitempty"`
+	// SessionExtensions are loaded into every session the engine starts
+	// (client-started, forked, and headless), after the session's own list.
+	// An entry the session already names is not loaded twice. A non-empty
+	// list in a more specific layer replaces the earlier one.
+	SessionExtensions []string `json:"sessionExtensions,omitempty"`
 	// BackgroundTasks configures delivery of background bash command
 	// completions (Bash run_in_background + notify_on_complete). Pointer so
 	// engine.json can omit the block and inherit the compiled defaults. See

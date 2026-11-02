@@ -53,6 +53,7 @@ func (m *Manager) startSession(
 		utils.LogWithFields(utils.LevelWarn, "session", "startsession rejected by locked profile policy", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "error": err.Error()})
 		return nil, err
 	}
+	config.Extensions = m.withSessionExtensions(key, config.Extensions)
 	utils.LogWithFields(utils.LevelInfo, "session", "startsession", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "count": len(config.Extensions)})
 	// Existing sessions only need filesystem preflight when they must restore
 	// their missing extension hosts. A normal idempotent start must not depend

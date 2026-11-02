@@ -25,6 +25,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
 | `protectedOperations` | object | omitted | Named outbound calls whose secret the engine injects. Global file and enterprise config only. See [protectedOperations](#protectedoperations). |
 | `toolSearch` | object | omitted | How MCP and extension tools load: upfront or on demand. See [toolSearch](#toolsearch). |
+| `sessionExtensions` | string[] | `[]` | Extensions loaded into every session. See [sessionExtensions](#sessionextensions). |
 
 ## slashModelTier
 
@@ -806,6 +807,20 @@ Selects how deferrable tools (MCP server tools, and extension tools not marked `
 ## extensionHosts
 
 Runs the listed extensions as engine-scoped hosts, alive from boot to shutdown, whose schedules and webhooks fire into headless sessions under a configured run-as principal. Full reference: [`extensionHosts`](extension-hosts.md).
+
+## sessionExtensions
+
+Extension paths loaded into every session the engine starts: client-started, forked, and headless. They load after the session's own extensions, which the client names in `start_session` or a locked profile supplies. An extension the session already names is not loaded twice; paths compare after `~` expansion and cleaning. Use it for an extension that must observe every conversation, such as an audit or telemetry observer.
+
+A non-empty list in a more specific layer replaces the earlier one. The enterprise extension allowlist still applies to each entry.
+
+```json
+{
+  "sessionExtensions": ["~/.ion/extensions/ledger"]
+}
+```
+
+These are session-scoped extensions. An extension listed in [`extensionHosts`](extension-hosts.md) runs once for the whole engine instead, and must declare an engine half.
 
 ## security
 

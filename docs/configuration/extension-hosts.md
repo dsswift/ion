@@ -31,7 +31,7 @@ sidebar_position: 3
 
 ### `extensions` (required, string array)
 
-Extension paths, resolved like a session's extension list (a directory with an entry point, or the entry file). Each extension's [`extension.json`](../extensions/extension-json.md#scope-optional-session--engine--both) must declare `"scope": "engine"` or `"both"`; a session-scoped extension has no engine half and is refused at boot with an error in the log.
+Extension paths, resolved like a session's extension list (a directory with an entry point, or the entry file). Each extension's [`extension.json`](../extensions/extension-json.md#scope-optional-session--engine--both) must declare `"scope": "engine"` or `"both"`; a session-scoped extension has no engine half and is refused at boot with an error in the log. To load a session-scoped extension into every conversation, list it in [`sessionExtensions`](engine-json.md#sessionextensions) instead.
 
 ### `runAs` (optional, object)
 
