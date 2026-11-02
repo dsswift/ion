@@ -1,10 +1,10 @@
 package server
 
-// dispatch_plugin.go — handlers for the plugin_install / plugin_list /
-// plugin_remove commands. Split out of dispatch.go, which crossed the
-// 800-line file cap; plugin administration is a cohesive, independently
-// growing surface (a future plugin_update, a plugin_search) that belongs in
-// its own file rather than crowding the main dispatch switch.
+// dispatch_plugin.go — handlers for the plugin_install / plugin_update /
+// plugin_list / plugin_remove commands. Split out of dispatch.go, which
+// crossed the 800-line file cap; plugin administration is a cohesive,
+// independently growing surface that belongs in its own file rather than
+// crowding the main dispatch switch.
 
 import (
 	"net"
@@ -14,21 +14,42 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// dispatchPluginInstall downloads and installs a Claude Code-compatible
-// plugin from a GitHub source ("owner/repo"). cmd.Source carries the repo
-// path. Returns the installed plugin record in the result data.
+// dispatchPluginInstall fetches and installs a Claude Code-compatible plugin
+// with git. cmd.Source carries "owner/repo" or a git URL; cmd.Label, when
+// set, names the plugin to take from a marketplace that lists several.
+// Returns the installed plugin record in the result data.
 func (s *Server) dispatchPluginInstall(conn net.Conn, cmd *protocol.ClientCommand) {
-	utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source})
-	p, err := plugins.Install(cmd.Source, nil)
+	utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source, "plugin": cmd.Label})
+	p, err := plugins.Install(cmd.Source, cmd.Label, nil)
 	if err != nil {
 		s.sendResult(conn, cmd, err, nil)
 		return
 	}
-	s.sendResult(conn, cmd, nil, map[string]any{
+	s.sendResult(conn, cmd, nil, pluginRecord(p))
+}
+
+// dispatchPluginUpdate fetches the current commit of one installed plugin
+// (cmd.Label) from where it was installed. The result is the plugin record
+// plus whether the commit moved.
+func (s *Server) dispatchPluginUpdate(conn net.Conn, cmd *protocol.ClientCommand) {
+	utils.LogWithFields(utils.LevelInfo, "server", "plugin update", map[string]any{"name": cmd.Label})
+	p, changed, err := plugins.Update(cmd.Label, nil)
+	if err != nil {
+		s.sendResult(conn, cmd, err, nil)
+		return
+	}
+	rec := pluginRecord(p)
+	rec["changed"] = changed
+	s.sendResult(conn, cmd, nil, rec)
+}
+
+func pluginRecord(p plugins.InstalledPlugin) map[string]any {
+	return map[string]any{
 		"name":    p.Name,
 		"source":  p.Source,
 		"version": p.Version,
-	})
+		"path":    p.InstallPath,
+	}
 }
 
 // dispatchPluginList returns every installed plugin as a slice of plugin

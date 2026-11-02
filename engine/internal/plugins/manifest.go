@@ -27,6 +27,9 @@ type PluginManifest struct {
 	Description string                       `json:"description,omitempty"`
 	Author      map[string]string            `json:"author,omitempty"`
 	Hooks       map[string][]PluginHookGroup `json:"hooks,omitempty"`
+	// McpServers is the manifest's own MCP servers: an object of server
+	// configs, or a path to a file of them relative to the plugin dir.
+	McpServers json.RawMessage `json:"mcpServers,omitempty"`
 }
 
 // LoadManifest reads <pluginDir>/.claude-plugin/plugin.json.

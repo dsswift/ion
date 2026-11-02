@@ -12,11 +12,28 @@ import (
 
 // InstalledPlugin is one entry in the registry.
 type InstalledPlugin struct {
-	Name        string    `json:"name"`
-	Source      string    `json:"source"`      // "JuliusBrussee/caveman"
-	InstallPath string    `json:"installPath"` // absolute path to plugin dir
-	Version     string    `json:"version"`     // git sha
-	InstalledAt time.Time `json:"installedAt"`
+	Name   string `json:"name"`
+	Source string `json:"source"` // the Source ID: "owner/repo" on GitHub, "host/path" elsewhere
+	// URL is the git remote it was fetched from, which an update fetches
+	// again. Empty on a plugin installed before Ion fetched with git.
+	URL string `json:"url,omitempty"`
+	// Plugin is the marketplace entry asked for at install; empty for a
+	// repository's own plugin.
+	Plugin      string `json:"plugin,omitempty"`
+	InstallPath string `json:"installPath"` // absolute path to the plugin dir
+	// CheckoutPath is the fetched repository the plugin dir sits in, which a
+	// marketplace may share among several plugins.
+	CheckoutPath string    `json:"checkoutPath,omitempty"`
+	Version      string    `json:"version"` // git sha
+	InstalledAt  time.Time `json:"installedAt"`
+}
+
+// root is the directory the plugin's files were fetched into.
+func (p InstalledPlugin) root() string {
+	if p.CheckoutPath != "" {
+		return p.CheckoutPath
+	}
+	return p.InstallPath
 }
 
 type registry struct {

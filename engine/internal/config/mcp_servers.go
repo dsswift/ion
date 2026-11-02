@@ -17,6 +17,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"os"
 	"strings"
 	"time"
@@ -46,7 +47,7 @@ import (
 // the session's principal; the policy enforced is the one resolved for it.
 func ResolveMcpServers(projectDir string, principal ...*types.SessionPrincipal) map[string]types.McpServerConfig {
 	merged := mergeConfigLayersFor(projectDir, principal)
-	servers := merged.McpServers
+	servers := withPluginMcpServers(merged.McpServers, plugins.McpServers())
 	names := make([]string, 0, len(servers))
 	for name := range servers {
 		names = append(names, name)
@@ -57,6 +58,37 @@ func ResolveMcpServers(projectDir string, principal ...*types.SessionPrincipal) 
 		"servers":     names,
 	})
 	return servers
+}
+
+// withPluginMcpServers adds the servers installed plugins ship to the
+// configured set, so a plugin's tools reach every session without an entry
+// in engine.json. A configured server keeps its name over a plugin's, and a
+// plugin server is held to the same name rules and enterprise policy as one
+// added by hand. The configured map is not modified.
+func withPluginMcpServers(configured, fromPlugins map[string]types.McpServerConfig) map[string]types.McpServerConfig {
+	if len(fromPlugins) == 0 {
+		return configured
+	}
+	merged := make(map[string]types.McpServerConfig, len(configured)+len(fromPlugins))
+	for name, cfg := range configured {
+		merged[name] = cfg
+	}
+	for name, cfg := range fromPlugins {
+		var reason string
+		if _, taken := configured[name]; taken {
+			reason = "a configured server already uses this name"
+		} else if err := validateMcpServerName(name); err != nil {
+			reason = err.Error()
+		} else if err := CheckMcpServerAllowed(name, cfg); err != nil {
+			reason = err.Error()
+		}
+		if reason != "" {
+			utils.LogWithFields(utils.LevelWarn, "config", "plugin mcp server refused", map[string]any{"serverName": name, "reason": reason})
+			continue
+		}
+		merged[name] = cfg
+	}
+	return merged
 }
 
 // McpServerNameError distinguishes a rejected server name from an I/O failure

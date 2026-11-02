@@ -1,7 +1,7 @@
 package server
 
 // dispatch_plugin_test.go — end-to-end tests for the plugin protocol commands
-// (plugin_install, plugin_list, plugin_remove). Each test goes through the full
+// (plugin_install, plugin_update, plugin_list, plugin_remove). Each test goes through the full
 // JSON-decode → dispatch → result-marshaling path so the wire contract a client
 // decodes is exercised against actual socket input.
 //
@@ -9,11 +9,10 @@ package server
 // plugins.RegistryPath() resolves under $HOME/.ion, so a temp HOME gives each
 // test a clean registry it can seed through plugins.Register.
 //
-// plugin_install's happy path performs a live GitHub fetch, so it is not
-// exercised here; instead the reachable non-network error path (an invalid
-// "owner/repo" source that Install rejects before any HTTP call) plus the
-// wire-level malformed-JSON rejection cover the install command's error
-// contract.
+// plugin_install's happy path fetches with git and is covered against local
+// repositories in the plugins package; here the reachable non-network error
+// path (a source Install rejects before running git) plus the wire-level
+// malformed-JSON rejection cover the install command's error contract.
 
 import (
 	"encoding/json"
@@ -177,9 +176,9 @@ func TestDispatchPlugin_InstallErrorPaths(t *testing.T) {
 	conn := dialServer(t, srv)
 	t.Cleanup(func() { conn.Close() })
 
-	// Reachable non-network error path: an invalid source ("owner/repo"
-	// format violated) is rejected by Install before any HTTP call, so the
-	// dispatch handler returns an error result.
+	// Reachable non-network error path: a source that is neither owner/repo
+	// nor a git URL is rejected by Install before git runs, so the dispatch
+	// handler returns an error result.
 	sendJSON(t, conn, map[string]interface{}{
 		"cmd":       "plugin_install",
 		"requestId": "req-install-bad",
@@ -218,5 +217,28 @@ func TestDispatchPlugin_InstallErrorPaths(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("malformed JSON: expected an 'invalid command' error, got %v", lines)
+	}
+}
+
+func TestDispatchPlugin_UpdateUnknownIsAnError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd":       "plugin_update",
+		"requestId": "req-update-unknown",
+		"label":     "never-installed",
+	})
+	lines := readLines(t, conn, 2, 2*time.Second)
+	r := findResult(t, lines)
+	if r == nil {
+		t.Fatalf("plugin_update unknown: no result received; lines=%v", lines)
+	}
+	if r.OK || !strings.Contains(r.Error, "not found") {
+		t.Errorf("plugin_update unknown: ok=%v error=%q, want a not-found error", r.OK, r.Error)
 	}
 }

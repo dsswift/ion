@@ -725,6 +725,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "plugin_install":
 		s.dispatchPluginInstall(conn, cmd)
 
+	case "plugin_update":
+		s.dispatchPluginUpdate(conn, cmd)
+
 	case "plugin_list":
 		s.dispatchPluginList(conn, cmd)
 

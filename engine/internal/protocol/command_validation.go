@@ -226,7 +226,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key")
 	case "plugin_install":
 		return hasNonEmptyString(raw, "source")
-	case "plugin_remove":
+	case "plugin_remove", "plugin_update":
 		return hasNonEmptyString(raw, "label")
 	case "mcp_add":
 		return hasNonEmptyString(raw, "mcpName")

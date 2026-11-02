@@ -62,7 +62,11 @@ func ReconcilePlugins(cfg *types.EngineRuntimeConfig, progress func(string)) {
 			}
 
 			for _, source := range forceInstalled {
-				if installedSources[source] {
+				id := source
+				if src, err := ParseSource(source); err == nil {
+					id = src.ID
+				}
+				if installedSources[id] {
 					utils.LogWithFields(utils.LevelInfo, "plugins.reconcile", "force-installed plugin already present", map[string]any{
 						"source": source,
 					})
@@ -73,7 +77,7 @@ func ReconcilePlugins(cfg *types.EngineRuntimeConfig, progress func(string)) {
 				// Enterprise force-installs have already been merged and bypass
 				// allowlist checks (allowlist is for user-chosen plugins).
 				// We use IsPluginAllowed which checks both allowlist and denylist.
-				if !IsPluginAllowed(source, enterpriseCfg) {
+				if !IsPluginAllowed(id, enterpriseCfg) {
 					utils.LogWithFields(utils.LevelInfo, "plugins.reconcile", "force-installed plugin blocked by enterprise policy — skipping", map[string]any{
 						"source": source,
 					})
@@ -88,7 +92,7 @@ func ReconcilePlugins(cfg *types.EngineRuntimeConfig, progress func(string)) {
 				if progress != nil {
 					progress(msg)
 				}
-				if _, err := Install(source, progress); err != nil {
+				if _, err := Install(source, "", progress); err != nil {
 					utils.LogWithFields(utils.LevelInfo, "plugins.reconcile", "force-install failed", map[string]any{
 						"source": source, "error": err.Error(),
 					})

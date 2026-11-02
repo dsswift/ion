@@ -734,10 +734,11 @@ var validCommands = map[string]bool{
 	// system prompt + tools with zero conversation tokens; for a historical
 	// session it reflects all on-disk messages. Requires only key.
 	"get_context_breakdown": true,
-	// plugin_install: download and install a Claude Code-compatible plugin from
-	// a GitHub source ("owner/repo"). The source field carries the repo path.
-	// Returns the installed plugin record in the result data.
+	// plugin_install: fetch a Claude Code-compatible plugin with git. source is
+	// "owner/repo" or a git URL; label optionally names a marketplace's plugin.
 	"plugin_install": true,
+	// plugin_update: fetch the current commit of the plugin named by label.
+	"plugin_update": true,
 	// plugin_list: list all installed plugins. Returns a slice of plugin records.
 	"plugin_list": true,
 	// plugin_remove: uninstall a plugin by name. The label field carries the
