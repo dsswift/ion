@@ -111,8 +111,12 @@ chmod +x "$BIN_DIR/ion"
 SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-Ion Local Dev}"
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
     echo "==> Signing engine binary (identity: $SIGN_IDENTITY)..."
-    codesign --force --sign "$SIGN_IDENTITY" --identifier house.sprague.ion.engine --options runtime "$BIN_DIR/ion" \
-        || codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+    if ! codesign --force --sign "$SIGN_IDENTITY" --identifier house.sprague.ion.engine --options runtime "$BIN_DIR/ion"; then
+        # A login keychain that is locked (an SSH session) refuses the key.
+        echo "==> WARNING: signing with \"$SIGN_IDENTITY\" failed; signed ad-hoc instead, so macOS may drop the engine's Local Network grant." >&2
+        echo "    Run 'make engine' again from a terminal on this Mac's desktop to sign it stably." >&2
+        codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+    fi
 else
     echo "==> Signing engine binary (ad-hoc — identity \"$SIGN_IDENTITY\" not in keychain)..."
     codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
