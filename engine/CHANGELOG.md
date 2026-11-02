@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.6.0](https://github.com/dsswift/ion/compare/engine-v3.5.2...engine-v3.6.0) (2026-11-02)
+
+### Features
+
+* **engine:** load configured extensions into every session ([779f19a](https://github.com/dsswift/ion/commit/779f19aed11bec3dfd7208532f5019127874c5d1))
+
 ## [3.5.2](https://github.com/dsswift/ion/compare/engine-v3.5.1...engine-v3.5.2) (2026-11-02)
 
 ### Bug Fixes
