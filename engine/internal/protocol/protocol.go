@@ -28,6 +28,9 @@ type ClientCommand struct {
 	// is unaffected. "orchestrator" cancels only the active run and leaves
 	// background dispatches alive. See session.AbortScope for the semantics.
 	AbortScope string `json:"abortScope,omitempty"`
+	// abort: when true, an abort that finds the session already quiescent
+	// leaves it resident instead of releasing it.
+	KeepSession bool `json:"keepSession,omitempty"`
 
 	// abort_dispatch: the collision-safe dispatch ID (the agentID minted at
 	// dispatch time and surfaced as `dispatchId` on engine_agent_state

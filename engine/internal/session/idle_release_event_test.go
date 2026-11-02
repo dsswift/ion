@@ -62,7 +62,7 @@ func TestIdleRelease_EmitsSessionReleased(t *testing.T) {
 		convID := conversationOf(mgr, "rel-a")
 		events := recordReleasedEvents(mgr, "rel-a")
 
-		if !mgr.AbortOrRelease("rel-a", AbortScopeAll) {
+		if !mgr.AbortOrRelease("rel-a", AbortScopeAll, false) {
 			t.Fatal("idle session was not released by abort")
 		}
 

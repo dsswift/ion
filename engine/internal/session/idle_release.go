@@ -169,12 +169,14 @@ func (m *Manager) evaluateIdleRelease(key string, now time.Time) bool {
 //
 // Quiescence is read before the abort so the decision cannot depend on how far
 // the abort's own teardown has progressed. The orchestrator scope never
-// releases: its contract is to leave the session root live.
+// releases: its contract is to leave the session root live. Neither does an
+// abort whose client asked to keep the session: it is ending a turn and may
+// prompt the key again at once.
 //
 // Kept apart from SendAbortScoped because that is also reached from inside an
 // extension hook (ctx.abort), where tearing down the calling extension's own
 // session mid-call is not what an abort means.
-func (m *Manager) AbortOrRelease(key string, scope AbortScope) bool {
+func (m *Manager) AbortOrRelease(key string, scope AbortScope, keepSession bool) bool {
 	onAbort := m.workspaceConfig().ReleaseIdleSessionOnAbortEnabled()
 	s, blocker, ok := m.quiescenceBlocker(key)
 	var idle time.Duration
@@ -192,6 +194,9 @@ func (m *Manager) AbortOrRelease(key string, scope AbortScope) bool {
 	case !ok:
 		return false
 	case scope == AbortScopeOrchestrator:
+		return false
+	case keepSession:
+		utils.LogWithFields(utils.LevelDebug, idleReleaseLogTag, "abort: client asked to keep the session, retained", map[string]any{"key": key, "abort_scope": string(scope)})
 		return false
 	case !onAbort:
 		utils.LogWithFields(utils.LevelDebug, idleReleaseLogTag, "abort: release on idle abort disabled, session retained", map[string]any{"key": key, "abort_scope": string(scope)})

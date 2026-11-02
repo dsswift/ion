@@ -840,6 +840,19 @@ func TestParseClientCommand_DispatchIDDecodes(t *testing.T) {
 	}
 }
 
+// TestParseClientCommand_AbortKeepSessionDecodes pins keepSession onto the
+// abort command; an absent field keeps the release-on-idle default.
+func TestParseClientCommand_AbortKeepSessionDecodes(t *testing.T) {
+	kept := ParseClientCommand(`{"cmd":"abort","key":"k","keepSession":true}`)
+	if kept == nil || !kept.KeepSession {
+		t.Fatalf("keepSession did not decode: %#v", kept)
+	}
+	bare := ParseClientCommand(`{"cmd":"abort","key":"k"}`)
+	if bare == nil || bare.KeepSession {
+		t.Fatalf("absent keepSession should decode false: %#v", bare)
+	}
+}
+
 func TestParseClientCommand_AbortAgentCompatibilityFields(t *testing.T) {
 	result := ParseClientCommand(`{"cmd":"abort_agent","key":"k","agentName":"coder","subtree":true}`)
 	if result == nil {

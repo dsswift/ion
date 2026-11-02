@@ -164,7 +164,9 @@ func TestCancelAbortsAndReportsCancelled(t *testing.T) {
 	done := c.sendPrompt(PromptRequest{SessionID: key, Prompt: []ContentBlock{{Type: "text", Text: "go"}}})
 	f.waitCmd("send_prompt")
 	c.notify(MethodSessionCancel, CancelNotification{SessionID: key})
-	f.waitCmd("abort")
+	if abort := f.waitCmd("abort"); abort["keepSession"] != true {
+		t.Fatalf("abort = %v, want keepSession true so a steer's next prompt finds the session", abort)
+	}
 	f.emit(key, idle("aborted"))
 	if pr := <-done; pr.StopReason != StopCancelled {
 		t.Fatalf("prompt = %+v", pr)

@@ -254,6 +254,11 @@ func (s *Session) stop(ctx context.Context) {
 // with the cancelled stop reason. A turn the engine owes no run to (held
 // for background work, or waiting on the client's own answer) has no idle
 // coming, so it ends here.
+//
+// The abort keeps the session: a cancel ends a turn, and the client's next
+// prompt (a steer is a cancel then a prompt) may already be on its way. An
+// abort that found the session idle would otherwise release it under that
+// prompt.
 func (s *Session) cancel() {
 	s.mu.Lock()
 	t := s.turn
@@ -262,7 +267,7 @@ func (s *Session) cancel() {
 	if t == nil {
 		return
 	}
-	if _, err := s.agent.engine.Send(context.Background(), map[string]any{"cmd": "abort", "key": s.id}); err != nil {
+	if _, err := s.agent.engine.Send(context.Background(), map[string]any{"cmd": "abort", "key": s.id, "keepSession": true}); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "acp", "abort failed", map[string]any{"session_id": s.id, "error": err.Error()})
 	}
 	utils.LogWithFields(utils.LevelInfo, "acp", "run cancelled by client", map[string]any{"session_id": s.id, "held_turn": settleNow})

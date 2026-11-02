@@ -165,8 +165,8 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// An absent/unknown abortScope resolves to "all" inside the session
 		// manager, so a client that predates the field is unaffected.
 		scope := session.ParseAbortScope(cmd.AbortScope)
-		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key, "abort_scope": string(scope)})
-		s.manager.AbortOrRelease(cmd.Key, scope)
+		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key, "abort_scope": string(scope), "keep_session": cmd.KeepSession})
+		s.manager.AbortOrRelease(cmd.Key, scope, cmd.KeepSession)
 
 	case "abort_agent":
 		// Compatibility command for name-addressed process handles. The empty-name

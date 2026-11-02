@@ -227,6 +227,7 @@ func TestAbortOrRelease(t *testing.T) {
 		name      string
 		workspace *types.WorkspaceConfig
 		scope     AbortScope
+		keep      bool
 		prepare   func(mgr *Manager, key string)
 		released  bool
 	}{
@@ -234,6 +235,7 @@ func TestAbortOrRelease(t *testing.T) {
 		{name: "idle session, scope all_work", scope: AbortScopeAllWork, released: true},
 		{name: "idle session, timed release disabled", workspace: &types.WorkspaceConfig{SessionIdleReleaseMs: -1}, scope: AbortScopeAll, released: true},
 		{name: "idle session, scope orchestrator", scope: AbortScopeOrchestrator},
+		{name: "idle session, client keeps the session", scope: AbortScopeAll, keep: true},
 		{name: "idle session, onAbort off", workspace: &types.WorkspaceConfig{ReleaseIdleSessionOnAbort: boolPtr(false)}, scope: AbortScopeAll},
 		{name: "session with work", scope: AbortScopeAll, prepare: busy},
 	}
@@ -246,7 +248,7 @@ func TestAbortOrRelease(t *testing.T) {
 				tc.prepare(mgr, "ab")
 			}
 
-			got := mgr.AbortOrRelease("ab", tc.scope)
+			got := mgr.AbortOrRelease("ab", tc.scope, tc.keep)
 
 			if got != tc.released {
 				t.Errorf("AbortOrRelease = %v, want %v", got, tc.released)
@@ -278,7 +280,7 @@ func TestSendAbort_IdleSessionIsRetained(t *testing.T) {
 
 func TestAbortOrRelease_UnknownSession(t *testing.T) {
 	mgr := idleReleaseManager(t, nil)
-	if mgr.AbortOrRelease("nope", AbortScopeAll) {
+	if mgr.AbortOrRelease("nope", AbortScopeAll, false) {
 		t.Fatal("AbortOrRelease reported a release for an unknown session")
 	}
 }
