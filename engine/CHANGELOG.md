@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.0](https://github.com/dsswift/ion/compare/engine-v3.6.0...engine-v3.7.0) (2026-11-02)
+
+### Features
+
+* **engine:** install private plugins with their mcp servers ([319ea54](https://github.com/dsswift/ion/commit/319ea54aad044c52fd27a9f1fa4dfcb4e95f774f))
+
 ## [3.6.0](https://github.com/dsswift/ion/compare/engine-v3.5.2...engine-v3.6.0) (2026-11-02)
 
 ### Features
