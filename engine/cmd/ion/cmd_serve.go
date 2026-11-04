@@ -425,7 +425,7 @@ func cmdServe(flags map[string]string) {
 	pidLock, lockErr := filelock.Acquire(pidPath())
 	if lockErr != nil {
 		fmt.Fprintf(os.Stderr, "Engine already running: %s\n", lockErr)
-		os.Exit(1)
+		os.Exit(serveLockExitCode(lockErr))
 	}
 
 	// The breadcrumb is the daemon's own. Only the process holding the PID

@@ -29,6 +29,19 @@ import (
 // description (in this process or another) already holds the lock.
 var errLockHeld = errors.New("lock held")
 
+// HeldError is the error Acquire returns when another holder has the lock.
+// Holder is the holder's recorded PID, or "" when none is recorded.
+type HeldError struct {
+	Holder string
+}
+
+func (e *HeldError) Error() string {
+	if e.Holder == "" {
+		return "filelock: locked by another process"
+	}
+	return "filelock: locked by PID " + e.Holder
+}
+
 // maxSwapRetries bounds how often Acquire retries when the lock file it locked
 // was unlinked and replaced by a releasing holder between its open and lock.
 const maxSwapRetries = 8
@@ -68,10 +81,7 @@ func Acquire(path string) (*Lock, error) {
 			closeQuietly(f, lockPath, "acquire refused close failed")
 			if errors.Is(err, errLockHeld) {
 				utils.LogWithFields(utils.LevelInfo, "filelock", "acquire refused: lock held", map[string]any{"path": lockPath, "holder_pid": holder})
-				if holder == "" {
-					return nil, fmt.Errorf("filelock: locked by another process")
-				}
-				return nil, fmt.Errorf("filelock: locked by PID %s", holder)
+				return nil, &HeldError{Holder: holder}
 			}
 			return nil, fmt.Errorf("filelock: lock: %w", err)
 		}
