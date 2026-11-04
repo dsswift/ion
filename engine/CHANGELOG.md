@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.3](https://github.com/dsswift/ion/compare/engine-v3.7.2...engine-v3.7.3) (2026-11-04)
+
+### Bug Fixes
+
+* **engine:** run the engine start tests on windows ([783a18b](https://github.com/dsswift/ion/commit/783a18ba1569d5ece9ee216919a5b07b5125e934))
+
 ## [3.7.2](https://github.com/dsswift/ion/compare/engine-v3.7.1...engine-v3.7.2) (2026-11-04)
 
 ### Bug Fixes
