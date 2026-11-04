@@ -165,6 +165,8 @@ For macOS hosts running the engine at login:
 
 `KeepAlive.SuccessfulExit=false` restarts the engine on a crash (non-zero exit) but leaves it stopped after a graceful `ion shutdown` (exit 0), so `launchctl bootout` cleanly stops it.
 
+A start that finds another engine already holding the PID lock also exits 0, so launchd does not retry while that engine runs. With the LaunchAgent loaded, `ion` commands that start the engine ask launchd to (`launchctl kickstart`) rather than spawning their own.
+
 ```bash
 cp com.ion.engine.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ion.engine.plist

@@ -521,14 +521,16 @@ These flags are recognized by `ion prompt`. Other commands accept subsets as doc
 
 When you run `ion prompt` without a daemon running, Ion:
 
-1. Spawns `ion serve` as a background process
+1. Starts the engine. On macOS with the engine LaunchAgent loaded, it asks launchd to start it (`launchctl kickstart`), so the engine stays launchd's own. Otherwise it spawns `ion serve` as a background process, whose stdout and stderr go to `~/.ion/engine-stdout.log` and `~/.ion/engine-stderr.log`.
 2. Waits up to 5 seconds for the socket to become available
 3. Creates an ephemeral session
 4. Sends the prompt and streams the response
 5. Stops the ephemeral session
-6. Shuts down the daemon it started
+6. Shuts down the daemon it spawned. An engine launchd started keeps running.
 
-This makes `ion prompt` fully self-contained for one-shot use. For persistent sessions, start the daemon explicitly with `ion serve`.
+Every auto-start writes an `engine auto-started` line to `engine.jsonl`, with `via` (`service_manager` or `spawn`) and the `command` that caused it. `ion acp`, `ion mcp`, and `ion auth login` start the engine the same way and leave it running.
+
+This makes `ion prompt` fully self-contained for one-shot use. For persistent sessions, start the daemon explicitly with `ion serve`. A second `ion serve` against a running engine prints `Engine already running` and exits 0.
 
 ## Socket path
 
