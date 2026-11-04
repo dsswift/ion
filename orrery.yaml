@@ -1,0 +1,7 @@
+# What this repository says about itself to the house's Orrery catalog.
+# redgreen reads this file to carry the logo to the catalog: it uploads the
+# icon file as a custom icon and sets it on the service named here.
+service: github/dsswift/ion/engine/cmd/ion
+icon:
+  name: ion
+  file: logo.png
