@@ -10,18 +10,19 @@ import (
 	"github.com/dsswift/ion/engine/internal/filelock"
 )
 
-// listenOnShortSocket binds a unix socket in a short temp dir (macOS caps
-// socket paths near 104 bytes) and serves connections until the test ends.
-func listenOnShortSocket(t *testing.T) (sock string, serve func()) {
+// engineAddress reserves a loopback TCP address (dialNetwork treats host:port
+// as TCP on every platform) and returns it with a func that starts serving
+// connections on it until the test ends. Until serve runs, nothing answers.
+func engineAddress(t *testing.T) (sock string, serve func()) {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "ion-sock")
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) }) //nolint:errcheck // test cleanup
-	sock = filepath.Join(dir, "e.sock")
+	sock = ln.Addr().String()
+	ln.Close() //nolint:errcheck // free the port until serve binds it again
 	return sock, func() {
-		ln, err := net.Listen("unix", sock)
+		ln, err := net.Listen("tcp4", sock)
 		if err != nil {
 			t.Errorf("listen: %v", err)
 			return
@@ -49,7 +50,7 @@ func stubEngineStarters(t *testing.T, managed func() bool, spawn func() (*os.Pro
 // When the service manager starts the engine, the CLI must not spawn one of
 // its own beside it, and owns no process.
 func TestEnsureServerPrefersServiceManager(t *testing.T) {
-	sock, serve := listenOnShortSocket(t)
+	sock, serve := engineAddress(t)
 	spawned := false
 	stubEngineStarters(t,
 		func() bool { serve(); return true },
@@ -65,7 +66,7 @@ func TestEnsureServerPrefersServiceManager(t *testing.T) {
 
 // Without a service manager, the CLI spawns the engine and owns it.
 func TestEnsureServerSpawnsWithoutServiceManager(t *testing.T) {
-	sock, serve := listenOnShortSocket(t)
+	sock, serve := engineAddress(t)
 	self, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +82,7 @@ func TestEnsureServerSpawnsWithoutServiceManager(t *testing.T) {
 
 // A running engine is never started again.
 func TestEnsureServerLeavesRunningEngine(t *testing.T) {
-	sock, serve := listenOnShortSocket(t)
+	sock, serve := engineAddress(t)
 	serve()
 	stubEngineStarters(t,
 		func() bool { t.Fatal("asked the service manager although an engine answers"); return false },
