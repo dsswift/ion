@@ -74,7 +74,7 @@ jobs:
       - name: Run release-damnit
         id: release
         if: steps.check-skip.outputs.skip == 'false'
-        uses: dsswift/release-damnit@v1.4.0
+        uses: dsswift/release-damnit@v1.8.2
         with:
           token: ${{ steps.app-token.outputs.token }}
           dry-run: ${{ inputs.dry_run || 'false' }}
