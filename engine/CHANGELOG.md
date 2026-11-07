@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.4](https://github.com/dsswift/ion/compare/engine-v3.7.3...engine-v3.7.4) (2026-11-07)
+
+### Bug Fixes
+
+* **engine:** update go dependencies ([ac90e1f](https://github.com/dsswift/ion/commit/ac90e1fe53089fc54f491a86985011e646d8ca67))
+
 ## [3.7.3](https://github.com/dsswift/ion/compare/engine-v3.7.2...engine-v3.7.3) (2026-11-04)
 
 ### Bug Fixes
