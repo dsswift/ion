@@ -172,7 +172,7 @@ jobs:
     if: needs.changes.outputs.engine == 'true'
     # Compile gate for every platform the release matrix ships
     # (.github/workflows/build.yml). No other job sets GOOS: engine-test runs
-    # on ubuntu-latest and macos-14, and engine-lint runs host-native, so a
+    # on ubuntu-latest and macos-15, and engine-lint runs host-native, so a
     # platform-specific compile error is invisible until the release workflow
     # runs after merge. That is how a syscall.SetsockoptInt call that
     # type-checks on Unix but not on Windows shipped — the windows/amd64
@@ -224,7 +224,7 @@ jobs:
       # tree and registry regressions before a release rather than after.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
+        os: [ubuntu-latest, macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

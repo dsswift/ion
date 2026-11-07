@@ -61,9 +61,9 @@ grep -q '^issue create' "$CALLS" && fail "filed an issue with no failure"
 
 # 3. Attempt 2: a matrix leg that failed on attempt 1 and whose job passes now is flaky.
 : > "$CALLS"
-GITHUB_RUN_ATTEMPT=2 EARLIER_FAILED_NAMES=$'engine-test (macos-14)\nserver-test' NEEDS_JSON='{"engine-test":{"result":"success"},"server-test":{"result":"failure"}}' \
+GITHUB_RUN_ATTEMPT=2 EARLIER_FAILED_NAMES=$'engine-test (macos-15)\nserver-test' NEEDS_JSON='{"engine-test":{"result":"success"},"server-test":{"result":"failure"}}' \
   bash "$SCRIPT" ci-failure "Tests failed on main" >/dev/null
-grep -q '^issue create --title Flaky on main: engine-test (macos-14) --label flaky' "$CALLS" || fail "flaky matrix leg not filed"
+grep -q '^issue create --title Flaky on main: engine-test (macos-15) --label flaky' "$CALLS" || fail "flaky matrix leg not filed"
 grep -q '^issue create --title Tests failed on main: server-test --label ci-failure' "$CALLS" || fail "still-failing job not filed"
 grep -q 'Flaky on main: server-test' "$CALLS" && fail "a job that still fails was called flaky"
 

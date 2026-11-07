@@ -43,7 +43,7 @@ grep -q '^issue=42$' "$GITHUB_OUTPUT" || fail "issue number not written to GITHU
 
 # 2. An open issue with the exact title: comments instead of creating.
 : > "$CALLS"; : > "$GITHUB_OUTPUT"
-OPEN_ISSUES='[{"number":7,"title":"Tests failed on main: engine-test (ubuntu-latest)"},{"number":8,"title":"Tests failed on main: engine-test (macos-14)"}]' \
+OPEN_ISSUES='[{"number":7,"title":"Tests failed on main: engine-test (ubuntu-latest)"},{"number":8,"title":"Tests failed on main: engine-test (macos-15)"}]' \
   bash "$SCRIPT" ci-failure "Tests failed on main: engine-test (ubuntu-latest)" "$TMP/body.md" >/dev/null
 grep -q '^issue comment 7 ' "$CALLS" || fail "did not comment on the matching open issue"
 grep -q '^issue create' "$CALLS" && fail "created a duplicate issue"
@@ -51,7 +51,7 @@ grep -q '^issue=7$' "$GITHUB_OUTPUT" || fail "existing issue number not written"
 
 # 3. A word-overlapping but different title does not match.
 : > "$CALLS"
-OPEN_ISSUES='[{"number":8,"title":"Tests failed on main: engine-test (macos-14)"}]' \
+OPEN_ISSUES='[{"number":8,"title":"Tests failed on main: engine-test (macos-15)"}]' \
   bash "$SCRIPT" ci-failure "Tests failed on main: engine-test (ubuntu-latest)" "$TMP/body.md" >/dev/null
 grep -q '^issue create' "$CALLS" || fail "a different title was treated as the same issue"
 

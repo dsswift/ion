@@ -91,11 +91,11 @@ jobs:
           - goos: darwin
             goarch: amd64
             ext: ""
-            runner: macos-14
+            runner: macos-15
           - goos: darwin
             goarch: arm64
             ext: ""
-            runner: macos-14
+            runner: macos-15
           - goos: windows
             goarch: amd64
             ext: ".exe"
