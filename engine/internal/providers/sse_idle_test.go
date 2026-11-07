@@ -82,7 +82,9 @@ func TestStreamWithIdle_FiresOnSilence(t *testing.T) {
 // neither forwarded as model output nor counted as semantic run progress.
 func TestStreamWithIdle_ProviderHeartbeatResetsConnectionDeadline(t *testing.T) {
 	restoreStreamIdle(t)
-	SetStreamIdleTimeout(80 * time.Millisecond)
+	// The deadline is 25 heartbeat intervals wide, so a busy runner that
+	// delays a few ticks does not trip it.
+	SetStreamIdleTimeout(500 * time.Millisecond)
 
 	src := make(chan SSEEvent)
 	stop := make(chan struct{})
@@ -113,7 +115,7 @@ func TestStreamWithIdle_ProviderHeartbeatResetsConnectionDeadline(t *testing.T) 
 	if !ok || got.Event != "message_start" {
 		t.Fatalf("expected first semantic event forwarded, got %+v ok=%v", got, ok)
 	}
-	time.Sleep(200 * time.Millisecond) // longer than the idle deadline
+	time.Sleep(1200 * time.Millisecond) // longer than the idle deadline
 	close(stop)
 	for range out {
 		t.Fatal("provider heartbeat must not be forwarded as model output")
@@ -128,7 +130,9 @@ func TestStreamWithIdle_ProviderHeartbeatResetsConnectionDeadline(t *testing.T) 
 
 func TestStreamWithIdle_JSONProviderHeartbeatResetsConnectionDeadline(t *testing.T) {
 	restoreStreamIdle(t)
-	SetStreamIdleTimeout(80 * time.Millisecond)
+	// The deadline is 25 heartbeat intervals wide, so a busy runner that
+	// delays a few ticks does not trip it.
+	SetStreamIdleTimeout(500 * time.Millisecond)
 
 	src := make(chan SSEEvent)
 	stop := make(chan struct{})
@@ -156,7 +160,7 @@ func TestStreamWithIdle_JSONProviderHeartbeatResetsConnectionDeadline(t *testing
 	if _, ok := <-out; !ok {
 		t.Fatal("semantic event missing")
 	}
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond)
 	close(stop)
 	for range out {
 	}
