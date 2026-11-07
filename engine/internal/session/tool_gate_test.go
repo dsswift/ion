@@ -149,7 +149,8 @@ func TestRequestToolGateDecision_UnknownSessionAllowsImmediately(t *testing.T) {
 	if decision != types.GateDecisionAllow {
 		t.Errorf("want allow for unknown session, got %q", decision)
 	}
-	if elapsed := time.Since(start); elapsed > 10*time.Millisecond {
+	// Far below the 5s gate timeout, far above scheduler noise on a busy runner.
+	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("unknown-session path took too long: %s", elapsed)
 	}
 }
