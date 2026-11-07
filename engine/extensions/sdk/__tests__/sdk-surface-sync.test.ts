@@ -25,7 +25,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 // ─── Load the goldens ───
 

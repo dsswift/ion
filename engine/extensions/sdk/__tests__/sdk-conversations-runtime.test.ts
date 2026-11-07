@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import ts from 'typescript'
+import ts from '@typescript/typescript6'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // Pins the TypeScript SDK side of conversation record access: the record path
