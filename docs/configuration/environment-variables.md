@@ -81,6 +81,14 @@ This is useful for:
 export ION_ENTERPRISE_CONFIG="/opt/company/ion-policy.json"
 ```
 
+A shell export does not reach the engine LaunchAgent on macOS. Set it in the
+`EnvironmentVariables` dictionary of `~/Library/LaunchAgents/com.ion.engine.plist`
+instead. The source installer keeps that dictionary when it refreshes the plist.
+
+```bash
+plutil -insert EnvironmentVariables -json '{"ION_ENTERPRISE_CONFIG":"/opt/company/ion-policy.json"}' ~/Library/LaunchAgents/com.ion.engine.plist
+```
+
 This is useful for:
 
 - Testing enterprise policies during development.
