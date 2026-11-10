@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.6](https://github.com/dsswift/ion/compare/engine-v3.7.5...engine-v3.7.6) (2026-11-10)
+
+### Bug Fixes
+
+* **engine:** keep launchagent env on install ([78b2037](https://github.com/dsswift/ion/commit/78b203796b49573f9678aa8629f70a79ee0de98c))
+
 ## [3.7.5](https://github.com/dsswift/ion/compare/engine-v3.7.4...engine-v3.7.5) (2026-11-10)
 
 ### Bug Fixes
