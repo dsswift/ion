@@ -130,6 +130,15 @@ Every provider key not on this list is **stripped** from the merged config. A
 user who adds a personal OpenAI provider to their own file gets it removed at
 load, not merely ignored.
 
+The list also binds the built-in providers (`anthropic`, `openai`, and the
+rest), which need no config block to exist. A model on a provider outside the
+list, or a provider the enterprise does not declare under `providers`, is
+absent from the model list and does not resolve. A bare `claude-*` id cannot
+reach the public Anthropic API or a signed-in `claude` CLI. A run that asks
+for one is qualified to `defaultProvider` when that provider serves it, and
+otherwise falls back to `defaultModel`. The list is installed when the engine
+starts, so a policy change takes effect on the next engine restart.
+
 ### `allowedModels` — deliberately absent
 
 `allowedModels` exists and works: every model outside the list is filtered out
