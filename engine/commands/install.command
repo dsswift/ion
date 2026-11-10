@@ -180,8 +180,16 @@ PLIST_DEST="$LAUNCH_AGENTS_DIR/$PLIST_FILENAME"
 if [[ -f "$PLIST_TEMPLATE" ]]; then
     echo "==> Installing LaunchAgent plist to $PLIST_DEST..."
     mkdir -p "$LAUNCH_AGENTS_DIR"
+    # The template carries no EnvironmentVariables, so any the operator added
+    # to the installed plist (ION_ENTERPRISE_CONFIG, GOMEMLIMIT) are carried
+    # into the refreshed one rather than dropped.
+    PREV_ENV="$(plutil -extract EnvironmentVariables json -o - "$PLIST_DEST" 2>/dev/null || true)"
     # Replace every $HOME literal in the template with the real home directory.
     sed "s|\$HOME|$HOME|g" "$PLIST_TEMPLATE" > "$PLIST_DEST"
+    if [[ -n "$PREV_ENV" ]]; then
+        plutil -insert EnvironmentVariables -json "$PREV_ENV" "$PLIST_DEST"
+        echo "==> Kept LaunchAgent environment: $(plutil -extract EnvironmentVariables json -o - "$PLIST_DEST")"
+    fi
     # Load and start the service, then wait for the engine to bind its socket.
     # A failure here exits the install: a binary on disk with no engine running
     # leaves every client unable to connect.
