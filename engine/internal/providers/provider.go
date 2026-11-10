@@ -123,7 +123,7 @@ func ResolveProvider(model string) LlmProvider {
 		} else {
 			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider registry hit but provider not registered", map[string]any{"model": model, "provider": info.ProviderID})
 		}
-		return p
+		return permittedOrNil(p, model)
 	}
 
 	// Provider-qualified id: "<providerID>/<model>" routes to that provider
@@ -135,7 +135,7 @@ func ResolveProvider(model string) LlmProvider {
 	if idx := strings.Index(model, "/"); idx > 0 {
 		if p := providerRegistry[model[:idx]]; p != nil {
 			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider qualified id", map[string]any{"model": model, "provider": p.ID()})
-			return p
+			return permittedOrNil(p, model)
 		}
 	}
 
@@ -168,7 +168,7 @@ func ResolveProvider(model string) LlmProvider {
 
 	if matched != "" {
 		utils.LogWithFields(utils.LevelDebug, "Providers", "resolve provider prefix match", map[string]any{"model": model, "provider": matched})
-		return providerRegistry[matched]
+		return permittedOrNil(providerRegistry[matched], model)
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider no match", map[string]any{"model": model})
@@ -204,6 +204,17 @@ func GetModelInfo(model string) *types.ModelInfo {
 // half is served by a different provider stays unresolved rather than
 // silently rerouting.
 func lookupModelInfoLocked(model string) (types.ModelInfo, bool) {
+	info, ok := lookupModelInfoUngatedLocked(model)
+	if ok && !ProviderPermitted(info.ProviderID) {
+		utils.LogWithFields(utils.LevelDebug, "Registry", "model hidden by provider allow-list", map[string]any{"model": model, "provider": info.ProviderID})
+		return types.ModelInfo{}, false
+	}
+	return info, ok
+}
+
+// lookupModelInfoUngatedLocked is lookupModelInfoLocked without the provider
+// allow-list. Caller holds mu (read or write).
+func lookupModelInfoUngatedLocked(model string) (types.ModelInfo, bool) {
 	if info, ok := modelRegistry[model]; ok {
 		return info, true
 	}
@@ -266,6 +277,17 @@ func ProviderNameForModel(model string) string {
 		return info.ProviderID
 	}
 
+	id := providerNameByPrefix(model)
+	if id != "" && !ProviderPermitted(id) {
+		utils.LogWithFields(utils.LevelDebug, "Registry", "provider name for model refused by allow-list", map[string]any{"model": model, "provider": id})
+		return ""
+	}
+	return id
+}
+
+// providerNameByPrefix maps a bare model id to the provider its naming
+// convention belongs to, or "" when no convention matches.
+func providerNameByPrefix(model string) string {
 	switch {
 	case strings.HasPrefix(model, "claude-") || strings.HasPrefix(model, "claude_"):
 		return "anthropic"
@@ -338,6 +360,9 @@ func ListModels() []types.ModelEntry {
 
 	// Collect all provider IDs from catalog, custom models, AND discovery cache
 	providerIDs := make(map[string]bool)
+	// Catalog entries of a provider the allow-list refuses still enrich a
+	// permitted gateway's discovered copy of the same model (catalogLookup);
+	// they are only kept out of the listing.
 	for pid := range catalogByProvider {
 		providerIDs[pid] = true
 	}
@@ -355,6 +380,9 @@ func ListModels() []types.ModelEntry {
 	discoveryMu.RUnlock()
 
 	for pid := range providerIDs {
+		if !ProviderPermitted(pid) {
+			continue
+		}
 		discovered := GetDiscoveredModels(pid)
 		if len(discovered) > 0 {
 			// Use live-discovered models, enriched with catalog metadata.
@@ -454,7 +482,7 @@ func ListModels() []types.ModelEntry {
 
 	// Always include custom models (not already seen)
 	for _, cm := range customModels {
-		if !seen[cm.ID] {
+		if !seen[cm.ID] && ProviderPermitted(cm.ProviderID) {
 			entries = append(entries, cm)
 		}
 	}

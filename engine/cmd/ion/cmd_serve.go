@@ -178,6 +178,10 @@ func cmdServe(flags map[string]string) {
 		providers.ApplyConfig(cfg.Providers)
 	}
 
+	// Install the enterprise provider allow-list into the registry, so the
+	// built-in providers obey it too (internal/providers/provider_policy.go).
+	providers.SetAllowedProviders(config.PermittedProviders(cfg.Enterprise))
+
 	// Install the engine-wide operator thinking policy. cfg is post-merge and
 	// post-EnforceEnterprise, so a sealed enterprise disable is already folded
 	// in and cannot be weakened here. A nil block leaves the default in place:

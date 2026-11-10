@@ -24,6 +24,22 @@ func IsModelAllowed(model string, enterprise *types.EnterpriseConfig) bool {
 	return true
 }
 
+// PermittedProviders returns the provider ids enterprise policy lets models
+// run on: AllowedProviders plus every provider the enterprise declares. nil
+// means no restriction.
+func PermittedProviders(enterprise *types.EnterpriseConfig) []string {
+	if enterprise == nil || len(enterprise.AllowedProviders) == 0 {
+		return nil
+	}
+	ids := append([]string(nil), enterprise.AllowedProviders...)
+	for id := range enterprise.Providers {
+		if !contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // IsToolAllowed checks if a tool is permitted by enterprise policy.
 func IsToolAllowed(toolName string, enterprise *types.EnterpriseConfig) bool {
 	if enterprise == nil || enterprise.ToolRestrictions == nil {
