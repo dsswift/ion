@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.5](https://github.com/dsswift/ion/compare/engine-v3.7.4...engine-v3.7.5) (2026-11-10)
+
+### Bug Fixes
+
+* **engine:** apply allowed providers to built-ins ([8704e5e](https://github.com/dsswift/ion/commit/8704e5e22277e37383d4a4c553923ee83c54d312))
+
 ## [3.7.4](https://github.com/dsswift/ion/compare/engine-v3.7.3...engine-v3.7.4) (2026-11-07)
 
 ### Bug Fixes
