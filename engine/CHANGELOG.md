@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.8](https://github.com/dsswift/ion/compare/engine-v3.7.7...engine-v3.7.8) (2026-11-13)
+
+### Bug Fixes
+
+* **engine:** build with go 1.27.4 for net/http fix ([605a1e7](https://github.com/dsswift/ion/commit/605a1e7fc13f2c83b76d48822ece32d6dfc6d2c8))
+
 ## [3.7.7](https://github.com/dsswift/ion/compare/engine-v3.7.6...engine-v3.7.7) (2026-11-13)
 
 ### Bug Fixes
