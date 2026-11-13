@@ -165,6 +165,7 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		// success engine_llm_call event for work the user cancelled.
 		ctx, cancel := context.WithCancel(sa.RootContext())
 		defer cancel()
+		ctx = withPrincipalCredential(ctx, sa, providerID)
 
 		// Compose the optional per-call context (opts.Ctx) so the call is
 		// cancelled if EITHER the session root or the per-call context
