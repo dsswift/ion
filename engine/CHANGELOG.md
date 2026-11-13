@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.7](https://github.com/dsswift/ion/compare/engine-v3.7.6...engine-v3.7.7) (2026-11-13)
+
+### Bug Fixes
+
+* **engine:** authenticate llm calls as the session principal ([0c24ff5](https://github.com/dsswift/ion/commit/0c24ff5147c4a710fa84794ec2b880632a445462))
+
 ## [3.7.6](https://github.com/dsswift/ion/compare/engine-v3.7.5...engine-v3.7.6) (2026-11-10)
 
 ### Bug Fixes
