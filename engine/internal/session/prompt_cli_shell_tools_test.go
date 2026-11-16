@@ -147,7 +147,9 @@ func TestCliShellTools_NotifyingBashJoinsOutstandingSet(t *testing.T) {
 
 	ctx := mgr.cliToolContextStamper(sessionFor(t, mgr, key), key)(context.Background())
 	res, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
-		"command":            "echo notifying",
+		// Long-lived on purpose: a completed command leaves the outstanding
+		// set, so a command that can finish before the check races it.
+		"command":            "tail -f /dev/null",
 		"run_in_background":  true,
 		"notify_on_complete": true,
 	}, dir)
@@ -157,6 +159,7 @@ func TestCliShellTools_NotifyingBashJoinsOutstandingSet(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("Bash reported an error: %s", res.Content)
 	}
+	t.Cleanup(func() { tools.StopBackgroundTaskForOwner(key, res.BackgroundTaskID) })
 
 	outstanding := mgr.OutstandingBackgroundTaskIDs(key)
 	if len(outstanding) != 1 {
