@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.7.9](https://github.com/dsswift/ion/compare/engine-v3.7.8...engine-v3.7.9) (2026-11-17)
+
+### Bug Fixes
+
+* **engine:** keep a session while its command executes ([8ea58bc](https://github.com/dsswift/ion/commit/8ea58bc72701c516f332d3ff77aee55fe0e054f3))
+
 ## [3.7.8](https://github.com/dsswift/ion/compare/engine-v3.7.7...engine-v3.7.8) (2026-11-13)
 
 ### Bug Fixes
