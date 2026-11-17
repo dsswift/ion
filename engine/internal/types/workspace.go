@@ -52,10 +52,11 @@ type WorkspaceConfig struct {
 
 	// SessionIdleReleaseMs is how long a session must stay quiescent before
 	// the engine releases it (full StopSession teardown). Quiescent means no
-	// run, no accepted work pending, no agent in a non-terminal status, no
-	// live background process, and no extension schedule or webhook: nothing
-	// inside the engine will act on the session again. The conversation is
-	// durable, so a consumer that prompts the key again starts it afresh.
+	// run, no extension command still executing, no accepted work pending, no
+	// agent in a non-terminal status, no live background process, and no
+	// extension schedule or webhook: nothing inside the engine will act on
+	// the session again. The conversation is durable, so a consumer that
+	// prompts the key again starts it afresh.
 	//
 	// Zero means the compiled default (1800000 = 30min). A negative value
 	// disables timed release. Extensions can keep an individual session

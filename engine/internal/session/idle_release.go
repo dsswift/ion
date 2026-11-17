@@ -1,8 +1,9 @@
 // idle_release.go — releasing a session that has nothing left to do.
 //
 // A session is quiescent when no mechanism inside the engine will act on it
-// again: no run, no accepted work pending, no agent still running, no live
-// background process, no schedule or webhook that could fire into it. Left
+// again: no run, no extension command still executing, no accepted work
+// pending, no agent still running, no live background process, no schedule or
+// webhook that could fire into it. Left
 // alone it stays resident for the life of the daemon, holding its extension
 // subprocesses and MCP connections, and every heartbeat re-serialises agent
 // records that reached a terminal status long ago.
@@ -64,6 +65,9 @@ func (m *Manager) quiescenceBlockerLocked(s *engineSession) string {
 		return "run_launching"
 	case s.compactInFlight:
 		return "compacting"
+	case s.extensionCommandsInFlight > 0:
+		// Teardown kills the extension subprocess, and with it the handler.
+		return "extension_command"
 	}
 	dispatches := 0
 	if s.dispatchRegistry != nil {

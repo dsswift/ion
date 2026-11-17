@@ -104,6 +104,7 @@ When a backend run exits:
 A session is **quiescent** when nothing inside the engine will act on it again:
 
 - no run is active, launching, or compacting, and the session is not settled;
+- no extension command is still executing;
 - no accepted work is pending (queued prompts, live dispatches, background completions, polls, client-tool calls, a parked run);
 - no agent in the snapshot has status `running`;
 - no session-owned background process or child process is alive;

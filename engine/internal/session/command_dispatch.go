@@ -72,9 +72,13 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string, o
 				Args:    args,
 				Source:  "extension",
 			}
+			s.extensionCommandsInFlight++
 			m.mu.Unlock()
 			ctx := m.newCommandExtContext(s, key, overrides)
 			err := cmd.Execute(args, ctx)
+			m.mu.Lock()
+			s.extensionCommandsInFlight--
+			m.mu.Unlock()
 			// Do not clear pendingCommandOverrides here. A subprocess command can
 			// return its RPC result before the host's send_prompt notification goroutine
 			// runs. The explicit CommandContinuation marker consumes it; an unrelated

@@ -449,6 +449,11 @@ type engineSession struct {
 	//      would start a real run that clobbers the compaction's save. See
 	//      dispatchCompact and SendPrompt.
 	compactInFlight bool
+	// extensionCommandsInFlight counts extension commands whose handler has
+	// not returned yet. A handler may work for a long time without starting
+	// a run or a dispatch, so this is the only sign the session is busy.
+	// Read and written under m.mu.
+	extensionCommandsInFlight int
 	// manualCompactRunID names the run dispatchCompact's Path-B idle sub-path
 	// started (SendPrompt("/compact") when no run was already in flight — the
 	// delegated-CLI backend has no CompactNow, so the engine dispatches the

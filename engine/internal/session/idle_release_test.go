@@ -147,6 +147,55 @@ func TestIdleRelease_WorkBlocksAndResetsClock(t *testing.T) {
 	}
 }
 
+// An extension command's handler can work for a long time without starting a
+// run. The session it runs in must stay until the handler returns.
+func TestIdleRelease_ExecutingExtensionCommandBlocks(t *testing.T) {
+	mgr := idleReleaseManager(t, &types.WorkspaceConfig{SessionIdleReleaseMs: 60_000})
+	const key = "long-command"
+	_, _ = mgr.StartSession(key, defaultConfig())
+
+	started, finish := make(chan struct{}), make(chan struct{})
+	host := newTestHostWithCommands(nil)
+	host.SDK().RegisterCommand("work", extension.CommandDefinition{
+		Execute: func(string, *extension.Context) error {
+			close(started)
+			<-finish
+			return nil
+		},
+	})
+	group := extension.NewExtensionGroup()
+	group.Add(host)
+	mgr.TestSetExtGroup(key, group)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mgr.SendCommand(key, "work", "")
+	}()
+	<-started
+	mgr.emitHeartbeatTick()
+	mgr.mu.RLock()
+	since := mgr.sessions[key].quiescentSince
+	mgr.mu.RUnlock()
+	if !since.IsZero() {
+		t.Fatalf("idle clock runs while the command executes: quiescentSince = %v", since)
+	}
+	backdateQuiescence(mgr, key, 2*time.Minute)
+	mgr.emitHeartbeatTick()
+	if !hasSession(mgr, key) {
+		t.Fatal("session released while its extension command was executing")
+	}
+
+	close(finish)
+	<-done
+	mgr.emitHeartbeatTick()
+	backdateQuiescence(mgr, key, 2*time.Minute)
+	mgr.emitHeartbeatTick()
+	if hasSession(mgr, key) {
+		t.Fatal("session not released after the command returned")
+	}
+}
+
 func TestIdleRelease_TimedReleaseDisabled(t *testing.T) {
 	mgr := idleReleaseManager(t, &types.WorkspaceConfig{SessionIdleReleaseMs: -1})
 	_, _ = mgr.StartSession("kept", defaultConfig())

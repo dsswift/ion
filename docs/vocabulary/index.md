@@ -755,7 +755,7 @@ A named set of daily or weekly Schedules whose latest catch-up policy selects on
 
 #### Idle release {#term-session-idle-release}
 
-The engine releasing a quiescent session, one that has no run, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook. The engine then emits engine_session_released, so a client still holding the key can resume the session.
+The engine releasing a quiescent session, one that has no run, no executing extension command, no pending work, no running agent, no live background process, and no schedule or webhook, with the same teardown as stopping it. It happens after a configured quiescent duration or when an abort finds nothing to stop. An extension can keep the session through a hook. The engine then emits engine_session_released, so a client still holding the key can resume the session.
 
 - **ID:** `session-idle-release`
 - **Status:** `canonical`
