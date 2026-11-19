@@ -96,3 +96,15 @@ type DispatchLostPayload struct {
 	Depth               int    `json:"depth,omitempty"`
 	ChildConversationID string `json:"childConversationId,omitempty"`
 }
+
+// RunUsage is the nested payload StatusFields carries on the status that
+// closes a run: the run's billing as TaskCompleteEvent reported it. The
+// token counts are cumulative across every turn of the run, the provider's
+// own figures; they are not context-window occupancy.
+type RunUsage struct {
+	InputTokens         int   `json:"inputTokens"`
+	OutputTokens        int   `json:"outputTokens"`
+	CacheReadTokens     int   `json:"cacheReadTokens"`
+	CacheCreationTokens int   `json:"cacheCreationTokens"`
+	DurationMs          int64 `json:"durationMs"`
+}

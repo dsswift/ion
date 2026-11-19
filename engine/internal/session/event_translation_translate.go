@@ -85,6 +85,13 @@ func translateEventData(event types.NormalizedEvent, contextWindow int) types.En
 				PermissionDenials: e.PermissionDenials,
 				NumTurns:          e.NumTurns,
 				ConversationTurns: e.ConversationTurns,
+				RunUsage: &types.RunUsage{
+					InputTokens:         derefInt(e.Usage.InputTokens),
+					OutputTokens:        derefInt(e.Usage.OutputTokens),
+					CacheReadTokens:     derefInt(e.Usage.CacheReadInputTokens),
+					CacheCreationTokens: derefInt(e.Usage.CacheCreationInputTokens),
+					DurationMs:          e.DurationMs,
+				},
 			},
 		}
 

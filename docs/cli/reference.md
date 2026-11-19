@@ -97,6 +97,8 @@ When no positional argument is given and stdin is an interactive terminal, Ion r
 
 **`text`** (default): Streams text deltas to stdout as the LLM generates them. Prints a final newline when the session goes idle. For ephemeral prompts, cleans up the session and daemon afterward. Exits 1 when the engine reports an error for the run, the session dies (`engine_dead`), or the stream closes before the session goes idle.
 
+Once the engine closes the run, the last line on stderr is the run's report: `Run: ` and one JSON object with `model`, `costUsd`, `turns`, `durationMs`, `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheCreationTokens`, and `reason`, read from the status that closes the run (`runUsage`, `runCostUsd`, `numTurns`). It is printed however the run ended. After an error, such as a run stopped at `--max-budget`, the CLI reads on for up to 10 seconds, within `--timeout`, for the run to close, then prints the report after the error line and exits 1. A run the CLI never saw closed prints no report.
+
 The `text` and `stream-json` formats stream the run on the same connection that sent the prompt. That connection owns the session, so the engine's orphaned-session reaper leaves the session alone while the CLI waits on it.
 
 **`json`**: Returns the raw command response as indented JSON. Does not stream.

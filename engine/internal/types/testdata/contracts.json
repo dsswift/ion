@@ -1046,6 +1046,7 @@
       "pollsWaiting",
       "runCostUsd",
       "runEpoch",
+      "runUsage",
       "sessionId",
       "state",
       "team"

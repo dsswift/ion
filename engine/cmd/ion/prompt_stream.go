@@ -20,6 +20,8 @@ type promptStream struct {
 	conn     net.Conn
 	scanner  *bufio.Scanner
 	deadline time.Duration
+	// until is when the deadline fires; zero when there is none.
+	until time.Time
 	// early holds lines that arrived before the engine answered the prompt.
 	// They are replayed first, so no event of the run is lost.
 	early []string
@@ -50,10 +52,11 @@ func openPromptStream(sock string, msg map[string]interface{}, deadline time.Dur
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to engine at %s: %w", sock, err)
 	}
-	if deadline > 0 {
-		conn.SetReadDeadline(time.Now().Add(deadline)) //nolint:errcheck // best-effort deadline; scanner surfaces a read failure
-	}
 	stream := &promptStream{conn: conn, scanner: newStreamScanner(conn), deadline: deadline}
+	if deadline > 0 {
+		stream.until = time.Now().Add(deadline)
+		conn.SetReadDeadline(stream.until) //nolint:errcheck // best-effort deadline; scanner surfaces a read failure
+	}
 	if _, err := conn.Write(append(data, '\n')); err != nil {
 		stream.close()
 		return nil, fmt.Errorf("write command to engine: %w", err)
@@ -152,41 +155,35 @@ func (e streamEnd) exitCode() int {
 
 // streamUntilIdle prints the run's text deltas for key until the session
 // emits engine_status with state=idle, the engine reports an error, the
-// session dies, or the stream ends.
+// session dies, or the stream ends. Once the engine has closed the run, the
+// run's report is the last line on stderr (see runReport), however it ended.
 func streamUntilIdle(s *promptStream, key string) streamEnd {
+	var run runWatch
 	for line, ok := s.next(); ok; line, ok = s.next() {
-		var msg map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		event, ok := streamEvent(line, key)
+		if !ok {
 			continue
 		}
-		if msgKey, ok := msg["key"].(string); !ok || msgKey != key {
-			continue
-		}
-		event, ok := msg["event"].(map[string]interface{})
-		if !ok || event == nil {
-			continue
-		}
-		eventType, _ := event["type"].(string) //nolint:errcheck // missing/!string type falls through the switch as no-op
-		switch eventType {
+		switch event.Type {
 		case "engine_text_delta":
-			if text, ok := event["text"].(string); ok {
-				fmt.Print(text)
-			}
+			fmt.Print(event.TextDelta)
 		case "engine_status":
-			fields, ok := event["fields"].(map[string]interface{})
-			if ok && fields != nil {
-				if state, ok := fields["state"].(string); ok && state == "idle" {
-					fmt.Println()
-					return streamIdle
-				}
+			if run.status(event.Fields) {
+				fmt.Println()
+				run.print()
+				return streamIdle
 			}
 		case "engine_error":
-			if errMsg, ok := event["message"].(string); ok {
-				fmt.Fprintf(os.Stderr, "\nError: %s\n", errMsg)
-				return streamFailed
+			if event.EventMessage == "" {
+				continue
 			}
+			fmt.Fprintf(os.Stderr, "\nError: %s\n", event.EventMessage)
+			awaitRunClose(s, key, &run)
+			run.print()
+			return streamFailed
 		case "engine_dead":
 			fmt.Fprintf(os.Stderr, "\nError: the session ended before the prompt finished\n")
+			run.print()
 			return streamFailed
 		}
 	}

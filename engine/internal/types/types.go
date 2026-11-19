@@ -417,6 +417,10 @@ type StatusFields struct {
 	// have no associated run. Consumers render this as the drawer "Turns"
 	// (lifetime), whereas NumTurns is the per-run round-trip count.
 	ConversationTurns int `json:"conversationTurns,omitempty"`
+	// RunUsage is what the run that just ended consumed, stamped from
+	// TaskCompleteEvent on the status that closes the run, and absent on
+	// every other status. Its cost is RunCostUsd and its turns NumTurns.
+	RunUsage *RunUsage `json:"runUsage,omitempty"`
 }
 
 // BackgroundTaskState is one active session-owned background Bash process.

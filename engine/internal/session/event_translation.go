@@ -180,6 +180,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				live.CompletionReason = ee.Fields.CompletionReason
 				live.NumTurns = ee.Fields.NumTurns
 				live.ConversationTurns = ee.Fields.ConversationTurns
+				live.RunUsage = ee.Fields.RunUsage
 				ee.Fields = live
 			}
 		}
