@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.8.0](https://github.com/dsswift/ion/compare/engine-v3.7.9...engine-v3.8.0) (2026-11-19)
+
+### Features
+
+* **engine:** report a run's usage when it closes ([a5908b4](https://github.com/dsswift/ion/commit/a5908b4d2e2315636ac0c5aff6f4bc9d1bc7e9b9))
+
 ## [3.7.9](https://github.com/dsswift/ion/compare/engine-v3.7.8...engine-v3.7.9) (2026-11-17)
 
 ### Bug Fixes
