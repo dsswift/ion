@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.8.1](https://github.com/dsswift/ion/compare/engine-v3.8.0...engine-v3.8.1) (2026-11-23)
+
+### Bug Fixes
+
+* **engine:** remove estate names from examples ([ccfa0fa](https://github.com/dsswift/ion/commit/ccfa0fad69b4217c9e9c575528fc427de599db81))
+
 ## [3.8.0](https://github.com/dsswift/ion/compare/engine-v3.7.9...engine-v3.8.0) (2026-11-19)
 
 ### Features

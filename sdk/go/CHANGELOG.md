@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1](https://github.com/dsswift/ion/compare/sdk/go/v1.2.0...sdk/go/v1.2.1) (2026-11-23)
+
+### Bug Fixes
+
+* **sdk:** remove estate names from examples ([4ae7728](https://github.com/dsswift/ion/commit/4ae7728d1d905bcd14d96dda702bbb61cf54efb5))
+
 ## [1.2.0](https://github.com/dsswift/ion/compare/sdk/go/v1.1.0...sdk/go/v1.2.0) (2026-10-23)
 
 ### Features
