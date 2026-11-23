@@ -8,8 +8,8 @@ import (
 )
 
 var testProfiles = []Profile{
-	{ID: "p-cos", Name: "cos2", Extensions: []string{"/ext/cos2/main"}},
-	{ID: "p-jar", Name: "jarvis", Extensions: []string{"/ext/jarvis/main"}},
+	{ID: "p-cos", Name: "chief-of-staff", Extensions: []string{"/ext/chief-of-staff/main"}},
+	{ID: "p-jar", Name: "beacon", Extensions: []string{"/ext/beacon/main"}},
 }
 
 func idle(reason string) map[string]any {
@@ -37,7 +37,7 @@ func TestSessionNewStartsAnEngineSessionWithTheProfile(t *testing.T) {
 	f := newFakeEngine(t)
 	defer f.close()
 	f.models = []map[string]any{{"id": "m-1", "displayName": "Model One", "providerId": "anthropic"}}
-	_, c := startAgent(t, f, Options{Profile: "cos2", Profiles: testProfiles, DefaultModel: "m-1"})
+	_, c := startAgent(t, f, Options{Profile: "chief-of-staff", Profiles: testProfiles, DefaultModel: "m-1"})
 	c.initialize(ClientCapabilities{})
 	res := c.newSession("/work/dir")
 
@@ -49,7 +49,7 @@ func TestSessionNewStartsAnEngineSessionWithTheProfile(t *testing.T) {
 	if cfg["workingDirectory"] != "/work/dir" || cfg["profileId"] != "p-cos" || cfg["forceNewConversation"] != true {
 		t.Fatalf("start config = %v", cfg)
 	}
-	if exts, _ := cfg["extensions"].([]any); len(exts) != 1 || exts[0] != "/ext/cos2/main" {
+	if exts, _ := cfg["extensions"].([]any); len(exts) != 1 || exts[0] != "/ext/chief-of-staff/main" {
 		t.Fatalf("extensions = %v", cfg["extensions"])
 	}
 	if res.Modes == nil || res.Modes.CurrentModeID != ModeBuild || len(res.Modes.AvailableModes) != 2 {
@@ -300,13 +300,13 @@ func TestSetModeTogglesPlanMode(t *testing.T) {
 func TestSetConfigOptionProfileRestartsTheSession(t *testing.T) {
 	f := newFakeEngine(t)
 	defer f.close()
-	_, c := startAgent(t, f, Options{Profile: "cos2", Profiles: testProfiles})
+	_, c := startAgent(t, f, Options{Profile: "chief-of-staff", Profiles: testProfiles})
 	c.initialize(ClientCapabilities{})
 	res := c.newSession("/w")
 	f.waitCmd("start_session")
 	key := res.SessionID
 	var out SetConfigOptionResponse
-	if msg := c.call(MethodSessionSetConfigOption, SetConfigOptionRequest{SessionID: key, ConfigID: ConfigProfile, Value: json.RawMessage(`"jarvis"`)}, &out); msg != "" {
+	if msg := c.call(MethodSessionSetConfigOption, SetConfigOptionRequest{SessionID: key, ConfigID: ConfigProfile, Value: json.RawMessage(`"beacon"`)}, &out); msg != "" {
 		t.Fatal(msg)
 	}
 	stop := f.waitCmd("stop_session")

@@ -100,12 +100,16 @@ jobs:
 
       # Ships this run's engine logs, telemetry, and spans to ion-telemetry,
       # signed in as the "Ion Headless Telemetry" app. The collector endpoint
-      # comes from a secret so it is not committed.
+      # comes from a secret and the app's ids from repository variables, so
+      # no estate's values are committed.
       - name: Generate summary with ion
         env:
           ION_ENGINE_CONFIG_B64: ${{ secrets.ION_ENGINE_CONFIG_B64 }}
           ION_TELEMETRY_ENDPOINT: ${{ secrets.ION_TELEMETRY_ENDPOINT }}
           ION_TELEMETRY_SHIP_CLIENT_SECRET: ${{ secrets.ION_TELEMETRY_SHIP_CLIENT_SECRET }}
+          ION_TELEMETRY_TENANT_ID: ${{ vars.ION_TELEMETRY_TENANT_ID }}
+          ION_TELEMETRY_CLIENT_ID: ${{ vars.ION_TELEMETRY_CLIENT_ID }}
+          ION_TELEMETRY_SCOPE: ${{ vars.ION_TELEMETRY_SCOPE }}
           ION_PROMPT_HOSTNAME: github-actions-release-summary
         run: |
           set -euo pipefail

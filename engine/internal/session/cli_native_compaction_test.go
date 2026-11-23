@@ -19,8 +19,8 @@ const compactBoundaryFrame = `{
 	"subtype":"compact_boundary",
 	"content":"Conversation compacted",
 	"level":"info",
-	"uuid":"b2b52389-6d2a-49f5-8dec-d81b02a75a02",
-	"session_id":"7dc31f72-9e29-494f-a201-a5d22191e9d5",
+	"uuid":"00000000-0000-0000-0000-000000000003",
+	"session_id":"00000000-0000-0000-0000-000000000004",
 	"compactMetadata":{"trigger":"auto","preTokens":841821,"messagesSummarized":292,"durationMs":4310}
 }`
 
@@ -50,7 +50,7 @@ func TestNormalizeCompactBoundary_ProducesTypedEvent(t *testing.T) {
 	if got.DurationMs != 4310 {
 		t.Errorf("DurationMs = %d, want 4310", got.DurationMs)
 	}
-	if got.SessionID != "7dc31f72-9e29-494f-a201-a5d22191e9d5" {
+	if got.SessionID != "00000000-0000-0000-0000-000000000004" {
 		t.Errorf("SessionID = %q", got.SessionID)
 	}
 }

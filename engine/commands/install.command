@@ -96,7 +96,7 @@ chmod +x "$BIN_DIR/ion"
 # with no prompt. A certificate-backed signature with an explicit identifier
 # keeps a stable designated requirement, so the grant survives rebuilds.
 #
-# The identifier is deliberately namespaced ("house.sprague.ion.engine", not
+# The identifier is deliberately namespaced ("io.github.dsswift.ion.engine", not
 # "ion"): Local Network grant creation is silently suppressed for an identity
 # that already has records in the (SIP-locked, uneditable) NetworkExtension
 # policy store, and the bare "ion" identifier accumulated dozens of stale
@@ -111,7 +111,7 @@ chmod +x "$BIN_DIR/ion"
 SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-Ion Local Dev}"
 if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
     echo "==> Signing engine binary (identity: $SIGN_IDENTITY)..."
-    if ! codesign --force --sign "$SIGN_IDENTITY" --identifier house.sprague.ion.engine --options runtime "$BIN_DIR/ion"; then
+    if ! codesign --force --sign "$SIGN_IDENTITY" --identifier io.github.dsswift.ion.engine --options runtime "$BIN_DIR/ion"; then
         # A login keychain that is locked (an SSH session) refuses the key.
         echo "==> WARNING: signing with \"$SIGN_IDENTITY\" failed; signed ad-hoc instead, so macOS may drop the engine's Local Network grant." >&2
         echo "    Run 'make engine' again from a terminal on this Mac's desktop to sign it stably." >&2

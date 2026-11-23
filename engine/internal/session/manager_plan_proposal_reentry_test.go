@@ -83,7 +83,7 @@ func TestTaskCompleteStatus_CarriesIonConversationID(t *testing.T) {
 	ec := newEventCollector(mgr)
 
 	const ionConvID = "1781488459985-abcdef012345"
-	const claudeUUID = "93abc332-137f-4d91-975f-a41397ec76a2"
+	const claudeUUID = "00000000-0000-0000-0000-000000000005"
 	mgr.mu.Lock()
 	s := mgr.sessions["tc-convid"]
 	s.conversationID = ionConvID

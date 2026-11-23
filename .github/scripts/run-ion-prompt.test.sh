@@ -40,7 +40,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
 
 printf 'write the notes\n' > "$TMP/prompt"
-unset ION_TELEMETRY_ENDPOINT ION_PROMPT_HOSTNAME ION_CI_DEFAULT_MODEL
+unset ION_TELEMETRY_ENDPOINT ION_TELEMETRY_TENANT_ID ION_TELEMETRY_CLIENT_ID ION_TELEMETRY_SCOPE ION_PROMPT_HOSTNAME ION_CI_DEFAULT_MODEL
 
 # A config with no model gets the CI default; the engine reads it from ION_DATA_DIR.
 export ION_ENGINE_CONFIG_B64="$(b64 '{"providers":{"anthropic":{}}}')" FAKE_ANSWER='- Faster startup' FAKE_EXIT=0
@@ -62,11 +62,18 @@ bash "$SCRIPT" img:1 "$TMP/prompt" "$TMP/out" > /dev/null
 
 # Telemetry and hostname, when asked for.
 export ION_TELEMETRY_ENDPOINT='https://collector.example.org' ION_PROMPT_HOSTNAME='ci-host'
+export ION_TELEMETRY_TENANT_ID='11111111-1111-1111-1111-111111111111' ION_TELEMETRY_CLIENT_ID='00000000-0000-0000-0000-000000000001' ION_TELEMETRY_SCOPE='api://collector.example.org/.default'
 bash "$SCRIPT" img:1 "$TMP/prompt" "$TMP/out" > /dev/null
 [ "$(jq -r .logging.egressOtel.endpoint "$TMP/engine.json")" = 'https://collector.example.org' ] || fail "telemetry endpoint not set"
+ship='.auth.oauth["telemetry-ship"]'
+[ "$(jq -r "$ship.clientId" "$TMP/engine.json")" = '00000000-0000-0000-0000-000000000001' ] || fail "telemetry client id not set"
+[ "$(jq -r "$ship.tokenUrl" "$TMP/engine.json")" = 'https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/oauth2/v2.0/token' ] || fail "telemetry token url not set"
+[ "$(jq -r "$ship.scopes[0]" "$TMP/engine.json")" = 'api://collector.example.org/.default' ] || fail "telemetry scope not set"
+[ "$(jq -r .logging.egressTokenScope "$TMP/engine.json")" = 'api://collector.example.org/.default' ] || fail "egress token scope not set"
+[ "$(jq -r "$ship.machineIdentity.clientSecretEnv" "$TMP/engine.json")" = 'ION_TELEMETRY_SHIP_CLIENT_SECRET' ] || fail "telemetry secret env lost"
 grep -q -- '-e ION_TELEMETRY_SHIP_CLIENT_SECRET' "$TMP/docker-args" || fail "telemetry secret not passed"
 grep -q -- '--hostname ci-host' "$TMP/docker-args" || fail "hostname not passed"
-unset ION_TELEMETRY_ENDPOINT ION_PROMPT_HOSTNAME
+unset ION_TELEMETRY_ENDPOINT ION_TELEMETRY_TENANT_ID ION_TELEMETRY_CLIENT_ID ION_TELEMETRY_SCOPE ION_PROMPT_HOSTNAME
 
 # An engine failure fails the script with its status.
 export FAKE_EXIT=3 FAKE_ANSWER=''

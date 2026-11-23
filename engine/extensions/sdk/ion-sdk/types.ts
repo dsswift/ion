@@ -2086,7 +2086,7 @@ export interface IonContext extends DispatchControlContext {
    *     maxTokens: 5,
    *   })
    *   if (content.trim().toLowerCase().startsWith('yes')) {
-   *     await ctx.emit({ type: 'jarvis_scheduling_signal', message: payload.lastMessage })
+   *     await ctx.emit({ type: 'beacon_scheduling_signal', message: payload.lastMessage })
    *   }
    * })
    * ```
@@ -2446,7 +2446,7 @@ export interface RunOnceResult<T = void> {
  *
  * Pick a `type` value that won't collide with current or future engine-
  * emitted events. Convention: prefix with your extension name, e.g.
- * `jarvis_inbox_update` or `my-extension_persona_loaded`.
+ * `beacon_inbox_update` or `my-extension_persona_loaded`.
  */
 export type EngineEvent =
   /**

@@ -189,7 +189,7 @@ func TestClientSource_AsksTheSessionRunningTheTurn(t *testing.T) {
 	}
 	resCh := make(chan result, 1)
 	go func() {
-		a, err := src.Resolve(ctx, auth.CredentialScope{Subject: "signed-in-person", Provider: "dci-marketing"})
+		a, err := src.Resolve(ctx, auth.CredentialScope{Subject: "signed-in-person", Provider: "acme"})
 		resCh <- result{a, err}
 	}()
 

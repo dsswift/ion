@@ -29,7 +29,7 @@ const ion = createIon()
 ion.on('bash_tool_call', async (ctx, payload) => {
   const { wrapped } = await ctx.sandboxWrap(payload.input.command, {
     fsAllowWrite: [ctx.cwd],
-    fsDenyRead: ['/Users/josh/.ssh', '/Users/josh/.aws'],
+    fsDenyRead: ['/home/ada/.ssh', '/home/ada/.aws'],
     netAllowedDomains: ['api.example.com', 'registry.npmjs.org'],
   })
   return { input: { ...payload.input, command: wrapped } }

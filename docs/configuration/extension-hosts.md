@@ -14,10 +14,10 @@ sidebar_position: 3
     "extensions": ["~/.ion/extensions/chief-of-staff"],
     "runAs": {
       "mode": "principal",
-      "principal": { "subject": "local:josh", "provider": "os", "kind": "local" }
+      "principal": { "subject": "local:ada", "provider": "os", "kind": "local" }
     },
     "session": {
-      "workingDirectory": "/Users/josh/work",
+      "workingDirectory": "/home/ada/work",
       "model": "",
       "extensions": [],
       "profileId": "",

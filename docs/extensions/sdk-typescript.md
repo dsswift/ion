@@ -868,10 +868,10 @@ type EngineEvent =
 
 **Pass-through `metadata`.** Four user-visible variants (`engine_harness_message`, `engine_notify`, `engine_working_message`, `engine_status`) carry an optional `metadata` map. The engine treats it as opaque — it forwards the field verbatim to clients and applies no semantics. Clients honor specific conventions; the canonical one today is `metadata.dedupKey` on `engine_harness_message`, which lets the desktop renderer suppress repeated emissions of the same logical message within an engine-instance scrollback (useful for "fire on every `session_start`" patterns like a per-session welcome). See the [well-known metadata keys table](../protocol/server-events.md#well-known-metadata-keys-for-engine_harness_message) in the wire-protocol reference. Pick small structured hints; this field is not a state-transfer channel.
 
-**Custom event types.** Pick a `type` value that won't collide with current or future engine-emitted events. Convention: prefix with the extension or harness name (`jarvis_inbox_update`, `myext_persona_loaded`). The engine validates only `engine_agent_state` payloads; every other type is forwarded to all connected socket clients unchanged. The desktop bridge passes events through without type-based dispatch, so any custom payload your renderers know how to handle is fair game.
+**Custom event types.** Pick a `type` value that won't collide with current or future engine-emitted events. Convention: prefix with the extension or harness name (`beacon_inbox_update`, `myext_persona_loaded`). The engine validates only `engine_agent_state` payloads; every other type is forwarded to all connected socket clients unchanged. The desktop bridge passes events through without type-based dispatch, so any custom payload your renderers know how to handle is fair game.
 
 ```typescript
-ctx.emit({ type: 'jarvis_inbox_update', count: 3, source: 'mail' })
+ctx.emit({ type: 'beacon_inbox_update', count: 3, source: 'mail' })
 ```
 
 If a downstream renderer doesn't recognize the type, it's silently dropped — there's no global registry. Build the consumer side alongside the producer.

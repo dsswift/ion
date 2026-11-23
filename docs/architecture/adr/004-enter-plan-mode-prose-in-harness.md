@@ -16,8 +16,8 @@ Accepted
 
 ## Context
 
-The `EnterPlanMode` sentinel tool landed in the engine on the `josh`
-branch (commit `89084038`) with an 18-line description bundled into the
+The `EnterPlanMode` sentinel tool landed in the engine on a feature
+branch with an 18-line description bundled into the
 Go source:
 
 ```go

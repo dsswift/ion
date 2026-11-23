@@ -14,7 +14,10 @@
 #   ION_PROMPT_HOSTNAME              container hostname (optional)
 #   ION_TELEMETRY_ENDPOINT           when set, ship the run's logs and spans:
 #                                    .github/ion/ci-logging.json is merged over
-#                                    the config and the endpoint filled in
+#                                    the config and the values below filled in
+#   ION_TELEMETRY_TENANT_ID          Entra tenant that signs the shipping app in
+#   ION_TELEMETRY_CLIENT_ID          the shipping app's client id
+#   ION_TELEMETRY_SCOPE              token scope the collector accepts
 #   ION_TELEMETRY_SHIP_CLIENT_SECRET passed to the container with telemetry
 #
 # Exits nonzero when the engine fails or the answer is empty, so a caller
@@ -64,8 +67,21 @@ jq --arg model "$DEFAULT_MODEL" '{defaultModel: $model} * .' "$DATA_DIR/secret.j
 
 DOCKER_ENV=(-e ION_DATA_DIR=/data/.ion)
 if [ -n "${ION_TELEMETRY_ENDPOINT:-}" ]; then
+  : "${ION_TELEMETRY_TENANT_ID:?ION_TELEMETRY_TENANT_ID is not set}"
+  : "${ION_TELEMETRY_CLIENT_ID:?ION_TELEMETRY_CLIENT_ID is not set}"
+  : "${ION_TELEMETRY_SCOPE:?ION_TELEMETRY_SCOPE is not set}"
   jq -s --arg endpoint "$ION_TELEMETRY_ENDPOINT" \
-    '.[0] * .[1] | .logging.egressOtel.endpoint = $endpoint' \
+    --arg tenant "$ION_TELEMETRY_TENANT_ID" \
+    --arg client "$ION_TELEMETRY_CLIENT_ID" \
+    --arg scope "$ION_TELEMETRY_SCOPE" \
+    '.[0] * .[1]
+     | .logging.egressOtel.endpoint = $endpoint
+     | .logging.egressTokenScope = $scope
+     | .auth.oauth["telemetry-ship"] += {
+         clientId: $client,
+         tokenUrl: "https://login.microsoftonline.com/\($tenant)/oauth2/v2.0/token",
+         scopes: [$scope]
+       }' \
     "$CONFIG" "$CI_LOGGING" > "$CONFIG.tmp"
   mv "$CONFIG.tmp" "$CONFIG"
   DOCKER_ENV+=(-e ION_TELEMETRY_SHIP_CLIENT_SECRET)

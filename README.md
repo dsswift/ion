@@ -1025,4 +1025,4 @@ make sdk-test   # Go and TypeScript SDK suites
 
 ## License
 
-MIT. Copyright (c) 2025-2026 Joshua Sprague.
+MIT. See [LICENSE](LICENSE).

@@ -16,12 +16,12 @@ func TestResolveRunAsPrincipalUnset(t *testing.T) {
 }
 
 func TestResolveRunAsPrincipalLiteral(t *testing.T) {
-	cfg := &types.RunAsPrincipalConfig{Mode: types.RunAsModePrincipal, Principal: &types.SessionPrincipal{Subject: "local:josh", Provider: "os", Kind: "local", DisplayName: "Josh"}}
+	cfg := &types.RunAsPrincipalConfig{Mode: types.RunAsModePrincipal, Principal: &types.SessionPrincipal{Subject: "local:ada", Provider: "os", Kind: "local", DisplayName: "Ada"}}
 	p, err := resolveRunAsPrincipal(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Subject != "local:josh" || p.Kind != "local" || p.DisplayName != "Josh" {
+	if p.Subject != "local:ada" || p.Kind != "local" || p.DisplayName != "Ada" {
 		t.Fatalf("principal = %+v", p)
 	}
 	if p == cfg.Principal {

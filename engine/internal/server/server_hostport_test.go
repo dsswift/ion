@@ -15,7 +15,7 @@ func TestLooksLikeHostPort(t *testing.T) {
 		{"myhost:443", true},
 
 		// Unix socket paths — should return false
-		{"/Users/josh/.ion/engine.sock", false},
+		{"/home/ada/.ion/engine.sock", false},
 		{"/tmp/ion.sock", false},
 		{"./engine.sock", false},
 		{"../ion.sock", false},
@@ -27,7 +27,7 @@ func TestLooksLikeHostPort(t *testing.T) {
 
 		// Windows absolute paths — the drive-letter colon must not be
 		// mistaken for a host:port separator
-		{`C:\Users\josh\.ion\engine.sock`, false},
+		{`C:\Users\ada\.ion\engine.sock`, false},
 		{`d:/temp/ion-test/test.sock`, false},
 
 		// Windows named pipe path (no colon, starts with \\)

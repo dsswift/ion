@@ -95,9 +95,9 @@ func TestLiveOpenAISimplePrompt(t *testing.T) {
 	}
 }
 
-// setupOpenAIGatewayProvider registers an OpenAI-compatible provider pointing
+// setupGatewayProvider registers an OpenAI-compatible provider pointing
 // at the AI gateway (x-api-key auth, gateway base URL).
-func setupOpenAIGatewayProvider(t *testing.T) (model string) {
+func setupGatewayProvider(t *testing.T) (model string) {
 	t.Helper()
 	providers.ResetRegistries()
 
@@ -106,9 +106,9 @@ func setupOpenAIGatewayProvider(t *testing.T) (model string) {
 		t.Skipf("testconfig.json not found: %v", err)
 	}
 
-	gw := cfg.OpenAIGateway
+	gw := cfg.Gateway
 	if gw.BaseURL == "" {
-		t.Skip("openaiGateway.baseURL not configured")
+		t.Skip("gateway.baseURL not configured")
 	}
 
 	apiKey := gw.ResolveAPIKey()
@@ -138,8 +138,8 @@ func setupOpenAIGatewayProvider(t *testing.T) (model string) {
 	return model
 }
 
-func TestLiveOpenAIGatewaySimplePrompt(t *testing.T) {
-	model := setupOpenAIGatewayProvider(t)
+func TestLiveGatewaySimplePrompt(t *testing.T) {
+	model := setupGatewayProvider(t)
 
 	b := backend.NewApiBackend()
 	ec := newEventCollector(b)
@@ -168,8 +168,8 @@ func TestLiveOpenAIGatewaySimplePrompt(t *testing.T) {
 	}
 }
 
-func TestLiveOpenAIGatewayStreaming(t *testing.T) {
-	model := setupOpenAIGatewayProvider(t)
+func TestLiveGatewayStreaming(t *testing.T) {
+	model := setupGatewayProvider(t)
 
 	provider := providers.GetProvider("openai")
 	if provider == nil {

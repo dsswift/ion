@@ -13,18 +13,18 @@ import (
 // `ion prompt --extension` resolves them.
 func TestAcpOptionsBuildTheProfileCatalog(t *testing.T) {
 	profiles := []types.EngineProfileConfig{
-		{ID: "a1", Name: "cos2", Extensions: []string{"~/.ion/extensions/cos2/main"}},
+		{ID: "a1", Name: "chief-of-staff", Extensions: []string{"~/.ion/extensions/chief-of-staff/main"}},
 		{ID: "b2", Name: "legacy", ExtensionDir: "~/.ion/extensions/legacy"},
 	}
-	opts := acpOptions(map[string]string{"profile": "cos2", "model": "m-1"}, profiles, "default-model")
-	if opts.Profile != "cos2" || opts.Model != "m-1" || opts.DefaultModel != "default-model" || opts.Version != version {
+	opts := acpOptions(map[string]string{"profile": "chief-of-staff", "model": "m-1"}, profiles, "default-model")
+	if opts.Profile != "chief-of-staff" || opts.Model != "m-1" || opts.DefaultModel != "default-model" || opts.Version != version {
 		t.Fatalf("opts = %+v", opts)
 	}
 	if len(opts.Profiles) != 2 {
 		t.Fatalf("profiles = %+v", opts.Profiles)
 	}
-	if p := opts.Profiles[0]; p.ID != "a1" || p.Name != "cos2" || len(p.Extensions) != 1 || p.Extensions[0] == "~/.ion/extensions/cos2/main" {
-		t.Fatalf("cos2 profile = %+v (tilde must be expanded)", p)
+	if p := opts.Profiles[0]; p.ID != "a1" || p.Name != "chief-of-staff" || len(p.Extensions) != 1 || p.Extensions[0] == "~/.ion/extensions/chief-of-staff/main" {
+		t.Fatalf("chief-of-staff profile = %+v (tilde must be expanded)", p)
 	}
 	if p := opts.Profiles[1]; len(p.Extensions) != 1 || p.Extensions[0] == "" {
 		t.Fatalf("legacy extensionDir not resolved: %+v", p)
@@ -35,8 +35,8 @@ func TestAcpOptionsBuildTheProfileCatalog(t *testing.T) {
 // directory, and resolves a file entry point to its directory's manifest.
 func TestAcpHarnessResolvesTheExtension(t *testing.T) {
 	dir := t.TempDir()
-	named := filepath.Join(dir, "cos2")
-	plain := filepath.Join(dir, "jarvis")
+	named := filepath.Join(dir, "chief-of-staff")
+	plain := filepath.Join(dir, "beacon")
 	for _, d := range []string{named, plain} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -54,7 +54,7 @@ func TestAcpHarnessResolvesTheExtension(t *testing.T) {
 		t.Fatalf("manifest harness = %+v, %v", h, err)
 	}
 	h, err = acpHarness(map[string]string{"harness": filepath.Join(plain, "main")})
-	if err != nil || h.Name != "jarvis" || h.Path != filepath.Join(plain, "main") {
+	if err != nil || h.Name != "beacon" || h.Path != filepath.Join(plain, "main") {
 		t.Fatalf("file harness = %+v, %v", h, err)
 	}
 	if h, err := acpHarness(map[string]string{}); h != nil || err != nil {
@@ -65,7 +65,7 @@ func TestAcpHarnessResolvesTheExtension(t *testing.T) {
 func TestAcpHarnessRefusesConflictingFlags(t *testing.T) {
 	dir := t.TempDir()
 	for name, flags := range map[string]map[string]string{
-		"profile":      {"harness": dir, "profile": "cos2"},
+		"profile":      {"harness": dir, "profile": "chief-of-staff"},
 		"title alone":  {"title": "Chief of Staff"},
 		"missing path": {"harness": filepath.Join(dir, "absent")},
 	} {

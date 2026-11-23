@@ -397,7 +397,7 @@ ion.registerCommand('inbox-refresh', {
   execute: async (_, ctx) => {
     const items = await fetchInbox()
     ctx.emit({
-      type: 'jarvis_inbox_update',
+      type: 'beacon_inbox_update',
       count: items.length,
       source: 'mail',
       previewIds: items.slice(0, 5).map(i => i.id),
@@ -406,6 +406,6 @@ ion.registerCommand('inbox-refresh', {
 })
 ```
 
-A client subscribes to the event by `type` string and updates its custom panel. Clients that don't subscribe to `jarvis_inbox_update` simply ignore it.
+A client subscribes to the event by `type` string and updates its custom panel. Clients that don't subscribe to `beacon_inbox_update` simply ignore it.
 
-Pick a unique prefix for your custom types (`jarvis_*`, `myext_*`) so future engine event names don't collide with yours.
+Pick a unique prefix for your custom types (`beacon_*`, `myext_*`) so future engine event names don't collide with yours.

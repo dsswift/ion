@@ -23,8 +23,8 @@ shape — decides what each seam means. The engine itself ships no policy
 produce the user-visible product.
 
 There is a recurring authoring question across every harness we have built
-(private harnesses, ion-canary, the desktop, mixed Python/TS
-Jarvis harness, the routines-daemon, the geek-tech-live agentHarness): for
+(private harnesses, ion-canary, the desktop, a mixed Python/TS
+assistant harness, a routines daemon, a streaming agent harness): for
 any given behavior, **should this be code or should this be the LLM?**
 
 Naively, more LLM = more flexible. In practice, the harnesses that work

@@ -2,7 +2,6 @@
 
 **Status:** Accepted
 **Date:** 2026-07-12
-**Authors:** Josh Sprague
 **Amends:** [ADR-020](020-dashboards-as-code.md) (window guidance for the `instant` and rolling-count `windowed-stat` classes)
 
 ## Context

@@ -83,7 +83,7 @@ func TestHandleNormalizedEvent_PlanModeChangedNotDroppedAfterRequestIDClear(t *t
 	mgr.handleNormalizedEvent(runID, types.NormalizedEvent{
 		Data: &types.PlanModeChangedEvent{
 			Enabled:      true,
-			PlanFilePath: "/Users/josh/.ion/plans/minty-dancing-apple.md",
+			PlanFilePath: "/home/ada/.ion/plans/minty-dancing-apple.md",
 		},
 	})
 

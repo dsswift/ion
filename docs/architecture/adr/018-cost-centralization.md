@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2025-07-06  
-**Authors:** Josh Sprague
 
 ## Context
 

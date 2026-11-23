@@ -19,8 +19,8 @@ func toolUse(name, path string) types.LlmContentBlock {
 // the write landed correctly. Grouping them is what removes the race.
 func TestFileConflictGroupsPairsAnEditAndReadOfOneFile(t *testing.T) {
 	blocks := []types.LlmContentBlock{
-		toolUse("Edit", `C:\Users\josh\note.txt`),
-		toolUse("Read", `C:\Users\josh\note.txt`),
+		toolUse("Edit", `C:\Users\ada\note.txt`),
+		toolUse("Read", `C:\Users\ada\note.txt`),
 	}
 
 	groups := fileConflictGroups(blocks)
@@ -72,8 +72,8 @@ func TestFileConflictGroupsIgnoresASingleTouch(t *testing.T) {
 // two spellings of one file must land in one group or the race survives.
 func TestFileConflictGroupsFoldsWindowsPathSpellings(t *testing.T) {
 	blocks := []types.LlmContentBlock{
-		toolUse("Write", `C:\Users\Josh\Note.txt`),
-		toolUse("Read", `c:/users/josh/note.txt`),
+		toolUse("Write", `C:\Users\Ada\Note.txt`),
+		toolUse("Read", `c:/users/ada/note.txt`),
 	}
 
 	groups := fileConflictGroups(blocks)
@@ -155,14 +155,14 @@ func TestFileConflictGroupsIgnoresNonToolBlocks(t *testing.T) {
 // reported as a stale index, though the walk keeps no index.
 func TestFileConflictGroupsPairsAWriteWithASearchOfItsDirectory(t *testing.T) {
 	blocks := []types.LlmContentBlock{
-		toolUse("Write", `C:\Users\josh\note.txt`),
+		toolUse("Write", `C:\Users\ada\note.txt`),
 		{Type: "tool_use", Name: "Grep", Input: map[string]any{
-			"pattern": "needle", "path": `C:\Users\josh`,
+			"pattern": "needle", "path": `C:\Users\ada`,
 		}},
 	}
 
 	groups := fileConflictGroups(blocks)
-	idx, ok := groups[`c:/users/josh/note.txt`]
+	idx, ok := groups[`c:/users/ada/note.txt`]
 	if !ok {
 		t.Fatalf("a write and a search of its directory were not grouped: %v", groups)
 	}
@@ -188,7 +188,7 @@ func TestFileConflictGroupsPairsAWriteWithAPathlessSearch(t *testing.T) {
 // Grep in it serializes.
 func TestFileConflictGroupsLeavesAnUnrelatedSearchConcurrent(t *testing.T) {
 	blocks := []types.LlmContentBlock{
-		toolUse("Write", `C:\Users\josh\note.txt`),
+		toolUse("Write", `C:\Users\ada\note.txt`),
 		{Type: "tool_use", Name: "Grep", Input: map[string]any{
 			"pattern": "needle", "path": `C:\dev\ion`,
 		}},

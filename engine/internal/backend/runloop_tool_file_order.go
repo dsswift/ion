@@ -38,8 +38,8 @@ import (
 // made; a model that batches ten unrelated reads pays nothing.
 //
 // "Overlap" is containment, not equality. The same race reappeared with a
-// different pair: `Write(C:\Users\josh\f.txt)` batched with
-// `Grep(path: C:\Users\josh)`. The search walked the directory while the
+// different pair: `Write(C:\Users\ada\f.txt)` batched with
+// `Grep(path: C:\Users\ada)`. The search walked the directory while the
 // write was still in flight and missed a file that existed by the time the
 // result was read — reported as a stale index, though the walk holds no index
 // at all. A search rooted at a directory therefore serializes against a write

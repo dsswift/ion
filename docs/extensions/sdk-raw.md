@@ -974,7 +974,7 @@ Query the current plan-mode state for this session.
 { "jsonrpc": "2.0", "id": 100021, "method": "ext/get_plan_mode", "params": {} }
 ```
 
-Response: `{"jsonrpc":"2.0","id":100021,"result":{"enabled":true,"planFilePath":"/Users/josh/.ion/plans/abc-123.md"}}`
+Response: `{"jsonrpc":"2.0","id":100021,"result":{"enabled":true,"planFilePath":"/home/ada/.ion/plans/abc-123.md"}}`
 
 `planFilePath` is non-empty whenever a plan file has been allocated for the session, even when plan mode is currently off — the path is preserved across toggles until the session resets.
 

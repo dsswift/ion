@@ -46,7 +46,7 @@ func TestEgressTailerTelemetryBody(t *testing.T) {
 	dir := t.TempDir()
 
 	// Realistic run.complete telemetry event — no "msg" field.
-	telemetryLine := `{"name":"run.complete","ts":"2026-07-10T21:00:00Z","schema":3,"component":"engine","install_id":"test-id","host":"jolteon","event_id":"abc123","version":"dev","payload":{"run_cost_usd":0.25,"num_turns":3},"context":{"conversation_id":"test-conv","session_id":"test-sess"}}`
+	telemetryLine := `{"name":"run.complete","ts":"2026-07-10T21:00:00Z","schema":3,"component":"engine","install_id":"test-id","host":"studio-mac","event_id":"abc123","version":"dev","payload":{"run_cost_usd":0.25,"num_turns":3},"context":{"conversation_id":"test-conv","session_id":"test-sess"}}`
 	// Operational log line — has "msg".
 	logLine := `{"ts":"2026-07-10T21:00:01Z","level":"INFO","msg":"session started","component":"engine","tag":"session"}`
 
@@ -100,8 +100,8 @@ func TestEgressTailerTelemetryBody(t *testing.T) {
 	if telRec.InstallID != "test-id" {
 		t.Errorf("telemetry record InstallID = %q; want %q", telRec.InstallID, "test-id")
 	}
-	if telRec.Host != "jolteon" {
-		t.Errorf("telemetry record Host = %q; want %q", telRec.Host, "jolteon")
+	if telRec.Host != "studio-mac" {
+		t.Errorf("telemetry record Host = %q; want %q", telRec.Host, "studio-mac")
 	}
 	if telRec.EventID != "abc123" {
 		t.Errorf("telemetry record EventID = %q; want %q", telRec.EventID, "abc123")

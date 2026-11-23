@@ -83,7 +83,7 @@ jobs:
             goarch: amd64
             ext: ""
             runner: ubuntu-latest
-          # linux/arm64 hosts (ARM servers, the Jarvis cluster) run this one.
+          # linux/arm64 hosts (ARM servers and clusters) run this one.
           - goos: linux
             goarch: arm64
             ext: ""
@@ -170,7 +170,7 @@ jobs:
           echo "Signing with: $IDENTITY"
           # Namespaced identifier: macOS Local Network grants key to the code
           # identity; keep in sync with engine/commands/install.command.
-          codesign --force --sign "$IDENTITY" --identifier house.sprague.ion.engine --options runtime "$ASSET"
+          codesign --force --sign "$IDENTITY" --identifier io.github.dsswift.ion.engine --options runtime "$ASSET"
           codesign --verify --verbose "$ASSET"
 
       - name: Notarize binary

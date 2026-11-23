@@ -418,4 +418,4 @@ make test-e2e           # end-to-end (live API keys required)
 
 ## License
 
-MIT. Copyright (c) 2025-2026 Joshua Sprague.
+MIT. See [LICENSE](LICENSE).

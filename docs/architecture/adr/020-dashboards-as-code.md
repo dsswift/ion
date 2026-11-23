@@ -2,7 +2,6 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-08  
-**Authors:** Josh Sprague  
 **Amended by:** [ADR-022](022-dashboard-time-window-policy.md) — window policy defaults changed (instant panels default to `$__range`; the "(5m)"/"(1m)" rolling-count trend panels converted to `$__interval`). The class taxonomy, builders, and drift gates below are unchanged.
 
 ## Context

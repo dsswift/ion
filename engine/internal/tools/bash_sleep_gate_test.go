@@ -32,8 +32,8 @@ func TestDetectBlockingSleep_BlockedShapes(t *testing.T) {
 		wantSecs int
 	}{
 		// The exact strings from conversation 1785107715785-e4b5e9ec1ecb.
-		{"sleep 600; tail -20 /Users/josh/.ion/tasks/bash-1614901066.out", 600},
-		{"sleep 240; tail -5 /Users/josh/.ion/tasks/bash-1614901066.out", 240},
+		{"sleep 600; tail -20 /home/ada/.ion/tasks/bash-1614901066.out", 600},
+		{"sleep 240; tail -5 /home/ada/.ion/tasks/bash-1614901066.out", 240},
 		{"sleep 600", 600},
 		{"sleep 5 && make test", 5},
 		{"sleep 30 | tee log", 30},

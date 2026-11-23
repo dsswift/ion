@@ -40,7 +40,7 @@ func makeUnsignedJWT(t *testing.T, claims map[string]any) string {
 // delivered only a bare access-token string.
 func TestStartPKCEFlow_RoundTrip_CapturesFullGrant(t *testing.T) {
 	idToken := makeUnsignedJWT(t, map[string]any{
-		"preferred_username": "josh@example.com",
+		"preferred_username": "ada@example.com",
 		"oid":                "oid-123",
 	})
 
@@ -571,8 +571,8 @@ func TestIdentityManager_Identity_ParsesClaims(t *testing.T) {
 		AccessToken:  "at",
 		RefreshToken: "rt",
 		IDToken: makeUnsignedJWT(t, map[string]any{
-			"preferred_username": "josh@example.com",
-			"name":               "Joshua Sprague",
+			"preferred_username": "ada@example.com",
+			"name":               "Ada Example",
 			"oid":                "oid-123",
 			"sub":                "pairwise-sub",
 		}),
@@ -583,19 +583,19 @@ func TestIdentityManager_Identity_ParsesClaims(t *testing.T) {
 	if id == nil {
 		t.Fatal("Identity() = nil for a signed-in operator")
 	}
-	if id.Username != "josh@example.com" {
+	if id.Username != "ada@example.com" {
 		t.Errorf("Username = %q", id.Username)
 	}
 	if id.Subject != "oid-123" {
 		t.Errorf("Subject = %q, want the oid claim over sub", id.Subject)
 	}
-	if id.Name != "Joshua Sprague" {
+	if id.Name != "Ada Example" {
 		t.Errorf("Name = %q", id.Name)
 	}
 	if id.Provider != "entra" {
 		t.Errorf("Provider = %q", id.Provider)
 	}
-	if id.AttributionValue() != "josh@example.com" {
+	if id.AttributionValue() != "ada@example.com" {
 		t.Errorf("AttributionValue = %q", id.AttributionValue())
 	}
 }

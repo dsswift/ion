@@ -19,9 +19,9 @@ type TestProviderConfig struct {
 
 // TestConfig holds e2e test configuration loaded from testconfig.json.
 type TestConfig struct {
-	Anthropic     TestProviderConfig `json:"anthropic"`
-	OpenAI        TestProviderConfig `json:"openai"`
-	OpenAIGateway TestProviderConfig `json:"openaiGateway"`
+	Anthropic TestProviderConfig `json:"anthropic"`
+	OpenAI    TestProviderConfig `json:"openai"`
+	Gateway   TestProviderConfig `json:"gateway"`
 }
 
 // ResolveAPIKey returns the API key, checking explicit value first, then env var.

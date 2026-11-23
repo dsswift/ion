@@ -65,7 +65,7 @@ func TestIsToolAllowedFor_ClaimMatchAppliesToEveryPrincipalWithThatRole(t *testi
 }
 
 func TestIsToolAllowedFor_ProviderMatch(t *testing.T) {
-	local := &types.SessionPrincipal{Subject: "local:josh", Provider: "os", Kind: "local"}
+	local := &types.SessionPrincipal{Subject: "local:ada", Provider: "os", Kind: "local"}
 	enterprise := &types.EnterpriseConfig{ToolRestrictions: &types.ToolRestrictions{
 		Principals: []types.PrincipalToolRule{
 			{Match: types.PrincipalMatch{Providers: []string{"entra"}}, Deny: []string{"bash"}},

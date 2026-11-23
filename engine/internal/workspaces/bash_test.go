@@ -143,7 +143,7 @@ func TestWorkspaceBashPassesOperatorGitWorkflows(t *testing.T) {
 		"align pr worktree add":  "git worktree add ../ion-align-pr-287 feat/branch",
 		"squash backup branch":   "git branch backup--wt/feature HEAD",
 		"squash backup force":    "git branch -f backup--wt/feature HEAD",
-		"squash soft reset":      "git reset --soft josh",
+		"squash soft reset":      "git reset --soft ada",
 		"squash unstage":         "git reset",
 		"squash verify":          "git diff backup--wt/feature",
 		"create-pr push":         "git push -u origin wt/feature",

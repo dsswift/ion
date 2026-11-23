@@ -38,7 +38,7 @@ my-extension/
 ```json
 {
   "$schema": "https://ion.example.com/schemas/extension.json",
-  "name": "jarvis",
+  "name": "beacon",
   "version": "1.2.0",
   "external": ["keytar"],
   "engineVersion": ">=0.5.0",
@@ -55,7 +55,7 @@ The engine **rejects unknown top-level keys** to keep the surface predictable. I
 Display name for the extension. Used in logs and event source attribution. Defaults to the parent directory name.
 
 ```json
-{ "name": "jarvis" }
+{ "name": "beacon" }
 ```
 
 #### `version` (optional, string)
@@ -63,7 +63,7 @@ Display name for the extension. Used in logs and event source attribution. Defau
 Version string for this extension release. Conventional semver (e.g. `"1.2.0"`) but not enforced. Used for cost attribution in the Ion Extensions Grafana dashboard — when set, every `run.complete`, `cache.savings`, `llm.call`, and `dispatch.agent` telemetry event carries `extension_version` in its context block so operators can distinguish spend across releases in version-comparison panels.
 
 ```json
-{ "name": "jarvis", "version": "1.2.0" }
+{ "name": "beacon", "version": "1.2.0" }
 ```
 
 **How the version reaches telemetry:** the engine has two sources, and the init handshake is primary. At host load time it first stamps `Host.Version()` from `Manifest.Version` (reading `extension.json`, if present) as a fallback; when the extension subprocess completes its init handshake, a non-empty `version` field in that response overwrites the fallback (`Host.applyHandshakeVersion`, `engine/internal/extension/host_transpile.go`). This is what lets a **compiled extension with no `extension.json`** — a Go SDK binary, for instance — still report a version: it has nothing for the engine to read at load time, so its only source is the handshake, stamped in at build time via `-X github.com/dsswift/ion/sdk/go.Version=<version>` (see `sdk/go/build_identity.go`). A TS extension carrying `extension.json` reports the same value through both paths; the handshake still wins, since it reflects what actually loaded. Either way the version is then threaded through `RunOptions.ExtensionVersion` → `buildTelemCtx` → every cost-bearing event context. It is fixed for the life of the loaded process: changing either source requires a reload (engine restart or extension respawn), not a running state update.
@@ -161,7 +161,7 @@ Native modules can't be bundled. Declare them in `external` so esbuild emits a r
 ```json
 // extension.json
 {
-  "name": "jarvis-secrets",
+  "name": "beacon-secrets",
   "external": ["keytar"]
 }
 ```
@@ -169,7 +169,7 @@ Native modules can't be bundled. Declare them in `external` so esbuild emits a r
 ```json
 // package.json
 {
-  "name": "jarvis-secrets",
+  "name": "beacon-secrets",
   "version": "0.1.0",
   "dependencies": {
     "keytar": "^7.9.0"
@@ -183,7 +183,7 @@ import keytar from 'keytar'
 import { createIon } from '../sdk/ion-sdk'
 
 const ion = createIon()
-const token = await keytar.getPassword('jarvis', 'anthropic-api')
+const token = await keytar.getPassword('beacon', 'anthropic-api')
 ```
 
 The engine runs `npm install` (which compiles keytar's native binding for the running Node version), bundles `index.ts` with `--external:keytar`, and runs the bundle with `NODE_PATH=<extDir>/node_modules` so the runtime `import keytar` resolves to the installed package.

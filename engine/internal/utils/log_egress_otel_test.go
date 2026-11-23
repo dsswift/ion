@@ -325,7 +325,7 @@ func runCompleteRecord() egressRecord {
 		Component: "engine",
 		InstallID: "00000000-0000-4000-8000-000000000001",
 		Version:   "dev",
-		Host:      "jolteon",
+		Host:      "studio-mac",
 		EventID:   "86693acc4aa9560e",
 		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
 		Payload: map[string]any{
@@ -344,7 +344,7 @@ func runCompleteRecord() egressRecord {
 			"conversation_id":   "1783339918596-0a78dd0c12ca",
 			"extension":         "ion-dev",
 			"extension_version": "0.2.0",
-			"session_id":        "230dad54-0960-4c08-ace2-35f75a8f23be",
+			"session_id":        "00000000-0000-0000-0000-000000000002",
 		},
 	}
 }
@@ -385,8 +385,8 @@ func TestTelemetryEvent_AttributeMap(t *testing.T) {
 	// Body is lossless: host and event_id complete the v3 envelope (the remote
 	// Fleet dashboard queries host; event_id is the dedup key). They ride in the
 	// BODY even though they are omitted from the attribute set (desktop parity).
-	if parsed["host"] != "jolteon" {
-		t.Errorf("body[\"host\"] = %v, want jolteon", parsed["host"])
+	if parsed["host"] != "studio-mac" {
+		t.Errorf("body[\"host\"] = %v, want studio-mac", parsed["host"])
 	}
 	if parsed["event_id"] != "86693acc4aa9560e" {
 		t.Errorf("body[\"event_id\"] = %v, want 86693acc4aa9560e", parsed["event_id"])
@@ -418,7 +418,7 @@ func TestTelemetryEvent_AttributeMap(t *testing.T) {
 	assertStr(t, attrs, "context_extension", "ion-dev")
 	assertStr(t, attrs, "context_extension_version", "0.2.0")
 	assertStr(t, attrs, "context_conversation_id", "1783339918596-0a78dd0c12ca")
-	assertStr(t, attrs, "context_session_id", "230dad54-0960-4c08-ace2-35f75a8f23be")
+	assertStr(t, attrs, "context_session_id", "00000000-0000-0000-0000-000000000002")
 
 	assertInt(t, attrs, "schema_version", "3")
 

@@ -3,14 +3,14 @@ version: 4
 # =============================================================================
 # VARIABLES
 # =============================================================================
-# ion_logs_dir: absolute path to ~/.ion on this machine.
+# ion_logs_dir: ~/.ion on this machine.
 # The v4 compose: volumes list is passed verbatim into the generated compose file;
-# docker compose expands $HOME but dev's named-volume detector does not — it
-# only recognises bind mounts by a leading / or . prefix. Using an absolute path
-# (via a var) satisfies the detector and is portable across dev users who set
-# this var to their own home directory path.
+# docker compose expands $HOME but dev's named-volume detector does not, and it
+# only recognises bind mounts by a leading / or . prefix. The leading slash
+# satisfies the detector, and compose turns //<home>/.ion into the same folder,
+# so the path works for every user without an edit.
 vars:
-  ion_logs_dir: /Users/josh/.ion
+  ion_logs_dir: "/${HOME}/.ion"
   # Accepts the Microsoft Software License Terms for the Event Hubs emulator
   # image (https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md).
   # This is the operator's own opt-in local dev profile, never deployed.

@@ -18,7 +18,7 @@ func TestProbeClaudeCodeAuthStatus(t *testing.T) {
   "authMethod": "claude.ai",
   "apiProvider": "firstParty",
   "email": "user@example.com",
-  "orgId": "52b202f0-6b76-4800-adc3-b870c8572cc6",
+  "orgId": "00000000-0000-0000-0000-000000000001",
   "orgName": "user@example.com's Organization",
   "subscriptionType": "max"
 }`

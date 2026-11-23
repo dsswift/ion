@@ -47,7 +47,7 @@ When `engine.json`'s `security.principalPartitioning.enabled` is `true` (ADR-034
 ~/.ion/principals/<PrincipalDir(subject)>/git/<sanitized-host>/     # FR-04 materialized git credentials for this principal
 ```
 
-`principals/` is a **sibling** of `conversations/`, not nested inside it. `PrincipalDir(subject)` sanitizes the subject (`[^a-zA-Z0-9_.-]+` → `-`, trimmed, capped at 40 characters, falling back to the literal `"principal"` if that leaves nothing) and appends `--` plus the first 16 hex characters of `sha256(subject)`, so two principals whose sanitized names collide never share a directory. Example: subject `josh@example.com` → `josh-example.com--<16 hex chars>`.
+`principals/` is a **sibling** of `conversations/`, not nested inside it. `PrincipalDir(subject)` sanitizes the subject (`[^a-zA-Z0-9_.-]+` → `-`, trimmed, capped at 40 characters, falling back to the literal `"principal"` if that leaves nothing) and appends `--` plus the first 16 hex characters of `sha256(subject)`, so two principals whose sanitized names collide never share a directory. Example: subject `ada@example.com` → `ada-example.com--<16 hex chars>`.
 
 There is no migration path from the flat layout to a partition, or back — this is a locked decision. A session with no principal (or with partitioning disabled) always resolves to the flat root, byte-identical to before this feature existed. `engine/internal/conversation/partition.go` is the source of truth: `PartitioningEnabled()`, `PartitionConversationsDir(subject)`, `PartitionRoot()`.
 

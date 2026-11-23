@@ -321,7 +321,7 @@ rl.on("line", (line) => {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0",
       method: "ext/emit",
-      params: { type: "jarvis_inbox_update", count: 3, source: "mail" }
+      params: { type: "beacon_inbox_update", count: 3, source: "mail" }
     }) + "\n");
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { content: "ok" }}) + "\n");
     return;
@@ -383,13 +383,13 @@ rl.on("line", (line) => {
 	defer mu.Unlock()
 	var found *types.EngineEvent
 	for i := range events {
-		if events[i].Type == "jarvis_inbox_update" {
+		if events[i].Type == "beacon_inbox_update" {
 			found = &events[i]
 			break
 		}
 	}
 	if found == nil {
-		t.Fatalf("expected custom event 'jarvis_inbox_update', got %d events: %+v", len(events), events)
+		t.Fatalf("expected custom event 'beacon_inbox_update', got %d events: %+v", len(events), events)
 	}
 }
 

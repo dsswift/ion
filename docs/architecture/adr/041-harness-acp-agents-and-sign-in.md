@@ -27,7 +27,7 @@ Operator sign-in was started only by Ion Studio: the engine owns the OIDC grant,
 
 ## Consequences
 
-- A client lists Chief of Staff and Jarvis as agents of their own; neither offers a way to become the other.
+- A client lists two harnesses as agents of their own; neither offers a way to become the other.
 - A new machine is: install `ion`, write `engine.json`, add the harness in the client, choose Sign in.
 - The engine wire is unchanged: harness pinning and sign-in are `ion acp` and CLI behavior over existing commands (`start_session`, `oidc_begin_login`, `oidc_identity`, `oidc_logout`).
 - ACP agents built before this used `-32000` for every failure; clients that treat it as authentication required now see it only when signing in would help.

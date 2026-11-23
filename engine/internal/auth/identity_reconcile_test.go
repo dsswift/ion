@@ -27,8 +27,8 @@ func TestReconcileAtStartup_UpgradesLegacyGrantToCurrentVersion(t *testing.T) {
 		"aud":                "client-app",
 		"sub":                "sub-1",
 		"oid":                "oid-1",
-		"preferred_username": "josh@example.com",
-		"name":               "Josh",
+		"preferred_username": "ada@example.com",
+		"name":               "Ada",
 		"exp":                time.Now().Add(time.Hour).Unix(),
 		"iat":                time.Now().Unix(),
 	}
@@ -93,11 +93,11 @@ func TestReconcileAtStartup_UpgradesLegacyGrantToCurrentVersion(t *testing.T) {
 	if stored.RefreshToken != "rt-2" {
 		t.Fatalf("stored refresh token = %q, want rotated rt-2", stored.RefreshToken)
 	}
-	if stored.PersistedIdentity == nil || stored.PersistedIdentity.Username != "josh@example.com" {
+	if stored.PersistedIdentity == nil || stored.PersistedIdentity.Username != "ada@example.com" {
 		t.Fatalf("stored PersistedIdentity = %#v, want snapshot with username", stored.PersistedIdentity)
 	}
 	id := m.Identity()
-	if id == nil || id.Username != "josh@example.com" {
+	if id == nil || id.Username != "ada@example.com" {
 		t.Fatalf("Identity() = %#v, want restored operator identity", id)
 	}
 }
@@ -124,7 +124,7 @@ func TestRenewNow_ProviderRejectionLosesVerification(t *testing.T) {
 	stored := oauthToken{
 		AccessToken: "stale", RefreshToken: "rt-dead", ExpiresAt: past, Scope: "openid",
 		IdentityVersion:   IdentityStoreVersion,
-		PersistedIdentity: &persistedIdentity{Username: "josh@example.com", ExpiresAt: past},
+		PersistedIdentity: &persistedIdentity{Username: "ada@example.com", ExpiresAt: past},
 	}
 	encoded, err := json.Marshal(stored)
 	if err != nil {
@@ -173,7 +173,7 @@ func TestIdentity_HydratesFromPersistedSnapshotWithoutNetwork(t *testing.T) {
 		Scope:           "openid",
 		IdentityVersion: IdentityStoreVersion,
 		PersistedIdentity: &persistedIdentity{
-			Subject: "oid-1", Username: "josh@example.com", Name: "Josh", ExpiresAt: future,
+			Subject: "oid-1", Username: "ada@example.com", Name: "Ada", ExpiresAt: future,
 		},
 	}
 	encoded, err := json.Marshal(stored)
@@ -189,7 +189,7 @@ func TestIdentity_HydratesFromPersistedSnapshotWithoutNetwork(t *testing.T) {
 	// A fresh manager over the same store hydrates identity without any I/O.
 	reader := NewIdentityManager("entra", types.OAuthConfig{ClientID: "c", TokenURL: tokenServer.URL}, 0)
 	id := reader.Identity()
-	if id == nil || id.Username != "josh@example.com" {
+	if id == nil || id.Username != "ada@example.com" {
 		t.Fatalf("Identity() = %#v, want hydrated snapshot", id)
 	}
 	if got := tokenCalls.Load(); got != 0 {
