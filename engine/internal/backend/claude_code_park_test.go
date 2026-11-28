@@ -193,3 +193,36 @@ func TestNormalizeRunCost_CompletingTurnSubtractsBaseline(t *testing.T) {
 		t.Errorf("second run billed %v, want 0.50 (the delta, not the cumulative)", second.CostUsd)
 	}
 }
+
+// TestNormalizeRunCost_ParkCarriesTurnsAndTokens pins the other half of a
+// park's accounting. The CLI's cost is cumulative across a resume, but its
+// turns, tokens, and duration are per process: the parked process's figures
+// reach nobody unless the woken run's close carries them.
+//
+// Revert-check: drop the held figures from normalizeRunCost and the woken run
+// reports 1 turn and 5 output tokens instead of 3 and 15.
+func TestNormalizeRunCost_ParkCarriesTurnsAndTokens(t *testing.T) {
+	p := newParkProbe(t)
+	n := func(v int) *int { return &v }
+
+	parked := &types.TaskCompleteEvent{CostUsd: 0.60, NumTurns: 2, DurationMs: 4000,
+		Usage: types.UsageData{InputTokens: n(10), OutputTokens: n(10), CacheReadInputTokens: n(100), CacheCreationInputTokens: n(50)}}
+	p.b.normalizeRunCost(p.run.requestID, "cli-session", parked, true)
+
+	woken := &types.TaskCompleteEvent{CostUsd: 1.00, NumTurns: 1, DurationMs: 1000,
+		Usage: types.UsageData{InputTokens: n(1), OutputTokens: n(5), CacheReadInputTokens: n(200)}}
+	p.b.normalizeRunCost(p.run.requestID, "cli-session", woken, false)
+
+	u := woken.Usage
+	if woken.NumTurns != 3 || woken.DurationMs != 5000 || *u.InputTokens != 11 || *u.OutputTokens != 15 || *u.CacheReadInputTokens != 300 || *u.CacheCreationInputTokens != 50 {
+		t.Fatalf("woken close = %d turns, %d ms, usage in %d out %d read %d made %d; want 3, 5000, 11, 15, 300, 50",
+			woken.NumTurns, woken.DurationMs, *u.InputTokens, *u.OutputTokens, *u.CacheReadInputTokens, *u.CacheCreationInputTokens)
+	}
+
+	// The held figures are spent once: the next run reports only its own.
+	next := &types.TaskCompleteEvent{CostUsd: 1.10, NumTurns: 1}
+	p.b.normalizeRunCost(p.run.requestID, "cli-session", next, false)
+	if next.NumTurns != 1 {
+		t.Errorf("a later run reported %d turns, want its own 1", next.NumTurns)
+	}
+}

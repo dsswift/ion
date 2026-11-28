@@ -146,15 +146,21 @@ func TestNormalizeResult(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			events := Normalize(tt.raw)
-			if len(events) != 1 {
-				t.Fatalf("expected 1 event, got %d", len(events))
-			}
 			if tt.wantErr {
-				_, ok := events[0].Data.(*types.ErrorEvent)
-				if !ok {
-					t.Errorf("expected ErrorEvent, got %T", events[0].Data)
+				// The error, then the close that carries what the run spent.
+				if len(events) != 2 {
+					t.Fatalf("expected 2 events, got %d", len(events))
+				}
+				if e, ok := events[0].Data.(*types.ErrorEvent); !ok || e.ErrorMessage != "Something failed" {
+					t.Errorf("expected ErrorEvent naming the failure, got %#v", events[0].Data)
+				}
+				if _, ok := events[1].Data.(*types.TaskCompleteEvent); !ok {
+					t.Errorf("expected TaskCompleteEvent after the error, got %T", events[1].Data)
 				}
 			} else {
+				if len(events) != 1 {
+					t.Fatalf("expected 1 event, got %d", len(events))
+				}
 				taskComplete, ok := events[0].Data.(*types.TaskCompleteEvent)
 				if !ok {
 					t.Errorf("expected TaskCompleteEvent, got %T", events[0].Data)
@@ -163,6 +169,38 @@ func TestNormalizeResult(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNormalizeResult_BudgetStopKeepsWhatItSpent pins the result the CLI
+// ends a run with when it stops it at --max-budget-usd: no text, its reason
+// in errors, and the run's real cost, turns, and usage. The error says
+// "budget exceeded" as the API backend says it, and the close after it
+// carries the figures, so a caller reads both the stop and the spend.
+func TestNormalizeResult_BudgetStopKeepsWhatItSpent(t *testing.T) {
+	raw := mustJSON(map[string]any{
+		"type":           "result",
+		"subtype":        "error_max_budget_usd",
+		"is_error":       true,
+		"result":         nil,
+		"errors":         []string{"Reached maximum budget ($0.05)"},
+		"duration_ms":    4200,
+		"num_turns":      1,
+		"total_cost_usd": 0.0884,
+		"session_id":     "sess-1",
+		"usage":          map[string]any{"input_tokens": 2, "output_tokens": 41, "cache_creation_input_tokens": 23567},
+	})
+	events := Normalize(raw)
+	if len(events) != 2 {
+		t.Fatalf("expected the error and the close, got %d events", len(events))
+	}
+	e, ok := events[0].Data.(*types.ErrorEvent)
+	if !ok || e.ErrorCode != "budget_exceeded" || e.ErrorMessage != "budget exceeded: Reached maximum budget ($0.05)" {
+		t.Fatalf("error = %#v, want the budget stop in words", events[0].Data)
+	}
+	c, ok := events[1].Data.(*types.TaskCompleteEvent)
+	if !ok || c.CostUsd != 0.0884 || c.NumTurns != 1 || c.Usage.CacheCreationInputTokens == nil || *c.Usage.CacheCreationInputTokens != 23567 {
+		t.Fatalf("close = %#v, want the run's cost, turns, and usage", events[1].Data)
 	}
 }
 

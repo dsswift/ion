@@ -93,6 +93,10 @@ type ClaudeCodeBackend struct {
 	// per-run value matching ApiBackend's semantics.
 	// Key: conversationID (from the CLI's session ID or our own ID).
 	lastCumulativeCost map[string]float64
+	// heldFigures are the turns, usage, and time of a CLI session's parked
+	// turns, which the CLI reports per process; the woken run's close
+	// carries them. Key: as lastCumulativeCost.
+	heldFigures map[string]runFigures
 
 	onNormalized func(string, types.NormalizedEvent)
 	onExit       func(string, *int, *string, string)
@@ -113,6 +117,7 @@ func NewClaudeCodeBackend() *ClaudeCodeBackend {
 	return &ClaudeCodeBackend{
 		activeRuns:         make(map[string]*claudeCodeRun),
 		lastCumulativeCost: make(map[string]float64),
+		heldFigures:        make(map[string]runFigures),
 	}
 }
 
@@ -459,6 +464,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 			t.claudeStreamLine(raw)
 		}
 		events := streamNormalizer.Normalize(raw)
+		failed := resultFailed(events)
 		for _, ev := range events {
 			// Track sessionID from init or result events
 			switch e := ev.Data.(type) {
@@ -503,7 +509,13 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				// every later delta, which is measured from the advanced mark.
 				// Leaving the baseline alone makes the woken run's delta span
 				// both turns. See claude_code_park.go.
-				parking, parkTasks, parkPolls := b.delegatedParkDecision(run, opts)
+				// A run that ended in an error is over whatever it left
+				// running: its close carries what it spent, and is never a park.
+				var parking bool
+				var parkTasks, parkPolls []string
+				if !failed {
+					parking, parkTasks, parkPolls = b.delegatedParkDecision(run, opts)
+				}
 
 				// Key by sessionID (the CLI's own session UUID) so each CLI
 				// session tracks independently. See normalizeRunCost for why

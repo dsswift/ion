@@ -215,22 +215,12 @@ func normalizeResult(raw json.RawMessage, subtype string) []types.NormalizedEven
 		return nil
 	}
 
-	if re.IsError {
-		return []types.NormalizedEvent{{
-			Data: &types.ErrorEvent{
-				ErrorMessage: re.Result,
-				IsError:      true,
-				SessionID:    re.SessionID,
-			},
-		}}
-	}
-
 	var denials []types.PermissionDenial
 	for _, d := range re.PermissionDenials {
 		denials = append(denials, types.PermissionDenial{ToolName: d.ToolName, ToolUseID: d.ToolUseID})
 	}
 
-	return []types.NormalizedEvent{{
+	complete := types.NormalizedEvent{
 		Data: &types.TaskCompleteEvent{
 			Reason:            resultCompletionReason(subtype),
 			Result:            re.Result,
@@ -241,7 +231,34 @@ func normalizeResult(raw json.RawMessage, subtype string) []types.NormalizedEven
 			SessionID:         re.SessionID,
 			PermissionDenials: denials,
 		},
-	}}
+	}
+	if !re.IsError {
+		return []types.NormalizedEvent{complete}
+	}
+	// An error result still closes the run, and its cost, turns, and usage
+	// were spent: the error comes first, then the close that carries them,
+	// as the API backend reports a run it stopped at its budget.
+	return []types.NormalizedEvent{{Data: resultError(re, subtype)}, complete}
+}
+
+// resultError is the error an error result reports. Its message is never
+// empty: a result with no text says what went wrong in its errors, and one
+// with neither is named by its subtype. A run the CLI stopped at its budget
+// is worded and coded as the API backend words and codes its own.
+func resultError(re types.ResultEvent, subtype string) *types.ErrorEvent {
+	msg := re.Result
+	if msg == "" {
+		msg = strings.Join(re.Errors, "; ")
+	}
+	if msg == "" {
+		msg = "the run ended with an error result: " + subtype
+	}
+	ev := &types.ErrorEvent{ErrorMessage: msg, IsError: true, SessionID: re.SessionID}
+	if subtype == "error_max_budget_usd" {
+		ev.ErrorCode = "budget_exceeded"
+		ev.ErrorMessage = "budget exceeded: " + msg
+	}
+	return ev
 }
 
 func normalizeRateLimit(raw json.RawMessage) []types.NormalizedEvent {

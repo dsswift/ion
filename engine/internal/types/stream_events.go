@@ -153,12 +153,15 @@ type RateLimitWindow struct {
 
 // ResultEvent signals completion (success or error) of a Claude run.
 type ResultEvent struct {
-	Type              string                  `json:"type"`
-	Subtype           string                  `json:"subtype"`
-	IsError           bool                    `json:"is_error"`
-	DurationMs        int64                   `json:"duration_ms"`
-	NumTurns          int                     `json:"num_turns"`
-	Result            string                  `json:"result"`
+	Type       string `json:"type"`
+	Subtype    string `json:"subtype"`
+	IsError    bool   `json:"is_error"`
+	DurationMs int64  `json:"duration_ms"`
+	NumTurns   int    `json:"num_turns"`
+	Result     string `json:"result"`
+	// Errors is what the CLI says went wrong on an error result whose Result
+	// is empty, such as a run it stopped at its budget.
+	Errors            []string                `json:"errors,omitempty"`
 	TotalCostUsd      float64                 `json:"total_cost_usd"`
 	SessionID         string                  `json:"session_id"`
 	Usage             UsageData               `json:"usage"`
