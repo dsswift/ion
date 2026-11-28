@@ -135,11 +135,18 @@ After emitting the summary, **enter planning mode**. A plan artifact is created 
 The plan's steps ARE the executable resolution sequence, in the order decided in Step 4. For each PR (or grouped batch), lay out the concrete steps:
 
 1. **Rebase** the Dependabot PR — either by posting `@dependabot rebase` (the user does this, or it is the first executable step) or, where appropriate, a local rebase of the dependabot branch onto updated `main` + force-push. Choose per the PR's conflict state from Step 2.
-2. **Merge** that PR:
+2. **Land** that PR's change. Never merge it on GitHub: the release verifies a landing proof that only `release-damnit land` writes, so a merge made on GitHub never releases. Bring the change onto `main` as one commit that passes the commit rules, land it, and close the PR:
    ```bash
-   gh pr merge {n} --merge
+   gh pr checkout {n} -b dependabot-{n}
+   git switch main
+   git merge --squash dependabot-{n}
+   git commit -m "chore(<package>): bump <dependency> to <version>"
+   make land
+   gh pr close {n} --comment "Landed on main as $(git rev-parse --short HEAD)."
+   git branch -D dependabot-{n}
    ```
-3. **If** the PR was flagged known-issue: on `main`, pull the merge, commit the correction (one package per commit, scope per root `AGENTS.md` "Commits"), and land it with `make land`.
+   `make land` runs the full check on exactly what lands and signs its proof.
+3. **If** the PR was flagged known-issue: on `main`, commit the correction (one package per commit, scope per root `AGENTS.md` "Commits"), and land it with `make land`.
 4. **Resume** the chain with the next PR — re-rebase the remaining Dependabot PRs onto the updated `main` as needed before each merge (this is where same-lockfile collisions from Step 4 are resolved).
 5. For **High** PRs: close instead of merging —
    ```bash
