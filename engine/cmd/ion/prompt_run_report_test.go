@@ -102,3 +102,23 @@ func TestTheWaitForACloseKeepsTheStreamsDeadline(t *testing.T) {
 		t.Errorf("waited %s past a 300ms deadline for a close the held stream never sent", waited)
 	}
 }
+
+// TestAParkedRunIsFollowedToTheCloseOfItsWake pins that a run parked on
+// background commands is not over. The engine says so with an idle status
+// that holds pending work; the CLI keeps following, prints the woken run's
+// words, and ends with that run's report. Ending at the park left the
+// commands to be reaped with the session and the run's spend unread.
+func TestAParkedRunIsFollowedToTheCloseOfItsWake(t *testing.T) {
+	code, r, out := runReportOf(t, []string{
+		`{"type":"engine_status","fields":{"state":"running","model":"claude-opus-5-5"}}`,
+		`{"type":"engine_text_delta","text":"the check runs in the background"}`,
+		`{"type":"engine_task_suspended","taskSuspendAwaitingTaskCount":1}`,
+		`{"type":"engine_status","fields":{"state":"idle","model":"claude-opus-5-5","backgroundShells":1,"hasPendingWork":true}}`,
+		`{"type":"engine_status","fields":{"state":"running","model":"claude-opus-5-5"}}`,
+		`{"type":"engine_text_delta","text":"the check passed"}`,
+		closingStatus,
+	})
+	if code != 0 || r == nil || r.CostUsd != 0.42 || r.Turns != 3 || r.Model != "claude-opus-5-5" {
+		t.Fatalf("exit %d, report %+v, want exit 0 and the woken run's close; stderr:\n%s", code, r, out)
+	}
+}

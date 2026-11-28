@@ -41,8 +41,12 @@ type runWatch struct {
 	report *runReport
 }
 
-// status reads one engine_status and reports whether the session went idle.
-func (w *runWatch) status(f *types.StatusFields) (idle bool) {
+// status reads one engine_status and reports whether the run is over: the
+// session is idle with no work pending. An idle session that still holds
+// work, such as a run parked on background commands, is not over: the
+// engine wakes it when that work is done, and the close of the woken run is
+// the prompt's.
+func (w *runWatch) status(f *types.StatusFields) (over bool) {
 	if f == nil {
 		return false
 	}
@@ -61,7 +65,7 @@ func (w *runWatch) status(f *types.StatusFields) (idle bool) {
 			Reason:              string(f.CompletionReason),
 		}
 	}
-	return f.State == "idle"
+	return f.State == "idle" && !f.HasPendingWork
 }
 
 // closed reports whether the status that closes the run was read.

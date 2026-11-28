@@ -154,8 +154,10 @@ func (e streamEnd) exitCode() int {
 }
 
 // streamUntilIdle prints the run's text deltas for key until the session
-// emits engine_status with state=idle, the engine reports an error, the
-// session dies, or the stream ends. Once the engine has closed the run, the
+// emits engine_status with state=idle and no pending work, the engine
+// reports an error, the session dies, or the stream ends. A run parked on
+// background commands is followed through its wake: this connection keeps
+// the session owned meanwhile, so the engine never reaps it mid-park. Once the engine has closed the run, the
 // run's report is the last line on stderr (see runReport), however it ended.
 func streamUntilIdle(s *promptStream, key string) streamEnd {
 	var run runWatch
