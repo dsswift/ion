@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.8.2](https://github.com/dsswift/ion/compare/engine-v3.8.1...engine-v3.8.2) (2026-11-28)
+
+### Bug Fixes
+
+* **engine:** follow a parked prompt to its close ([85dd5ac](https://github.com/dsswift/ion/commit/85dd5ac8f81d60a6a918cfb2ad63bbdc6604472f))
+* **engine:** keep spend of parked and failed runs ([2a33434](https://github.com/dsswift/ion/commit/2a33434e3cc102009dc7c315b03b57f3a3f512e4))
+
 ## [3.8.1](https://github.com/dsswift/ion/compare/engine-v3.8.0...engine-v3.8.1) (2026-11-23)
 
 ### Bug Fixes
