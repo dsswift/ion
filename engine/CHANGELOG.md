@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [3.8.3](https://github.com/dsswift/ion/compare/engine-v3.8.2...engine-v3.8.3) (2026-11-28)
+
+### Bug Fixes
+
+* **engine:** pin an error result's close in tests ([14e3e8c](https://github.com/dsswift/ion/commit/14e3e8c213459637a5afadb52b033df449cdca90))
+
 ## [3.8.2](https://github.com/dsswift/ion/compare/engine-v3.8.1...engine-v3.8.2) (2026-11-28)
 
 ### Bug Fixes
