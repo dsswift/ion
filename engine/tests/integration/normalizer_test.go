@@ -295,9 +295,13 @@ func TestNormalizerResultEvent(t *testing.T) {
 			"uuid": "u1"
 		}`)
 
+		// The error, then the close that carries what the run spent.
 		events := normalizer.Normalize(raw)
-		if len(events) != 1 {
-			t.Fatalf("expected 1 event, got %d", len(events))
+		if len(events) != 2 {
+			t.Fatalf("expected 2 events, got %d", len(events))
+		}
+		if _, ok := events[1].Data.(*types.TaskCompleteEvent); !ok {
+			t.Fatalf("expected TaskCompleteEvent after the error, got %T", events[1].Data)
 		}
 
 		ee, ok := events[0].Data.(*types.ErrorEvent)
