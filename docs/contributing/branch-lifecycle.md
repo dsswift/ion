@@ -19,7 +19,7 @@ Work happens on `main`. A worktree is the only other branch: it starts from `mai
 | Feature work | Operator asks; agent implements | Code, tests, docs. Committed one package at a time; the `commit-msg` hook rejects a commit that spans packages. | No |
 | `/align` | Operator | Reviews the work against Ion's quality gates and architectural principles, then authors a fix plan. In plan mode it audits the plan instead. | No |
 | `/squash` | Operator, optionally | Rebuilds unlanded commits from a soft reset into one commit per package per feature. Creates a backup branch first. | No |
-| Land | Agent on `main`; operator for a worktree | `make land` (`release-damnit land`): rebases the local commits onto the remote `main`, checks every commit, and pushes, retrying on its own if the pipeline's version commit moved `main`. `make land <branch>` lands a branch or worktree as one merge. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
+| Land | Agent on `main`; operator for a worktree | `make land` (`release-damnit land`): rebases the local commits onto the remote `main`, checks every commit, runs the config's check (`make test-all`) on exactly what lands, signs a landing proof the release verifies, and pushes, retrying on its own if the pipeline's version commit moved `main`. `make land <branch>` lands a branch or worktree as one merge. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
 | `/create-pr` | Operator, optionally | Runs the Linux parity gate, pushes the branch, opens a pull request for review or preview. Its checks are advisory; nothing requires a PR. | Yes |
 
 An agent on `main` lands its own work once the whole request is done and every gate is green. An agent in a worktree the operator created commits only; the operator lands the worktree with `make land <branch>` or from Ion.
@@ -44,7 +44,7 @@ A worktree is for something big. It starts from `main` and lands back on `main`.
 
 1. Create the worktree from `main`. Do the work there, one package per commit.
 2. Before landing, rebase the worktree onto `origin/main` and resolve conflicts there, where the work is.
-3. Land it: `make land <branch>` (`release-damnit land <branch>`). It merges the branch into the remote `main` as one merge commit in a temporary worktree, checks every commit, and pushes. It never touches your checkouts, and it moves local `main` up afterwards.
+3. Land it: `make land <branch>` (`release-damnit land <branch>`). It merges the branch into the remote `main` as one merge commit in a temporary worktree, checks every commit, runs the config's check on that merge, signs its landing proof, and pushes. It never touches your checkouts, and it moves local `main` up afterwards.
 
 ## What runs automatically
 

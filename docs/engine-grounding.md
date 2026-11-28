@@ -116,7 +116,7 @@ While developing, run the scoped set once the change is stable:
 3. `make check-file-sizes`, and `make check-contracts` when a shared type changed.
 4. The SDK manifests regenerated if an SDK type changed (`make sdk-test` pins both SDKs against them).
 
-The full race suite, integration tests, and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Land finished work with `make land`.
+Integration tests and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Land finished work with `make land`: it runs the full race suite (`make test-all`) on what lands.
 
 ## 9. File and package discipline
 

@@ -37,7 +37,7 @@ make engine      # builds engine/bin/ion and installs it to ~/.ion/bin/ion
 | `make sdk-test` | Go SDK and TypeScript SDK suites, which pin the two SDKs against the engine's contract manifests |
 | `make test-linux` | The Linux parity gate in a container (what CI runs) |
 | `make check-file-sizes`, `check-contracts`, `check-logging`, `check-vocabulary`, `check-doc-links`, `check-dashboards` | The scoped gates |
-| `make land` | Rebase onto `main`, check every commit, push |
+| `make land` | Rebase onto `main`, check every commit, run `make test-all` on what lands, sign its landing proof, push |
 
 ## Running locally
 

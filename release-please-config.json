@@ -18,6 +18,7 @@
     "ci",
     "deps"
   ],
+  "check": "make test-all",
   "subject-max-length": 65,
   "packages": {
     "engine": {

@@ -25,7 +25,8 @@ at https://github.com/dsswift/ion-studio and is not developed here.
 
 Maintainers work on `main` and land with `make land`, which runs
 `release-damnit land`. It rebases the local commits onto the remote `main`,
-checks every commit message, and pushes. When the pipeline's version commit
+checks every commit message, runs the config's check (`make test-all`) on
+exactly what lands, signs a landing proof the release verifies, and pushes. When the pipeline's version commit
 moved `main` in the meantime, it fetches and tries again. A branch or
 worktree lands with `make land <branch>`, as one merge commit.
 

@@ -71,11 +71,15 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Verify first: the commit must carry the landing proof that
+      # release-damnit land signed after the check passed.
       - name: Run release-damnit
         id: release
         if: steps.check-skip.outputs.skip == 'false'
-        uses: dsswift/release-damnit@v1.9.2
+        uses: dsswift/release-damnit@v1.11.0
         with:
+          verify: 'true'
+          allowed-signers: ${{ vars.RELEASE_DAMNIT_ALLOWED_SIGNERS }}
           token: ${{ steps.app-token.outputs.token }}
           dry-run: ${{ inputs.dry_run || 'false' }}
           create-releases: 'true'

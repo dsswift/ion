@@ -6,7 +6,7 @@ sidebar_position: 7
 
 # Delivery Pipeline
 
-Code lands on `main` by direct push, through `make land`. Every push is versioned and built without waiting on a review, a test run, or a scan. A built release goes public only once its tests pass for that commit. Test failures and scan findings arrive as issues; neither ever blocks a push.
+Code lands on `main` by direct push, through `make land`. `make land` runs the config's check (`make test-all`) on exactly what lands and signs a landing proof; the release verifies that proof first. Every push is then versioned and built without waiting on a review or a scan. A built release goes public only once its tests pass for that commit. Test failures and scan findings arrive as issues; neither ever blocks a push.
 
 The rule in one line: **if it is on `main`, every service that changed gets a version and a binary; users get the binary once its tests pass.**
 
@@ -67,7 +67,7 @@ Dependency advisories and vulnerability scans read a feed that changes every day
 
 ## Landing
 
-**Land with `make land`** (`release-damnit land`). On `main` it fetches, rebases the local commits onto the remote `main`, checks every commit message, and pushes. The pipeline pushes a version-bump commit to `main` after every landing, so a second landing within a minute or two can find `main` moved mid-push; the remote refuses that push, and `make land` rebases onto the new commit and pushes again, on its own. It never force-pushes, never skips hooks, and refuses a tree with uncommitted changes to tracked files. A conflict stops it: resolve it in a normal `git rebase origin/main`, then land again.
+**Land with `make land`** (`release-damnit land`). On `main` it fetches, rebases the local commits onto the remote `main`, checks every commit message, runs the config's check on exactly what lands, signs a landing proof the release verifies, and pushes. The pipeline pushes a version-bump commit to `main` after every landing, so a second landing within a minute or two can find `main` moved mid-push; the remote refuses that push, and `make land` rebases onto the new commit and pushes again, on its own. It never force-pushes, never skips hooks, and refuses a tree with uncommitted changes to tracked files. A conflict stops it: resolve it in a normal `git rebase origin/main`, then land again.
 
 **`make land <branch>`** lands a branch or worktree as one `--no-ff` merge. It builds the merge in a temporary worktree, so none of your checkouts is touched, pushes, and moves local `main` to the merge. It refuses when local `main` holds commits that are neither on the remote nor copies of the branch's commits.
 
@@ -75,7 +75,7 @@ The hook checks one thing before any gate runs: `scripts/check-main-current.sh` 
 
 ## The gate in front of `main`
 
-There is one: the local `pre-push` hook (`scripts/pre-push.sh`). It runs only what is static or a compile, scoped to the components the branch touched, so a push waits about a minute: file-size caps, tracked-binary check, toolchain alignment, vocabulary drift, engine lint and build plus the Windows cross-build, relay lint, desktop typecheck, server typecheck and lint, the renderer bundle, and SwiftLint. No test suite runs in the hook.
+There is one: the local `pre-push` hook (`scripts/pre-push.sh`). It runs only what is static or a compile, scoped to the components the branch touched, so a push waits about a minute: file-size caps, tracked-binary check, toolchain alignment, vocabulary drift, engine lint and build plus the Windows cross-build, relay lint, desktop typecheck, server typecheck and lint, the renderer bundle, and SwiftLint. No test suite runs in the hook; `make land` runs the full check before it pushes.
 
 Never bypass it with `--no-verify`. Fix what it names and land again.
 

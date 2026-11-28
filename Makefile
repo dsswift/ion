@@ -435,9 +435,11 @@ hooks:
 	@echo "core.hooksPath -> .husky"
 
 # Land finished work on main and push it. On main this rebases the local
-# commits onto the remote, checks every commit, and pushes, retrying on its
-# own when the pipeline's version commit moves main mid-push. With a branch
-# it lands that branch as one merge:
+# commits onto the remote, checks every commit, runs the config's check
+# (`make test-all`) on exactly what lands, signs its landing proof, which the
+# release verifies, and pushes, retrying on its own when the pipeline's
+# version commit moves main mid-push. With a branch it lands that branch as
+# one merge:
 #   make land
 #   make land <branch>
 # The word after `land` is the branch, not a make goal; the eval below makes
